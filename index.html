@@ -8,29 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, FieldValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        window.firebase = {
-            initializeApp,
-            getAuth,
-            signInAnonymously,
-            onAuthStateChanged,
-            getFirestore,
-            doc,
-            getDoc,
-            setDoc,
-            onSnapshot,
-            collection,
-            query,
-            where,
-            getDocs,
-            deleteDoc,
-            serverTimestamp,
-        };
-    </script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -137,15 +114,54 @@
             background-color: #f7fafc;
             cursor: pointer;
         }
+        .tag {
+            background-color: #e2e8f0;
+            color: #4a5568;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 4px;
+            margin-bottom: 4px;
+            display: inline-block;
+        }
+        .tag-remove {
+            margin-left: 4px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
 
-<div class="container">
+<div id="auth-container" class="container" style="display: none;">
+    <div class="card max-w-md mx-auto mt-20">
+        <h1 class="text-2xl font-bold text-center mb-6 text-gray-800">Welcome</h1>
+        <div class="mb-4">
+            <label for="email" class="block text-gray-700 font-semibold mb-2">Email</label>
+            <input type="email" id="email" placeholder="you@example.com" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="mb-6">
+            <label for="password" class="block text-gray-700 font-semibold mb-2">Password</label>
+            <input type="password" id="password" placeholder="********" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="flex flex-col space-y-4">
+            <div class="flex space-x-4">
+                <button id="sign-up-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg flex-1">Sign Up</button>
+                <button id="sign-in-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg flex-1">Log In</button>
+            </div>
+            <button id="google-sign-in-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-300 ease-in-out shadow-lg flex-1">
+                Sign in with Google
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="main-app-container" class="container" style="display: none;">
     <h1 class="text-4xl font-bold text-center mb-10 text-gray-800">Sammy's Lifeblogging & Quantifying Analyser</h1>
     <div class="card mb-4 p-4 rounded-lg bg-yellow-100 text-yellow-800 text-sm">
         <p>Your unique user ID is: <strong id="user-id-display">Signing in...</strong></p>
         <p>This ID is used to store your data securely and privately in the cloud, allowing you to access it from any device.</p>
+        <button id="sign-out-btn" class="mt-2 bg-red-600 text-white font-bold py-1 px-3 rounded-lg hover:bg-red-700 text-sm">Sign Out</button>
     </div>
 
     <div id="data-loading-status" class="flex items-center justify-center p-4 rounded-lg bg-blue-100 text-blue-800 text-sm mb-4">
@@ -164,11 +180,11 @@
                     <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712l-1.848 1.62c-1.172 1.025-1.172 2.687 0 3.712A2.75 2.75 0 0013.5 18.75s-2.25-.5-2.25-2.25a2.25 2.25 0 014.5 0s-2.25.5-2.25 2.25a2.25 2.25 0 014.5 0" />
                 </svg>
                 <div class="absolute hidden group-hover:block top-8 left-1/2 -translate-x-1/2 w-80 p-4 bg-gray-800 text-white text-sm rounded-lg shadow-lg z-50">
-                    <p>Enter the date, a descriptive name for your data (e.g., 'mood' or 'coffee_cups'), and its corresponding value. The value can be a number or text.</p>
+                    <p>Enter the date, a descriptive name for your data (e.g., 'mood' or 'coffee_cups'), and its corresponding value. The value can be a number or text. You can also add comma-separated tags.</p>
                 </div>
             </span>
         </p>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="col-span-1">
                 <label for="manual-date" class="block text-gray-700 font-semibold mb-2">Date</label>
                 <input type="date" id="manual-date" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -180,6 +196,10 @@
             <div class="col-span-1">
                 <label for="manual-value" class="block text-gray-700 font-semibold mb-2">Value</label>
                 <input type="text" id="manual-value" placeholder="e.g., 8 (for mood) or 'great'" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="col-span-1">
+                <label for="manual-tags" class="block text-gray-700 font-semibold mb-2">Tags (comma-separated)</label>
+                <input type="text" id="manual-tags" placeholder="e.g., work, personal, meeting" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
         </div>
         <div class="mt-4">
@@ -290,6 +310,10 @@
     
     <div class="card">
         <h2 class="text-2xl font-semibold mb-4 text-gray-700">5. Data Table</h2>
+        <div class="mb-4">
+            <label for="tag-search-input" class="block text-gray-700 font-semibold mb-2">Filter by Tags (comma-separated):</label>
+            <input type="text" id="tag-search-input" placeholder="e.g., work, mood" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+        </div>
         <div class="table-container">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
@@ -312,7 +336,36 @@
             </div>
         </div>
     </div>
+    
+    <div class="card">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">7. Manage Account</h2>
+        <p class="text-gray-600 mb-4">Update your password or email address for a more secure account.</p>
 
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="p-4 border border-gray-200 rounded-lg">
+                <h3 class="text-lg font-semibold mb-2 text-gray-700">Change Password</h3>
+                <div class="mb-4">
+                    <label for="new-password" class="block text-gray-700 font-semibold mb-2">New Password</label>
+                    <input type="password" id="new-password" placeholder="Min 6 characters" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="mb-4">
+                    <label for="confirm-new-password" class="block text-gray-700 font-semibold mb-2">Confirm New Password</label>
+                    <input type="password" id="confirm-new-password" placeholder="********" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button id="change-password-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg w-full">Change Password</button>
+            </div>
+
+            <div class="p-4 border border-gray-200 rounded-lg">
+                <h3 class="text-lg font-semibold mb-2 text-gray-700">Change Email</h3>
+                <p class="text-sm text-gray-500 mb-4">Note: You may be required to re-authenticate with your current password for this action.</p>
+                <div class="mb-4">
+                    <label for="new-email" class="block text-gray-700 font-semibold mb-2">New Email</label>
+                    <input type="email" id="new-email" placeholder="new.email@example.com" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button id="change-email-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg w-full">Change Email</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div id="data-modal" class="modal">
@@ -320,8 +373,21 @@
         <span class="close-btn">&times;</span>
         <h2 class="text-xl font-bold mb-4">Data Point Details</h2>
         <p id="modal-read-only-message" class="text-sm text-red-500 mb-2 font-semibold hidden">This is a read-only view. Data from this source cannot be edited.</p>
-        <p class="text-sm text-gray-500 mb-2">Source: <strong id="modal-source-display"></strong></p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-500 mb-4">
+            <p>Source: <strong id="modal-source-display"></strong></p>
+            <p>File Source: <strong id="modal-file-source-display"></strong></p>
+            <p>File Type: <strong id="modal-file-type-display"></strong></p>
+            <p>Added by: <strong id="modal-uploaded-by-display"></strong></p>
+        </div>
         <p class="text-sm text-gray-500 mb-4">Added to database: <span id="modal-created-at"></span></p>
+
+        <div id="modal-tags-container" class="mb-4">
+            <h3 class="text-lg font-semibold mb-2">Tags</h3>
+            <div class="flex flex-wrap items-center">
+                <input type="text" id="modal-tags-input" placeholder="Add new tag" class="bg-gray-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <div id="modal-tags-list" class="mt-2 flex flex-wrap"></div>
+            </div>
+        </div>
 
         <div id="modal-custom-data" class="mb-4">
             <h3 class="text-lg font-semibold mb-2">Attributes</h3>
@@ -370,7 +436,11 @@
     </div>
 </div>
 
-<script>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, updatePassword, updateEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    
     // --- Firebase Configuration and Initialization ---
     const firebaseConfig = {
       apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -382,6 +452,9 @@
       measurementId: "G-JT1YF2ELN3"
     };
 
+    // --- IMPORTANT: REPLACE THE ABOVE CONFIGURATION WITH YOUR OWN FIREBASE PROJECT'S DETAILS ---
+    // You can find this in your Firebase console under Project Settings.
+    
     // Global variables for Firebase instances and data
     let db, auth;
     let userId;
@@ -394,12 +467,12 @@
     let selectedSources = [];
     let sortColumn = 'date';
     let sortDirection = 'desc';
+    let tagFilter = [];
 
     // Helper function to show a temporary message box
     function showMessage(message, type = 'success', timeout = 3000) {
         const msgBox = document.getElementById('message-box');
         
-        // Determine the message box's color based on type
         let colorClass = '';
         if (type === 'error') {
             colorClass = 'bg-red-500';
@@ -424,46 +497,211 @@
     }
 
     /**
+     * Helper function for client-side email validation.
+     * @param {string} email The email to validate.
+     * @returns {boolean} True if the email is valid, false otherwise.
+     */
+    function isValidEmail(email) {
+        const re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+        return re.test(String(email).toLowerCase());
+    }
+
+    /**
      * Initializes Firebase and authenticates the user.
-     * This function signs in anonymously.
+     * This now uses onAuthStateChanged to handle login state.
      */
     async function initFirebase() {
         try {
-            const userIdDisplay = document.getElementById('user-id-display');
-            userIdDisplay.textContent = 'Signing in...';
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
 
-            if (!firebaseConfig.projectId) {
-                console.error("Firebase config is missing a project ID. Cannot initialize Firebase.");
-                userIdDisplay.textContent = 'Configuration Error';
-                showMessage("Firebase is not configured. Data will not be saved.", 'error');
-                return;
-            }
-
-            const app = firebase.initializeApp(firebaseConfig);
-            db = firebase.getFirestore(app);
-            auth = firebase.getAuth(app);
-
-            firebase.onAuthStateChanged(auth, (user) => {
+            // Listen for changes in the authentication state
+            onAuthStateChanged(auth, (user) => {
                 if (user) {
+                    // User is signed in, show the main app
                     userId = user.uid;
-                    userIdDisplay.textContent = userId;
+                    document.getElementById('user-id-display').textContent = user.email;
+                    document.getElementById('auth-container').style.display = 'none';
+                    document.getElementById('main-app-container').style.display = 'block';
                     console.log("User signed in with ID:", userId);
                     initDataListeners();
                 } else {
+                    // No user is signed in, show the login form
+                    userId = null;
+                    document.getElementById('user-id-display').textContent = 'Not signed in';
+                    document.getElementById('auth-container').style.display = 'block';
+                    document.getElementById('main-app-container').style.display = 'none';
                     console.log("No user is signed in.");
-                    userIdDisplay.textContent = 'Not signed in';
-                    showMessage('Failed to sign in. Please check your Firebase configuration and network connection.', 'error');
                 }
             });
-            
-            await firebase.signInAnonymously(auth);
 
         } catch (error) {
             console.error("Error initializing Firebase:", error);
             document.getElementById('user-id-display').textContent = 'Error';
-            showMessage("Failed to initialize Firebase. Data may not be saved.", 'error');
+            showMessage("Failed to initialize Firebase. Data may not be saved. Check your firebaseConfig.", 'error', 0);
         }
     }
+
+    /**
+     * Handles user sign up with email and password.
+     */
+    async function signUpWithEmail() {
+        console.log("Sign up button clicked.");
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        
+        console.log("Attempting sign up with email:", email, "and password length:", password.length);
+
+        // Client-side validation
+        if (!isValidEmail(email)) {
+            showMessage("Please enter a valid email address.", 'error');
+            return;
+        }
+        if (password.length < 6) {
+            showMessage("Password must be at least 6 characters long.", 'error');
+            return;
+        }
+
+        try {
+            await createUserWithEmailAndPassword(auth, email, password);
+            showMessage("Sign up successful! You are now logged in.", 'success');
+        } catch (error) {
+            console.error("Error during sign up:", error);
+            showMessage(`Sign up failed: ${error.message}`, 'error');
+        }
+    }
+    
+    /**
+     * Handles user sign in with email and password.
+     */
+    async function signInWithEmail() {
+        console.log("Sign in button clicked.");
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+
+        // Client-side validation
+        if (!isValidEmail(email)) {
+            showMessage("Please enter a valid email address.", 'error');
+            return;
+        }
+        if (password.length < 6) {
+            showMessage("Password must be at least 6 characters long.", 'error');
+            return;
+        }
+
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            showMessage("Login successful!", 'success');
+        } catch (error) {
+            console.error("Error during sign in:", error);
+            showMessage(`Login failed: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Handles sign in using Google Auth Provider.
+     */
+    async function signInWithGoogle() {
+        console.log("Google sign in button clicked.");
+        const provider = new GoogleAuthProvider();
+        try {
+            await signInWithPopup(auth, provider);
+            showMessage("Signed in with Google successfully!", 'success');
+        } catch (error) {
+            console.error("Error during Google sign in:", error);
+            showMessage(`Google sign in failed: ${error.message}`, 'error');
+        }
+    }
+    
+    /**
+     * Handles user sign out.
+     */
+    async function signOutUser() {
+        try {
+            await signOut(auth);
+            showMessage("You have been signed out.", 'info');
+            // Reset the UI
+            currentDataCache = {};
+            chartDataPoints = [];
+            document.getElementById('data-table-body').innerHTML = '';
+        } catch (error) {
+            console.error("Error during sign out:", error);
+            showMessage("Sign out failed.", 'error');
+        }
+    }
+
+    /**
+     * Handles changing the user's password.
+     */
+    async function changePassword() {
+        const newPassword = document.getElementById('new-password').value;
+        const confirmPassword = document.getElementById('confirm-new-password').value;
+        const user = auth.currentUser;
+
+        if (!user) {
+            showMessage("You must be signed in to change your password.", 'error');
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            showMessage("Password must be at least 6 characters long.", 'error');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            showMessage("New passwords do not match.", 'error');
+            return;
+        }
+
+        try {
+            await updatePassword(user, newPassword);
+            showMessage("Password updated successfully!", 'success');
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-new-password').value = '';
+        } catch (error) {
+            console.error("Error updating password:", error);
+            // Firebase requires re-authentication for sensitive changes
+            if (error.code === 'auth/requires-recent-login') {
+                showMessage("To change your password, you must sign out and sign in again.", 'error', 0);
+            } else {
+                showMessage(`Failed to update password: ${error.message}`, 'error');
+            }
+        }
+    }
+
+    /**
+     * Handles changing the user's email.
+     */
+    async function changeEmail() {
+        const newEmail = document.getElementById('new-email').value;
+        const user = auth.currentUser;
+
+        if (!user) {
+            showMessage("You must be signed in to change your email.", 'error');
+            return;
+        }
+        
+        if (!isValidEmail(newEmail)) {
+            showMessage("Please enter a valid email address.", 'error');
+            return;
+        }
+
+        try {
+            await updateEmail(user, newEmail);
+            showMessage("Email updated successfully! You may need to verify your new email.", 'success', 0);
+            document.getElementById('new-email').value = '';
+        } catch (error) {
+            console.error("Error updating email:", error);
+            // Firebase requires re-authentication for sensitive changes
+            if (error.code === 'auth/requires-recent-login') {
+                showMessage("To change your email, you must sign out and sign in again.", 'error', 0);
+            } else {
+                showMessage(`Failed to update email: ${error.message}`, 'error');
+            }
+        }
+    }
+
 
     /**
      * Initializes data listeners and populates UI elements after successful authentication.
@@ -477,8 +715,8 @@
         const dataLoadingStatus = document.getElementById('data-loading-status');
         dataLoadingStatus.classList.remove('hidden');
 
-        const sourcesCollectionRef = firebase.collection(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources`);
-        firebase.onSnapshot(sourcesCollectionRef, async (snapshot) => {
+        const sourcesCollectionRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources`);
+        onSnapshot(sourcesCollectionRef, async (snapshot) => {
             dataLoadingStatus.classList.add('hidden');
 
             const sources = snapshot.docs.map(doc => doc.id);
@@ -511,22 +749,22 @@
             console.error("Data point is missing date or source:", data);
             return;
         }
-        const docRef = firebase.doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${source}/dailyData/${date}`);
+        const docRef = doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${source}/dailyData/${date}`);
         const saveButton = document.getElementById('manual-add-btn');
         const spinner = saveButton ? saveButton.querySelector('.spinner') : null;
         if (spinner) spinner.classList.remove('hidden');
         if (saveButton) saveButton.disabled = true;
 
         try {
-            const docSnap = await firebase.getDoc(docRef);
+            const docSnap = await getDoc(docRef);
             let existingData = {};
             if (docSnap.exists()) {
                 existingData = docSnap.data();
                 const mergedData = { ...existingData, ...attributes };
-                await firebase.setDoc(docRef, mergedData);
+                await setDoc(docRef, mergedData);
             } else {
-                const dataWithTimestamp = { ...attributes, created_at: firebase.serverTimestamp() };
-                await firebase.setDoc(docRef, dataWithTimestamp);
+                const dataWithTimestamp = { ...attributes, created_at: serverTimestamp() };
+                await setDoc(docRef, dataWithTimestamp);
             }
             
             console.log("Data stored successfully for date:", date, "and source:", source);
@@ -550,9 +788,9 @@
             return;
         }
 
-        const docRef = firebase.doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${source}/dailyData/${date}`);
+        const docRef = doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${source}/dailyData/${date}`);
         try {
-            await firebase.deleteDoc(docRef);
+            await deleteDoc(docRef);
             showMessage("Data point deleted successfully!");
         } catch (error) {
             console.error("Failed to delete data:", error);
@@ -570,14 +808,14 @@
             return;
         }
 
-        const dailyDataCollectionRef = firebase.collection(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${sourceName}/dailyData`);
-        const querySnapshot = await firebase.getDocs(dailyDataCollectionRef);
+        const dailyDataCollectionRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${sourceName}/dailyData`);
+        const querySnapshot = await getDocs(dailyDataCollectionRef);
         
-        const deletePromises = querySnapshot.docs.map(doc => firebase.deleteDoc(doc.ref));
+        const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
         await Promise.all(deletePromises);
 
-        const sourceDocRef = firebase.doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${sourceName}`);
-        await firebase.deleteDoc(sourceDocRef);
+        const sourceDocRef = doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${sourceName}`);
+        await deleteDoc(sourceDocRef);
     }
 
 
@@ -587,8 +825,8 @@
      */
     async function getSources() {
         if (!userId) return [];
-        const sourcesCollectionRef = firebase.collection(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources`);
-        const querySnapshot = await firebase.getDocs(sourcesCollectionRef);
+        const sourcesCollectionRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources`);
+        const querySnapshot = await getDocs(sourcesCollectionRef);
         return querySnapshot.docs.map(doc => doc.id);
     }
     
@@ -603,8 +841,8 @@
             return currentDataCache[sourceName];
         }
 
-        const dailyDataCollectionRef = firebase.collection(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${sourceName}/dailyData`);
-        const querySnapshot = await firebase.getDocs(dailyDataCollectionRef);
+        const dailyDataCollectionRef = collection(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${sourceName}/dailyData`);
+        const querySnapshot = await getDocs(dailyDataCollectionRef);
         const data = querySnapshot.docs.map(doc => {
             const data = doc.data();
             const processedData = { ...data, date: doc.id, source: sourceName };
@@ -653,9 +891,11 @@
      * Parses CSV text and converts it into an array of objects, adding the source name.
      * @param {string} text The raw CSV data as a string.
      * @param {string} source The name of the data source.
+     * @param {string} fileName The name of the uploaded file.
+     * @param {string} fileType The file extension of the uploaded file.
      * @returns {Array} An array of data objects.
      */
-    function parseCSV(text, source) {
+    function parseCSV(text, source, fileName, fileType) {
         const results = Papa.parse(text, {
             header: true,
             skipEmptyLines: true,
@@ -675,9 +915,13 @@
              return null;
         }
         
-        // Convert numerical strings to numbers and map 'date' column to the doc id
         return results.data.map(row => {
-            const processedRow = { source: source };
+            const processedRow = { 
+                source: source,
+                file_source: fileName,
+                file_type: fileType, // ADDED: file_type attribute
+                uploaded_by: userId, // ADDED: uploaded_by attribute
+            }; 
             for (const key in row) {
                 const value = row[key];
                 const lowerKey = key.toLowerCase();
@@ -697,9 +941,11 @@
      * Parses JSON text and converts it into an array of objects, adding the source name.
      * @param {string} text The raw JSON data as a string.
      * @param {string} source The name of the data source.
+     * @param {string} fileName The name of the uploaded file.
+     * @param {string} fileType The file extension of the uploaded file.
      * @returns {Array} An array of data objects.
      */
-    function parseJSON(text, source) {
+    function parseJSON(text, source, fileName, fileType) {
         try {
             const data = JSON.parse(text);
             if (!Array.isArray(data)) {
@@ -715,9 +961,14 @@
                 return true;
             });
             
-            // Add source to each object and convert numerical strings
             return validatedData.map(item => {
-                const processedItem = { ...item, source: source };
+                const processedItem = { 
+                    ...item, 
+                    source: source, 
+                    file_source: fileName,
+                    file_type: fileType, // ADDED: file_type attribute
+                    uploaded_by: userId, // ADDED: uploaded_by attribute
+                }; 
                 for (const key in processedItem) {
                     const value = processedItem[key];
                     if (typeof value === 'string' && !isNaN(value) && value !== '') {
@@ -757,18 +1008,15 @@
             container.appendChild(div);
         });
 
-        // Add event listeners for new checkboxes
         container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
             checkbox.addEventListener('change', handleSourceChange);
         });
 
-        // Re-select previously selected sources
         selectedSources.forEach(source => {
             const checkbox = document.getElementById(`source-${source}`);
             if (checkbox) checkbox.checked = true;
         });
 
-        // Default to selecting 'Manual' if no other sources were previously selected
         if (selectedSources.length === 0) {
             const manualCheckbox = document.getElementById('source-Manual');
             if (manualCheckbox) {
@@ -827,7 +1075,7 @@
         allData.forEach(item => {
             Object.keys(item).forEach(key => {
                 const value = item[key];
-                if (key !== 'date' && key !== 'source' && (typeof value === 'number' || value instanceof Date)) {
+                if (key !== 'date' && key !== 'source' && key !== 'file_source' && key !== 'file_type' && key !== 'uploaded_by' && key !== 'tags' && (typeof value === 'number' || value instanceof Date)) {
                     allKeys.add(key);
                 }
             });
@@ -853,7 +1101,6 @@
             corrKey2.appendChild(option.cloneNode(true));
         }
 
-        // Keep previous selection if it still exists
         const currentSelectedKey = currentChartKey;
         if (currentSelectedKey && sortedKeys.includes(currentSelectedKey)) {
             keySelect.value = currentSelectedKey;
@@ -981,7 +1228,6 @@
             
             if (chart) chart.destroy();
             
-            // Show/hide correlation section based on chart type and number of sources
             const correlationSection = document.getElementById('correlation-section');
             if (selectedSources.length > 1 || chartType === 'scatter') {
                  correlationSection.style.display = 'none';
@@ -998,7 +1244,6 @@
                 if (selectedSources.length === 1) {
                     displayStatistics(filteredData, key);
                 } else {
-                    // Clear stats for multi-source
                     document.getElementById('stats-avg').textContent = '-';
                     document.getElementById('stats-median').textContent = '-';
                     document.getElementById('stats-sum').textContent = '-';
@@ -1026,7 +1271,6 @@
                     };
                 });
                 
-                // Combine labels from all sources to get a full date range
                 const allLabels = [...new Set(filteredData.map(d => d.date))].sort();
 
                 chartConfig = {
@@ -1089,7 +1333,7 @@
                     }
                 };
             } else {
-                 return; // Do not render if an unknown chart type is selected
+                 return;
             }
 
             chart = new Chart(document.getElementById('data-chart').getContext('2d'), chartConfig);
@@ -1100,7 +1344,6 @@
         }
     }
     
-    // Handle chart click to show modal
     function handleChartClick(event) {
         const selectedSources = getSelectedSources();
         if (selectedSources.length > 1) {
@@ -1124,25 +1367,25 @@
         }
     }
     
-    // Show data modal
     function showModal(data) {
         const modal = document.getElementById('data-modal');
         const isManualSource = data.source === 'Manual';
         
         document.getElementById('modal-source-display').textContent = data.source;
+        document.getElementById('modal-file-source-display').textContent = data.file_source || 'N/A';
+        document.getElementById('modal-file-type-display').textContent = data.file_type || 'N/A'; // ADDED: Display file_type
+        document.getElementById('modal-uploaded-by-display').textContent = data.uploaded_by || 'N/A'; // ADDED: Display uploaded_by
 
-        // Set modal title and read-only message
         document.getElementById('data-modal').querySelector('h2').textContent = isManualSource ? 'Edit Data Point' : 'Data Point Details';
         document.getElementById('modal-read-only-message').classList.toggle('hidden', isManualSource);
 
-        // Display created_at timestamp
         const createdAt = data.created_at ? new Date(data.created_at).toLocaleString() : 'N/A';
         document.getElementById('modal-created-at').textContent = createdAt;
 
         const customDataContainer = document.getElementById('modal-custom-data');
         customDataContainer.innerHTML = '';
         Object.keys(data).forEach(key => {
-            if (key !== 'date' && key !== 'source' && key !== 'created_at') {
+            if (key !== 'date' && key !== 'source' && key !== 'created_at' && key !== 'file_source' && key !== 'file_type' && key !== 'uploaded_by' && key !== 'tags') { // MODIFIED: Exclude new fields
                 const div = document.createElement('div');
                 div.className = 'mb-2';
                 const value = data[key] instanceof Date ? data[key].toISOString() : data[key];
@@ -1154,7 +1397,45 @@
             }
         });
         
-        // Disable inputs and hide buttons if source is not 'Manual'
+        // ADDED: Tags management in modal
+        const tagsInput = document.getElementById('modal-tags-input');
+        const tagsList = document.getElementById('modal-tags-list');
+        tagsList.innerHTML = '';
+        
+        if (data.tags && Array.isArray(data.tags)) {
+            data.tags.forEach(tag => {
+                const tagElement = document.createElement('span');
+                tagElement.className = 'tag';
+                tagElement.textContent = tag;
+                if(isManualSource) {
+                    tagElement.innerHTML += `<span class="tag-remove" data-tag="${tag}">&times;</span>`;
+                }
+                tagsList.appendChild(tagElement);
+            });
+        }
+        
+        if (!isManualSource) {
+            tagsInput.disabled = true;
+        } else {
+            tagsInput.disabled = false;
+            tagsInput.onkeydown = (e) => {
+                if (e.key === 'Enter' && tagsInput.value.trim() !== '') {
+                    const newTags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
+                    const existingTags = data.tags || [];
+                    data.tags = [...new Set([...existingTags, ...newTags])];
+                    showModal(data);
+                    tagsInput.value = '';
+                }
+            };
+            tagsList.onclick = (e) => {
+                if (e.target.classList.contains('tag-remove')) {
+                    const tagToRemove = e.target.dataset.tag;
+                    data.tags = (data.tags || []).filter(tag => tag !== tagToRemove);
+                    showModal(data);
+                }
+            };
+        }
+
         const inputs = customDataContainer.querySelectorAll('input');
         const buttonsContainer = document.getElementById('modal-buttons-container');
         
@@ -1164,15 +1445,14 @@
         } else {
             inputs.forEach(input => input.disabled = false);
             buttonsContainer.classList.remove('hidden');
-            document.getElementById('modal-save-btn').onclick = () => saveModalChanges(data.date);
+            document.getElementById('modal-save-btn').onclick = () => saveModalChanges(data.date, data.tags);
             document.getElementById('modal-delete-btn').onclick = () => deleteModalData(data.date);
         }
 
         modal.style.display = 'flex';
     }
 
-    // Save changes from the modal
-    async function saveModalChanges(date) {
+    async function saveModalChanges(date, tags) {
         const selectedSource = getSelectedSources()[0];
         const newAttributes = {};
         const inputs = document.getElementById('modal-custom-data').querySelectorAll('input');
@@ -1182,16 +1462,17 @@
             newAttributes[key] = isNaN(input.value) ? input.value : parseFloat(input.value);
         });
 
+        // ADDED: Save tags from modal
+        newAttributes.tags = tags;
+
         await storeData({ date, source: selectedSource, ...newAttributes });
         document.getElementById('data-modal').style.display = 'none';
         
-        // Clear local cache for the source and re-render
         delete currentDataCache[selectedSource];
         renderChart(currentChartKey, currentChartType);
         renderTable();
     }
     
-    // Delete data point from modal
     async function deleteModalData(date) {
         const selectedSource = getSelectedSources()[0];
         if (confirm(`Are you sure you want to delete data for ${date}?`)) {
@@ -1203,7 +1484,6 @@
         }
     }
 
-    // Close modal function
     function closeModal() {
         document.getElementById('data-modal').style.display = 'none';
     }
@@ -1240,7 +1520,6 @@
         document.getElementById('conflict-date').textContent = row.date;
         document.getElementById('conflict-source').textContent = row.source;
 
-        // Convert Firestore Timestamp to readable string for preview
         const formattedExistingData = {};
         for (const key in existingData) {
             if (existingData[key] && typeof existingData[key].toDate === 'function') {
@@ -1250,7 +1529,6 @@
             }
         }
         
-        // Display existing and incoming data separately for comparison
         document.getElementById('existing-data-preview').textContent = JSON.stringify(formattedExistingData, null, 2);
         document.getElementById('incoming-data-preview').textContent = JSON.stringify(row, null, 2);
         
@@ -1290,10 +1568,13 @@
             return;
         }
 
+        const fileName = file.name;
+        const fileExtension = fileName.split('.').pop().toLowerCase(); // ADDED: Get file extension
+        
         let parser;
-        if (file.name.toLowerCase().endsWith('.csv')) {
+        if (fileExtension === 'csv') {
             parser = parseCSV;
-        } else if (file.name.toLowerCase().endsWith('.json')) {
+        } else if (fileExtension === 'json') {
             parser = parseJSON;
         } else {
             showMessage("Invalid file type. Please upload a CSV or JSON file.", 'error');
@@ -1308,7 +1589,7 @@
         const reader = new FileReader();
         reader.onload = async (e) => {
             const text = e.target.result;
-            const data = parser(text, source);
+            const data = parser(text, source, fileName, fileExtension); // MODIFIED: Pass fileType to the parser
             
             if (!data) {
                 uploadBtn.textContent = originalText;
@@ -1327,11 +1608,10 @@
                 showMessage(`Uploading... 0 of ${totalCount}`, 'info', 0);
 
                 for (const row of data) {
-                    const docRef = firebase.doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${source}/dailyData/${row.date}`);
-                    const docSnap = await firebase.getDoc(docRef);
+                    const docRef = doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${source}/dailyData/${row.date}`);
+                    const docSnap = await getDoc(docRef);
 
                     if (docSnap.exists()) {
-                        // Conflict detected on the date
                         const existingData = docSnap.data();
                         
                         let isExactMatch = true;
@@ -1346,28 +1626,26 @@
                         if (isExactMatch) {
                             skippedCount++;
                         } else {
-                            // Data is different, show conflict modal
                             if (conflictAction === null) {
                                 uploadBtn.textContent = "Conflict found...";
                                 conflictAction = await showConflictModal(row, existingData);
-                                uploadBtn.textContent = "Uploading..."; // Reset button text
+                                uploadBtn.textContent = "Uploading...";
                             }
                             
                             if (conflictAction === 'overwrite') {
                                 const mergedData = { ...existingData, ...row };
-                                await firebase.setDoc(docRef, mergedData);
+                                await setDoc(docRef, mergedData);
                                 overwrittenCount++;
                             } else if (conflictAction === 'skip') {
                                 skippedCount++;
                             } else if (conflictAction === 'cancel') {
-                                break; // Exit the loop
+                                break;
                             }
                         }
                     } else {
-                        // No conflict, store new data with a timestamp
                         const { date, source, ...attributes } = row;
-                        const dataWithTimestamp = { ...attributes, created_at: firebase.serverTimestamp() };
-                        await firebase.setDoc(docRef, dataWithTimestamp);
+                        const dataWithTimestamp = { ...attributes, created_at: serverTimestamp() };
+                        await setDoc(docRef, dataWithTimestamp);
                         newCount++;
                     }
 
@@ -1375,7 +1653,6 @@
                     showMessage(`Uploading... ${processedCount} of ${totalCount}`, 'info', 0);
                 }
 
-                // Final summary message
                 let finalMessage = `Upload complete! Added ${newCount} new entries.`;
                 if (overwrittenCount > 0) {
                     finalMessage += ` Overwrote ${overwrittenCount} entries.`;
@@ -1418,6 +1695,10 @@
             const dateObj = new Date(value);
             displayValue = dateObj.toISOString().slice(0, 10);
             titleValue = dateObj.toLocaleString();
+        } else if (key === 'tags') {
+            displayValue = Array.isArray(value) ? value.map(tag => `<span class="tag">${tag}</span>`).join('') : value;
+            titleValue = Array.isArray(value) ? value.join(', ') : value;
+            return { display: displayValue, title: titleValue, isHTML: true };
         } else if (typeof value === 'object') {
             displayValue = JSON.stringify(value);
             titleValue = displayValue;
@@ -1426,7 +1707,7 @@
             titleValue = value;
         }
         
-        return { display: displayValue, title: titleValue };
+        return { display: displayValue, title: titleValue, isHTML: false };
     }
 
     function renderTable() {
@@ -1434,22 +1715,29 @@
         const tableHeader = document.getElementById('data-table-header');
         tableBody.innerHTML = '<tr><td colspan="100%" class="text-center text-gray-500 py-4">Loading data...</td></tr>';
         
+        const tagSearchInput = document.getElementById('tag-search-input');
+        tagFilter = tagSearchInput.value.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag !== '');
+
         getCombinedData(selectedSources).then(allData => {
-            if (allData.length === 0) {
+            const filteredData = allData.filter(item => {
+                if (tagFilter.length === 0) return true;
+                const itemTags = (item.tags || []).map(tag => tag.toLowerCase());
+                return tagFilter.every(tag => itemTags.includes(tag));
+            });
+            
+            if (filteredData.length === 0) {
                 tableHeader.innerHTML = '';
                 tableBody.innerHTML = '<tr><td colspan="100%" class="text-center text-gray-500 py-4">No data to display.</td></tr>';
                 return;
             }
             
-            // Get all unique keys for dynamic headers
             const allKeys = new Set();
-            allData.forEach(item => {
+            filteredData.forEach(item => {
                 Object.keys(item).forEach(key => allKeys.add(key));
             });
             
-            let headers = ['date', 'source', 'created_at', ...Array.from(allKeys).filter(k => k !== 'date' && k !== 'source' && k !== 'created_at').sort()];
+            let headers = ['date', 'source', 'file_source', 'file_type', 'uploaded_by', 'tags', 'created_at', ...Array.from(allKeys).filter(k => k !== 'date' && k !== 'source' && k !== 'file_source' && k !== 'file_type' && k !== 'uploaded_by' && k !== 'tags' && k !== 'created_at').sort()];
             
-            // Render table headers
             tableHeader.innerHTML = '';
             headers.forEach(key => {
                 const th = document.createElement('th');
@@ -1470,8 +1758,7 @@
                 tableHeader.appendChild(th);
             });
             
-            // Sort data
-            const sortedData = allData.sort((a, b) => {
+            const sortedData = filteredData.sort((a, b) => {
                 const valA = a[sortColumn];
                 const valB = b[sortColumn];
 
@@ -1491,13 +1778,11 @@
                     return sortDirection === 'asc' ? result : -result;
                 }
                 
-                // Fallback for mixed types or missing values
                 if (valA === undefined || valA === null) return 1;
                 if (valB === undefined || valB === null) return -1;
                 return 0;
             });
             
-            // Render table body
             tableBody.innerHTML = '';
             sortedData.forEach(item => {
                 const row = document.createElement('tr');
@@ -1506,8 +1791,12 @@
                 headers.forEach(key => {
                     const cell = document.createElement('td');
                     cell.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-800';
-                    const { display, title } = getCellValue(item, key);
-                    cell.textContent = display;
+                    const { display, title, isHTML } = getCellValue(item, key);
+                    if (isHTML) {
+                         cell.innerHTML = display;
+                    } else {
+                         cell.textContent = display;
+                    }
                     cell.title = title;
                     row.appendChild(cell);
                 });
@@ -1525,11 +1814,22 @@
     window.addEventListener('DOMContentLoaded', () => {
         initFirebase();
         
+        // --- AUTH BUTTONS ---
+        document.getElementById('sign-up-btn').addEventListener('click', signUpWithEmail);
+        document.getElementById('sign-in-btn').addEventListener('click', signInWithEmail);
+        document.getElementById('google-sign-in-btn').addEventListener('click', signInWithGoogle);
+        document.getElementById('sign-out-btn').addEventListener('click', signOutUser);
+
+        // --- ACCOUNT MANAGEMENT BUTTONS ---
+        document.getElementById('change-password-btn').addEventListener('click', changePassword);
+        document.getElementById('change-email-btn').addEventListener('click', changeEmail);
+
         // Manual Data Add
         document.getElementById('manual-add-btn').addEventListener('click', async () => {
             const date = document.getElementById('manual-date').value;
             const key = document.getElementById('manual-key').value;
             const value = document.getElementById('manual-value').value;
+            const tags = document.getElementById('manual-tags').value.split(',').map(tag => tag.trim()).filter(tag => tag !== ''); // ADDED: Manual tags
             const source = 'Manual';
 
             if (!date || !key || !value) {
@@ -1540,6 +1840,9 @@
             const dataToStore = {
                 date: date,
                 source: source,
+                uploaded_by: userId, // ADDED: uploaded_by
+                file_type: 'manual', // ADDED: file_type
+                tags: tags, // ADDED: tags
                 [key]: isNaN(value) ? value : parseFloat(value)
             };
             await storeData(dataToStore);
@@ -1547,6 +1850,7 @@
             document.getElementById('manual-date').value = '';
             document.getElementById('manual-key').value = '';
             document.getElementById('manual-value').value = '';
+            document.getElementById('manual-tags').value = ''; // ADDED: Clear tags input
             delete currentDataCache[source];
             await populateKeySelector();
             renderChart(key, currentChartType);
@@ -1568,9 +1872,9 @@
                  return;
             }
 
-            const docRef = firebase.doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${newSourceName}`);
+            const docRef = doc(db, `artifacts/${firebaseConfig.appId}/users/${userId}/dataSources/${newSourceName}`);
             try {
-                await firebase.setDoc(docRef, { created: new Date().toISOString() });
+                await setDoc(docRef, { created: new Date().toISOString() });
                 showMessage(`Source '${newSourceName}' created successfully!`);
                 document.getElementById('new-source-name').value = '';
                 delete currentDataCache[newSourceName];
@@ -1663,6 +1967,8 @@
             endDateInput.value = '';
             renderChart(currentChartKey, currentChartType);
         });
+
+        document.getElementById('tag-search-input').addEventListener('input', renderTable);
         
         // Export/Import
         document.getElementById('export-btn').addEventListener('click', async () => {
@@ -1698,7 +2004,9 @@
             if (!file) {
                 return;
             }
-
+            
+            const fileName = file.name;
+            const fileExtension = fileName.split('.').pop().toLowerCase();
             const reader = new FileReader();
             reader.onload = async (event) => {
                 try {
@@ -1713,8 +2021,17 @@
                     let importedCount = 0;
                     for (const item of importedData) {
                         if (item.date && item.source) {
-                            const { created_at, source, ...rest } = item;
-                            await storeData({ date: item.date, source: item.source, ...rest });
+                            const { created_at, source, uploaded_by, file_type, file_source, ...rest } = item;
+                            const dataToStore = {
+                                date: item.date, 
+                                source: item.source, 
+                                ...rest, 
+                                // Set metadata if present, otherwise default values
+                                uploaded_by: uploaded_by || userId,
+                                file_type: file_type || fileExtension,
+                                file_source: file_source || fileName,
+                            };
+                            await storeData(dataToStore);
                             importedCount++;
                         }
                     }
@@ -1744,7 +2061,6 @@
             if (event.target === deleteSourceModal) {
                 deleteSourceModal.style.display = 'none';
             }
-            // Conflict modal should only be closed by button clicks to force a choice
         });
     });
 </script>
