@@ -130,7 +130,6 @@
       }
       .quick-log-buttons button {
         flex: 1;
-        background-color: #444;
         color: #fff;
         border: 1px solid #666;
         padding: 10px;
@@ -140,11 +139,69 @@
         transition: background-color 0.2s ease, transform 0.1s ease;
       }
       .quick-log-buttons button:hover {
-        background-color: #555;
+        opacity: 0.8;
       }
       .quick-log-buttons button:active {
         transform: scale(0.95);
       }
+
+      /* Pastel Color Palette */
+      .color-1 { background-color: #ff6961; }
+      .color-2 { background-color: #ffb347; }
+      .color-3 { background-color: #fdfd96; }
+      .color-4 { background-color: #b3ff66; }
+      .color-5 { background-color: #77dd77; }
+
+      .session-log {
+        margin-top: 2rem;
+        text-align: left;
+        border-top: 1px solid var(--border-color);
+        padding-top: 1rem;
+      }
+      .session-log h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: #fff;
+        margin-bottom: 15px;
+      }
+      .session-log-item {
+        background-color: #333;
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 8px;
+      }
+      .session-log-item-key {
+        font-weight: bold;
+      }
+      .session-log-item-value {
+        color: #84cc16;
+      }
+      .session-log-item-time {
+        font-size: 0.8rem;
+        color: #999;
+      }
+
+      /* Message box for alerts */
+      .message-box {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #2a2a2a;
+        color: #e0e0e0;
+        padding: 15px 25px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        z-index: 1000;
+        opacity: 0;
+        transition: opacity 0.5s ease-in-out;
+        display: none;
+      }
+      .message-box.show {
+        display: block;
+        opacity: 1;
+      }
+
     </style>
   </head>
   <body>
@@ -200,26 +257,35 @@
           <div class="mb-4">
             <p class="text-sm text-gray-400 mb-2">Sleep Quality (1=low, 5=great)</p>
             <div class="quick-log-buttons" id="sleep-buttons">
-              <button data-value="1">1</button>
-              <button data-value="2">2</button>
-              <button data-value="3">3</button>
-              <button data-value="4">4</button>
-              <button data-value="5">5</button>
+              <button class="color-1" data-value="1">1</button>
+              <button class="color-2" data-value="2">2</button>
+              <button class="color-3" data-value="3">3</button>
+              <button class="color-4" data-value="4">4</button>
+              <button class="color-5" data-value="5">5</button>
             </div>
           </div>
           <div class="mb-4">
             <p class="text-sm text-gray-400 mb-2">Productivity (1=low, 5=great)</p>
             <div class="quick-log-buttons" id="productivity-buttons">
-              <button data-value="1">1</button>
-              <button data-value="2">2</button>
-              <button data-value="3">3</button>
-              <button data-value="4">4</button>
-              <button data-value="5">5</button>
+              <button class="color-1" data-value="1">1</button>
+              <button class="color-2" data-value="2">2</button>
+              <button class="color-3" data-value="3">3</button>
+              <button class="color-4" data-value="4">4</button>
+              <button class="color-5" data-value="5">5</button>
             </div>
           </div>
         </div>
+
+        <div class="session-log">
+          <h2>Data Added This Session</h2>
+          <div id="session-log-items">
+            <!-- Logged items will be inserted here -->
+          </div>
+        </div>
+
       </div>
     </div>
+    <div id="message-box" class="message-box"></div>
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
       import {
@@ -248,6 +314,17 @@
       const auth = getAuth(app);
       const db = getFirestore(app);
       let userId = null;
+      let sessionLogs = [];
+
+      // Function to show a custom message box instead of alert
+      const showMessage = (message, type = 'success') => {
+        const msgBox = document.getElementById('message-box');
+        msgBox.textContent = message;
+        msgBox.classList.add('show');
+        setTimeout(() => {
+          msgBox.classList.remove('show');
+        }, 3000); // Hide after 3 seconds
+      };
 
       // Function to set the datetime-local input to the current time
       const setDefaultDateTime = () => {
@@ -258,15 +335,37 @@
           .slice(0, 16);
       };
 
+      // Function to render the session logs in the UI
+      const renderSessionLogs = () => {
+        const logItemsContainer = document.getElementById('session-log-items');
+        logItemsContainer.innerHTML = ''; // Clear previous logs
+        sessionLogs.forEach(log => {
+          const logItemDiv = document.createElement('div');
+          logItemDiv.classList.add('session-log-item');
+          
+          // Updated to use the correct timestamp key from the log entry object
+          const timeString = log["Added to database"] && typeof log["Added to database"].toDate === 'function' ? 
+                             new Date(log["Added to database"].toDate()).toLocaleTimeString() : 
+                             'Time N/A';
+
+          logItemDiv.innerHTML = `
+            <span class="session-log-item-key">${log.key}:</span>
+            <span class="session-log-item-value">${log.value}</span>
+            <span class="session-log-item-time">(${timeString})</span>
+          `;
+          logItemsContainer.prepend(logItemDiv); // Add to the top
+        });
+      };
+
       // Reusable function to log data to Firestore
       async function logData(key, value, tags, timestamp) {
         if (!userId) {
-          alert("You must be logged in to log data.");
+          showMessage("You must be logged in to log data.");
           return;
         }
 
         try {
-          await addDoc(collection(db, `users/${userId}/sources/manual/data`), {
+          const logEntry = {
             key,
             value: String(value), // Ensure value is stored as a string
             tags,
@@ -275,11 +374,18 @@
             "File Type": "manual",
             "Uploaded by": userId,
             "Uploaded through": "Logger",
-            "Added to database": timestamp,
-          });
-          alert("Data logged!");
+            "Added to database": timestamp, // This is the user-selected timestamp
+            "Database Write Time": Timestamp.now(), // This is the actual write timestamp
+          };
+          await addDoc(collection(db, `users/${userId}/sources/manual/data`), logEntry);
+          showMessage(`Data logged successfully: ${key} = ${value}`);
+          
+          // Only add to local session logs and re-render after successful database write
+          sessionLogs.push(logEntry);
+          renderSessionLogs();
+
         } catch (err) {
-          alert("Error logging data: " + err.message);
+          showMessage("Error logging data: " + err.message, 'error');
         }
       }
 
@@ -295,6 +401,7 @@
           document.getElementById("main-app-container").style.display = "none";
         }
       });
+
       document
         .getElementById("sign-in-btn")
         .addEventListener("click", async () => {
@@ -303,9 +410,10 @@
           try {
             await signInWithEmailAndPassword(auth, email, password);
           } catch (err) {
-            alert("Login failed: " + err.message);
+            showMessage("Login failed: " + err.message, 'error');
           }
         });
+
       document
         .getElementById("sign-up-btn")
         .addEventListener("click", async () => {
@@ -314,16 +422,20 @@
           try {
             await createUserWithEmailAndPassword(auth, email, password);
           } catch (err) {
-            alert("Sign-up failed: " + err.message);
+            showMessage("Sign-up failed: " + err.message, 'error');
           }
         });
+
       document
         .getElementById("logout-btn")
         .addEventListener("click", async () => {
           try {
             await signOut(auth);
+            // Clear session logs on logout
+            sessionLogs = [];
+            renderSessionLogs();
           } catch (err) {
-            alert("Logout failed: " + err.message);
+            showMessage("Logout failed: " + err.message, 'error');
           }
         });
       
@@ -338,7 +450,7 @@
           .filter((tag) => tag);
         const logDatetime = document.getElementById("log-datetime").value;
         if (!userId || !key || !value) {
-          alert("Missing user or data fields");
+          showMessage("Missing user or data fields");
           return;
         }
         const timestamp = logDatetime
@@ -357,7 +469,8 @@
         button.addEventListener('click', () => {
           const value = button.dataset.value;
           const tags = ['quick_log', 'sleep_quality'];
-          const timestamp = Timestamp.now();
+          const logDatetime = document.getElementById("log-datetime").value;
+          const timestamp = logDatetime ? Timestamp.fromDate(new Date(logDatetime)) : Timestamp.now();
           logData('sleep_quality', value, tags, timestamp);
         });
       });
@@ -367,7 +480,8 @@
         button.addEventListener('click', () => {
           const value = button.dataset.value;
           const tags = ['quick_log', 'productivity'];
-          const timestamp = Timestamp.now();
+          const logDatetime = document.getElementById("log-datetime").value;
+          const timestamp = logDatetime ? Timestamp.fromDate(new Date(logDatetime)) : Timestamp.now();
           logData('productivity', value, tags, timestamp);
         });
       });
