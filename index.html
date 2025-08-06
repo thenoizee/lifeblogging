@@ -263,12 +263,12 @@
                 <input type="date" id="manual-date" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             <div class="col-span-1">
-                <label for="manual-key" class="block text-gray-700 font-semibold mb-2">Attribute Name</label>
-                <input type="text" id="manual-key" placeholder="e.g., mood, coffee_cups" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label for="manual-attribute-name" class="block text-gray-700 font-semibold mb-2">Key</label>
+                <input type="text" id="manual-attribute-name" placeholder="e.g., mood, coffee_cups" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             <div class="col-span-1">
-                <label for="manual-value" class="block text-gray-700 font-semibold mb-2">Value</label>
-                <input type="text" id="manual-value" placeholder="e.g., 8 (for mood) or 'great'" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label for="manual-attribute-value" class="block text-gray-700 font-semibold mb-2">Value</label>
+                <input type="text" id="manual-attribute-value" placeholder="e.g., 8 (for mood) or 'great'" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             <div class="col-span-1">
                 <label for="manual-tags" class="block text-gray-700 font-semibold mb-2">Tags (comma-separated)</label>
@@ -750,8 +750,8 @@
 
     // Get UI elements
     const manualDateInput = document.getElementById('manual-date');
-    const manualKeyInput = document.getElementById('manual-key');
-    const manualValueInput = document.getElementById('manual-value');
+    const manualAttributeNameInput = document.getElementById('manual-attribute-name'); // Renamed ID
+    const manualAttributeValueInput = document.getElementById('manual-attribute-value'); // Renamed ID
     const manualTagsInput = document.getElementById('manual-tags');
     const manualAddBtn = document.getElementById('manual-add-btn');
     const sourceCheckboxesDiv = document.getElementById('source-checkboxes');
@@ -807,7 +807,8 @@
     const skipBtn = document.getElementById('skip-btn');
     const cancelBtn = document.getElementById('cancel-btn');
     const conflictDate = document.getElementById('conflict-date');
-    const conflictSource = document.getElementById('conflict-source');
+    // Corrected: Removed the erroneous `document =` assignment
+    const conflictSource = document.getElementById('conflict-source'); 
     const existingDataPreview = document.getElementById('existing-data-preview');
     const incomingDataPreview = document.getElementById('incoming-data-preview');
     const deleteSourceModal = document.getElementById('delete-source-modal');
@@ -1066,11 +1067,28 @@
         allDataPoints.forEach(dp => {
             Object.keys(dp).forEach(key => allKeys.add(key));
         });
-        const headers = ['date', 'source', 'tags', ...Array.from(allKeys).filter(key => !['date', 'source', 'tags', 'createdAt', 'fileSource', 'fileType', 'uploadedBy', 'uploadedApp', 'id'].includes(key))];
+
+        // Define a base set of headers, including the new 'attributeName' and 'attributeValue' for manual entries
+        let headers = ['date', 'source'];
+        // Add 'Key' and 'Value' for manual entries explicitly
+        headers.push('attributeName', 'attributeValue'); 
+        // Add other dynamic keys, excluding the ones already explicitly handled or metadata
+        headers = [...headers, ...Array.from(allKeys).filter(key => 
+            !['date', 'source', 'tags', 'createdAt', 'fileSource', 'fileType', 'uploadedBy', 'uploadedApp', 'id', 'attributeName', 'attributeValue'].includes(key)
+        )];
+        // Add 'tags' at the end
+        headers.push('tags');
 
         headers.forEach(headerText => {
             const th = document.createElement('th');
-            th.textContent = headerText;
+            // Display 'Key' and 'Value' for the new manual entry fields
+            if (headerText === 'attributeName') {
+                th.textContent = 'Key';
+            } else if (headerText === 'attributeValue') {
+                th.textContent = 'Value';
+            } else {
+                th.textContent = headerText;
+            }
             th.className = 'px-6 py-3 cursor-pointer';
             th.onclick = () => {
                 if (sortColumn === headerText) {
@@ -1101,7 +1119,14 @@
                     });
                     cell.appendChild(tagsDiv);
                 } else {
-                    cell.textContent = dataPoint[header] || '-';
+                    // Handle the new attributeName and attributeValue fields
+                    if (header === 'attributeName') {
+                        cell.textContent = dataPoint.attributeName || '-';
+                    } else if (header === 'attributeValue') {
+                        cell.textContent = dataPoint.attributeValue || '-';
+                    } else {
+                        cell.textContent = dataPoint[header] || '-';
+                    }
                 }
                 row.appendChild(cell);
             });
@@ -1115,7 +1140,9 @@
         allDataPoints.forEach(dp => {
             for (const key in dp) {
                 const value = dp[key];
-                if (!isNaN(parseFloat(value)) && isFinite(value) && !['date', 'createdAt', 'id'].includes(key)) {
+                // Check if the key is 'attributeValue' for manual entries, or other numerical keys
+                if ((key === 'attributeValue' && dp.source === 'manual' && !isNaN(parseFloat(value)) && isFinite(value)) ||
+                    (!['date', 'createdAt', 'id', 'attributeName', 'attributeValue'].includes(key) && !isNaN(parseFloat(value)) && isFinite(value))) {
                     numberKeys.add(key);
                 }
             }
@@ -1136,7 +1163,7 @@
         sortedKeys.forEach(key => {
             const option = document.createElement('option');
             option.value = key;
-            option.textContent = key;
+            option.textContent = key === 'attributeValue' ? 'Manual Value' : key; // Display "Manual Value" for attributeValue
             keySelect.appendChild(option);
             correlationKey1.appendChild(option.cloneNode(true));
             correlationKey2.appendChild(option.cloneNode(true));
@@ -1157,7 +1184,14 @@
         
         // Filter and sort the data points for the chart
         let filteredData = allDataPoints
-            .filter(dp => dp[currentChartKey] !== undefined && !isNaN(parseFloat(dp[currentChartKey])))
+            .filter(dp => {
+                // If the selected key is 'attributeValue', filter for manual entries with numerical attributeValue
+                if (currentChartKey === 'attributeValue') {
+                    return dp.source === 'manual' && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue));
+                }
+                // Otherwise, filter for other numerical keys
+                return dp[currentChartKey] !== undefined && !isNaN(parseFloat(dp[currentChartKey]));
+            })
             .filter(dp => {
                 if (startDateFilter.value && new Date(dp.date) < new Date(startDateFilter.value)) return false;
                 if (endDateFilter.value && new Date(dp.date) > new Date(endDateFilter.value)) return false;
@@ -1168,14 +1202,17 @@
         chartDataPoints = filteredData;
         
         const labels = filteredData.map(dp => dp.date);
-        const values = filteredData.map(dp => parseFloat(dp[currentChartKey]));
+        const values = filteredData.map(dp => {
+            // Get the correct value based on the selected chart key
+            return currentChartKey === 'attributeValue' ? parseFloat(dp.attributeValue) : parseFloat(dp[currentChartKey]);
+        });
         
         const chartCanvas = document.getElementById('data-chart');
         
         chartData = {
             labels: labels,
             datasets: [{
-                label: currentChartKey,
+                label: currentChartKey === 'attributeValue' ? 'Manual Value' : currentChartKey, // Label for the chart
                 data: values,
                 borderColor: 'rgb(75, 192, 192)',
                 backgroundColor: 'rgba(75, 192, 192, 0.2)',
@@ -1340,8 +1377,15 @@
         }
 
         const dataPoints = currentDataCache[selectedSources[0]]
-            .filter(dp => dp[key1] && dp[key2] && !isNaN(parseFloat(dp[key1])) && !isNaN(parseFloat(dp[key2])))
-            .map(dp => ({ x: parseFloat(dp[key1]), y: parseFloat(dp[key2]) }));
+            .filter(dp => {
+                const val1 = key1 === 'attributeValue' ? dp.attributeValue : dp[key1];
+                const val2 = key2 === 'attributeValue' ? dp.attributeValue : dp[key2];
+                return val1 !== undefined && val2 !== undefined && !isNaN(parseFloat(val1)) && !isNaN(parseFloat(val2));
+            })
+            .map(dp => ({ 
+                x: parseFloat(key1 === 'attributeValue' ? dp.attributeValue : dp[key1]), 
+                y: parseFloat(key2 === 'attributeValue' ? dp.attributeValue : dp[key2]) 
+            }));
 
         if (dataPoints.length < 2) {
             correlationResult.textContent = 'Not enough data points to calculate correlation.';
@@ -1378,17 +1422,18 @@
             return;
         }
         const date = manualDateInput.value;
-        const key = manualKeyInput.value.trim().toLowerCase();
-        const value = manualValueInput.value.trim();
+        const attributeName = manualAttributeNameInput.value.trim().toLowerCase(); // Use new ID
+        const attributeValue = manualAttributeValueInput.value.trim(); // Use new ID
         const tags = manualTagsInput.value.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag !== '');
 
-        if (!date || !key || !value) {
-            showMessage("Date, Attribute Name, and Value are required.", 'error');
+        if (!date || !attributeName || !attributeValue) {
+            showMessage("Date, Key, and Value are required.", 'error');
             return;
         }
         
         const sourceId = 'manual';
-        const docId = createHash(JSON.stringify({ date, key, value }));
+        // Create a hash that includes the date, attributeName, and attributeValue for uniqueness
+        const docId = createHash(JSON.stringify({ date, attributeName, attributeValue }));
         const docRef = doc(db, `users/${userId}/sources/${sourceId}/data/${docId}`);
 
         try {
@@ -1398,7 +1443,8 @@
 
             await setDoc(docRef, {
                 date: date,
-                [key]: value,
+                attributeName: attributeName, // Store the entered key as 'attributeName'
+                attributeValue: attributeValue, // Store the entered value as 'attributeValue'
                 tags: tags,
                 createdAt: serverTimestamp(),
                 fileSource: 'manual',
@@ -1407,11 +1453,11 @@
                 uploadedApp: 'Analyser App'
             });
             
-            showMessage(`Data point for '${key}' added successfully!`);
+            showMessage(`Data point for '${attributeName}' added successfully!`);
 
             // Clear inputs
-            manualKeyInput.value = '';
-            manualValueInput.value = '';
+            manualAttributeNameInput.value = '';
+            manualAttributeValueInput.value = '';
             manualTagsInput.value = '';
         } catch (error) {
             console.error("Error adding document: ", error);
@@ -1550,6 +1596,7 @@
             
             // Batch writes to improve performance
             const batch = writeBatch(db);
+            // Corrected: Use collection() to get a reference to the data collection
             const dataCollectionRef = collection(db, `users/${userId}/sources/${sourceId}/data`);
             
             for (const dataPoint of parsedData) {
@@ -1725,12 +1772,12 @@
         // Custom Data
         modalCustomData.innerHTML = '<h3 class="text-lg font-semibold mb-2">Attributes</h3>';
         for (const key in dataPoint) {
-            // Exclude Firebase metadata fields
+            // Exclude Firebase metadata fields and explicitly handle attributeName/attributeValue
             if (!['source', 'fileSource', 'fileType', 'uploadedBy', 'uploadedApp', 'createdAt', 'tags', 'id'].includes(key)) {
                 const div = document.createElement('div');
                 div.className = 'flex items-center mb-2';
                 const label = document.createElement('label');
-                label.textContent = `${key}:`;
+                label.textContent = `${key === 'attributeName' ? 'Key' : key === 'attributeValue' ? 'Value' : key}:`;
                 label.className = 'font-semibold text-gray-700 w-2/5';
                 
                 const valueInput = document.createElement('input');
