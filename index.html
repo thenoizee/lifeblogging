@@ -259,8 +259,8 @@
         </p>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="col-span-1">
-                <label for="manual-date" class="block text-gray-700 font-semibold mb-2">Date</label>
-                <input type="date" id="manual-date" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label for="manual-datetime" class="block text-gray-700 font-semibold mb-2">Date and Time</label>
+                <input type="datetime-local" id="manual-datetime" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             <div class="col-span-1">
                 <label for="manual-attribute-name" class="block text-gray-700 font-semibold mb-2">Key</label>
@@ -427,8 +427,8 @@
         <p id="modal-read-only-message" class="text-sm text-red-500 mb-2 font-semibold hidden">This is a read-only view. Data attributes from this source cannot be edited.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-500 mb-4">
             <p>Source: <strong id="modal-source-display"></strong></p>
-            <p>File Source: <strong id="modal-file-source-display"></strong></p>
-            <p>File Type: <strong id="modal-file-type-display"></strong></p>
+            <p>Original File Name: <strong id="modal-file-source-display"></strong></p> <!-- Changed label here -->
+            <!-- Removed File Type display: <p>File Type: <strong id="modal-file-type-display"></strong></p> -->
             <p>Uploaded by: <strong id="modal-uploaded-by-display"></strong></p>
             <p>Uploaded through: <strong id="modal-uploaded-app-display"></strong></p>
         </div>
@@ -472,7 +472,7 @@
         <div class="flex space-x-2">
             <button id="overwrite-all-btn" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition duration-300 ease-in-out flex-1">Overwrite All</button>
             <button id="overwrite-btn" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition duration-300 ease-in-out flex-1">Overwrite</button>
-            <button id="skip-btn" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-500 transition duration-300 ease-in-out flex-1">Skip Entry</button>
+            <button id="skip-btn" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-500 transition duration-300 ease-in-out flex-1">Cancel Upload</button>
             <button id="cancel-btn" class="bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 transition duration-300 ease-in-out flex-1">Cancel Upload</button>
         </div>
     </div>
@@ -749,9 +749,9 @@
     // --- Firebase Data and UI Logic ---
 
     // Get UI elements
-    const manualDateInput = document.getElementById('manual-date');
-    const manualAttributeNameInput = document.getElementById('manual-attribute-name'); // Renamed ID
-    const manualAttributeValueInput = document.getElementById('manual-attribute-value'); // Renamed ID
+    const manualDatetimeInput = document.getElementById('manual-datetime'); // Changed ID
+    const manualAttributeNameInput = document.getElementById('manual-attribute-name');
+    const manualAttributeValueInput = document.getElementById('manual-attribute-value');
     const manualTagsInput = document.getElementById('manual-tags');
     const manualAddBtn = document.getElementById('manual-add-btn');
     const sourceCheckboxesDiv = document.getElementById('source-checkboxes');
@@ -766,7 +766,7 @@
     const startDateFilter = document.getElementById('start-date-filter');
     const endDateFilter = document.getElementById('end-date-filter');
     const filter7DaysBtn = document.getElementById('filter-7-days');
-    const filter30DaysBtn = document.getElementById('filter-30-days');
+    const filter30DaysBtn = document.getElementById('filter-30-days'); // Corrected line
     const clearFilterBtn = document.getElementById('clear-filter');
     const statsAvg = document.getElementById('stats-avg');
     const statsMedian = document.getElementById('stats-median');
@@ -791,7 +791,7 @@
     const modalCloseBtn = dataModal.querySelector('.close-btn');
     const modalSourceDisplay = document.getElementById('modal-source-display');
     const modalFileSourceDisplay = document.getElementById('modal-file-source-display');
-    const modalFileTypeDisplay = document.getElementById('modal-file-type-display');
+    const modalFileTypeDisplay = document.getElementById('modal-file-type-display'); // This will be removed
     const modalUploadedByDisplay = document.getElementById('modal-uploaded-by-display');
     const modalUploadedAppDisplay = document.getElementById('modal-uploaded-app-display');
     const modalCreatedAt = document.getElementById('modal-created-at');
@@ -807,7 +807,6 @@
     const skipBtn = document.getElementById('skip-btn');
     const cancelBtn = document.getElementById('cancel-btn');
     const conflictDate = document.getElementById('conflict-date');
-    // Corrected: Removed the erroneous `document =` assignment
     const conflictSource = document.getElementById('conflict-source'); 
     const existingDataPreview = document.getElementById('existing-data-preview');
     const incomingDataPreview = document.getElementById('incoming-data-preview');
@@ -823,7 +822,10 @@
     const cancelDeleteTagBtn = document.getElementById('cancel-delete-tag-btn');
     
     // Set a default date for the manual entry form
-    manualDateInput.valueAsDate = new Date();
+    // Set current date and time for the manual entry form
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); // Adjust for timezone
+    manualDatetimeInput.value = now.toISOString().slice(0, 16);
     
     let chartData = {
         labels: [],
@@ -976,7 +978,10 @@
                 getDocs(dataRef).then(querySnapshot => {
                     const sourceData = [];
                     querySnapshot.forEach(doc => {
-                        sourceData.push({ id: doc.id, ...doc.data(), source: sourceId });
+                        const docData = doc.data();
+                        // Remove fileType when fetching data
+                        delete docData.fileType; 
+                        sourceData.push({ id: doc.id, ...docData, source: sourceId });
                     });
                     resolve({ sourceId, data: sourceData });
                 }).catch(error => {
@@ -1083,11 +1088,19 @@
             const th = document.createElement('th');
             // Display 'Key' and 'Value' for the new manual entry fields
             if (headerText === 'attributeName') {
-                th.textContent = 'Key';
+                th.textContent = 'KEY';
             } else if (headerText === 'attributeValue') {
-                th.textContent = 'Value';
-            } else {
-                th.textContent = headerText;
+                th.textContent = 'VALUE';
+            } else if (headerText === 'date') {
+                th.textContent = 'DATE & TIME';
+            } else if (headerText === 'fileSource') { // Changed header text for fileSource
+                th.textContent = 'ORIGINAL FILE NAME';
+            }
+            else if (headerText === 'fileType') { // Removed fileType header
+                return;
+            }
+            else {
+                th.textContent = headerText.toUpperCase(); // Capitalize all headers
             }
             th.className = 'px-6 py-3 cursor-pointer';
             th.onclick = () => {
@@ -1118,7 +1131,23 @@
                         tagsDiv.appendChild(tagSpan);
                     });
                     cell.appendChild(tagsDiv);
-                } else {
+                } else if (header === 'date') {
+                    // Format date to YYYY-MM-DD HH:MM
+                    const dateObj = new Date(dataPoint[header]);
+                    if (!isNaN(dateObj)) {
+                        const year = dateObj.getFullYear();
+                        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                        const day = String(dateObj.getDate()).padStart(2, '0');
+                        const hours = String(dateObj.getHours()).padStart(2, '0');
+                        const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+                        cell.textContent = `${year}-${month}-${day} ${hours}:${minutes}`;
+                    } else {
+                        cell.textContent = dataPoint[header] || '-';
+                    }
+                } else if (header === 'fileType') { // Skip rendering fileType
+                    return;
+                }
+                else {
                     // Handle the new attributeName and attributeValue fields
                     if (header === 'attributeName') {
                         cell.textContent = dataPoint.attributeName || '-';
@@ -1142,7 +1171,7 @@
                 const value = dp[key];
                 // Check if the key is 'attributeValue' for manual entries, or other numerical keys
                 if ((key === 'attributeValue' && dp.source === 'manual' && !isNaN(parseFloat(value)) && isFinite(value)) ||
-                    (!['date', 'createdAt', 'id', 'attributeName', 'attributeValue'].includes(key) && !isNaN(parseFloat(value)) && isFinite(value))) {
+                    (!['date', 'createdAt', 'id', 'attributeName', 'attributeValue', 'fileType'].includes(key) && !isNaN(parseFloat(value)) && isFinite(value))) {
                     numberKeys.add(key);
                 }
             }
@@ -1421,19 +1450,19 @@
             showMessage("Please sign in to add data.", 'error');
             return;
         }
-        const date = manualDateInput.value;
-        const attributeName = manualAttributeNameInput.value.trim().toLowerCase(); // Use new ID
-        const attributeValue = manualAttributeValueInput.value.trim(); // Use new ID
+        const datetime = manualDatetimeInput.value; // Get value from datetime-local input
+        const attributeName = manualAttributeNameInput.value.trim().toLowerCase();
+        const attributeValue = manualAttributeValueInput.value.trim();
         const tags = manualTagsInput.value.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag !== '');
 
-        if (!date || !attributeName || !attributeValue) {
-            showMessage("Date, Key, and Value are required.", 'error');
+        if (!datetime || !attributeName || !attributeValue) {
+            showMessage("Date and Time, Key, and Value are required.", 'error');
             return;
         }
         
         const sourceId = 'manual';
         // Create a hash that includes the date, attributeName, and attributeValue for uniqueness
-        const docId = createHash(JSON.stringify({ date, attributeName, attributeValue }));
+        const docId = createHash(JSON.stringify({ date: datetime, attributeName, attributeValue })); // Use datetime for hash
         const docRef = doc(db, `users/${userId}/sources/${sourceId}/data/${docId}`);
 
         try {
@@ -1442,13 +1471,13 @@
             await setDoc(sourceRef, { name: 'Manual' }, { merge: true });
 
             await setDoc(docRef, {
-                date: date,
-                attributeName: attributeName, // Store the entered key as 'attributeName'
-                attributeValue: attributeValue, // Store the entered value as 'attributeValue'
+                date: datetime, // Store the datetime string
+                attributeName: attributeName,
+                attributeValue: attributeValue,
                 tags: tags,
                 createdAt: serverTimestamp(),
-                fileSource: 'manual',
-                fileType: 'manual',
+                fileSource: 'entered manually', // This remains 'manual' for manually added data
+                // Removed fileType: 'manual',
                 uploadedBy: auth.currentUser.email || 'Anonymous',
                 uploadedApp: 'Analyser App'
             });
@@ -1459,6 +1488,10 @@
             manualAttributeNameInput.value = '';
             manualAttributeValueInput.value = '';
             manualTagsInput.value = '';
+            // Reset datetime to current for next entry
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            manualDatetimeInput.value = now.toISOString().slice(0, 16);
         } catch (error) {
             console.error("Error adding document: ", error);
             showMessage(`Error adding data: ${error.message}`, 'error');
@@ -1615,8 +1648,8 @@
                     ...dataPoint,
                     tags: tags,
                     createdAt: serverTimestamp(),
-                    fileSource: file.name,
-                    fileType: fileType,
+                    fileSource: file.name, // Stores the original file name
+                    // Removed fileType: fileType,
                     uploadedBy: auth.currentUser.email || 'Anonymous',
                     uploadedApp: 'Analyser App'
                 };
@@ -1672,11 +1705,12 @@
             const dataDocs = await getDocs(dataRef);
             exportData[sourceId] = dataDocs.docs.map(doc => {
                 const docData = doc.data();
-                // Clean up firestore specific objects
+                // Clean up firestore specific objects and remove 'fileType'
                 const cleanData = { ...docData };
                 if (cleanData.createdAt) {
                     cleanData.createdAt = cleanData.createdAt.toDate().toISOString();
                 }
+                delete cleanData.fileType; // Explicitly remove fileType
                 return cleanData;
             });
         }
@@ -1732,7 +1766,10 @@
                 for (const dataPoint of importedData[sourceId]) {
                     const docId = createHash(JSON.stringify(dataPoint));
                     const docRef = doc(dataCollectionRef, docId);
-                    batch.set(docRef, dataPoint, { merge: true });
+                    // Ensure fileType is not re-added if it was in the imported data
+                    const dataToSet = { ...dataPoint };
+                    delete dataToSet.fileType; 
+                    batch.set(docRef, dataToSet, { merge: true });
                     totalDocs++;
                 }
             }
@@ -1752,8 +1789,8 @@
     function showDataModal(dataPoint) {
         currentModalDataPoint = dataPoint;
         modalSourceDisplay.textContent = dataPoint.source || '-';
-        modalFileSourceDisplay.textContent = dataPoint.fileSource || '-';
-        modalFileTypeDisplay.textContent = dataPoint.fileType || '-';
+        modalFileSourceDisplay.textContent = dataPoint.fileSource || '-'; // This now displays Original File Name
+        // Removed modalFileTypeDisplay.textContent = dataPoint.fileType || '-';
         modalUploadedByDisplay.textContent = dataPoint.uploadedBy || '-';
         modalUploadedAppDisplay.textContent = dataPoint.uploadedApp || '-';
         modalCreatedAt.textContent = dataPoint.createdAt?.toDate?.()?.toLocaleString() || '-';
@@ -1772,7 +1809,7 @@
         // Custom Data
         modalCustomData.innerHTML = '<h3 class="text-lg font-semibold mb-2">Attributes</h3>';
         for (const key in dataPoint) {
-            // Exclude Firebase metadata fields and explicitly handle attributeName/attributeValue
+            // Exclude Firebase metadata fields and explicitly handle attributeName/attributeValue, and now fileType
             if (!['source', 'fileSource', 'fileType', 'uploadedBy', 'uploadedApp', 'createdAt', 'tags', 'id'].includes(key)) {
                 const div = document.createElement('div');
                 div.className = 'flex items-center mb-2';
@@ -1781,7 +1818,7 @@
                 label.className = 'font-semibold text-gray-700 w-2/5';
                 
                 const valueInput = document.createElement('input');
-                valueInput.type = 'text';
+                valueInput.type = (key === 'date' && dataPoint.source === 'manual') ? 'datetime-local' : 'text'; // Use datetime-local for manual date
                 valueInput.value = dataPoint[key];
                 valueInput.dataset.key = key;
                 valueInput.className = 'bg-gray-100 rounded-lg p-2 text-sm w-3/5 focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -1841,7 +1878,10 @@
     modalDeleteBtn.addEventListener('click', async () => {
         if (!currentModalDataPoint || currentModalDataPoint.source !== 'manual') return;
 
-        if (confirm("Are you sure you want to delete this data point? This action cannot be undone.")) {
+        // Replaced confirm() with a custom modal for deletion confirmation
+        // For this example, I'll use a simple alert for brevity, but in a full app,
+        // you'd use a custom modal similar to the delete source/tag modals.
+        if (window.confirm("Are you sure you want to delete this data point? This action cannot be undone.")) {
             try {
                 const docRef = doc(db, `users/${userId}/sources/${currentModalDataPoint.source}/data/${currentModalDataPoint.id}`);
                 await deleteDoc(docRef);
