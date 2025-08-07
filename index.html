@@ -147,19 +147,19 @@
 
       /* Pastel Color Palette */
       .color-1 {
-        background-color: #ff6961;
+        background-color: #ffadad; /* Pastel Red */
       }
       .color-2 {
-        background-color: #ffb347;
+        background-color: #ffd6a5; /* Pastel Orange */
       }
       .color-3 {
-        background-color: #fdfd96;
+        background-color: #fdffb6; /* Pastel Yellow */
       }
       .color-4 {
-        background-color: #b3ff66;
+        background-color: #caffbf; /* Pastel Light Green */
       }
       .color-5 {
-        background-color: #77dd77;
+        background-color: #9bf6ff; /* Pastel Green/Cyan */
       }
 
       .session-log {
@@ -179,6 +179,14 @@
         border-radius: 8px;
         padding: 10px;
         margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+      .session-log-item-details {
+        flex-grow: 1;
+        text-align: left;
       }
       .session-log-item-attributeName {
         font-weight: bold;
@@ -190,7 +198,22 @@
         font-size: 0.8rem;
         color: #999;
       }
-
+      .session-log-actions button {
+        padding: 6px 12px;
+        font-size: 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .session-log-actions .edit-btn {
+        background-color: #2196f3;
+        color: white;
+      }
+      .session-log-actions .undo-btn {
+        background-color: #f44336;
+        color: white;
+      }
+      
       /* Message box for alerts */
       .message-box {
         position: fixed;
@@ -210,6 +233,16 @@
       .message-box.show {
         display: block;
         opacity: 1;
+      }
+      .app-link {
+        display: block;
+        margin-top: 20px;
+        color: #4caf50;
+        text-decoration: none;
+        font-weight: bold;
+      }
+      .app-link:hover {
+        text-decoration: underline;
       }
     </style>
   </head>
@@ -234,7 +267,7 @@
       <div id="main-app-container" style="display: none">
         <h1>Logger</h1>
         <p class="user-info">
-          Logged in as User ID: <span id="user-id-display">...</span>
+          Logged in as User: <span id="user-email-display">...</span>
         </p>
         <div class="input-group">
           <label for="log-datetime">Log Date and Time</label>
@@ -298,6 +331,9 @@
           <div id="session-log-items">
             </div>
         </div>
+        <a href="http://lifeblogging.hubblenet.uk/" class="app-link" target="_blank"
+          >View full data and edit account details</a
+        >
       </div>
     </div>
     <div id="message-box" class="message-box"></div>
@@ -315,6 +351,9 @@
         collection,
         addDoc,
         Timestamp,
+        doc,
+        deleteDoc,
+        updateDoc,
       } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
       const firebaseConfig = {
         apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -329,7 +368,9 @@
       const auth = getAuth(app);
       const db = getFirestore(app);
       let userId = null;
+      let userEmail = null;
       let sessionLogs = [];
+      let editingDocId = null; // New global variable to hold the ID of the document being edited
 
       // Function to show a custom message box instead of alert
       const showMessage = (message, type = "success") => {
@@ -354,50 +395,101 @@
       const renderSessionLogs = () => {
         const logItemsContainer = document.getElementById("session-log-items");
         logItemsContainer.innerHTML = ""; // Clear previous logs
-        sessionLogs.forEach((log) => {
+        sessionLogs.forEach((log, index) => {
           const logItemDiv = document.createElement("div");
           logItemDiv.classList.add("session-log-item");
           
-          // Use log.date directly as it's now a string in the desired format
           const timeString = log.date || "Time N/A"; 
 
           logItemDiv.innerHTML = `
-            <span class="session-log-item-attributeName">${log.attributeName}:</span>
-            <span class="session-log-item-attributeValue">${log.attributeValue}</span>
-            <span class="session-log-item-time">(${timeString})</span>
+            <div class="session-log-item-details">
+              <span class="session-log-item-attributeName">${log.attributeName}:</span>
+              <span class="session-log-item-attributeValue">${log.attributeValue}</span>
+              <span class="session-log-item-time">(${timeString})</span>
+            </div>
+            <div class="session-log-actions">
+              <button class="edit-btn" data-index="${index}">Edit</button>
+              <button class="undo-btn" data-index="${index}">Undo</button>
+            </div>
           `;
           logItemsContainer.prepend(logItemDiv); // Add to the top
         });
+        
+        // Add event listeners for the new buttons
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', handleEdit);
+        });
+        document.querySelectorAll('.undo-btn').forEach(button => {
+            button.addEventListener('click', handleUndo);
+        });
       };
 
-      // Reusable function to log data to Firestore
-      async function logData(attributeName, attributeValue, tags, logDatetimeString) { 
+      // Function to handle the edit action
+      const handleEdit = (event) => {
+          const index = event.target.dataset.index;
+          const logEntry = sessionLogs[index];
+          if (logEntry) {
+              // Populate the form fields with the selected log data
+              document.getElementById("log-datetime").value = logEntry.date.replace(" ", "T");
+              document.getElementById("attributeName").value = logEntry.attributeName;
+              document.getElementById("attributeValue").value = logEntry.attributeValue;
+              document.getElementById("tags").value = logEntry.tags.join(", ");
+
+              // Set the global editingDocId variable
+              editingDocId = logEntry.docId;
+
+              showMessage("Form populated. Edit the data and click 'Log Data' to update.", "info");
+          }
+      };
+      
+      // Function to handle the undo action (delete from Firestore and local list)
+      const handleUndo = async (event) => {
+          const index = event.target.dataset.index;
+          const logEntry = sessionLogs[index];
+          if (logEntry && logEntry.docId) {
+              try {
+                  const docRef = doc(db, `users/${userId}/sources/manual/data`, logEntry.docId);
+                  await deleteDoc(docRef);
+                  // Remove from local list after successful deletion from Firestore
+                  sessionLogs.splice(index, 1);
+                  renderSessionLogs();
+                  showMessage("Data successfully undone.", "success");
+              } catch (err) {
+                  showMessage("Error undoing data: " + err.message, "error");
+              }
+          } else {
+              showMessage("Cannot undo a log without a database ID.", "error");
+          }
+      };
+
+
+      // Reusable function to add a new log entry to Firestore
+      async function addLogData(attributeName, attributeValue, tags, logDatetimeString) {
         if (!userId) {
           showMessage("You must be logged in to log data.");
           return;
         }
 
         try {
-          // Replace 'T' with a space for the desired format
           const formattedDate = logDatetimeString.replace("T", " ");
-
           const logEntry = {
             attributeName,
-            attributeValue: String(attributeValue), // Ensure value is stored as a string
+            attributeValue: String(attributeValue),
             tags,
-            Source: "manual",
-            fileSource: "entered manually",
+            fileSource: "entered manually", 
             fileType: "entered manually",
-            uploadedBy: userId,
+            uploadedBy: userEmail, 
             uploadedApp: "Logger Worker",
-            date: formattedDate, // Store the user-entered string directly in the desired format
+            date: formattedDate,
             createdAt: Timestamp.now(), 
           };
-          await addDoc(collection(db, `users/${userId}/sources/manual/data`), logEntry);
+          
+          const docRef = await addDoc(collection(db, `users/${userId}/sources/manual/data`), logEntry);
           showMessage(`Data logged successfully: ${attributeName} = ${attributeValue}`);
           
-          // Only add to local session logs and re-render after successful database write
-          sessionLogs.push(logEntry);
+          // Add document ID to the local log entry before pushing to the sessionLogs array
+          const newLogEntry = { ...logEntry, docId: docRef.id };
+          sessionLogs.push(newLogEntry);
           renderSessionLogs();
 
         } catch (err) {
@@ -405,14 +497,51 @@
         }
       }
 
+      // Reusable function to update an existing log entry in Firestore
+      async function updateLogData(docId, attributeName, attributeValue, tags, logDatetimeString) {
+        if (!userId) {
+          showMessage("You must be logged in to update data.");
+          return;
+        }
+
+        try {
+          const formattedDate = logDatetimeString.replace("T", " ");
+          const logEntry = {
+            attributeName,
+            attributeValue: String(attributeValue),
+            tags,
+            date: formattedDate,
+          };
+          
+          const docRef = doc(db, `users/${userId}/sources/manual/data`, docId);
+          await updateDoc(docRef, logEntry);
+          
+          showMessage(`Data updated successfully: ${attributeName} = ${attributeValue}`);
+
+          // Update the local sessionLogs array with the new data
+          const updatedIndex = sessionLogs.findIndex(log => log.docId === docId);
+          if (updatedIndex !== -1) {
+            sessionLogs[updatedIndex] = { ...sessionLogs[updatedIndex], ...logEntry };
+          }
+          renderSessionLogs();
+          editingDocId = null; // Clear the editing state
+
+        } catch (err) {
+          showMessage("Error updating data: " + err.message, "error");
+        }
+      }
+
       onAuthStateChanged(auth, async (user) => {
         if (user) {
           userId = user.uid;
-          document.getElementById("user-id-display").textContent = user.email;
+          userEmail = user.email;
+          document.getElementById("user-email-display").textContent = user.email; 
           document.getElementById("auth-container").style.display = "none";
           document.getElementById("main-app-container").style.display = "block";
           setDefaultDateTime(); // Set default time on login
         } else {
+          userId = null;
+          userEmail = null;
           document.getElementById("auth-container").style.display = "block";
           document.getElementById("main-app-container").style.display = "none";
         }
@@ -469,7 +598,14 @@
           showMessage("Missing user or data fields");
           return;
         }
-        await logData(attributeName, attributeValue, tags, logDatetime); 
+
+        // Check if we're in edit mode or add mode
+        if (editingDocId) {
+            await updateLogData(editingDocId, attributeName, attributeValue, tags, logDatetime);
+        } else {
+            await addLogData(attributeName, attributeValue, tags, logDatetime);
+        }
+
         // Optional: clear fields and reset timestamp after logging
         document.getElementById("attributeName").value = "";
         document.getElementById("attributeValue").value = "";
@@ -483,7 +619,7 @@
           const attributeValue = button.dataset.value;
           const tags = ["quick_log", "sleep_quality"];
           const logDatetime = document.getElementById("log-datetime").value; 
-          logData("sleep_quality", attributeValue, tags, logDatetime); 
+          addLogData("sleep_quality", attributeValue, tags, logDatetime); 
         });
       });
 
@@ -495,7 +631,7 @@
             const attributeValue = button.dataset.value;
             const tags = ["quick_log", "productivity"];
             const logDatetime = document.getElementById("log-datetime").value; 
-            logData("productivity", attributeValue, tags, logDatetime);
+            addLogData("productivity", attributeValue, tags, logDatetime);
           });
         });
     </script>
