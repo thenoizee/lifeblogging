@@ -224,6 +224,21 @@
                     </div>
                     <button id="change-email-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg w-full">Change Email</button>
                 </div>
+                
+                <div class="p-4 border border-gray-200 rounded-lg mt-4">
+                    <h3 class="text-lg font-semibold mb-2 text-gray-700">Manage Your Data</h3>
+                    <p class="text-gray-600 mb-4 text-sm">Export a backup of your data or import a JSON file to transfer data.</p>
+                    <div class="flex flex-col space-y-2">
+                        <div class="flex space-x-2">
+                             <button id="export-json-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg flex-1">Export as JSON</button>
+                             <button id="export-csv-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg flex-1">Export as CSV</button>
+                        </div>
+                        <div>
+                            <input type="file" id="import-file-input" accept=".json" class="hidden">
+                            <button id="import-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-300 ease-in-out shadow-lg w-full">Import from JSON</button>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="p-4 border border-gray-200 rounded-lg mt-4">
                     <button id="sign-out-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300 ease-in-out shadow-lg w-full">Sign Out</button>
@@ -405,18 +420,6 @@
             <p id="no-tags-message" class="text-gray-500 text-center py-4">No tags found.</p>
         </div>
     </div>
-
-    <div class="card">
-        <h2 class="text-2xl font-semibold mb-4 text-gray-700">7. Manage Your Data</h2>
-        <p class="text-gray-600 mb-4">Export your data to a JSON file to create a backup or import a file from another browser to transfer your data.</p>
-        <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-            <button id="export-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg flex-1">Export All Data</button>
-            <div class="flex-1">
-                <input type="file" id="import-file-input" accept=".json" class="hidden">
-                <button id="import-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg w-full">Import Data</button>
-            </div>
-        </div>
-    </div>
 </div>
 
 
@@ -427,9 +430,7 @@
         <p id="modal-read-only-message" class="text-sm text-red-500 mb-2 font-semibold hidden">This is a read-only view. Data attributes from this source cannot be edited.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-500 mb-4">
             <p>Source: <strong id="modal-source-display"></strong></p>
-            <p>Original File Name: <strong id="modal-file-source-display"></strong></p> <!-- Changed label here -->
-            <!-- Removed File Type display: <p>File Type: <strong id="modal-file-type-display"></strong></p> -->
-            <p>Uploaded by: <strong id="modal-uploaded-by-display"></strong></p>
+            <p>Original File Name: <strong id="modal-file-source-display"></strong></p> <p>Uploaded by: <strong id="modal-uploaded-by-display"></strong></p>
             <p>Uploaded through: <strong id="modal-uploaded-app-display"></strong></p>
         </div>
         <p class="text-sm text-gray-500 mb-4">Added to database: <span id="modal-created-at"></span></p>
@@ -778,7 +779,8 @@
     const dataTableBody = document.getElementById('data-table-body');
     const dataTableHeader = document.getElementById('data-table-header');
     const tagSearchInput = document.getElementById('tag-search-input');
-    const exportBtn = document.getElementById('export-btn');
+    const exportJsonBtn = document.getElementById('export-json-btn');
+    const exportCsvBtn = document.getElementById('export-csv-btn');
     const importFileInput = document.getElementById('import-file-input');
     const importBtn = document.getElementById('import-btn');
     const dataLoadingStatus = document.getElementById('data-loading-status');
@@ -1687,14 +1689,14 @@
         }
         return Math.abs(hash).toString(16);
     }
-    
-    exportBtn.addEventListener('click', async () => {
+
+    async function fetchAllDataForExport() {
         if (!userId) {
             showMessage("Please sign in to export data.", 'error');
-            return;
+            return null;
         }
         
-        showMessage("Exporting all your data...", 'info', 0);
+        showMessage("Preparing your data for export...", 'info', 0);
         
         const allSources = await getDocs(collection(db, `users/${userId}/sources`));
         const exportData = {};
@@ -1706,15 +1708,21 @@
             exportData[sourceId] = dataDocs.docs.map(doc => {
                 const docData = doc.data();
                 // Clean up firestore specific objects and remove 'fileType'
-                const cleanData = { ...docData };
-                if (cleanData.createdAt) {
+                const cleanData = { ...docData, source: sourceId }; // Add source to each data point
+                if (cleanData.createdAt && cleanData.createdAt.toDate) {
                     cleanData.createdAt = cleanData.createdAt.toDate().toISOString();
                 }
                 delete cleanData.fileType; // Explicitly remove fileType
                 return cleanData;
             });
         }
-        
+        return exportData;
+    }
+    
+    exportJsonBtn.addEventListener('click', async () => {
+        const exportData = await fetchAllDataForExport();
+        if (!exportData) return;
+
         const dataStr = JSON.stringify(exportData, null, 2);
         const blob = new Blob([dataStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -1727,7 +1735,63 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
-        showMessage("Data exported successfully!");
+        showMessage("Data exported successfully as JSON!");
+    });
+
+    exportCsvBtn.addEventListener('click', async () => {
+        const exportData = await fetchAllDataForExport();
+        if (!exportData) return;
+
+        const allDataPoints = Object.values(exportData).flat();
+
+        if (allDataPoints.length === 0) {
+            showMessage("No data available to export.", "info");
+            return;
+        }
+
+        // 1. Get all unique headers from all data points
+        const headers = new Set();
+        allDataPoints.forEach(dp => {
+            Object.keys(dp).forEach(key => headers.add(key));
+        });
+        const headerArray = Array.from(headers);
+
+        // 2. Create CSV header row
+        let csvContent = headerArray.join(',') + '\n';
+
+        // 3. Create a data row for each point
+        allDataPoints.forEach(dp => {
+            const row = headerArray.map(header => {
+                let value = dp[header];
+                if (value === null || value === undefined) {
+                    return ''; // Use empty string for null/undefined
+                }
+                // Convert arrays (like tags) to a semicolon-separated string
+                if (Array.isArray(value)) {
+                    value = value.join(';');
+                }
+                let stringValue = String(value);
+                // Escape double quotes and wrap in quotes if the value contains a comma or newline
+                if (stringValue.includes(',') || stringValue.includes('\n')) {
+                    stringValue = `"${stringValue.replace(/"/g, '""')}"`;
+                }
+                return stringValue;
+            }).join(',');
+            csvContent += row + '\n';
+        });
+
+        // 4. Create blob and trigger download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sammy-export-${new Date().toISOString()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showMessage("Data exported successfully as CSV!");
     });
     
     importBtn.addEventListener('click', () => {
