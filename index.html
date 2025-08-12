@@ -107,10 +107,27 @@
       .user-info {
         margin-bottom: 20px;
         color: #aaa;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
       }
       .user-info span {
         color: #fff;
         font-weight: bold;
+      }
+      .connectivity-status {
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-size: 0.8rem;
+        font-weight: bold;
+      }
+      .connectivity-status.online {
+        background-color: #4caf50;
+        color: #fff;
+      }
+      .connectivity-status.offline {
+        background-color: #f44336;
+        color: #fff;
       }
       .quick-log-section {
         margin-top: 2rem;
@@ -213,7 +230,16 @@
         background-color: #f44336;
         color: white;
       }
-      
+      .unsynced-item {
+        background-color: #4a4a4a;
+        border: 1px solid #ffc107;
+      }
+      .unsynced-tag {
+        color: #ffc107;
+        font-size: 0.8rem;
+        font-weight: bold;
+      }
+
       /* Message box for alerts */
       .message-box {
         position: fixed;
@@ -267,7 +293,8 @@
       <div id="main-app-container" style="display: none">
         <h1>Logger</h1>
         <p class="user-info">
-          Logged in as User: <span id="user-email-display">...</span>
+          <span>Logged in as: <span id="user-email-display">...</span></span>
+          <span id="connectivity-status" class="connectivity-status"></span>
         </p>
         <div class="input-group">
           <label for="log-datetime">Log Date and Time</label>
@@ -335,6 +362,11 @@
             </div>
           </div>
         </div>
+        
+        <div class="session-log" id="unsynced-log-section" style="display: none;">
+          <h2>Unsynced Data <span class="unsynced-tag">Sync Pending</span></h2>
+          <div id="unsynced-log-items"></div>
+        </div>
 
         <div class="session-log">
           <h2>Data Added This Session</h2>
@@ -400,6 +432,108 @@
           .toISOString()
           .slice(0, 16);
       };
+
+      // --- NEW OFFLINE & CONNECTIVITY LOGIC ---
+      const connectivityStatusEl = document.getElementById("connectivity-status");
+      const updateConnectivityStatus = () => {
+        if (navigator.onLine) {
+          connectivityStatusEl.textContent = "Online";
+          connectivityStatusEl.className = "connectivity-status online";
+        } else {
+          connectivityStatusEl.textContent = "Offline";
+          connectivityStatusEl.className = "connectivity-status offline";
+        }
+      };
+
+      const renderUnsyncedLogs = () => {
+        const logItemsContainer = document.getElementById("unsynced-log-items");
+        const unsyncedSection = document.getElementById("unsynced-log-section");
+        logItemsContainer.innerHTML = "";
+        const pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
+
+        if (pendingLogs.length > 0) {
+          unsyncedSection.style.display = "block";
+          pendingLogs.forEach(log => {
+            const logItemDiv = document.createElement("div");
+            logItemDiv.classList.add("session-log-item", "unsynced-item");
+            const timeString = log.date || "Time N/A";
+            logItemDiv.innerHTML = `
+              <div class="session-log-item-details">
+                <span class="session-log-item-attributeName">${log.attributeName}:</span>
+                <span class="session-log-item-attributeValue">${log.attributeValue}</span>
+                <span class="session-log-item-time">(${timeString})</span>
+              </div>
+              <div class="session-log-actions">
+                  <span class="unsynced-tag">Not Synced</span>
+              </div>
+            `;
+            logItemsContainer.prepend(logItemDiv);
+          });
+        } else {
+          unsyncedSection.style.display = "none";
+        }
+      };
+
+      const syncPendingLogs = async () => {
+        const pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
+        if (pendingLogs.length === 0 || !userId) {
+          return;
+        }
+
+        showMessage(`Attempting to sync ${pendingLogs.length} pending logs...`);
+        let logsToResync = [];
+        let syncedLogs = [];
+
+        for (const log of pendingLogs) {
+          try {
+            const logToSync = { ...log };
+            if (!logToSync.tags.includes("synced_from_offline")) {
+                logToSync.tags.push("synced_from_offline");
+            }
+            const docRef = await addDoc(collection(db, `users/${userId}/sources/manual/data`), {
+              ...logToSync,
+              // Use the original createdAt timestamp if it exists, otherwise use a new one
+              createdAt: logToSync.createdAt && logToSync.createdAt.seconds 
+                ? Timestamp.fromMillis(logToSync.createdAt.seconds * 1000)
+                : Timestamp.now(),
+            });
+            showMessage(`Successfully synced: ${log.attributeName} = ${log.attributeValue}`, "success");
+            
+            // Add document ID to the successfully synced log and store it
+            syncedLogs.push({ ...logToSync, docId: docRef.id });
+
+          } catch (err) {
+            console.error("Failed to sync log:", err);
+            logsToResync.push(log); // Keep failed logs for next sync attempt
+          }
+        }
+
+        // Update local storage and UI after all attempts
+        localStorage.setItem("pendingLogs", JSON.stringify(logsToResync));
+        renderUnsyncedLogs();
+        
+        // Add the newly synced logs to the sessionLogs
+        sessionLogs = [...sessionLogs, ...syncedLogs];
+        renderSessionLogs();
+
+        if (logsToResync.length === 0) {
+          showMessage("All pending logs synced successfully!", "success");
+        }
+      };
+
+      // Listen for online/offline events
+      window.addEventListener('online', () => {
+        showMessage("Connection restored. Attempting to sync pending logs...", "info");
+        updateConnectivityStatus();
+        syncPendingLogs();
+      });
+      window.addEventListener('offline', () => {
+        showMessage("You are currently offline. Logs will be saved locally.", "info");
+        updateConnectivityStatus();
+      });
+      // Initial status check
+      updateConnectivityStatus();
+      // --- END NEW OFFLINE & CONNECTIVITY LOGIC ---
 
       // Function to render the session logs in the UI
       const renderSessionLogs = () => {
@@ -480,9 +614,8 @@
           return;
         }
 
-        try {
-          const formattedDate = logDatetimeString.replace("T", " ");
-          const logEntry = {
+        const formattedDate = logDatetimeString.replace("T", " ");
+        const logEntry = {
             attributeName,
             attributeValue: String(attributeValue),
             tags,
@@ -493,7 +626,11 @@
             date: formattedDate,
             createdAt: Timestamp.now(), 
           };
-          
+
+        try {
+          if (!navigator.onLine) {
+            throw new Error("You are currently offline.");
+          }
           const docRef = await addDoc(collection(db, `users/${userId}/sources/manual/data`), logEntry);
           showMessage(`Data logged successfully: ${attributeName} = ${attributeValue}`);
           
@@ -503,7 +640,27 @@
           renderSessionLogs();
 
         } catch (err) {
-          showMessage("Error logging data: " + err.message, "error");
+          console.error(err);
+          if (err.message.includes("You are currently offline.")) {
+            // Save to localStorage if offline
+            const pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
+            
+            // Use a plain object for localStorage to avoid Timestamp issues
+            const offlineLogEntry = {
+              ...logEntry,
+              createdAt: {
+                seconds: logEntry.createdAt.seconds,
+                nanoseconds: logEntry.createdAt.nanoseconds
+              }
+            };
+
+            pendingLogs.push(offlineLogEntry);
+            localStorage.setItem("pendingLogs", JSON.stringify(pendingLogs));
+            renderUnsyncedLogs();
+            showMessage("You are offline. Your log has been saved locally and will sync later.", "info");
+          } else {
+            showMessage("Error logging data: " + err.message, "error");
+          }
         }
       }
 
@@ -549,6 +706,8 @@
           document.getElementById("auth-container").style.display = "none";
           document.getElementById("main-app-container").style.display = "block";
           setDefaultDateTime(); // Set default time on login
+          renderUnsyncedLogs(); // Check for unsynced logs on login
+          syncPendingLogs(); // Attempt to sync any unsynced logs on login
         } else {
           userId = null;
           userEmail = null;
@@ -589,6 +748,9 @@
             // Clear session logs on logout
             sessionLogs = [];
             renderSessionLogs();
+            // Clear pending logs on logout
+            localStorage.removeItem("pendingLogs");
+            renderUnsyncedLogs();
           } catch (err) {
             showMessage("Logout failed: " + err.message, "error");
           }
