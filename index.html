@@ -240,10 +240,11 @@
                     </div>
                 </div>
 
-                <!-- UID Display Added Here -->
+                <!-- UID and Member Since Display -->
                 <div class="p-4 border border-gray-200 rounded-lg mt-4 text-center">
                     <p class="text-sm text-gray-600">Signed in as:</p>
                     <p id="user-id-display" class="text-sm font-mono text-gray-800 break-words">Signing in...</p>
+                    <p id="member-since-display" class="text-sm text-gray-500 mt-1"></p>
                 </div>
 
                 <div class="p-4 border-t border-gray-200 mt-4">
@@ -344,7 +345,7 @@
         <p class="text-gray-600 mb-4">Select a numerical attribute to visualize trends and find correlations.</p>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             <div class="col-span-1 md:col-span-1">
-                <label for="key-select" class="block text-gray-700 font-semibold mb-2">Select a data attribute:</label>
+                <label for="key-select" class="block text-gray-700 font-semibold mb-2">Select an attribute to chart:</label>
                 <select id="key-select" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
             </div>
             <div class="col-span-1 md:col-span-1">
@@ -590,8 +591,15 @@
                 if (user) {
                     // User is signed in, show the main app
                     userId = user.uid;
-                    // MODIFIED: Display user's email or UID in the manage account dropdown
                     document.getElementById('user-id-display').textContent = user.email || user.uid;
+                    
+                    // NEW: Display member since date
+                    if (user.metadata.creationTime) {
+                        const creationDate = new Date(user.metadata.creationTime);
+                        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+                        document.getElementById('member-since-display').textContent = `Member since ${creationDate.toLocaleDateString(undefined, options)}`;
+                    }
+
                     document.getElementById('auth-container').style.display = 'none';
                     document.getElementById('main-app-container').style.display = 'block';
 
@@ -1182,14 +1190,12 @@
 
     function updateKeySelect() {
         const allDataPoints = Object.values(currentDataCache).flat();
-        const numberKeys = new Set();
+        const numericAttributeNames = new Set();
+
         allDataPoints.forEach(dp => {
-            for (const key in dp) {
-                const value = dp[key];
-                if ((key === 'attributeValue' && dp.source === 'manual' && !isNaN(parseFloat(value)) && isFinite(value)) ||
-                    (!['date', 'createdAt', 'id', 'attributeName'].includes(key) && !isNaN(parseFloat(value)) && isFinite(value))) {
-                    numberKeys.add(key);
-                }
+            // Check if attributeValue is numeric and attributeName exists
+            if (dp.attributeName && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue)) && isFinite(dp.attributeValue)) {
+                numericAttributeNames.add(dp.attributeName);
             }
         });
 
@@ -1197,24 +1203,33 @@
         correlationKey1.innerHTML = '';
         correlationKey2.innerHTML = '';
 
-        if (numberKeys.size === 0) {
-            keySelect.innerHTML = '<option value="">No numerical data</option>';
-            correlationKey1.innerHTML = '<option value="">No numerical data</option>';
-            correlationKey2.innerHTML = '<option value="">No numerical data</option>';
+        if (numericAttributeNames.size === 0) {
+            const defaultOption = '<option value="">No numerical attributes found</option>';
+            keySelect.innerHTML = defaultOption;
+            correlationKey1.innerHTML = defaultOption;
+            correlationKey2.innerHTML = defaultOption;
+            currentChartKey = '';
+            renderChart(); // Render empty chart
             return;
         }
 
-        const sortedKeys = Array.from(numberKeys).sort();
+        const sortedKeys = Array.from(numericAttributeNames).sort();
         sortedKeys.forEach(key => {
             const option = document.createElement('option');
             option.value = key;
-            option.textContent = key === 'attributeValue' ? 'Manual Value' : key;
+            option.textContent = key;
             keySelect.appendChild(option);
             correlationKey1.appendChild(option.cloneNode(true));
             correlationKey2.appendChild(option.cloneNode(true));
         });
         
-        currentChartKey = keySelect.value;
+        // If a key was previously selected and still exists, keep it. Otherwise, select the first.
+        if (sortedKeys.includes(currentChartKey)) {
+             keySelect.value = currentChartKey;
+        } else {
+             currentChartKey = keySelect.value;
+        }
+
         if (currentChartKey) {
             renderChart();
         }
@@ -1225,14 +1240,13 @@
             chart.destroy();
         }
         
+        const selectedAttributeName = currentChartKey;
         const allDataPoints = Object.values(currentDataCache).flat();
         
         let filteredData = allDataPoints
             .filter(dp => {
-                if (currentChartKey === 'attributeValue') {
-                    return dp.source === 'manual' && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue));
-                }
-                return dp[currentChartKey] !== undefined && !isNaN(parseFloat(dp[currentChartKey]));
+                // Filter for the selected attributeName and ensure its value is numeric
+                return dp.attributeName === selectedAttributeName && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue));
             })
             .filter(dp => {
                 if (startDateFilter.value && new Date(dp.date) < new Date(startDateFilter.value)) return false;
@@ -1244,16 +1258,14 @@
         chartDataPoints = filteredData;
         
         const labels = filteredData.map(dp => dp.date);
-        const values = filteredData.map(dp => {
-            return currentChartKey === 'attributeValue' ? parseFloat(dp.attributeValue) : parseFloat(dp[currentChartKey]);
-        });
+        const values = filteredData.map(dp => parseFloat(dp.attributeValue));
         
         const chartCanvas = document.getElementById('data-chart');
         
         chartData = {
             labels: labels,
             datasets: [{
-                label: currentChartKey === 'attributeValue' ? 'Manual Value' : currentChartKey,
+                label: selectedAttributeName,
                 data: values,
                 borderColor: 'rgb(75, 192, 192)',
                 backgroundColor: 'rgba(75, 192, 192, 0.2)',
@@ -1408,27 +1420,36 @@
     });
     
     correlateBtn.addEventListener('click', async () => {
-        const key1 = correlationKey1.value;
-        const key2 = correlationKey2.value;
+        const attrName1 = correlationKey1.value;
+        const attrName2 = correlationKey2.value;
         
-        if (!key1 || !key2 || key1 === key2 || selectedSources.length !== 1) {
+        if (!attrName1 || !attrName2 || attrName1 === attrName2 || selectedSources.length !== 1) {
             correlationResult.textContent = 'Please select two different attributes from a single collection.';
             return;
         }
 
-        const dataPoints = currentDataCache[selectedSources[0]]
-            .filter(dp => {
-                const val1 = key1 === 'attributeValue' ? dp.attributeValue : dp[key1];
-                const val2 = key2 === 'attributeValue' ? dp.attributeValue : dp[key2];
-                return val1 !== undefined && val2 !== undefined && !isNaN(parseFloat(val1)) && !isNaN(parseFloat(val2));
-            })
-            .map(dp => ({ 
-                x: parseFloat(key1 === 'attributeValue' ? dp.attributeValue : dp[key1]), 
-                y: parseFloat(key2 === 'attributeValue' ? dp.attributeValue : dp[key2]) 
-            }));
+        const dataForCorr = currentDataCache[selectedSources[0]];
+        const dateMap = {};
+
+        // Group by day, collecting relevant attributes
+        dataForCorr.forEach(dp => {
+            if (dp.attributeName && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue))) {
+                const dateStr = new Date(dp.date).toISOString().split('T')[0];
+                if (!dateMap[dateStr]) {
+                    dateMap[dateStr] = {};
+                }
+                dateMap[dateStr][dp.attributeName] = parseFloat(dp.attributeValue);
+            }
+        });
+
+        // Create pairs of (x, y) for correlation calculation
+        const dataPoints = Object.values(dateMap)
+            .filter(dayData => dayData[attrName1] !== undefined && dayData[attrName2] !== undefined)
+            .map(dayData => ({ x: dayData[attrName1], y: dayData[attrName2] }));
+
 
         if (dataPoints.length < 2) {
-            correlationResult.textContent = 'Not enough data points to calculate correlation.';
+            correlationResult.textContent = 'Not enough matching data points to calculate correlation.';
             return;
         }
 
