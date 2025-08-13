@@ -1,4 +1,4 @@
-const CACHE_NAME = 'logger-worker-v1';
+const CACHE_NAME = 'logger-worker-v2.8.0';
 // Add the files you want to cache. 
 // Since your app is a single file, we only need to cache that.
 const urlsToCache = [
