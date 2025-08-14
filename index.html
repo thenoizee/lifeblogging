@@ -155,11 +155,11 @@
             display: none;
             position: absolute;
             background-color: var(--card-bg-color);
-            min-width: 220px;
+            min-width: 320px;
             box-shadow: 0 8px 16px 0px var(--shadow-color);
             z-index: 10;
             right: 0;
-            top: 50px;
+            top: 45px;
             border-radius: 1rem;
             padding: 1rem;
             border: 1px solid var(--text-color-secondary);
@@ -169,7 +169,7 @@
             display: block;
         }
         
-        #auth-container input {
+        #auth-container input, .dropdown-content input {
             background-color: var(--input-bg-color);
             color: var(--text-color-primary);
         }
@@ -189,6 +189,29 @@
             <div class="dropdown-content text-left">
                 <p class="text-sm text-center mb-2">Signed in as:</p>
                 <p id="user-email-display" class="text-sm font-mono break-all text-center mb-4"></p>
+                
+                <div class="p-4 border border-[var(--text-color-secondary)] rounded-lg mb-4">
+                    <h3 class="text-lg font-semibold mb-2">Change Password</h3>
+                    <div class="mb-2">
+                        <label for="new-password" class="block text-sm font-semibold mb-1">New Password</label>
+                        <input type="password" id="new-password" placeholder="Min 6 characters" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="mb-4">
+                        <label for="confirm-new-password" class="block text-sm font-semibold mb-1">Confirm New Password</label>
+                        <input type="password" id="confirm-new-password" placeholder="********" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <button id="change-password-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg w-full text-sm">Update Password</button>
+                </div>
+
+                <div class="p-4 border border-[var(--text-color-secondary)] rounded-lg mb-4">
+                    <h3 class="text-lg font-semibold mb-2">Change Email</h3>
+                    <div class="mb-4">
+                        <label for="new-email" class="block text-sm font-semibold mb-1">New Email</label>
+                        <input type="email" id="new-email" placeholder="new.email@example.com" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <button id="change-email-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg w-full text-sm">Update Email</button>
+                </div>
+
                 <button id="sign-out-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300 ease-in-out shadow-lg w-full">Sign Out</button>
             </div>
         </div>
@@ -239,15 +262,12 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { 
             getAuth, onAuthStateChanged, signInAnonymously, createUserWithEmailAndPassword, 
-            signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut 
+            signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut,
+            updatePassword, updateEmail
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Firebase Configuration ---
-        // This attempts to use a configuration provided by the environment.
-        // If __firebase_config is not available, it falls back to a placeholder
-        // to prevent the app from crashing. You should replace this with your
-        // actual Firebase project configuration for the app to function.
         const firebaseConfig = typeof __firebase_config !== 'undefined' 
             ? JSON.parse(__firebase_config) 
             : {
@@ -281,6 +301,13 @@
         const googleSignInBtn = document.getElementById('google-sign-in-btn');
         const anonymousSignInBtn = document.getElementById('anonymous-sign-in-btn');
         const signOutBtn = document.getElementById('sign-out-btn');
+        
+        // Account management elements
+        const newPasswordInput = document.getElementById('new-password');
+        const confirmNewPasswordInput = document.getElementById('confirm-new-password');
+        const changePasswordBtn = document.getElementById('change-password-btn');
+        const newEmailInput = document.getElementById('new-email');
+        const changeEmailBtn = document.getElementById('change-email-btn');
 
         let userId = null;
         let themeDocRef = null;
@@ -294,6 +321,11 @@
             if (timeout > 0) {
                 setTimeout(() => messageBox.classList.add('opacity-0'), timeout);
             }
+        }
+        
+        function isValidEmail(email) {
+            const re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+            return re.test(String(email).toLowerCase());
         }
 
         // --- Theme Logic ---
@@ -328,7 +360,11 @@
                 
                 userEmailDisplay.textContent = user.isAnonymous ? 'Anonymous User' : user.email;
 
-                // Detach any old listener before attaching a new one
+                if (user.isAnonymous) {
+                    changePasswordBtn.disabled = true;
+                    changeEmailBtn.disabled = true;
+                }
+
                 if (themeUnsubscribe) themeUnsubscribe();
                 
                 themeUnsubscribe = onSnapshot(themeDocRef, (doc) => {
@@ -342,7 +378,7 @@
                 // User is signed out
                 userId = null;
                 themeDocRef = null;
-                if (themeUnsubscribe) themeUnsubscribe(); // Detach listener
+                if (themeUnsubscribe) themeUnsubscribe();
                 
                 authContainer.style.display = 'block';
                 mainAppContainer.style.display = 'none';
@@ -397,6 +433,42 @@
                 showMessage("You have been signed out.");
             } catch (error) {
                 showMessage(error.message, 'error');
+            }
+        });
+
+        changePasswordBtn.addEventListener('click', async () => {
+            const newPassword = newPasswordInput.value;
+            const confirmPassword = confirmNewPasswordInput.value;
+            if (newPassword.length < 6) {
+                showMessage("Password must be at least 6 characters.", 'error');
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                showMessage("Passwords do not match.", 'error');
+                return;
+            }
+            try {
+                await updatePassword(auth.currentUser, newPassword);
+                showMessage("Password successfully updated!");
+                newPasswordInput.value = '';
+                confirmNewPasswordInput.value = '';
+            } catch (error) {
+                showMessage(`Error changing password: ${error.message}. You may need to sign out and sign back in again.`, 'error');
+            }
+        });
+
+        changeEmailBtn.addEventListener('click', async () => {
+            const newEmail = newEmailInput.value;
+            if (!isValidEmail(newEmail)) {
+                showMessage("Please enter a valid email address.", 'error');
+                return;
+            }
+            try {
+                await updateEmail(auth.currentUser, newEmail);
+                showMessage("Email successfully updated!");
+                newEmailInput.value = '';
+            } catch (error) {
+                showMessage(`Error changing email: ${error.message}. You may need to sign out and sign back in again.`, 'error');
             }
         });
     </script>
