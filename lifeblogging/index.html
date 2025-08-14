@@ -1,0 +1,2069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sammy's Lifeblogging & Quantifying Analyser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7fafc;
+            /* Add padding to the body to prevent content from being hidden behind the fixed top-right card */
+            padding-top: 1rem;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .card {
+            background-color: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border-left-color: #2563eb;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 800px;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .close-btn {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-btn:hover,
+        .close-btn:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .source-checkbox-container {
+            max-height: 150px;
+            overflow-y: auto;
+            padding: 0.5rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            background-color: #f8fafc;
+        }
+        .table-container {
+            overflow-x: auto; /* Changed from 'auto' to 'overflow-x: auto' */
+            border-radius: 0.5rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            background-color: #f9fafb; /* Lighter gray for header */
+            color: #6b7280; /* Darker gray for text */
+            font-weight: 600;
+            cursor: pointer;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            text-transform: uppercase; /* Uppercase headers */
+            font-size: 0.75rem; /* Smaller font size for headers */
+            letter-spacing: 0.05em; /* Tracking wider */
+        }
+        tr:hover {
+            background-color: #f9fafb; /* Light gray on hover */
+            cursor: pointer;
+        }
+        .tag {
+            background-color: #e2e8f0;
+            color: #4a5568;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 4px;
+            margin-bottom: 4px;
+            display: inline-block;
+        }
+        .tag-remove {
+            margin-left: 4px;
+            cursor: pointer;
+        }
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: white;
+            min-width: 320px;
+            box-shadow: 0 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 10;
+            right: 0;
+            top: 45px;
+            border-radius: 1rem;
+            padding: 1rem;
+        }
+        .dropdown:hover .dropdown-content {
+            display: block;
+        }
+        .dropdown-content .card {
+            padding: 0;
+            box-shadow: none;
+            margin: 0;
+        }
+        .tag-list-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .drop-zone {
+            border: 2px dashed #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+        }
+        .drop-zone:hover {
+            background-color: #f8fafc;
+            border-color: #3b82f6;
+        }
+        .drop-zone-highlight {
+            background-color: #dbeafe;
+            border-color: #2563eb;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+<div id="auth-container" class="container" style="display: none;">
+    <div class="card max-w-md mx-auto mt-20">
+        <h1 class="text-2xl font-bold text-center mb-6 text-gray-800">Welcome</h1>
+        <div class="mb-4">
+            <label for="email" class="block text-gray-700 font-semibold mb-2">Email</label>
+            <input type="email" id="email" placeholder="you@example.com" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <p id="email-warning" class="text-red-500 text-sm mt-1 hidden">Please enter a valid email address.</p>
+        </div>
+        <div class="mb-6">
+            <label for="password" class="block text-gray-700 font-semibold mb-2">Password</label>
+            <input type="password" id="password" placeholder="********" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="flex flex-col space-y-4">
+            <div class="flex space-x-4">
+                <button id="sign-up-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg flex-1">Sign Up</button>
+                <button id="sign-in-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg flex-1">Log In</button>
+            </div>
+            <button id="password-reset-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-300 ease-in-out shadow-lg w-full">Reset Password</button>
+            <button id="google-sign-in-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-300 ease-in-out shadow-lg flex-1">
+                Sign in with Google
+            </button>
+            <button id="anonymous-sign-in-btn" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600 transition duration-300 ease-in-out shadow-lg flex-1">
+                Continue Anonymously
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="main-app-container" class="container" style="display: none;">
+    <div class="flex justify-between items-start mb-10">
+        <h1 class="text-4xl font-bold text-gray-800">Sammy's Lifeblogging & Quantifying Analyser</h1>
+        <div class="dropdown">
+            <button class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a7.488 7.488 0 01-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Manage Account
+            </button>
+            <div id="manage-account-dropdown" class="dropdown-content">
+                <div class="p-4 border border-gray-200 rounded-lg mb-4">
+                    <h3 class="text-lg font-semibold mb-2 text-gray-700">Change Password</h3>
+                    <div class="mb-4">
+                        <label for="new-password" class="block text-gray-700 font-semibold mb-2">New Password</label>
+                        <input type="password" id="new-password" placeholder="Min 6 characters" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="mb-4">
+                        <label for="confirm-new-password" class="block text-gray-700 font-semibold mb-2">Confirm New Password</label>
+                        <input type="password" id="confirm-new-password" placeholder="********" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <button id="change-password-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg w-full">Change Password</button>
+                </div>
+
+                <div class="p-4 border border-gray-200 rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2 text-gray-700">Change Email</h3>
+                    <p class="text-sm text-gray-500 mb-4">Note: You may be required to re-authenticate with your current password for this action.</p>
+                    <div class="mb-4">
+                        <label for="new-email" class="block text-gray-700 font-semibold mb-2">New Email</label>
+                        <input type="email" id="new-email" placeholder="new.email@example.com" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <button id="change-email-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg w-full">Change Email</button>
+                </div>
+                
+                <div class="p-4 border border-gray-200 rounded-lg mt-4">
+                    <h3 class="text-lg font-semibold mb-2 text-gray-700">Manage Your Data</h3>
+                    <p class="text-gray-600 mb-4 text-sm">Export a backup of your data or import a JSON file to transfer data.</p>
+                    <div class="flex flex-col space-y-2">
+                        <div class="flex space-x-2">
+                             <button id="export-json-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg flex-1">Export as JSON</button>
+                             <button id="export-csv-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg flex-1">Export as CSV</button>
+                        </div>
+                        <div>
+                            <input type="file" id="import-file-input" accept=".json" class="hidden">
+                            <button id="import-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-300 ease-in-out shadow-lg w-full">Import from JSON</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 border border-gray-200 rounded-lg mt-4 text-center">
+                    <p class="text-sm text-gray-600">Signed in as:</p>
+                    <p id="user-id-display" class="text-sm font-mono text-gray-800 break-words">Signing in...</p>
+                    <p id="member-since-display" class="text-sm text-gray-500 mt-1"></p>
+                </div>
+
+                <div class="p-4 border-t border-gray-200 mt-4">
+                    <button id="sign-out-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300 ease-in-out shadow-lg w-full">Sign Out</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="data-loading-status" class="flex items-center justify-center p-4 rounded-lg bg-blue-100 text-blue-800 text-sm mb-4 hidden">
+        <div class="spinner mr-3"></div>
+        <p id="data-loading-message">Loading collections...</p>
+    </div>
+
+    <div id="message-box" class="fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg text-white font-semibold transition-opacity duration-300 opacity-0" role="alert"></div>
+    
+    <div class="card">
+        <fieldset class="border-2 border-gray-200 p-4 rounded-lg">
+            <legend class="text-2xl font-semibold px-2 mb-4 text-gray-700">1. Manage Your Collections</legend>
+            <p class="text-gray-600 mb-4">Select one or more collections to view their data. The 'Manual' collection is the default collection for entries added by hand.</p>
+            
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold mb-2 text-gray-700">Select Collections</h3>
+                <div id="source-checkboxes" class="source-checkbox-container mb-4"></div>
+                <button id="delete-source-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300 ease-in-out shadow-lg hidden">Delete Collection</button>
+            </div>
+
+            <div>
+                <h3 class="text-lg font-semibold mb-2 text-gray-700">Create a New Collection</h3>
+                <div class="flex flex-col md:flex-row gap-4">
+                    <input type="text" id="new-source-name" placeholder="Enter a name for your new collection" class="w-full md:w-2/3 bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <button id="add-source-btn" class="w-full md:w-1/3 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg">Create New Collection</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div class="card">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">2. Import Data to Current Collection</h2>
+        <p class="text-gray-600 mb-4">Choose a CSV or JSON file to import. The first row must be headers, and a 'date' column in YYYY-MM-DD format is required for all data.</p>
+        <div class="flex flex-col md:flex-row gap-4">
+            <div class="flex-1">
+                <label for="upload-source-select" class="block text-gray-700 font-semibold mb-2">Select Destination Collection</label>
+                <select id="upload-source-select" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 h-10"></select>
+            </div>
+            <div class="flex-1">
+                <label for="file-input" class="block text-gray-700 font-semibold mb-2">Select or Drag a File</label>
+                <div id="drop-zone" class="drop-zone">
+                    <input type="file" id="file-input" accept=".csv, .json" class="hidden">
+                    <p id="drop-zone-text" class="text-gray-500">Click to select a file or drag and drop it here.</p>
+                </div>
+            </div>
+        </div>
+        <div class="mt-4">
+            <button id="upload-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg">Import Data</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">3. Manually Add Data</h2>
+        <a href="/loggertool/" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg inline-block text-center mb-4">Go to the Logger Tool</a>
+        <p class="text-gray-600 mb-4 flex items-center">
+            Use this section to add any data point, such as a journal entry, a mood score, or a custom metric like "cups of coffee".
+            <span class="relative group ml-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-gray-500 cursor-pointer">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712l-1.848 1.62c-1.172 1.025-1.172 2.687 0 3.712A2.75 2.75 0 0013.5 18.75s-2.25-.5-2.25-2.25a2.25 2.25 0 014.5 0s-2.25.5-2.25 2.25a2.25 2.25 0 014.5 0" />
+                </svg>
+                <div class="absolute hidden group-hover:block top-8 left-1/2 -translate-x-1/2 w-80 p-4 bg-gray-800 text-white text-sm rounded-lg shadow-lg z-50">
+                    <p>Enter the date, a descriptive name for your data (e.g., 'mood' or 'coffee_cups'), and its corresponding value. The value can be a number or text. You can also add comma-separated tags.</p>
+                </div>
+            </span>
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div class="col-span-1">
+                <label for="manual-collection-select" class="block text-gray-700 font-semibold mb-2">Collection</label>
+                <select id="manual-collection-select" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+            </div>
+            <div class="col-span-1">
+                <label for="manual-datetime" class="block text-gray-700 font-semibold mb-2">Date and Time</label>
+                <input type="datetime-local" id="manual-datetime" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="col-span-1">
+                <label for="manual-attribute-name" class="block text-gray-700 font-semibold mb-2">Attribute Name</label>
+                <input type="text" id="manual-attribute-name" placeholder="e.g., mood, coffee_cups" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="col-span-1">
+                <label for="manual-attribute-value" class="block text-gray-700 font-semibold mb-2">Attribute Value</label>
+                <input type="text" id="manual-attribute-value" placeholder="e.g., 8 (for mood) or 'great'" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="col-span-1">
+                <label for="manual-tags" class="block text-gray-700 font-semibold mb-2">Tags (comma-separated)</label>
+                <input type="text" id="manual-tags" placeholder="e.g., work, personal, meeting" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+        </div>
+        <div class="mt-4">
+            <button id="manual-add-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg">Add Data Point</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">4. Your Insights</h2>
+        <p class="text-gray-600 mb-4">Select a numerical attribute to visualize trends and find correlations.</p>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div class="col-span-1 md:col-span-1">
+                <label for="key-select" class="block text-gray-700 font-semibold mb-2">Select an attribute to chart:</label>
+                <select id="key-select" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+            </div>
+            <div class="col-span-1 md:col-span-1">
+                <label for="chart-type-select" class="block text-gray-700 font-semibold mb-2">Chart Type:</label>
+                <select id="chart-type-select" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="line">Line Chart</option>
+                    <option value="bar">Bar Chart</option>
+                    <option value="scatter">Scatter Plot</option>
+                </select>
+            </div>
+            <div>
+                <label for="start-date-filter" class="block text-gray-700 font-semibold mb-2">Start Date</label>
+                <input type="date" id="start-date-filter" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="end-date-filter" class="block text-gray-700 font-semibold mb-2">End Date</label>
+                <input type="date" id="end-date-filter" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+        </div>
+        <div class="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2 mt-2 mb-4">
+            <button id="filter-7-days" class="bg-gray-200 text-gray-800 font-semibold py-1 px-3 rounded-lg hover:bg-gray-300 transition duration-300">Last 7 Days</button>
+            <button id="filter-30-days" class="bg-gray-200 text-gray-800 font-semibold py-1 px-3 rounded-lg hover:bg-gray-300 transition duration-300">Last 30 Days</button>
+            <button id="clear-filter" class="bg-gray-200 text-gray-800 font-semibold py-1 px-3 rounded-lg hover:bg-gray-300 transition duration-300">Clear</button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 text-center">
+            <div class="bg-blue-100 rounded-lg p-3">
+                <p class="text-sm text-gray-600">Average</p>
+                <p id="stats-avg" class="text-xl font-bold text-blue-800">-</p>
+            </div>
+            <div class="bg-blue-100 rounded-lg p-3">
+                <p class="text-sm text-gray-600">Median</p>
+                <p id="stats-median" class="text-xl font-bold text-blue-800">-</p>
+            </div>
+            <div class="bg-blue-100 rounded-lg p-3">
+                <p class="text-sm text-gray-600">Sum</p>
+                <p id="stats-sum" class="text-xl font-bold text-blue-800">-</p>
+            </div>
+        </div>
+        
+        <div class="mb-4 p-4 rounded-lg bg-gray-50 border border-gray-200" id="correlation-section">
+            <h3 class="text-lg font-semibold mb-2">Correlate Data</h3>
+            <p class="text-gray-600 mb-4">Note: Correlation is only available for a single collection.</p>
+            <div class="flex flex-col md:flex-row gap-4">
+                <select id="correlation-key-1" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"></select>
+                <select id="correlation-key-2" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-purple-500"></select>
+                <button id="correlate-btn" class="w-full md:w-auto bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 transition duration-300 ease-in-out shadow-lg">Run Correlation</button>
+            </div>
+            <div id="correlation-result" class="mt-2 text-center text-gray-700"></div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="data-chart"></canvas>
+        </div>
+    </div>
+    
+    <div class="card">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">5. Data Table</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label for="search-input" class="block text-gray-700 font-semibold mb-2">Search Table</label>
+                <input type="text" id="search-input" placeholder="Search anything in the table..." class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label for="tag-search-input" class="block text-gray-700 font-semibold mb-2">Filter by Tags (comma-separated)</label>
+                <input type="text" id="tag-search-input" placeholder="e.g., work, mood" class="w-full bg-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-purple-500">
+            </div>
+        </div>
+        <div class="table-container">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr id="data-table-header"></tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200" id="data-table-body">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">6. Manage Tags & Categories</h2>
+        <p class="text-gray-600 mb-4">View and manage all tags used across your data points. You can delete a tag to remove it from all associated data.</p>
+        <div id="tag-list-container" class="tag-list-container">
+            <p id="no-tags-message" class="text-gray-500 text-center py-4">No tags found.</p>
+        </div>
+    </div>
+</div>
+
+
+<div id="data-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn">&times;</span>
+        <h2 class="text-xl font-bold mb-4">Data Point Details</h2>
+        <p id="modal-read-only-message" class="text-sm text-yellow-500 mb-2 font-semibold hidden">This is a read-only view. Click the button below to make changes.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-500 mb-4">
+            <p>Collection: <strong id="modal-source-display"></strong></p>
+            <p>Original File Name: <strong id="modal-file-source-display"></strong></p>
+            <p>Uploaded by: <strong id="modal-uploaded-by-display"></strong></p>
+            <p>Uploaded through: <strong id="modal-uploaded-app-display"></strong></p>
+            <p>Added to database: <strong id="modal-created-at"></strong></p>
+            <p>Last updated: <strong id="modal-last-updated"></strong></p>
+            <p>Last updated by UserID: <strong id="modal-last-updated-by"></strong></p>
+        </div>
+
+        <div id="modal-tags-container" class="mb-4">
+            <h3 class="text-lg font-semibold mb-2">Tags</h3>
+            <div class="flex flex-wrap items-center">
+                <input type="text" id="modal-tags-input" placeholder="Add new tag" class="bg-gray-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <div id="modal-tags-list" class="mt-2 flex flex-wrap"></div>
+            </div>
+        </div>
+
+        <div id="modal-custom-data" class="mb-4">
+            <h3 class="text-lg font-semibold mb-2">Attributes</h3>
+        </div>
+
+        <div class="flex space-x-2" id="modal-buttons-container">
+            <button id="modal-edit-btn" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition duration-300 ease-in-out shadow-lg flex-1">Enter Edit Mode</button>
+            <button id="modal-save-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg flex-1 hidden">Save Changes</button>
+            <button id="modal-delete-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300 ease-in-out shadow-lg flex-1 hidden">Delete Data Point</button>
+        </div>
+    </div>
+</div>
+
+<div id="conflict-modal" class="modal">
+    <div class="modal-content">
+        <h2 class="text-xl font-bold mb-4">Duplicate Entry Found</h2>
+        <p class="mb-4">An entry for <strong id="conflict-date"></strong> already exists in the <strong id="conflict-source"></strong> collection. The data is different. Please review the changes before continuing.</p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <h3 class="text-lg font-semibold">Existing Data</h3>
+                <pre id="existing-data-preview" class="bg-gray-100 p-2 rounded-lg text-sm overflow-x-auto"></pre>
+            </div>
+            <div>
+                <h3 class="text-lg font-semibold">Incoming Data</h3>
+                <pre id="incoming-data-preview" class="bg-gray-100 p-2 rounded-lg text-sm overflow-x-auto"></pre>
+            </div>
+        </div>
+        
+        <div class="flex space-x-2">
+            <button id="overwrite-all-btn" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition duration-300 ease-in-out flex-1">Overwrite All</button>
+            <button id="overwrite-btn" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition duration-300 ease-in-out flex-1">Overwrite</button>
+            <button id="skip-btn" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-500 transition duration-300 ease-in-out flex-1">Cancel Upload</button>
+            <button id="cancel-btn" class="bg-red-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-600 transition duration-300 ease-in-out flex-1">Cancel Upload</button>
+        </div>
+    </div>
+</div>
+
+<div id="delete-source-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" id="close-delete-source-modal">&times;</span>
+        <h2 class="text-xl font-bold mb-4">Confirm Deletion</h2>
+        <p>Are you sure you want to delete the collection: <strong id="delete-source-name"></strong>? This action is permanent and cannot be undone.</p>
+        <div class="flex space-x-2 mt-4">
+            <button id="confirm-delete-source-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300 ease-in-out shadow-lg flex-1">Yes, Delete</button>
+            <button id="cancel-delete-source-btn" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-500 transition duration-300 ease-in-out shadow-lg flex-1">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="delete-tag-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" id="close-delete-tag-modal">&times;</span>
+        <h2 class="text-xl font-bold mb-4">Confirm Tag Deletion</h2>
+        <p>Are you sure you want to delete the tag: <strong id="delete-tag-name"></strong>? This will remove the tag from all associated data points.</p>
+        <div class="flex space-x-2 mt-4">
+            <button id="confirm-delete-tag-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300 ease-in-out shadow-lg flex-1">Yes, Delete</button>
+            <button id="cancel-delete-tag-btn" class="bg-gray-400 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-500 transition duration-300 ease-in-out shadow-lg flex-1">Cancel</button>
+        </div>
+    </div>
+</div>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, updatePassword, updateEmail, signInAnonymously, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // --- Firebase Configuration and Initialization ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
+      authDomain: "sammy-7298f.firebaseapp.com",
+      projectId: "sammy-7298f",
+      storageBucket: "sammy-7298f.firebasestorage.app",
+      messagingSenderId: "963185683535",
+      appId: "1:963185683535:web:807df8941feba46c208e3a",
+      measurementId: "G-JT1YF2ELN3"
+    };
+
+    // --- IMPORTANT: REPLACE THE ABOVE CONFIGURATION WITH YOUR OWN FIREBASE PROJECT'S DETAILS ---
+    // You can find this in your Firebase console under Project Settings.
+
+    // Global variables for Firebase instances and data
+    let db, auth;
+    let userId;
+    let chart;
+    let currentDataCache = {};
+    let chartDataPoints = [];
+    let allTags = new Set();
+    let currentChartKey = '';
+    let currentChartType = 'line';
+    let availableSources = [];
+    let selectedSources = [];
+    let sortColumn = 'date';
+    let sortDirection = 'desc';
+    let tagFilter = [];
+    let globalSearchFilter = '';
+    let sourceListeners = {}; // To manage live listeners
+
+    // Helper function to show a temporary message box
+    function showMessage(message, type = 'success', timeout = 3000) {
+        const msgBox = document.getElementById('message-box');
+        let colorClass = '';
+        if (type === 'error') {
+            colorClass = 'bg-red-500';
+        } else if (type === 'info') {
+            colorClass = 'bg-blue-500';
+        } else {
+            colorClass = 'bg-green-500';
+        }
+        msgBox.textContent = message;
+        msgBox.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg text-white font-semibold transition-opacity duration-300 opacity-0 ${colorClass}`;
+        setTimeout(() => {
+            msgBox.classList.remove('opacity-0');
+        }, 100);
+        if (timeout > 0) {
+            setTimeout(() => {
+                msgBox.classList.add('opacity-0');
+            }, timeout);
+        }
+    }
+
+    /**
+     * Helper function for client-side email validation.
+     * @param {string} email The email to validate.
+     * @returns {boolean} True if the email is valid, false otherwise.
+     */
+    function isValidEmail(email) {
+        const re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+        return re.test(String(email).toLowerCase());
+    }
+
+    /**
+     * Initializes Firebase and authenticates the user.
+     * This now uses onAuthStateChanged to handle login state.
+     */
+    async function initFirebase() {
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            // Listen for changes in the authentication state
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    // User is signed in, show the main app
+                    userId = user.uid;
+                    document.getElementById('user-id-display').textContent = user.email || user.uid;
+                    
+                    // NEW: Display member since date
+                    if (user.metadata.creationTime) {
+                        const creationDate = new Date(user.metadata.creationTime);
+                        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+                        document.getElementById('member-since-display').textContent = `Member since ${creationDate.toLocaleDateString(undefined, options)}`;
+                    }
+
+                    document.getElementById('auth-container').style.display = 'none';
+                    document.getElementById('main-app-container').style.display = 'block';
+
+                    // Setup listener for sources
+                    setupSourcesListener();
+                } else {
+                    // User is signed out
+
+                    // Detach all active Firestore listeners on sign-out
+                    Object.values(sourceListeners).forEach(unsubscribe => unsubscribe());
+                    sourceListeners = {};
+                    
+                    userId = null;
+                    document.getElementById('auth-container').style.display = 'block';
+                    document.getElementById('main-app-container').style.display = 'none';
+
+                    // Clear all data and UI
+                    currentDataCache = {};
+                    availableSources = [];
+                    selectedSources = [];
+                    updateSourcesCheckboxes();
+                    renderDataTable();
+                    renderChart();
+                }
+            });
+        } catch (e) {
+            console.error("Error initializing Firebase:", e);
+            showMessage("Error initializing the application. Please check your Firebase configuration.", "error", 0);
+        }
+    }
+
+    // --- Authentication Logic ---
+
+    // Get auth container elements
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const signUpBtn = document.getElementById('sign-up-btn');
+    const signInBtn = document.getElementById('sign-in-btn');
+    const passwordResetBtn = document.getElementById('password-reset-btn');
+    const googleSignInBtn = document.getElementById('google-sign-in-btn');
+    const anonymousSignInBtn = document.getElementById('anonymous-sign-in-btn');
+    const emailWarning = document.getElementById('email-warning');
+
+    // Get manage account elements
+    const newPasswordInput = document.getElementById('new-password');
+    const confirmNewPasswordInput = document.getElementById('confirm-new-password');
+    const changePasswordBtn = document.getElementById('change-password-btn');
+    const newEmailInput = document.getElementById('new-email');
+    const changeEmailBtn = document.getElementById('change-email-btn');
+    const signOutBtn = document.getElementById('sign-out-btn');
+
+    signUpBtn.addEventListener('click', async () => {
+        const email = emailInput.value;
+        const password = passwordInput.value;
+
+        if (!isValidEmail(email)) {
+            emailWarning.classList.remove('hidden');
+            return;
+        } else {
+            emailWarning.classList.add('hidden');
+        }
+
+        try {
+            await createUserWithEmailAndPassword(auth, email, password);
+            showMessage("Successfully signed up! You are now logged in.");
+        } catch (error) {
+            showMessage(`Error signing up: ${error.message}`, 'error');
+        }
+    });
+
+    signInBtn.addEventListener('click', async () => {
+        const email = emailInput.value;
+        const password = passwordInput.value;
+
+        if (!isValidEmail(email)) {
+            emailWarning.classList.remove('hidden');
+            return;
+        } else {
+            emailWarning.classList.add('hidden');
+        }
+
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            showMessage("Successfully logged in!");
+        } catch (error) {
+            showMessage(`Error logging in: ${error.message}`, 'error');
+        }
+    });
+
+    passwordResetBtn.addEventListener('click', async () => {
+        const email = emailInput.value;
+        if (!isValidEmail(email)) {
+            emailWarning.classList.remove('hidden');
+            showMessage("Please enter a valid email to reset your password.", 'error');
+            return;
+        } else {
+            emailWarning.classList.add('hidden');
+        }
+        try {
+            await sendPasswordResetEmail(auth, email);
+            showMessage("Password reset email sent! Check your inbox.");
+        } catch (error) {
+            showMessage(`Error sending password reset email: ${error.message}`, 'error');
+        }
+    });
+
+    googleSignInBtn.addEventListener('click', async () => {
+        const provider = new GoogleAuthProvider();
+        try {
+            await signInWithPopup(auth, provider);
+            showMessage("Successfully logged in with Google!");
+        } catch (error) {
+            showMessage(`Error with Google Sign-In: ${error.message}`, 'error');
+        }
+    });
+    
+    anonymousSignInBtn.addEventListener('click', async () => {
+        try {
+            await signInAnonymously(auth);
+            showMessage("Successfully signed in anonymously!");
+        } catch (error) {
+            showMessage(`Error with Anonymous Sign-In: ${error.message}`, 'error');
+        }
+    });
+
+    changePasswordBtn.addEventListener('click', async () => {
+        const newPassword = newPasswordInput.value;
+        const confirmPassword = confirmNewPasswordInput.value;
+        if (newPassword.length < 6) {
+            showMessage("Password must be at least 6 characters.", 'error');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            showMessage("Passwords do not match.", 'error');
+            return;
+        }
+        try {
+            await updatePassword(auth.currentUser, newPassword);
+            showMessage("Password successfully updated!");
+        } catch (error) {
+            showMessage(`Error changing password: ${error.message}`, 'error');
+        }
+    });
+
+    changeEmailBtn.addEventListener('click', async () => {
+        const newEmail = newEmailInput.value;
+        if (!isValidEmail(newEmail)) {
+            showMessage("Please enter a valid email address.", 'error');
+            return;
+        }
+        try {
+            await updateEmail(auth.currentUser, newEmail);
+            showMessage("Email successfully updated! You may need to re-authenticate next time you log in.");
+        } catch (error) {
+            showMessage(`Error changing email: ${error.message}`, 'error');
+        }
+    });
+
+    signOutBtn.addEventListener('click', async () => {
+        try {
+            await signOut(auth);
+            showMessage("You have been signed out.");
+        } catch (error) {
+            showMessage(`Error signing out: ${error.message}`, 'error');
+        }
+    });
+
+    // --- Firebase Data and UI Logic ---
+
+    // Get UI elements
+    const manualCollectionSelect = document.getElementById('manual-collection-select');
+    const manualDatetimeInput = document.getElementById('manual-datetime');
+    const manualAttributeNameInput = document.getElementById('manual-attribute-name');
+    const manualAttributeValueInput = document.getElementById('manual-attribute-value');
+    const manualTagsInput = document.getElementById('manual-tags');
+    const manualAddBtn = document.getElementById('manual-add-btn');
+    const sourceCheckboxesDiv = document.getElementById('source-checkboxes');
+    const deleteSourceBtn = document.getElementById('delete-source-btn');
+    const newSourceNameInput = document.getElementById('new-source-name');
+    const addSourceBtn = document.getElementById('add-source-btn');
+    const fileInput = document.getElementById('file-input');
+    const uploadSourceSelect = document.getElementById('upload-source-select');
+    const uploadBtn = document.getElementById('upload-btn');
+    const keySelect = document.getElementById('key-select');
+    const chartTypeSelect = document.getElementById('chart-type-select');
+    const startDateFilter = document.getElementById('start-date-filter');
+    const endDateFilter = document.getElementById('end-date-filter');
+    const filter7DaysBtn = document.getElementById('filter-7-days');
+    const filter30DaysBtn = document.getElementById('filter-30-days');
+    const clearFilterBtn = document.getElementById('clear-filter');
+    const statsAvg = document.getElementById('stats-avg');
+    const statsMedian = document.getElementById('stats-median');
+    const statsSum = document.getElementById('stats-sum');
+    const correlationKey1 = document.getElementById('correlation-key-1');
+    const correlationKey2 = document.getElementById('correlation-key-2');
+    const correlateBtn = document.getElementById('correlate-btn');
+    const correlationResult = document.getElementById('correlation-result');
+    const dataTableBody = document.getElementById('data-table-body');
+    const dataTableHeader = document.getElementById('data-table-header');
+    const searchInput = document.getElementById('search-input');
+    const tagSearchInput = document.getElementById('tag-search-input');
+    const exportJsonBtn = document.getElementById('export-json-btn');
+    const exportCsvBtn = document.getElementById('export-csv-btn');
+    const importFileInput = document.getElementById('import-file-input');
+    const importBtn = document.getElementById('import-btn');
+    const dataLoadingStatus = document.getElementById('data-loading-status');
+    const dataLoadingMessage = document.getElementById('data-loading-message');
+    const tagListContainer = document.getElementById('tag-list-container');
+    const noTagsMessage = document.getElementById('no-tags-message');
+    const dropZone = document.getElementById('drop-zone');
+    const dropZoneText = document.getElementById('drop-zone-text');
+
+    // Modals
+    const dataModal = document.getElementById('data-modal');
+    const modalCloseBtn = dataModal.querySelector('.close-btn');
+    const modalSourceDisplay = document.getElementById('modal-source-display');
+    const modalFileSourceDisplay = document.getElementById('modal-file-source-display');
+    const modalUploadedByDisplay = document.getElementById('modal-uploaded-by-display');
+    const modalUploadedAppDisplay = document.getElementById('modal-uploaded-app-display');
+    const modalCreatedAt = document.getElementById('modal-created-at');
+    const modalLastUpdated = document.getElementById('modal-last-updated');
+    const modalLastUpdatedBy = document.getElementById('modal-last-updated-by');
+    const modalTagsInput = document.getElementById('modal-tags-input');
+    const modalTagsList = document.getElementById('modal-tags-list');
+    const modalCustomData = document.getElementById('modal-custom-data');
+    const modalEditBtn = document.getElementById('modal-edit-btn');
+    const modalSaveBtn = document.getElementById('modal-save-btn');
+    const modalDeleteBtn = document.getElementById('modal-delete-btn');
+    const modalReadOnlyMessage = document.getElementById('modal-read-only-message');
+    const conflictModal = document.getElementById('conflict-modal');
+    const overwriteBtn = document.getElementById('overwrite-btn');
+    const overwriteAllBtn = document.getElementById('overwrite-all-btn');
+    const skipBtn = document.getElementById('skip-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    const conflictDate = document.getElementById('conflict-date');
+    const conflictSource = document.getElementById('conflict-source'); 
+    const existingDataPreview = document.getElementById('existing-data-preview');
+    const incomingDataPreview = document.getElementById('incoming-data-preview');
+    const deleteSourceModal = document.getElementById('delete-source-modal');
+    const closeDeleteSourceModal = document.getElementById('close-delete-source-modal');
+    const deleteSourceName = document.getElementById('delete-source-name');
+    const confirmDeleteSourceBtn = document.getElementById('confirm-delete-source-btn');
+    const cancelDeleteSourceBtn = document.getElementById('cancel-delete-source-btn');
+    const deleteTagModal = document.getElementById('delete-tag-modal');
+    const closeDeleteTagModal = document.getElementById('close-delete-tag-modal');
+    const deleteTagName = document.getElementById('delete-tag-name');
+    const confirmDeleteTagBtn = document.getElementById('confirm-delete-tag-btn');
+    const cancelDeleteTagBtn = document.getElementById('cancel-delete-tag-btn');
+    
+    // Set current date and time for the manual entry form
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); // Adjust for timezone
+    manualDatetimeInput.value = now.toISOString().slice(0, 16);
+    
+    let chartData = {
+        labels: [],
+        datasets: [{
+            label: 'Data',
+            data: [],
+            borderColor: 'rgb(75, 192, 192)',
+            tension: 0.1,
+            fill: false,
+            pointBackgroundColor: 'rgb(75, 192, 192)',
+        }]
+    };
+    
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: false
+            }
+        },
+        scales: {
+            x: {
+                type: 'time',
+                time: {
+                    unit: 'day'
+                },
+                title: {
+                    display: true,
+                    text: 'Date'
+                },
+                grid: {
+                    display: false
+                }
+            },
+            y: {
+                title: {
+                    display: true,
+                    text: 'Value'
+                },
+                beginAtZero: true
+            }
+        },
+        onClick: (e, elements) => {
+            if (elements.length > 0) {
+                const index = elements[0].index;
+                const dataPoint = chartDataPoints[index];
+                if (dataPoint) {
+                    showDataModal(dataPoint);
+                }
+            }
+        }
+    };
+    
+    // --- Data Fetching and UI Rendering ---
+    
+    async function setupSourcesListener() {
+        dataLoadingStatus.classList.remove('hidden');
+        dataLoadingMessage.textContent = 'Loading collections...';
+        
+        const sourcesRef = collection(db, `users/${userId}/sources`);
+        onSnapshot(sourcesRef, (querySnapshot) => {
+            availableSources = [];
+            querySnapshot.forEach((doc) => {
+                availableSources.push({ id: doc.id, ...doc.data() });
+            });
+            
+            availableSources.sort((a, b) => a.id.localeCompare(b.id));
+
+            // Load all collection sources by default
+            selectedSources = availableSources.map(s => s.id);
+            updateAllData();
+            
+            updateSourcesCheckboxes(); // This will now show all sources as checked
+            updateUploadSourceSelect();
+            updateManualCollectionSelect();
+            
+            dataLoadingStatus.classList.add('hidden');
+        }, (error) => {
+            console.error("Error listening to sources:", error);
+            showMessage("Error loading collections. Please refresh the page.", 'error');
+            dataLoadingStatus.classList.add('hidden');
+        });
+    }
+
+    function updateSourcesCheckboxes() {
+        sourceCheckboxesDiv.innerHTML = '';
+        availableSources.forEach(source => {
+            const isChecked = selectedSources.includes(source.id);
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `source-${source.id}`;
+            checkbox.name = 'source';
+            checkbox.value = source.id;
+            checkbox.checked = isChecked;
+            checkbox.className = 'mr-2';
+
+            const label = document.createElement('label');
+            label.htmlFor = `source-${source.id}`;
+            label.textContent = source.id;
+            label.className = 'text-gray-700 font-medium cursor-pointer';
+
+            const div = document.createElement('div');
+            div.appendChild(checkbox);
+            div.appendChild(label);
+            sourceCheckboxesDiv.appendChild(div);
+
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) {
+                    if (!selectedSources.includes(source.id)) {
+                        selectedSources.push(source.id);
+                    }
+                } else {
+                    const index = selectedSources.indexOf(source.id);
+                    if (index > -1) {
+                        selectedSources.splice(index, 1);
+                    }
+                }
+                updateAllData();
+                updateDeleteSourceButton();
+            });
+        });
+        updateDeleteSourceButton();
+    }
+    
+    function updateDeleteSourceButton() {
+        const canDelete = selectedSources.length === 1 && selectedSources[0] !== 'manual';
+        if (canDelete) {
+            deleteSourceBtn.classList.remove('hidden');
+        } else {
+            deleteSourceBtn.classList.add('hidden');
+        }
+    }
+
+    function updateUploadSourceSelect() {
+        uploadSourceSelect.innerHTML = '';
+        const uploadableSources = availableSources.filter(s => s.id !== 'manual');
+        uploadableSources.forEach(source => {
+            const option = document.createElement('option');
+            option.value = source.id;
+            option.textContent = source.id;
+            uploadSourceSelect.appendChild(option);
+        });
+    }
+
+    function updateManualCollectionSelect() {
+        manualCollectionSelect.innerHTML = '';
+        let manualOptionExists = false;
+        
+        availableSources.forEach(source => {
+            if (source.id === 'manual') {
+                manualOptionExists = true;
+            }
+            const option = document.createElement('option');
+            option.value = source.id;
+            option.textContent = source.id;
+            manualCollectionSelect.appendChild(option);
+        });
+
+        if (!manualOptionExists) {
+            const option = document.createElement('option');
+            option.value = 'manual';
+            option.textContent = 'manual';
+            manualCollectionSelect.appendChild(option);
+        }
+    }
+
+    function updateAllData() {
+        if (!userId) return;
+    
+        const activeListeners = Object.keys(sourceListeners);
+    
+        // 1. Detach listeners for sources that are no longer selected
+        const sourcesToDetach = activeListeners.filter(sourceId => !selectedSources.includes(sourceId));
+        sourcesToDetach.forEach(sourceId => {
+            if (sourceListeners[sourceId]) {
+                sourceListeners[sourceId](); // Call the unsubscribe function
+                delete sourceListeners[sourceId];
+                delete currentDataCache[sourceId];
+            }
+        });
+    
+        // 2. Add listeners for newly selected sources
+        const sourcesToAttach = selectedSources.filter(sourceId => !activeListeners.includes(sourceId));
+        sourcesToAttach.forEach(sourceId => {
+            dataLoadingStatus.classList.remove('hidden');
+            dataLoadingMessage.textContent = `Loading data for '${sourceId}'...`;
+            const dataRef = collection(db, `users/${userId}/sources/${sourceId}/data`);
+            
+            sourceListeners[sourceId] = onSnapshot(dataRef, (querySnapshot) => {
+                const sourceData = [];
+                querySnapshot.forEach(doc => {
+                    const docData = doc.data();
+                    sourceData.push({ id: doc.id, ...docData, source: sourceId });
+                });
+                currentDataCache[sourceId] = sourceData;
+                updateUIWithNewData();
+                dataLoadingStatus.classList.add('hidden');
+    
+            }, (error) => {
+                console.error(`Error listening to source ${sourceId}:`, error);
+                showMessage(`Failed to load live data for ${sourceId}.`, 'error');
+                dataLoadingStatus.classList.add('hidden');
+            });
+        });
+    
+        // 3. If the only action was to detach sources, we must manually update the UI.
+        if (sourcesToDetach.length > 0 && sourcesToAttach.length === 0) {
+            updateUIWithNewData();
+        }
+    }
+
+    function updateUIWithNewData() {
+        renderDataTable();
+        updateKeySelect();
+        renderChart();
+        updateTagList();
+    }
+
+    function renderDataTable() {
+        const allDataPoints = Object.values(currentDataCache).flat();
+        
+        // Combined filtering logic
+        const filteredDataPoints = allDataPoints.filter(dp => {
+            // Tag filtering
+            const tagMatch = tagFilter.length === 0 || (dp.tags && tagFilter.every(tag => dp.tags.includes(tag)));
+            if (!tagMatch) return false;
+
+            // Global search filtering
+            if (globalSearchFilter.length === 0) return true;
+            const searchTerm = globalSearchFilter.toLowerCase();
+            return Object.values(dp).some(value => 
+                String(value).toLowerCase().includes(searchTerm)
+            );
+        });
+        
+        // Sorting logic remains the same
+        const sortedDataPoints = filteredDataPoints.sort((a, b) => {
+            const aValue = a[sortColumn] || '';
+            const bValue = b[sortColumn] || '';
+            const comparison = String(aValue).localeCompare(String(bValue), undefined, { numeric: true });
+            return sortDirection === 'asc' ? comparison : -comparison;
+        });
+
+        // Clear existing table content
+        dataTableHeader.innerHTML = '';
+        dataTableBody.innerHTML = '';
+
+        if (sortedDataPoints.length === 0) {
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = 100;
+            cell.className = 'py-4 text-center text-gray-500 italic';
+            cell.textContent = 'No data to display. Try adjusting your filters.';
+            row.appendChild(cell);
+            dataTableBody.appendChild(row);
+            return;
+        }
+
+        // Generate headers dynamically from all possible keys
+        const allKeys = new Set();
+        allDataPoints.forEach(dp => {
+            Object.keys(dp).forEach(key => allKeys.add(key));
+        });
+
+        // Define a preferred order for headers
+        const preferredOrder = ['date', 'source', 'attributeName', 'attributeValue'];
+        let headers = [...preferredOrder, ...Array.from(allKeys).filter(key => 
+            !preferredOrder.includes(key) && !['tags', 'createdAt', 'fileSource', 'uploadedBy', 'uploadedApp', 'id', 'datapointUpdatedTime', 'datapointUpdatedBy'].includes(key)
+        )];
+        headers.push('tags');
+
+        headers.forEach(headerText => {
+            const th = document.createElement('th');
+            // Use a map for more readable header renaming
+            const headerNames = {
+                attributeName: 'Attribute Name',
+                attributeValue: 'Attribute Value',
+                date: 'Date & Time',
+                source: 'Collection',
+                fileSource: 'Original File Name'
+            };
+            th.textContent = headerNames[headerText] || headerText.replace(/([A-Z])/g, ' $1').toUpperCase();
+            
+            th.className = 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer';
+            th.onclick = () => {
+                if (sortColumn === headerText) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortColumn = headerText;
+                    sortDirection = 'asc';
+                }
+                renderDataTable();
+            };
+            dataTableHeader.appendChild(th);
+        });
+
+        // Generate table rows
+        sortedDataPoints.forEach(dataPoint => {
+            const row = document.createElement('tr');
+            row.className = "hover:bg-gray-50";
+            row.onclick = () => showDataModal(dataPoint);
+            headers.forEach(header => {
+                const cell = document.createElement('td');
+                cell.className = 'px-6 py-4 whitespace-nowrap text-sm';
+                
+                if (header === 'tags' && dataPoint.tags && dataPoint.tags.length > 0) {
+                    const tagsDiv = document.createElement('div');
+                    tagsDiv.className = 'flex flex-wrap';
+                    dataPoint.tags.forEach(tag => {
+                        const tagSpan = document.createElement('span');
+                        tagSpan.className = 'tag';
+                        tagSpan.textContent = tag;
+                        tagsDiv.appendChild(tagSpan);
+                    });
+                    cell.appendChild(tagsDiv);
+                } else if (header === 'date') {
+                    const dateObj = new Date(dataPoint[header]);
+                    cell.textContent = !isNaN(dateObj) ? dateObj.toLocaleString() : dataPoint[header] || '-';
+                    cell.className += ' text-gray-700';
+                } else {
+                    cell.textContent = dataPoint[header] === undefined || dataPoint[header] === null ? '-' : dataPoint[header];
+                    cell.className += ' text-gray-800';
+                }
+                row.appendChild(cell);
+            });
+            dataTableBody.appendChild(row);
+        });
+    }
+
+    function updateKeySelect() {
+        const allDataPoints = Object.values(currentDataCache).flat();
+        const numericAttributeNames = new Set();
+
+        allDataPoints.forEach(dp => {
+            // Check if attributeValue is numeric and attributeName exists
+            if (dp.attributeName && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue)) && isFinite(dp.attributeValue)) {
+                numericAttributeNames.add(dp.attributeName);
+            }
+        });
+
+        keySelect.innerHTML = '';
+        correlationKey1.innerHTML = '';
+        correlationKey2.innerHTML = '';
+
+        if (numericAttributeNames.size === 0) {
+            const defaultOption = '<option value="">No numerical attributes found</option>';
+            keySelect.innerHTML = defaultOption;
+            correlationKey1.innerHTML = defaultOption;
+            correlationKey2.innerHTML = defaultOption;
+            currentChartKey = '';
+            renderChart(); // Render empty chart
+            return;
+        }
+
+        const sortedKeys = Array.from(numericAttributeNames).sort();
+        sortedKeys.forEach(key => {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = key;
+            keySelect.appendChild(option);
+            correlationKey1.appendChild(option.cloneNode(true));
+            correlationKey2.appendChild(option.cloneNode(true));
+        });
+        
+        // If a key was previously selected and still exists, keep it. Otherwise, select the first.
+        if (sortedKeys.includes(currentChartKey)) {
+             keySelect.value = currentChartKey;
+        } else {
+             currentChartKey = keySelect.value;
+        }
+
+        if (currentChartKey) {
+            renderChart();
+        }
+    }
+
+    function renderChart() {
+        if (chart) {
+            chart.destroy();
+        }
+        
+        const selectedAttributeName = currentChartKey;
+        const allDataPoints = Object.values(currentDataCache).flat();
+        
+        let filteredData = allDataPoints
+            .filter(dp => {
+                // Filter for the selected attributeName and ensure its value is numeric
+                return dp.attributeName === selectedAttributeName && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue));
+            })
+            .filter(dp => {
+                if (startDateFilter.value && new Date(dp.date) < new Date(startDateFilter.value)) return false;
+                if (endDateFilter.value && new Date(dp.date) > new Date(endDateFilter.value)) return false;
+                return true;
+            })
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        chartDataPoints = filteredData;
+        
+        const labels = filteredData.map(dp => dp.date);
+        const values = filteredData.map(dp => parseFloat(dp.attributeValue));
+        
+        const chartCanvas = document.getElementById('data-chart');
+        
+        chartData = {
+            labels: labels,
+            datasets: [{
+                label: selectedAttributeName,
+                data: values,
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.1,
+                fill: currentChartType === 'line',
+                pointBackgroundColor: 'rgb(75, 192, 192)',
+            }]
+        };
+        
+        if (currentChartType === 'bar') {
+            chartData.datasets[0].tension = 0;
+            chartData.datasets[0].fill = true;
+        } else if (currentChartType === 'scatter') {
+            chartData.datasets[0].showLine = false;
+            chartData.datasets[0].pointBackgroundColor = chartData.datasets[0].borderColor;
+        } else {
+            chartData.datasets[0].showLine = true;
+        }
+        
+        chart = new Chart(chartCanvas, {
+            type: currentChartType,
+            data: chartData,
+            options: chartOptions
+        });
+        
+        calculateStats(values);
+    }
+    
+    function calculateStats(data) {
+        if (data.length === 0) {
+            statsAvg.textContent = '-';
+            statsMedian.textContent = '-';
+            statsSum.textContent = '-';
+            return;
+        }
+        
+        const sum = data.reduce((a, b) => a + b, 0);
+        statsSum.textContent = sum.toFixed(2);
+        
+        const avg = sum / data.length;
+        statsAvg.textContent = avg.toFixed(2);
+        
+        const sortedData = [...data].sort((a, b) => a - b);
+        const mid = Math.floor(sortedData.length / 2);
+        const median = sortedData.length % 2 !== 0 ? sortedData[mid] : (sortedData[mid - 1] + sortedData[mid]) / 2;
+        statsMedian.textContent = median.toFixed(2);
+    }
+
+    function updateTagList() {
+        allTags.clear();
+        const allDataPoints = Object.values(currentDataCache).flat();
+        allDataPoints.forEach(dp => {
+            if (dp.tags && Array.isArray(dp.tags)) {
+                dp.tags.forEach(tag => allTags.add(tag));
+            }
+        });
+        
+        tagListContainer.innerHTML = '';
+        if (allTags.size === 0) {
+            noTagsMessage.classList.remove('hidden');
+        } else {
+            noTagsMessage.classList.add('hidden');
+            const tagList = Array.from(allTags).sort();
+            tagList.forEach(tag => {
+                const tagDiv = document.createElement('div');
+                tagDiv.className = 'tag bg-blue-100 text-blue-800 flex items-center';
+                tagDiv.innerHTML = `
+                    <span>${tag}</span>
+                    <span class="tag-remove ml-2 text-blue-600 hover:text-red-600 transition-colors duration-200" data-tag="${tag}">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </span>
+                `;
+                tagDiv.querySelector('.tag-remove').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showDeleteTagModal(tag);
+                });
+                tagListContainer.appendChild(tagDiv);
+            });
+        }
+    }
+    
+    async function deleteTag(tag) {
+        showMessage(`Deleting tag '${tag}'...`, 'info', 0);
+        const allDataPoints = Object.values(currentDataCache).flat();
+        const batch = writeBatch(db);
+        let docsUpdated = 0;
+
+        for (const dp of allDataPoints) {
+            if (dp.tags && dp.tags.includes(tag)) {
+                const newTags = dp.tags.filter(t => t !== tag);
+                const docRef = doc(db, `users/${userId}/sources/${dp.source}/data/${dp.id}`);
+                batch.update(docRef, { tags: newTags });
+                docsUpdated++;
+            }
+        }
+        
+        try {
+            if (docsUpdated > 0) {
+                await batch.commit();
+                showMessage(`Successfully removed tag '${tag}' from ${docsUpdated} documents.`, 'success');
+            } else {
+                showMessage(`Tag '${tag}' not found on any documents.`, 'info');
+            }
+        } catch (error) {
+            console.error("Error deleting tag:", error);
+            showMessage("Failed to delete tag. Please try again.", 'error');
+        } finally {
+            hideDeleteTagModal();
+        }
+    }
+
+
+    // --- Event Listeners and Modal Logic ---
+
+    keySelect.addEventListener('change', () => {
+        currentChartKey = keySelect.value;
+        renderChart();
+    });
+    
+    chartTypeSelect.addEventListener('change', () => {
+        currentChartType = chartTypeSelect.value;
+        renderChart();
+    });
+
+    startDateFilter.addEventListener('change', renderChart);
+    endDateFilter.addEventListener('change', renderChart);
+    
+    filter7DaysBtn.addEventListener('click', () => {
+        const today = new Date();
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 7);
+        startDateFilter.valueAsDate = sevenDaysAgo;
+        endDateFilter.valueAsDate = today;
+        renderChart();
+    });
+    
+    filter30DaysBtn.addEventListener('click', () => {
+        const today = new Date();
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(today.getDate() - 30);
+        startDateFilter.valueAsDate = thirtyDaysAgo;
+        endDateFilter.valueAsDate = today;
+        renderChart();
+    });
+    
+    clearFilterBtn.addEventListener('click', () => {
+        startDateFilter.value = '';
+        endDateFilter.value = '';
+        renderChart();
+    });
+    
+    correlateBtn.addEventListener('click', async () => {
+        const attrName1 = correlationKey1.value;
+        const attrName2 = correlationKey2.value;
+        
+        if (!attrName1 || !attrName2 || attrName1 === attrName2 || selectedSources.length !== 1) {
+            correlationResult.textContent = 'Please select two different attributes from a single collection.';
+            return;
+        }
+
+        const dataForCorr = currentDataCache[selectedSources[0]];
+        const dateMap = {};
+
+        // Group by day, collecting relevant attributes
+        dataForCorr.forEach(dp => {
+            if (dp.attributeName && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue))) {
+                const dateStr = new Date(dp.date).toISOString().split('T')[0];
+                if (!dateMap[dateStr]) {
+                    dateMap[dateStr] = {};
+                }
+                dateMap[dateStr][dp.attributeName] = parseFloat(dp.attributeValue);
+            }
+        });
+
+        // Create pairs of (x, y) for correlation calculation
+        const dataPoints = Object.values(dateMap)
+            .filter(dayData => dayData[attrName1] !== undefined && dayData[attrName2] !== undefined)
+            .map(dayData => ({ x: dayData[attrName1], y: dayData[attrName2] }));
+
+
+        if (dataPoints.length < 2) {
+            correlationResult.textContent = 'Not enough matching data points to calculate correlation.';
+            return;
+        }
+
+        const n = dataPoints.length;
+        const sumX = dataPoints.reduce((sum, dp) => sum + dp.x, 0);
+        const sumY = dataPoints.reduce((sum, dp) => sum + dp.y, 0);
+        const sumXY = dataPoints.reduce((sum, dp) => sum + dp.x * dp.y, 0);
+        const sumX2 = dataPoints.reduce((sum, dp) => sum + dp.x * dp.x, 0);
+        const sumY2 = dataPoints.reduce((sum, dp) => sum + dp.y * dp.y, 0);
+        
+        const numerator = n * sumXY - sumX * sumY;
+        const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+
+        if (denominator === 0) {
+            correlationResult.textContent = 'No variation in data to calculate correlation.';
+            return;
+        }
+        
+        const r = numerator / denominator;
+        correlationResult.textContent = `Pearson Correlation (r): ${r.toFixed(4)}`;
+    });
+    
+    searchInput.addEventListener('input', () => {
+        globalSearchFilter = searchInput.value;
+        renderDataTable();
+    });
+
+    tagSearchInput.addEventListener('input', () => {
+        tagFilter = tagSearchInput.value.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag !== '');
+        renderDataTable();
+    });
+
+    manualAddBtn.addEventListener('click', async () => {
+        if (!userId) {
+            showMessage("Please sign in to add data.", 'error');
+            return;
+        }
+        const sourceId = manualCollectionSelect.value;
+        const datetime = manualDatetimeInput.value;
+        const attributeName = manualAttributeNameInput.value.trim().toLowerCase();
+        const attributeValue = manualAttributeValueInput.value.trim();
+        const tags = manualTagsInput.value.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag !== '');
+
+        if (!sourceId || !datetime || !attributeName || !attributeValue) {
+            showMessage("Collection, Date and Time, Attribute Name, and Attribute Value are required.", 'error');
+            return;
+        }
+        
+        const docId = createHash(JSON.stringify({ date: datetime, attributeName, attributeValue }));
+        const docRef = doc(db, `users/${userId}/sources/${sourceId}/data/${docId}`);
+
+        try {
+            const manualSourceExists = availableSources.some(s => s.id === 'manual');
+            if (sourceId === 'manual' && !manualSourceExists) {
+                const sourceRef = doc(db, `users/${userId}/sources`, 'manual');
+                await setDoc(sourceRef, { name: 'Manual', createdAt: serverTimestamp() }, { merge: true });
+            }
+
+            await setDoc(docRef, {
+                date: datetime,
+                attributeName: attributeName,
+                attributeValue: attributeValue,
+                tags: tags,
+                createdAt: serverTimestamp(),
+                fileSource: 'Entered manually.',
+                uploadedBy: auth.currentUser.email || 'Anonymous',
+                uploadedApp: 'Analyser App',
+                datapointUpdatedBy: auth.currentUser.uid,
+                datapointUpdatedTime: serverTimestamp()
+            });
+            
+            showMessage(`Data point for '${attributeName}' added successfully!`);
+
+            // Clear inputs
+            manualAttributeNameInput.value = '';
+            manualAttributeValueInput.value = '';
+            manualTagsInput.value = '';
+            // Reset datetime to current for next entry
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            manualDatetimeInput.value = now.toISOString().slice(0, 16);
+        } catch (error) {
+            console.error("Error adding document: ", error);
+            showMessage(`Error adding data: ${error.message}`, 'error');
+        }
+    });
+
+    addSourceBtn.addEventListener('click', async () => {
+        const sourceName = newSourceNameInput.value.trim();
+        if (!sourceName) {
+            showMessage("Please enter a name for the new collection.", 'error');
+            return;
+        }
+        
+        const sourceId = sourceName.toLowerCase().replace(/\s/g, '-');
+        const sourceRef = doc(db, `users/${userId}/sources`, sourceId);
+        
+        try {
+            const docSnap = await getDoc(sourceRef);
+            if (docSnap.exists()) {
+                showMessage(`A collection with the name '${sourceName}' already exists.`, 'error');
+                return;
+            }
+            
+            // MODIFIED: Add new metadata on collection creation
+            await setDoc(sourceRef, {
+                collectionCreatedName: sourceName,
+                collectionCreatedTime: serverTimestamp(),
+                collectionCreatedUserID: auth.currentUser.uid,
+                collectionCreatedApp: "Analyser App",
+            });
+            showMessage(`New collection '${sourceName}' created successfully!`);
+            newSourceNameInput.value = '';
+        } catch (error) {
+            console.error("Error creating new source:", error);
+            showMessage(`Error creating new collection: ${error.message}`, 'error');
+        }
+    });
+    
+    deleteSourceBtn.addEventListener('click', () => {
+        if (selectedSources.length === 1) {
+            const sourceIdToDelete = selectedSources[0];
+            const sourceName = availableSources.find(s => s.id === sourceIdToDelete)?.collectionCreatedName || sourceIdToDelete;
+            deleteSourceName.textContent = sourceName;
+            showDeleteSourceModal();
+        }
+    });
+    
+    confirmDeleteSourceBtn.addEventListener('click', async () => {
+        if (!userId || selectedSources.length !== 1 || selectedSources[0] === 'manual') return;
+
+        const sourceIdToDelete = selectedSources[0];
+        
+        showMessage(`Deleting collection '${sourceIdToDelete}' and all its data...`, 'info', 0);
+        
+        const batch = writeBatch(db);
+        const dataRef = collection(db, `users/${userId}/sources/${sourceIdToDelete}/data`);
+        
+        try {
+            const querySnapshot = await getDocs(dataRef);
+            querySnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            
+            const sourceDocRef = doc(db, `users/${userId}/sources/${sourceIdToDelete}`);
+            batch.delete(sourceDocRef);
+            
+            await batch.commit();
+            showMessage(`Collection '${sourceIdToDelete}' and all associated data deleted.`, 'success');
+        } catch (error) {
+            console.error("Error deleting source:", error);
+            showMessage(`Error deleting collection: ${error.message}`, 'error');
+        } finally {
+            hideDeleteSourceModal();
+        }
+    });
+
+    closeDeleteSourceModal.addEventListener('click', hideDeleteSourceModal);
+    cancelDeleteSourceBtn.addEventListener('click', hideDeleteSourceModal);
+    
+    function showDeleteSourceModal() {
+        deleteSourceModal.style.display = 'flex';
+    }
+    
+    function hideDeleteSourceModal() {
+        deleteSourceModal.style.display = 'none';
+    }
+    
+    function showDeleteTagModal(tag) {
+        deleteTagName.textContent = tag;
+        deleteTagModal.style.display = 'flex';
+    }
+    
+    function hideDeleteTagModal() {
+        deleteTagModal.style.display = 'none';
+    }
+
+    closeDeleteTagModal.addEventListener('click', hideDeleteTagModal);
+    cancelDeleteTagBtn.addEventListener('click', hideDeleteTagModal);
+    confirmDeleteTagBtn.addEventListener('click', () => {
+        const tag = deleteTagName.textContent;
+        deleteTag(tag);
+    });
+
+    // --- Drag and Drop Logic ---
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drop-zone-highlight');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('drop-zone-highlight');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drop-zone-highlight');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            updateDropZoneText();
+        }
+    });
+
+    fileInput.addEventListener('change', updateDropZoneText);
+
+    function updateDropZoneText() {
+        if (fileInput.files.length > 0) {
+            dropZoneText.textContent = `File selected: ${fileInput.files[0].name}`;
+        } else {
+            dropZoneText.textContent = 'Click to select a file or drag and drop it here.';
+        }
+    }
+
+
+    uploadBtn.addEventListener('click', async () => {
+        if (!userId) {
+            showMessage("Please sign in to upload data.", 'error');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const sourceId = uploadSourceSelect.value;
+        
+        if (!file || !sourceId) {
+            showMessage("Please select a file and a destination source.", 'error');
+            return;
+        }
+        
+        showMessage(`Uploading data to '${sourceId}'...`, 'info', 0);
+        
+        const fileType = file.name.split('.').pop().toLowerCase();
+
+        try {
+            const fileContent = await readFileContent(file);
+            let parsedData;
+            if (fileType === 'csv') {
+                parsedData = Papa.parse(fileContent, { header: true, skipEmptyLines: true }).data;
+            } else if (fileType === 'json') {
+                parsedData = JSON.parse(fileContent);
+            } else {
+                showMessage("Unsupported file type. Please upload a CSV or JSON file.", 'error');
+                return;
+            }
+            
+            if (!Array.isArray(parsedData) || parsedData.length === 0) {
+                showMessage("The file is empty or improperly formatted.", 'error');
+                return;
+            }
+            
+            let uploadCount = 0;
+            
+            const batch = writeBatch(db);
+            const dataCollectionRef = collection(db, `users/${userId}/sources/${sourceId}/data`);
+            
+            for (const dataPoint of parsedData) {
+                const date = dataPoint.date;
+                if (!date) {
+                    console.warn("Skipping data point with no 'date' field:", dataPoint);
+                    continue;
+                }
+                
+                const id = createHash(JSON.stringify(dataPoint));
+                const docRef = doc(dataCollectionRef, id);
+
+                const tags = dataPoint.tags ? String(dataPoint.tags).split(',').map(t => t.trim().toLowerCase()) : [];
+                
+                const docData = {
+                    ...dataPoint,
+                    tags: tags,
+                    createdAt: serverTimestamp(),
+                    fileSource: file.name,
+                    uploadedBy: auth.currentUser.email || 'Anonymous',
+                    uploadedApp: 'Analyser App',
+                    datapointUpdatedBy: auth.currentUser.uid,
+                    datapointUpdatedTime: serverTimestamp()
+                };
+                
+                batch.set(docRef, docData, { merge: true });
+                uploadCount++;
+            }
+
+            await batch.commit();
+            showMessage(`Successfully uploaded ${uploadCount} data points to '${sourceId}'.`, 'success');
+        } catch (error) {
+            console.error("Error processing or uploading file:", error);
+            showMessage(`Error uploading file: ${error.message}`, 'error');
+        } finally {
+            fileInput.value = '';
+            updateDropZoneText();
+        }
+    });
+
+    async function readFileContent(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsText(file);
+        });
+    }
+
+    function createHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash |= 0; // Convert to 32bit integer
+        }
+        return Math.abs(hash).toString(16);
+    }
+
+    async function fetchAllDataForExport() {
+        if (!userId) {
+            showMessage("Please sign in to export data.", 'error');
+            return null;
+        }
+        
+        showMessage("Preparing your data for export...", 'info', 0);
+        
+        const allSources = await getDocs(collection(db, `users/${userId}/sources`));
+        const exportData = {};
+
+        for (const sourceDoc of allSources.docs) {
+            const sourceId = sourceDoc.id;
+            const dataRef = collection(db, `users/${userId}/sources/${sourceId}/data`);
+            const dataDocs = await getDocs(dataRef);
+            exportData[sourceId] = dataDocs.docs.map(doc => {
+                const docData = doc.data();
+                const cleanData = { ...docData, source: sourceId };
+                if (cleanData.createdAt && cleanData.createdAt.toDate) {
+                    cleanData.createdAt = cleanData.createdAt.toDate().toISOString();
+                }
+                return cleanData;
+            });
+        }
+        return exportData;
+    }
+    
+    exportJsonBtn.addEventListener('click', async () => {
+        const exportData = await fetchAllDataForExport();
+        if (!exportData) return;
+
+        const dataStr = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sammy-export-${new Date().toISOString()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showMessage("Data exported successfully as JSON!");
+    });
+
+    exportCsvBtn.addEventListener('click', async () => {
+        const exportData = await fetchAllDataForExport();
+        if (!exportData) return;
+
+        const allDataPoints = Object.values(exportData).flat();
+
+        if (allDataPoints.length === 0) {
+            showMessage("No data available to export.", "info");
+            return;
+        }
+
+        const headers = new Set();
+        allDataPoints.forEach(dp => {
+            Object.keys(dp).forEach(key => headers.add(key));
+        });
+        const headerArray = Array.from(headers);
+
+        let csvContent = headerArray.join(',') + '\n';
+
+        allDataPoints.forEach(dp => {
+            const row = headerArray.map(header => {
+                let value = dp[header];
+                if (value === null || value === undefined) {
+                    return '';
+                }
+                if (Array.isArray(value)) {
+                    value = value.join(';');
+                }
+                let stringValue = String(value);
+                if (stringValue.includes(',') || stringValue.includes('\n')) {
+                    stringValue = `"${stringValue.replace(/"/g, '""')}"`;
+                }
+                return stringValue;
+            }).join(',');
+            csvContent += row + '\n';
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sammy-export-${new Date().toISOString()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showMessage("Data exported successfully as CSV!");
+    });
+    
+    importBtn.addEventListener('click', () => {
+        if (!userId) {
+            showMessage("Please sign in to import data.", 'error');
+            return;
+        }
+        importFileInput.click();
+    });
+    
+    importFileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) {
+            return;
+        }
+        
+        if (!file.name.toLowerCase().endsWith('.json')) {
+            showMessage("Please select a JSON file to import.", 'error');
+            return;
+        }
+        
+        showMessage("Importing data...", 'info', 0);
+        
+        try {
+            const fileContent = await readFileContent(file);
+            const importedData = JSON.parse(fileContent);
+
+            const batch = writeBatch(db);
+            let totalDocs = 0;
+
+            for (const sourceId in importedData) {
+                const sourceRef = doc(db, `users/${userId}/sources`, sourceId);
+                batch.set(sourceRef, { name: sourceId, createdAt: serverTimestamp() }, { merge: true });
+
+                const dataCollectionRef = collection(db, `users/${userId}/sources/${sourceId}/data`);
+                for (const dataPoint of importedData[sourceId]) {
+                    const docId = createHash(JSON.stringify(dataPoint));
+                    const docRef = doc(dataCollectionRef, docId);
+                    const dataToSet = { ...dataPoint };
+                    batch.set(docRef, dataToSet, { merge: true });
+                    totalDocs++;
+                }
+            }
+
+            await batch.commit();
+            showMessage(`Successfully imported ${totalDocs} documents from the file.`, 'success');
+            importFileInput.value = '';
+        } catch (error) {
+            console.error("Error importing file:", error);
+            showMessage(`Error importing file: ${error.message}`, 'error');
+        }
+    });
+
+    // --- Data Modal Logic ---
+    let currentModalDataPoint;
+
+    function showDataModal(dataPoint) {
+        currentModalDataPoint = dataPoint;
+        modalSourceDisplay.textContent = dataPoint.source || '-';
+        modalFileSourceDisplay.textContent = dataPoint.fileSource || '-';
+        modalUploadedByDisplay.textContent = dataPoint.uploadedBy || '-';
+        modalUploadedAppDisplay.textContent = dataPoint.uploadedApp || '-';
+        modalCreatedAt.textContent = dataPoint.createdAt?.toDate?.()?.toLocaleString() || '-';
+        modalLastUpdated.textContent = dataPoint.datapointUpdatedTime?.toDate?.()?.toLocaleString() || '-';
+        modalLastUpdatedBy.textContent = dataPoint.datapointUpdatedBy || '-';
+        
+        // Tags
+        modalTagsList.innerHTML = '';
+        if (dataPoint.tags && Array.isArray(dataPoint.tags)) {
+            dataPoint.tags.forEach(tag => {
+                const tagSpan = document.createElement('span');
+                tagSpan.className = 'tag bg-gray-200 text-gray-800';
+                tagSpan.textContent = tag;
+                modalTagsList.appendChild(tagSpan);
+            });
+        }
+        
+        // Custom Data
+        modalCustomData.innerHTML = '<h3 class="text-lg font-semibold mb-2">Attributes</h3>';
+        for (const key in dataPoint) {
+            if (!['source', 'fileSource', 'uploadedBy', 'uploadedApp', 'createdAt', 'tags', 'id', 'datapointUpdatedBy', 'datapointUpdatedTime'].includes(key)) {
+                const div = document.createElement('div');
+                div.className = 'flex items-center mb-2';
+                const label = document.createElement('label');
+                label.textContent = `${key === 'attributeName' ? 'Attribute Name' : key === 'attributeValue' ? 'Attribute Value' : key}:`;
+                label.className = 'font-semibold text-gray-700 w-2/5';
+                
+                const valueInput = document.createElement('input');
+                valueInput.type = (key === 'date') ? 'datetime-local' : 'text';
+                valueInput.value = dataPoint[key];
+                valueInput.dataset.key = key;
+                valueInput.className = 'bg-gray-100 rounded-lg p-2 text-sm w-3/5 focus:outline-none focus:ring-2 focus:ring-blue-500';
+                
+                div.appendChild(label);
+                div.appendChild(valueInput);
+                modalCustomData.appendChild(div);
+            }
+        }
+        
+        // Set initial modal state to read-only
+        modalReadOnlyMessage.classList.remove('hidden');
+        modalEditBtn.classList.remove('hidden');
+        modalSaveBtn.classList.add('hidden');
+        modalDeleteBtn.classList.add('hidden');
+        modalTagsInput.disabled = true;
+        const customInputs = modalCustomData.querySelectorAll('input');
+        customInputs.forEach(input => {
+            input.disabled = true;
+        });
+
+        dataModal.style.display = 'flex';
+    }
+
+    modalEditBtn.addEventListener('click', () => {
+        console.log(`User ${userId} entered edit mode for data point ${currentModalDataPoint.id}`);
+        modalReadOnlyMessage.classList.add('hidden');
+        modalEditBtn.classList.add('hidden');
+        modalSaveBtn.classList.remove('hidden');
+        modalDeleteBtn.classList.remove('hidden');
+        modalTagsInput.disabled = false;
+        const customInputs = modalCustomData.querySelectorAll('input');
+        customInputs.forEach(input => {
+            input.disabled = false;
+        });
+    });
+
+    modalCloseBtn.addEventListener('click', () => {
+        dataModal.style.display = 'none';
+        currentModalDataPoint = null;
+    });
+
+    modalSaveBtn.addEventListener('click', async () => {
+        if (!currentModalDataPoint) return;
+
+        const updatedData = {
+            datapointUpdatedBy: auth.currentUser.uid,
+            datapointUpdatedTime: serverTimestamp()
+        };
+        const inputs = modalCustomData.querySelectorAll('input');
+        inputs.forEach(input => {
+            updatedData[input.dataset.key] = input.value.trim();
+        });
+
+        const newTagsValue = modalTagsInput.value.trim();
+        const newTags = newTagsValue ? newTagsValue.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag !== '') : [];
+        
+        try {
+            const docRef = doc(db, `users/${userId}/sources/${currentModalDataPoint.source}/data/${currentModalDataPoint.id}`);
+            await setDoc(docRef, {
+                ...updatedData,
+                tags: newTags
+            }, { merge: true });
+            
+            showMessage("Data point successfully updated.");
+            dataModal.style.display = 'none';
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage(`Error updating data: ${error.message}`, 'error');
+        }
+    });
+
+    modalDeleteBtn.addEventListener('click', async () => {
+        if (!currentModalDataPoint) return;
+
+        // In a real app, you would replace this with a custom modal confirmation.
+        if (window.confirm("Are you sure you want to delete this data point? This action cannot be undone.")) {
+            try {
+                const docRef = doc(db, `users/${userId}/sources/${currentModalDataPoint.source}/data/${currentModalDataPoint.id}`);
+                await deleteDoc(docRef);
+
+                showMessage("Data point successfully deleted.");
+                dataModal.style.display = 'none';
+            } catch (error) {
+                console.error("Error deleting document: ", error);
+                showMessage(`Error deleting data: ${error.message}`, 'error');
+            }
+        }
+    });
+    
+    // Initializer
+    initFirebase();
+</script>
+
+</body>
+</html>
