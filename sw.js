@@ -1,4 +1,4 @@
-const CACHE_NAME = 'logger-worker-v2.9.0-dev';
+const CACHE_NAME = 'logger-worker-v2.9.1-dev';
 // No files are cached in development to ensure the latest version is always served.
 const urlsToCache = [];
 
