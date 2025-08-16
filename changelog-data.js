@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v6.2.0-alpha",
+        date: "2025-08-16",
+        changes: [
+            "The correlate data section now has a button to click on to open so it is less prominent and more reflective of user usage. Charts now display every day for the selected Data Collection and Data Attributes, including those with no data points. Users can delete tags added to individual data points within the modal display.",
+        ]
+    },
+    {
         version: "v6.1.0-alpha",
         date: "2025-08-16",
         changes: [
