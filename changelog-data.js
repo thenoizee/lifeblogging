@@ -1,0 +1,84 @@
+// /changelog-data.js
+
+export const changelogData = [
+    {
+        version: "v6.0.0-alpha",
+        date: "2025-08-16",
+        changes: [
+            "Updated import data function to define key attributes (for analysis). Users can now select the key attribute name and values to be duplicated as new fields. The original data is not modified.",
+        ]
+    },
+    {
+        version: "v5.2.0",
+        date: "2025-08-16",
+        changes: [
+            "Updated import data function to define key attributes (for analysis). Users can now select the key attribute name and values to be duplicated as new fields. The original data is not modified.",
+        ]
+    },
+    {
+        version: "v5.1.0",
+        date: "2025-08-16",
+        changes: [
+            "Linked latest log tool (imported_log) to the Hub and removed existing deprecated version.",
+        ]
+    },
+    {
+        version: "v5.0.0",
+        date: "2025-08-16",
+        changes: [
+            "Merged thenoizee/log at v2.10.1-dev into this repository project into imported_log.",
+        ]
+    },
+    {
+        version: "v4.0.1",
+        date: "2025-08-16",
+        changes: [
+            "Updated link back to Hub on changelog with cleaner root page.",
+        ]
+    },
+    {
+        version: "v4.0.0",
+        date: "2025-08-16",
+        changes: [
+            "Updated project file structure for cleaner URLs in preparation for full log tool merge.",
+            "Updated name and title of app.",
+            
+        ]
+    },
+    {
+        version: "v3.3.0",
+        date: "2025-08-16",
+        changes: [
+            "Added this changelog page to track updates.",
+            "Linked the changelog from the main hub page.",
+            
+        ]
+    },
+    {
+        version: "xyz",
+        date: "2025-08-16",
+        changes: [
+            
+            "Fixed multiple dark mode styling issues in the Analyser.",
+            "Corrected tag styling to be consistent across the app.",
+        ]
+    },
+    {
+        version: "v1.1.0",
+        date: "2025-08-15",
+        changes: [
+            "Implemented dark mode across the Hub and Analyser pages.",
+            "Theme preference is now saved per user account.",
+            "Added account management features (change password/email).",
+        ]
+    },
+    {
+        version: "v1.0.0",
+        date: "2025-08-14",
+        changes: [
+            "Initial release of the Lifeblogging Hub.",
+            "Includes the Analyser and Logger tools.",
+            "Firebase authentication and data storage implemented.",
+        ]
+    }
+];
