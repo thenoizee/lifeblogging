@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v6.2.1-alpha",
+        date: "2025-08-16",
+        changes: [
+            "Updated icon of the Log PWA.",
+        ]
+    },
+    {
         version: "v6.2.0-alpha",
         date: "2025-08-16",
         changes: [
