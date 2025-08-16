@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v6.0.1-alpha",
+        date: "2025-08-16",
+        changes: [
+            "Replaced the Go to Logger button with a return to Hub button on the App. Each box now has a container outline, identical to the one around Manage Collections.",
+        ]
+    },
+    {
         version: "v6.0.0-alpha",
         date: "2025-08-16",
         changes: [
