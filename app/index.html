@@ -258,6 +258,7 @@
         <h1 class="text-4xl font-bold">Sammy's Lifeblogging & Quantifying Analyser App</h1>
         <a href="/" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
         <div class="flex items-center gap-4">
+            <span id="version-display" class="text-sm font-semibold text-gray-500 dark:text-gray-400"></span>
             <button id="theme-toggle" class="theme-switcher" title="Toggle dark mode" disabled>
                 <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                 <svg class="theme-icon moon-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
@@ -637,6 +638,7 @@
     </div>
 </div>
 <script type="module">
+    import { changelogData } from '/changelog-data.js';
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, signInAnonymously, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, deleteDoc, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -670,12 +672,14 @@
     let sourceListeners = {}; // To manage live listeners
     let selectedDataPointIds = new Set();
     let originalDataHeaders = [];
+    let lastSelectedIndex = -1;
     
     // Theme-related global variables
     const themeToggle = document.getElementById('theme-toggle');
     const body = document.body;
     let themeDocRef = null;
     let themeUnsubscribe = null;
+    const versionDisplay = document.getElementById('version-display');
 
 
     // Helper function to show a temporary message box
@@ -740,6 +744,11 @@
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
+            
+            // Set version display on load
+            if (changelogData && changelogData.length > 0) {
+                 versionDisplay.textContent = changelogData[0].version;
+            }
 
             onAuthStateChanged(auth, (user) => {
                 if (user) {
@@ -1257,7 +1266,7 @@
 
         const preferredOrder = ['date', 'source', 'attributeName', 'attributeValue'];
         let headers = [...preferredOrder, ...Array.from(allKeys).filter(key => 
-            !preferredOrder.includes(key) && !['tags', 'createdAt', 'fileSource', 'uploadedBy', 'uploadedApp', 'id', 'datapointUpdatedTime', 'datapointUpdatedBy'].includes(key)
+            !preferredOrder.includes(key) && !['tags', 'createdAt', 'fileSource', 'uploadedBy', 'uploadedApp', 'id', 'datapointUpdatedTime', 'datapointUpdatedBy', 'collectionName'].includes(key)
         )];
         headers.push('tags');
 
@@ -1275,6 +1284,7 @@
             } else {
                 allVisibleIds.forEach(id => selectedDataPointIds.delete(id));
             }
+            lastSelectedIndex = isChecked ? sortedDataPoints.length -1 : -1;
             renderDataTable();
         });
         thCheckbox.appendChild(selectAllCheckbox);
@@ -1304,7 +1314,7 @@
             dataTableHeader.appendChild(th);
         });
 
-        sortedDataPoints.forEach(dataPoint => {
+        sortedDataPoints.forEach((dataPoint, index) => {
             const row = document.createElement('tr');
             
             const tdCheckbox = document.createElement('td');
@@ -1313,14 +1323,26 @@
             checkbox.type = 'checkbox';
             checkbox.value = dataPoint.id;
             checkbox.checked = selectedDataPointIds.has(dataPoint.id);
+            checkbox.dataset.index = index;
             checkbox.className = 'h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded';
-            checkbox.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    selectedDataPointIds.add(dataPoint.id);
+            checkbox.addEventListener('click', (e) => {
+                const clickedIndex = parseInt(e.target.dataset.index);
+                if (e.shiftKey && lastSelectedIndex !== -1) {
+                    const start = Math.min(clickedIndex, lastSelectedIndex);
+                    const end = Math.max(clickedIndex, lastSelectedIndex);
+                    for (let i = start; i <= end; i++) {
+                        const idToSelect = sortedDataPoints[i].id;
+                        selectedDataPointIds.add(idToSelect);
+                    }
                 } else {
-                    selectedDataPointIds.delete(dataPoint.id);
+                    if (e.target.checked) {
+                        selectedDataPointIds.add(dataPoint.id);
+                    } else {
+                        selectedDataPointIds.delete(dataPoint.id);
+                    }
                 }
-                updateBulkActionsVisibility();
+                lastSelectedIndex = clickedIndex;
+                renderDataTable();
             });
             tdCheckbox.appendChild(checkbox);
             row.appendChild(tdCheckbox);

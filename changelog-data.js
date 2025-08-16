@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v6.1.0-alpha",
+        date: "2025-08-16",
+        changes: [
+            "Added bulk edit mode shift-select for to select multiple data points at once. Updated table source display/collection name for data added via Log through offline-sync. Added version number display to top right in line with other apps.",
+        ]
+    },
+    {
         version: "v6.0.1-alpha",
         date: "2025-08-16",
         changes: [
