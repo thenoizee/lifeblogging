@@ -336,6 +336,24 @@
                 </div>
             </div>
         </div>
+        <div id="column-mapping-container" class="mt-4 p-4 border-2 border-gray-200 dark:border-gray-600 rounded-lg hidden">
+            <h3 class="text-lg font-semibold mb-2">Define Data Structure</h3>
+            <p class="mb-4">Map your file's columns to the app's main fields.</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label for="date-column-select" class="block font-semibold mb-2">Date Column</label>
+                    <select id="date-column-select" class="w-full rounded-lg p-2"></select>
+                </div>
+                <div>
+                    <label for="attribute-name-column-select" class="block font-semibold mb-2">Select the main Attribute Name Column</label>
+                    <select id="attribute-name-column-select" class="w-full rounded-lg p-2"></select>
+                </div>
+                <div>
+                    <label for="attribute-value-column-select" class="block font-semibold mb-2">Select the main Attribute Value Column</label>
+                    <select id="attribute-value-column-select" class="w-full rounded-lg p-2"></select>
+                </div>
+            </div>
+        </div>
         <div class="mt-4">
             <button id="upload-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg">Import Data</button>
         </div>
@@ -634,6 +652,7 @@
     let globalSearchFilter = '';
     let sourceListeners = {}; // To manage live listeners
     let selectedDataPointIds = new Set();
+    let originalDataHeaders = [];
     
     // Theme-related global variables
     const themeToggle = document.getElementById('theme-toggle');
@@ -897,6 +916,10 @@
     const noTagsMessage = document.getElementById('no-tags-message');
     const dropZone = document.getElementById('drop-zone');
     const dropZoneText = document.getElementById('drop-zone-text');
+    const columnMappingContainer = document.getElementById('column-mapping-container');
+    const dateColumnSelect = document.getElementById('date-column-select');
+    const attributeNameColumnSelect = document.getElementById('attribute-name-column-select');
+    const attributeValueColumnSelect = document.getElementById('attribute-value-column-select');
 
     // Modals
     const dataModal = document.getElementById('data-modal');
@@ -1783,20 +1806,66 @@
         dropZone.classList.remove('border-blue-500');
         if (e.dataTransfer.files.length) {
             fileInput.files = e.dataTransfer.files;
-            updateDropZoneText();
+            handleFileSelect();
         }
     });
 
-    fileInput.addEventListener('change', updateDropZoneText);
+    fileInput.addEventListener('change', handleFileSelect);
 
     function updateDropZoneText() {
         if (fileInput.files.length > 0) {
             dropZoneText.textContent = `File selected: ${fileInput.files[0].name}`;
         } else {
             dropZoneText.textContent = 'Click to select a file or drag and drop it here.';
+            columnMappingContainer.classList.add('hidden');
         }
     }
 
+    async function handleFileSelect() {
+        updateDropZoneText();
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        try {
+            const content = await readFileContent(file);
+            const fileType = file.name.split('.').pop().toLowerCase();
+            let data;
+
+            if (fileType === 'csv') {
+                data = Papa.parse(content, { header: true, skipEmptyLines: true, preview: 1 }).data;
+            } else if (fileType === 'json') {
+                const parsedJson = JSON.parse(content);
+                data = Array.isArray(parsedJson) ? parsedJson.slice(0, 1) : [parsedJson];
+            } else {
+                showMessage("Unsupported file type. Please use CSV or JSON.", 'error');
+                return;
+            }
+
+            if (data.length > 0) {
+                const headers = Object.keys(data[0]);
+                populateColumnSelects(headers);
+                columnMappingContainer.classList.remove('hidden');
+            }
+        } catch (error) {
+            showMessage("Could not read file headers. Is the file formatted correctly?", 'error');
+            console.error("Error reading file for header preview:", error);
+        }
+    }
+    
+    function populateColumnSelects(headers) {
+        dateColumnSelect.innerHTML = '';
+        attributeNameColumnSelect.innerHTML = '';
+        attributeValueColumnSelect.innerHTML = '';
+
+        headers.forEach(header => {
+            const option = document.createElement('option');
+            option.value = header;
+            option.textContent = header;
+            dateColumnSelect.appendChild(option.cloneNode(true));
+            attributeNameColumnSelect.appendChild(option.cloneNode(true));
+            attributeValueColumnSelect.appendChild(option.cloneNode(true));
+        });
+    }
 
     uploadBtn.addEventListener('click', async () => {
         if (!userId) {
@@ -1809,6 +1878,15 @@
         
         if (!file || !sourceId) {
             showMessage("Please select a file and a destination source.", 'error');
+            return;
+        }
+
+        const dateCol = dateColumnSelect.value;
+        const nameCol = attributeNameColumnSelect.value;
+        const valueCol = attributeValueColumnSelect.value;
+
+        if (!dateCol || !nameCol || !valueCol) {
+            showMessage("Please map the date, attribute name, and attribute value columns.", "error");
             return;
         }
         
@@ -1833,18 +1911,24 @@
                 return;
             }
             
+            originalDataHeaders = Object.keys(parsedData[0]);
             let uploadCount = 0;
-            
             const batch = writeBatch(db);
             const dataCollectionRef = collection(db, `users/${userId}/sources/${sourceId}/data`);
             
-            for (const dataPoint of parsedData) {
-                const date = dataPoint.date;
-                if (!date) {
-                    console.warn("Skipping data point with no 'date' field:", dataPoint);
+            for (const originalRow of parsedData) {
+                const dateValue = originalRow[dateCol];
+                if (!dateValue) {
+                    console.warn("Skipping data point with no date field:", originalRow);
                     continue;
                 }
                 
+                const dataPoint = { ...originalRow }; // Preserve original data
+                dataPoint.date = dateValue; // Standardize date field
+                dataPoint.attributeName = originalRow[nameCol];
+                dataPoint.attributeValue = originalRow[valueCol];
+                dataPoint.originalDataHeaders = originalDataHeaders;
+
                 const id = createHash(JSON.stringify(dataPoint));
                 const docRef = doc(dataCollectionRef, id);
 
@@ -2047,6 +2131,7 @@
 
     function showDataModal(dataPoint) {
         currentModalDataPoint = dataPoint;
+        const headers = dataPoint.originalDataHeaders || [];
         modalSourceDisplay.textContent = dataPoint.source || '-';
         modalFileSourceDisplay.textContent = dataPoint.fileSource || '-';
         modalUploadedByDisplay.textContent = dataPoint.uploadedBy || '-';
@@ -2067,11 +2152,12 @@
         
         modalCustomData.innerHTML = '<h3 class="text-lg font-semibold mb-2">Attributes</h3>';
         for (const key in dataPoint) {
-            if (!['source', 'fileSource', 'uploadedBy', 'uploadedApp', 'createdAt', 'tags', 'id', 'datapointUpdatedBy', 'datapointUpdatedTime'].includes(key)) {
+            const nonEditableFields = ['source', 'fileSource', 'uploadedBy', 'uploadedApp', 'createdAt', 'tags', 'id', 'datapointUpdatedBy', 'datapointUpdatedTime', 'originalDataHeaders'];
+            if (!nonEditableFields.includes(key)) {
                 const div = document.createElement('div');
                 div.className = 'flex items-center mb-2';
                 const label = document.createElement('label');
-                label.textContent = `${key === 'attributeName' ? 'Attribute Name' : key === 'attributeValue' ? 'Attribute Value' : key}:`;
+                label.textContent = `${key}:`;
                 label.className = 'font-semibold w-2/5';
                 
                 const valueInput = document.createElement('input');
@@ -2080,6 +2166,11 @@
                 valueInput.dataset.key = key;
                 valueInput.className = 'rounded-lg p-2 text-sm w-3/5 focus:outline-none focus:ring-2 focus:ring-blue-500';
                 
+                // Disable editing for original data fields
+                if (headers.includes(key) && key !== 'attributeName' && key !== 'attributeValue') {
+                    valueInput.disabled = true;
+                }
+
                 div.appendChild(label);
                 div.appendChild(valueInput);
                 modalCustomData.appendChild(div);
@@ -2091,24 +2182,23 @@
         modalSaveBtn.classList.add('hidden');
         modalDeleteBtn.classList.add('hidden');
         modalTagsInput.disabled = true;
-        const customInputs = modalCustomData.querySelectorAll('input');
-        customInputs.forEach(input => {
-            input.disabled = true;
-        });
 
         dataModal.style.display = 'flex';
     }
 
     modalEditBtn.addEventListener('click', () => {
-        console.log(`User ${userId} entered edit mode for data point ${currentModalDataPoint.id}`);
         modalReadOnlyMessage.classList.add('hidden');
         modalEditBtn.classList.add('hidden');
         modalSaveBtn.classList.remove('hidden');
         modalDeleteBtn.classList.remove('hidden');
         modalTagsInput.disabled = false;
+        
         const customInputs = modalCustomData.querySelectorAll('input');
         customInputs.forEach(input => {
-            input.disabled = false;
+            const key = input.dataset.key;
+            if (key === 'attributeName' || key === 'attributeValue' || key === 'date') {
+                 input.disabled = false;
+            }
         });
     });
 
@@ -2126,7 +2216,9 @@
         };
         const inputs = modalCustomData.querySelectorAll('input');
         inputs.forEach(input => {
-            updatedData[input.dataset.key] = input.value.trim();
+            if (!input.disabled) {
+                updatedData[input.dataset.key] = input.value.trim();
+            }
         });
 
         const newTagsValue = modalTagsInput.value.trim();
