@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v6.4.0-alpha",
+        date: "2025-08-17",
+        changes: [
+            "When in bulk edit mode in the App, you can now click anywhere on the datapoints to select them.",
+            "When in bulk edit mode in the App, clicking the select all tick box now shows when all points have been selected and if not every point is selected it will not show as all selected.",
+            "Fixed an issue where the table heading appeared over the Data Info modal in the App.",
+            "In the App, selecting anywhere outside the Data Info modal now closes it.",
+        ]
+    },
+    {
         version: "v6.3.0-alpha",
         date: "2025-08-17",
         changes: [

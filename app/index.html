@@ -90,6 +90,7 @@
         }
         .modal {
             background-color: var(--modal-bg-overlay);
+            z-index: 1000;
         }
         .modal-content {
             background-color: var(--card-bg-color);
@@ -967,6 +968,7 @@
 
     // Modals
     const dataModal = document.getElementById('data-modal');
+    const modalContent = dataModal.querySelector('.modal-content');
     const modalCloseBtn = dataModal.querySelector('.close-btn');
     const modalSourceDisplay = document.getElementById('modal-source-display');
     const modalFileSourceDisplay = document.getElementById('modal-file-source-display');
@@ -1308,6 +1310,11 @@
         });
         thCheckbox.appendChild(selectAllCheckbox);
         dataTableHeader.appendChild(thCheckbox);
+        
+        // Update select-all checkbox state based on current selection
+        const allVisibleIds = sortedDataPoints.map(dp => dp.id);
+        const allSelected = allVisibleIds.length > 0 && allVisibleIds.every(id => selectedDataPointIds.has(id));
+        selectAllCheckbox.checked = allSelected;
 
         headers.forEach(headerText => {
             const th = document.createElement('th');
@@ -1345,6 +1352,7 @@
             checkbox.dataset.index = index;
             checkbox.className = 'h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded';
             checkbox.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent the row click listener from firing
                 const clickedIndex = parseInt(e.target.dataset.index);
                 if (e.shiftKey && lastSelectedIndex !== -1) {
                     const start = Math.min(clickedIndex, lastSelectedIndex);
@@ -1367,7 +1375,11 @@
             row.appendChild(tdCheckbox);
             
             row.addEventListener('click', (e) => {
-                if (e.target.tagName.toLowerCase() !== 'input') {
+                // If the bulk actions bar is visible and the click is not on a specific input, toggle the checkbox
+                if (!bulkActionsContainer.classList.contains('hidden') && e.target.tagName.toLowerCase() !== 'input') {
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    checkbox.click(); // Programmatically click the checkbox to fire its event listener
+                } else if (bulkActionsContainer.classList.contains('hidden')) {
                     showDataModal(dataPoint);
                 }
             });
@@ -2371,63 +2383,31 @@
         }
     });
 
-    modalCloseBtn.addEventListener('click', () => {
-        dataModal.style.display = 'none';
-        currentModalDataPoint = null;
+    function hideModal(modalElement) {
+        modalElement.style.display = 'none';
+    }
+
+    // New event listener for the main data modal
+    dataModal.addEventListener('click', (e) => {
+        if (e.target === dataModal) {
+            hideModal(dataModal);
+            currentModalDataPoint = null;
+        }
     });
-
-    modalSaveBtn.addEventListener('click', async () => {
-        if (!currentModalDataPoint) return;
-
-        const updatedData = {
-            datapointUpdatedBy: auth.currentUser.uid,
-            datapointUpdatedTime: serverTimestamp()
-        };
-        const inputs = modalCustomData.querySelectorAll('input');
-        inputs.forEach(input => {
-            if (!input.disabled) {
-                updatedData[input.dataset.key] = input.value.trim();
-            }
-        });
-
-        const newTagsValue = modalTagsInput.value.trim();
-        const newTags = newTagsValue ? newTagsValue.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag !== '') : [];
-        
-        // Merge existing and new tags
-        const finalTags = new Set(currentModalDataPoint.tags);
-        newTags.forEach(tag => finalTags.add(tag));
-
-        try {
-            const docRef = doc(db, `users/${userId}/sources/${currentModalDataPoint.source}/data/${currentModalDataPoint.id}`);
-            await setDoc(docRef, {
-                ...updatedData,
-                tags: Array.from(finalTags)
-            }, { merge: true });
-            
-            showMessage("Data point successfully updated.");
-            dataModal.style.display = 'none';
-        } catch (error) {
-            console.error("Error updating document: ", error);
-            showMessage(`Error updating data: ${error.message}`, 'error');
+    
+    // New event listeners for other modals
+    bulkEditModal.addEventListener('click', (e) => {
+        if (e.target === bulkEditModal) {
+            hideModal(bulkEditModal);
         }
     });
 
-    modalDeleteBtn.addEventListener('click', async () => {
-        if (!currentModalDataPoint) return;
-
-        if (window.confirm("Are you sure you want to delete this data point? This action cannot be undone.")) {
-            try {
-                const docRef = doc(db, `users/${userId}/sources/${currentModalDataPoint.source}/data/${currentModalDataPoint.id}`);
-                await deleteDoc(docRef);
-
-                showMessage("Data point successfully deleted.");
-                dataModal.style.display = 'none';
-            } catch (error) {
-                console.error("Error deleting document: ", error);
-                showMessage(`Error deleting data: ${error.message}`, 'error');
-            }
+    bulkDeleteModal.addEventListener('click', (e) => {
+        if (e.target === bulkDeleteModal) {
+            hideModal(bulkDeleteModal);
         }
     });
+
 
     // --- Bulk Action Logic ---
     bulkEditTagsBtn.addEventListener('click', () => {
@@ -2564,6 +2544,105 @@
             showMessage(`Error: ${error.message}`, "error");
         } finally {
             hideBulkDeleteModal();
+        }
+    });
+
+    // --- Modal button listeners ---
+    modalCloseBtn.addEventListener('click', () => {
+        hideModal(dataModal);
+        currentModalDataPoint = null;
+    });
+
+    modalEditBtn.addEventListener('click', () => {
+        modalReadOnlyMessage.classList.add('hidden');
+        modalEditBtn.classList.add('hidden');
+        modalSaveBtn.classList.remove('hidden');
+        modalDeleteBtn.classList.remove('hidden');
+        modalTagsInput.disabled = false;
+        
+        const customInputs = modalCustomData.querySelectorAll('input');
+        customInputs.forEach(input => {
+            const key = input.dataset.key;
+            if (key === 'attributeName' || key === 'attributeValue' || key === 'date') {
+                 input.disabled = false;
+            }
+        });
+
+        // Add delete buttons to tags
+        modalTagsList.innerHTML = '';
+        if (currentModalDataPoint.tags && Array.isArray(currentModalDataPoint.tags)) {
+            currentModalDataPoint.tags.forEach(tag => {
+                const tagSpan = document.createElement('span');
+                tagSpan.className = 'tag';
+                tagSpan.innerHTML = `
+                    <span>${tag}</span>
+                    <span class="tag-remove ml-2 text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors duration-200" data-tag="${tag}">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </span>
+                `;
+                tagSpan.querySelector('.tag-remove').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const tagToRemove = e.currentTarget.dataset.tag;
+                    currentModalDataPoint.tags = currentModalDataPoint.tags.filter(t => t !== tagToRemove);
+                    tagSpan.remove();
+                });
+                modalTagsList.appendChild(tagSpan);
+            });
+        }
+    });
+
+    modalSaveBtn.addEventListener('click', async () => {
+        if (!currentModalDataPoint) return;
+
+        const updatedData = {
+            datapointUpdatedBy: auth.currentUser.uid,
+            datapointUpdatedTime: serverTimestamp()
+        };
+        const inputs = modalCustomData.querySelectorAll('input');
+        inputs.forEach(input => {
+            if (!input.disabled) {
+                updatedData[input.dataset.key] = input.value.trim();
+            }
+        });
+
+        const newTagsValue = modalTagsInput.value.trim();
+        const newTags = newTagsValue ? newTagsValue.split(',').map(tag => tag.trim().toLowerCase()).filter(tag => tag !== '') : [];
+        
+        // Merge existing and new tags
+        const finalTags = new Set(currentModalDataPoint.tags);
+        newTags.forEach(tag => finalTags.add(tag));
+
+        try {
+            const docRef = doc(db, `users/${userId}/sources/${currentModalDataPoint.source}/data/${currentModalDataPoint.id}`);
+            await setDoc(docRef, {
+                ...updatedData,
+                tags: Array.from(finalTags)
+            }, { merge: true });
+            
+            showMessage("Data point successfully updated.");
+            hideModal(dataModal);
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage(`Error updating data: ${error.message}`, 'error');
+        }
+    });
+
+    modalDeleteBtn.addEventListener('click', async () => {
+        if (!currentModalDataPoint) return;
+
+        if (window.confirm("Are you sure you want to delete this data point? This action cannot be undone.")) {
+            try {
+                const docRef = doc(db, `users/${userId}/sources/${currentModalDataPoint.source}/data/${currentModalDataPoint.id}`);
+                await deleteDoc(docRef);
+
+                showMessage("Data point successfully deleted.");
+                hideModal(dataModal);
+            } catch (error) {
+                console.error("Error deleting document: ", error);
+                showMessage(`Error deleting data: ${error.message}`, 'error');
+            }
         }
     });
     
