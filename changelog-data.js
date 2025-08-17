@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v7.0.0-alpha",
+        date: "2025-08-18",
+        changes: [
+            "Changed structure of user light/dark mode setting for future scalability purposes.",
+            "Created initial .gitignore file."
+        ]
+    },
+    {
         version: "v6.4.1-alpha",
         date: "2025-08-17",
         changes: [
