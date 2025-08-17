@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v6.3.0-alpha",
+        date: "2025-08-17",
+        changes: [
+            "The App and the Log now display pre-existing tags to help quickly auto-fill the tags entry field.",
+            "Updated Log PWA service worker logic to always use the latest changelog version as the cache name.",
+        ]
+    },
+    {
         version: "v6.2.1-alpha",
         date: "2025-08-16",
         changes: [

@@ -1,4 +1,7 @@
-const CACHE_NAME = 'logger-worker-v2.10.0-dev';
+import { changelogData } from '/changelog-data.js';
+
+const LATEST_VERSION = changelogData[0].version;
+const CACHE_NAME = `logger-worker-${LATEST_VERSION}`;
 // No files are cached in development to ensure the latest version is always served.
 const urlsToCache = [];
 

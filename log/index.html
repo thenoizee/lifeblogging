@@ -451,6 +451,18 @@
         align-items: center;
         margin-bottom: 20px;
       }
+      .tag {
+            background-color: var(--input-bg-color);
+            color: var(--text-color-primary);
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 4px;
+            margin-bottom: 4px;
+            display: inline-flex; /* Use flexbox to align content */
+            align-items: center;
+        }
     </style>
   </head>
   <body>
@@ -522,6 +534,10 @@
             type="text"
             placeholder="tag1, tag2, tag3 (optional)"
           />
+        </div>
+        <div id="existing-tags-section" class="mb-4">
+          <p class="font-semibold mb-2 text-sm text-[var(--text-color-secondary)]">Existing Tags:</p>
+          <div id="existing-tags-list" class="flex flex-wrap gap-2"></div>
         </div>
 
         <div class="button-group">
@@ -645,6 +661,8 @@
       const themeToggle = document.getElementById('theme-toggle');
       const body = document.body;
       const versionDisplay = document.getElementById('version-display');
+      const existingTagsList = document.getElementById('existing-tags-list');
+      const manualTagsInput = document.getElementById('tags');
 
       versionDisplay.textContent = changelogData[0].version;
 
@@ -745,6 +763,42 @@
           option.textContent = "manual";
           selectElement.appendChild(option);
         }
+      };
+
+      const fetchAndPopulateTags = async (uid) => {
+        existingTagsList.innerHTML = '';
+        const allTags = new Set();
+        try {
+          const sourcesRef = collection(db, `users/${uid}/sources`);
+          const sourcesSnapshot = await getDocs(sourcesRef);
+
+          for (const sourceDoc of sourcesSnapshot.docs) {
+            const dataRef = collection(db, `users/${uid}/sources/${sourceDoc.id}/data`);
+            const dataSnapshot = await getDocs(dataRef);
+            dataSnapshot.forEach(doc => {
+              const tags = doc.data().tags || [];
+              tags.forEach(tag => allTags.add(tag));
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching tags:", error);
+          return;
+        }
+
+        const sortedTags = Array.from(allTags).sort();
+        sortedTags.forEach(tag => {
+          const tagSpan = document.createElement('span');
+          tagSpan.className = 'tag cursor-pointer hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors duration-200';
+          tagSpan.textContent = tag;
+          tagSpan.addEventListener('click', () => {
+            const currentTags = manualTagsInput.value.split(',').map(t => t.trim()).filter(t => t);
+            if (!currentTags.includes(tag)) {
+              currentTags.push(tag);
+              manualTagsInput.value = currentTags.join(', ');
+            }
+          });
+          existingTagsList.appendChild(tagSpan);
+        });
       };
 
       const connectivityStatusEl = document.getElementById("connectivity-status");
@@ -942,6 +996,7 @@
           const newLogEntry = { ...logEntry, docId: docRef.id, collectionName: collectionName };
           sessionLogs.push(newLogEntry);
           renderSessionLogs();
+          fetchAndPopulateTags(userId);
 
         } catch (err) {
           console.error(err);
@@ -994,6 +1049,7 @@
           }
           renderSessionLogs();
           editingLog = null;
+          fetchAndPopulateTags(userId);
 
         } catch (err) {
           showMessage("Error updating data: " + err.message, "error");
@@ -1009,6 +1065,7 @@
           document.getElementById("main-app-container").style.display = "block";
           
           await fetchAndPopulateCollections(userId);
+          await fetchAndPopulateTags(userId);
 
           setDefaultDateTime();
           renderUnsyncedLogs();
