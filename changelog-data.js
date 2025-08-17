@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v6.4.1-alpha",
+        date: "2025-08-17",
+        changes: [
+            "Added icons from Font Awesome to the Hub and the Log Tool."
+        ]
+    },
+    {
         version: "v6.4.0-alpha",
         date: "2025-08-17",
         changes: [
