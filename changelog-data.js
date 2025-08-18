@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v7.2.0-alpha",
+        date: "2025-08-18",
+        changes: [
+            "Introduced a basic table filtering system to the App - filter by date, value, or tag. ",
+            "Added icons to the App in line with the other pages."
+        ]
+    },
+    {
         version: "v7.1.0-alpha",
         date: "2025-08-18",
         changes: [
