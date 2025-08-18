@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+        version: "v7.1.0-alpha",
+        date: "2025-08-18",
+        changes: [
+            "Changed sleep quality and productiveness to display as descriptions (visual change only).",
+            "Created retainer yes/no quick log buttons.",
+            "Created total tasks remaining number box.",
+            "Shuffled quick log section into correct order.",
+            "Data added via Quick Log section is now assigned to collection 'dailies'.",
+            "Fixed issue where adding lots of data at once made the data added during this session section become large and cause issues with displaying all the content on the page.",
+        ]
+    },
+    {
         version: "v7.0.0-alpha",
         date: "2025-08-18",
         changes: [
