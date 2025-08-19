@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v7.3.0-alpha",
+        date: "2025-08-19",
+        changes: [
+            "Specific attribute names now display as colourful tags for easy visual identification.",
+            "Chart filters time filters now apply to the Data Table.",
+            "Introduced lots more specific options to the date filters in the Charts and Table.",
+        ]
+    },
+    {
         version: "v7.2.0-alpha",
         date: "2025-08-18",
         changes: [
