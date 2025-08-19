@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v7.5.0-alpha",
+        date: "2025-08-19",
+        changes: [
+            "Updated PWA files so the entire project is now covered, not just the logger, in preparation for further development.",
+        ]
+    },
+    {
         version: "v7.4.0-alpha",
         date: "2025-08-19",
         changes: [
