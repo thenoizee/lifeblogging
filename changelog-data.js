@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v7.4.0-alpha",
+        date: "2025-08-19",
+        changes: [
+            "Initial release of MediManager: Create medicines, schedule, track and log medicine, restock and expiry dates. Export functions for full data control.",
+        ]
+    },
+    {
         version: "v7.3.0-alpha",
         date: "2025-08-19",
         changes: [
