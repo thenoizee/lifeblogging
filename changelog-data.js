@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v7.7.0-alpha",
+        date: "2025-08-20",
+        changes: [
+            "In the Logger: To ensure data accuracy, users can no longer enter data before page/elements have fully loaded.",
+            "In the Logger: Activity and Location have been swapped around (visual change only).",
+            "In the Logger: To improve data accuracy when adding lots of data at once, the time and date input field automatically refreshes after each entry.",
+        ]
+    },
+    {
         version: "v7.6.0-alpha",
         date: "2025-08-20",
         changes: [
