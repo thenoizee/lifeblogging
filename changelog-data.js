@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v7.6.0-alpha",
+        date: "2025-08-20",
+        changes: [
+            "The MediManager title bar now displays with better formatting in line with the existing pages.",
+            "Users can no longer log or edit data in the future.",
+            "Added link to GitHub project to the Hub.",
+        ]
+    },
+    {
         version: "v7.5.0-alpha",
         date: "2025-08-19",
         changes: [
