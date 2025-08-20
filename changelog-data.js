@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v7.8.0-alpha",
+        date: "2025-08-21",
+        changes: [
+            "In the App: New function where users can select their own colour for the attribute name bubbles in the table.",
+            "In the App: Users can sort by the data created time.",
+            "In the App: Data points with the same data and time should now take data created time into consideration when loading.",
+            "In the App: The data table headings now displays which column is currently being sorted.",
+        ]
+    },
+    {
         version: "v7.7.0-alpha",
         date: "2025-08-20",
         changes: [
