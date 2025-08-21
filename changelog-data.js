@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v7.8.1-alpha",
+        date: "2025-08-21",
+        changes: [
+            "Moved live site from 'lifeblogging.hubblenet.uk' to simply 'lifeblogging.app'.",
+            "In the App: Renamed App to Analyser for clearer identification and URL purposes.",
+        ]
+    },
+    {
         version: "v7.8.0-alpha",
         date: "2025-08-21",
         changes: [
