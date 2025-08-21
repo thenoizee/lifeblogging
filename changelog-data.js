@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v7.9.0-alpha",
+        date: "2025-08-22",
+        changes: [
+            "In the Analyser: Introduced ability to display a second attribute on the Chart.",
+            "In the Analyser: Moved the sort, search, and filter options to their own section to unify the analysis process.",
+        ]
+    },
+    {
         version: "v7.8.1-alpha",
         date: "2025-08-21",
         changes: [
