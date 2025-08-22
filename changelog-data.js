@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v7.10.0-alpha",
+        date: "2025-08-22",
+        changes: [
+            "In the Logger: Introduced new Energy item in the Quick Log section.",
+        ]
+    },
+    {
         version: "v7.9.0-alpha",
         date: "2025-08-22",
         changes: [
