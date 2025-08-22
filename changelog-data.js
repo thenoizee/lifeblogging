@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v7.11.0-alpha",
+        date: "2025-08-22",
+        changes: [
+            "Updated manifest.json.",
+        ]
+    },
+    {
         version: "v7.10.0-alpha",
         date: "2025-08-22",
         changes: [
