@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+        version: "v7.12.0-alpha",
+        date: "2025-08-22",
+        changes: [
+            "In MediManager: Introduced feature - users can now select an icon and pick a colour for each medicine.",
+        ]
+    },
+    {
+        version: "v7.11.1-alpha",
+        date: "2025-08-22",
+        changes: [
+            "Bug fix.",
+        ]
+    },
+    {
         version: "v7.11.0-alpha",
         date: "2025-08-22",
         changes: [

@@ -162,6 +162,22 @@
         .dark-mode .stats-box.warning { background-color: #9c4221; color: #feebc8; }
         .dark-mode .stats-box.danger { background-color: #822727; color: #fed7d7; }
         .dark-mode input[type="date"], .dark-mode input[type="datetime-local"] { color-scheme: dark; }
+        .dark-mode input[type="color"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+        }
+        .dark-mode input[type="color"]::-webkit-color-swatch {
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+        }
+        .dark-mode input[type="color"]::-moz-color-swatch {
+            border-radius: 50%;
+            border: 2px solid var(--border-color);
+        }
 
         /* Tab Styles */
         .tab-nav { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; }
@@ -270,6 +286,8 @@
                     <div class="mt-4">
                         <div class="input-group"><label for="new-med-name">Medicine Name</label><input id="new-med-name" type="text" placeholder="e.g., Ibuprofen" /></div>
                         <div class="input-group"><label for="new-med-dosage">Dosage</label><input id="new-med-dosage" type="text" placeholder="e.g., 200mg" /></div>
+                        <div class="input-group"><label for="new-med-icon">Icon (Font Awesome Class)</label><input id="new-med-icon" type="text" placeholder="e.g., fa-solid fa-pills" /></div>
+                        <div class="input-group"><label for="new-med-color">Color</label><input id="new-med-color" type="color" value="#4c51bf" /></div>
                         <div class="input-group">
                             <label for="new-med-tags">Tags (comma-separated)</label><input id="new-med-tags" type="text" placeholder="e.g., pain-relief, daily" />
                             <div id="existing-tags-container" class="mt-2"></div>
@@ -304,7 +322,10 @@
                         <div class="button-group"><button id="restock-btn" class="main-button"><i class="fa-solid fa-box"></i> Restock</button></div>
                     </div>
                 </details>
-
+                <div class="input-group">
+                    <label for="tag-filter-input">Filter by Tags</label>
+                    <input type="text" id="tag-filter-input" placeholder="e.g., pain-relief, daily" />
+                </div>
                 <h3>Your Medications</h3>
                 <ul id="medicine-list" class="medicine-list"></ul>
             </fieldset>
@@ -362,6 +383,8 @@
             <h2>Edit Medicine</h2>
             <div class="input-group"><label for="modal-med-name">Medicine Name</label><input id="modal-med-name" type="text" /></div>
             <div class="input-group"><label for="modal-med-dosage">Dosage</label><input id="modal-med-dosage" type="text" /></div>
+            <div class="input-group"><label for="modal-med-icon">Icon</label><input id="modal-med-icon" type="text" /></div>
+            <div class="input-group"><label for="modal-med-color">Color</label><input id="modal-med-color" type="color" /></div>
             <div class="input-group"><label for="modal-med-tags">Tags</label><input id="modal-med-tags" type="text" /></div>
             <div class="input-group">
                 <label>Repetition Schedule</label>
@@ -418,6 +441,7 @@
           currentModalDoseId: null,
           currentModalMedId: null,
           adherenceChart: null,
+          tagFilter: '',
           unsubscribe: {
               theme: null,
               meds: null,
@@ -429,6 +453,7 @@
       const ui = {
         body: document.body,
         versionDisplay: document.getElementById('version-display'),
+        tagFilterInput: document.getElementById('tag-filter-input'),
       };
 
       // --- Helper Functions ---
@@ -500,17 +525,26 @@
           const restockSelect = document.getElementById("restock-med-select");
           list.innerHTML = medSelect.innerHTML = restockSelect.innerHTML = '';
 
-          if (appState.medicines.length === 0) {
+          const filteredMedicines = appState.medicines.filter(med => {
+            if (!appState.tagFilter) return true;
+            const filterTags = appState.tagFilter.toLowerCase().split(',').map(t => t.trim());
+            return filterTags.every(filterTag => med.tags?.some(medTag => medTag.toLowerCase().includes(filterTag)));
+          });
+
+
+          if (filteredMedicines.length === 0) {
               list.innerHTML = `<p class="text-center text-[var(--text-color-secondary)]">No medicines added yet.</p>`;
               medSelect.innerHTML = restockSelect.innerHTML = `<option value="">No medicines available</option>`;
               return;
           }
 
-          appState.medicines.forEach(med => {
+          filteredMedicines.forEach(med => {
               const totalRestocked = med.stock?.reduce((sum, r) => sum + r.amount, 0) || 0;
               const totalTaken = appState.doses.filter(d => d.medId === med.id && d.status === 'taken').length;
               const currentStock = totalRestocked - totalTaken;
               const streak = calculateStreakForMed(med.id);
+              const icon = med.icon || 'fa-solid fa-pills';
+              const color = med.color || '#4c51bf';
 
               const soonestExpiry = med.stock?.length > 0
                   ? new Date(Math.min(...med.stock.map(r => new Date(r.expiryDate)))).toLocaleDateString() : 'N/A';
@@ -519,7 +553,7 @@
               listItem.className = "medicine-item";
               listItem.innerHTML = `
                   <div class="medicine-item-details">
-                      <span class="medicine-item-name">${med.name}</span>
+                      <span class="medicine-item-name"><i class="${icon}" style="color:${color};"></i> ${med.name}</span>
                       <span class="medicine-item-dosage">(${med.dosage})</span>
                       <p class="text-[var(--text-color-secondary)] text-sm">
                           Current Stock: <span class="font-bold text-[var(--text-color-primary)]">${currentStock}</span> | 
@@ -562,6 +596,8 @@
               const totalTaken = appState.doses.filter(d => d.medId === med.id && d.status === 'taken').length;
               const currentStock = totalRestocked - totalTaken;
               const streak = calculateStreakForMed(med.id);
+              const icon = med.icon || 'fa-solid fa-pills';
+              const color = med.color || '#4c51bf';
 
               const soonestValidExpiry = med.stock?.filter(r => new Date(r.expiryDate) >= new Date()).map(r => new Date(r.expiryDate).getTime()) || [];
               const soonestExpiryTime = soonestValidExpiry.length > 0 ? Math.min(...soonestValidExpiry) : null;
@@ -584,7 +620,7 @@
               card.innerHTML = `
                   <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-sm font-semibold">${med.name}</p>
+                        <p class="text-sm font-semibold"><i class="${icon}" style="color:${color};"></i> ${med.name}</p>
                         ${(med.includeInStreak ?? true) ? `
                         <div class="mt-1">
                             <p class="text-sm font-semibold text-yellow-500">Streak</p>
@@ -790,6 +826,8 @@
         const newMed = {
             name,
             dosage,
+            icon: document.getElementById("new-med-icon").value.trim(),
+            color: document.getElementById("new-med-color").value,
             tags: document.getElementById("new-med-tags").value.split(",").map(t => t.trim()).filter(Boolean),
             schedule: {
                 days: Array.from(document.querySelectorAll('#tab-content-meds .day-checkbox:checked')).map(cb => cb.id.replace('day-', '')),
@@ -805,6 +843,8 @@
             showMessage("Medicine added successfully!", "success");
             document.getElementById("new-med-name").value = "";
             document.getElementById("new-med-dosage").value = "";
+            document.getElementById("new-med-icon").value = "";
+            document.getElementById("new-med-color").value = "#4c51bf";
             document.getElementById("new-med-tags").value = "";
             document.getElementById("repetition-times").value = "";
             document.getElementById("new-med-streak").checked = true;
@@ -859,6 +899,8 @@
           appState.currentModalMedId = medId;
           document.getElementById('modal-med-name').value = med.name;
           document.getElementById('modal-med-dosage').value = med.dosage;
+          document.getElementById('modal-med-icon').value = med.icon || '';
+          document.getElementById('modal-med-color').value = med.color || '#4c51bf';
           document.getElementById('modal-med-tags').value = med.tags?.join(', ') || '';
           document.getElementById('modal-med-streak').checked = med.includeInStreak ?? true;
           
@@ -885,6 +927,8 @@
           const updatedData = {
               name,
               dosage,
+              icon: document.getElementById("modal-med-icon").value.trim(),
+              color: document.getElementById("modal-med-color").value,
               tags: document.getElementById("modal-med-tags").value.split(",").map(t => t.trim()).filter(Boolean),
               schedule: {
                   days: Array.from(document.querySelectorAll('#modal-schedule-day-container .day-checkbox:checked')).map(cb => cb.id.replace('modal-day-', '')),
@@ -1067,6 +1111,11 @@
       document.getElementById("search-input").addEventListener("input", (e) => {
           appState.doseSearchFilter = e.target.value;
           renderDoseTable();
+      });
+
+      ui.tagFilterInput.addEventListener("input", (e) => {
+        appState.tagFilter = e.target.value;
+        renderMedicines();
       });
 
       document.getElementById("status-taken").addEventListener("click", () => {
