@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+        version: "v7.14.0-alpha",
+        date: "2025-08-23",
+        changes: [
+            "In the MediManager: Fixed issue with schedule logging calendar being off-set by 1 day, and 1 hour.",
+            "In the MediManager: Updated the stock counting logic.",
+            "In the MediManager: Introduced more dose logging options: when you log a past-due dose from the schedule, you can now choose to log the dose as 'Taken on Time' or 'Taken Now' with a single click, or at a custom date and time.",
+            "In the MediManager: Introduced a new full-calendar view in the History tab for a better visual overview of past doses.",
+            "In the MediManager: Users can now edit existing medicine re-stocks.",
+            "In the MediManager: Batch number is now displayed on each logged dose.",
+        ]
+    },
+    {
         version: "v7.13.1-alpha",
         date: "2025-08-23",
         changes: [
