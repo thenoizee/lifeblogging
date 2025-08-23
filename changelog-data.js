@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v7.15.0-alpha",
+        date: "2025-08-24",
+        changes: [
+            "In the MediManager: Stock count bug fix.",
+            "In the MediManager: The 'skip' dose button has been re-instated.",
+            "In the MediManager: The log dose menu now shows which medicine stock the dose will be taken from.",
+            "In the MediManager: The Batch field is now disabled in the edit dose menu.",
+        ]
+    },
+    {
         version: "v7.14.0-alpha",
         date: "2025-08-23",
         changes: [

@@ -223,6 +223,10 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        input:disabled {
+            background-color: var(--text-color-secondary);
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -487,22 +491,30 @@
     </div>
 
     <div id="log-dose-modal" class="modal hidden">
-        <div class="modal-content">
-            <span class="close-btn">&times;</span>
-            <h2>Log Dose</h2>
-            <p>Log '<span id="log-dose-modal-med-name" class="font-bold"></span>' for <span id="log-dose-modal-scheduled-time" class="font-bold"></span>.</p>
-            <div class="button-group mt-4">
-                <button id="modal-taken-on-time-btn" class="main-button">Taken on Time</button>
-                <button id="modal-taken-now-btn" class="main-button">Taken Now</button>
-            </div>
-            <div class="input-group mt-4">
-                <label for="modal-log-dose-datetime">Or specify time taken:</label>
-                <input id="modal-log-dose-datetime" type="datetime-local" />
-            </div>
-            <div class="button-group">
-                <button id="modal-log-custom-time-btn" class="main-button">Log Custom Time</button>
-            </div>
-        </div>
+      <div class="modal-content">
+          <span class="close-btn">&times;</span>
+          <h2>Log Dose</h2>
+          <p>Log '<span id="log-dose-modal-med-name" class="font-bold"></span>' for <span id="log-dose-modal-scheduled-time" class="font-bold"></span>.</p>
+          
+          <div class="input-group mt-4">
+              <label for="modal-log-dose-batch-select">From Batch</label>
+              <select id="modal-log-dose-batch-select"></select>
+          </div>
+
+          <div class="button-group mt-4">
+              <button id="modal-taken-on-time-btn" class="main-button">Taken on Time</button>
+              <button id="modal-taken-now-btn" class="main-button">Taken Now</button>
+              <button id="modal-skipped-btn" class="secondary-button">Skipped</button>
+          </div>
+          
+          <div class="input-group mt-4">
+              <label for="modal-log-dose-datetime">Or specify time taken:</label>
+              <input id="modal-log-dose-datetime" type="datetime-local" />
+          </div>
+          <div class="button-group">
+              <button id="modal-log-custom-time-btn" class="main-button">Log Custom Time</button>
+          </div>
+      </div>
     </div>
 
     <div id="edit-stock-modal" class="modal hidden">
@@ -715,12 +727,28 @@
       }
 
       const calculateCurrentStock = (medId) => {
-        const med = appState.medicines.find(m => m.id === medId);
-        if (!med) return 0;
-
-        const totalRestocked = med.stock?.reduce((sum, r) => r.disposed ? sum : sum + r.amount, 0) || 0;
-        const totalTaken = appState.doses.filter(d => d.medId === medId && d.status === 'taken').length;
-        return totalRestocked - totalTaken;
+          const med = appState.medicines.find(m => m.id === medId);
+          if (!med || !med.stock) return 0;
+      
+          const today = new Date();
+          today.setHours(0, 0, 0, 0); // Set to the beginning of today
+      
+          // Sum the remaining stock from each valid batch
+          const totalRemaining = med.stock.reduce((total, stockItem, index) => {
+              const expiryDate = new Date(stockItem.expiryDate);
+              
+              // A batch is valid if it's not disposed and expires today or in the future
+              if (!stockItem.disposed && expiryDate >= today) {
+                  const stockId = `${med.id}-${index}`;
+                  // Find how many doses have been logged against this specific batch
+                  const dosesTakenFromStock = appState.doses.filter(d => d.stockId === stockId && d.status === 'taken').length;
+                  const remainingInBatch = stockItem.amount - dosesTakenFromStock;
+                  return total + remainingInBatch;
+              }
+              return total; // If batch is invalid, don't add to the total
+          }, 0);
+      
+          return totalRemaining;
       };
 
       const renderMedicines = () => {
@@ -846,7 +874,7 @@
                         </div>` : ''}
                     </div>
                     <div class="text-right">
-                        <p class="text-sm font-semibold">Stock</p>
+                        <p class="text-sm font-semibold">Total Stock Remaining</p>
                         <p class="text-2xl font-bold">${currentStock}</p>
                     </div>
                   </div>
@@ -1351,22 +1379,51 @@
       };
       
       const handleLogDoseFromCalendar = (medId, scheduledTime) => {
-        const med = appState.medicines.find(m => m.id === medId);
-        if (!med) return;
-
-        appState.currentModalLogDoseMedId = medId;
-        appState.currentModalLogDoseScheduledTime = scheduledTime;
-
-        document.getElementById('log-dose-modal-med-name').textContent = med.name;
-        document.getElementById('log-dose-modal-scheduled-time').textContent = formatDateTimeForDisplay(scheduledTime);
-        
-        const now = new Date();
-        document.getElementById('modal-log-dose-datetime').value = toLocalISOString(now);
-        
-        document.getElementById('log-dose-modal').classList.remove('hidden');
+          const med = appState.medicines.find(m => m.id === medId);
+          if (!med) return;
+      
+          appState.currentModalLogDoseMedId = medId;
+          appState.currentModalLogDoseScheduledTime = scheduledTime;
+      
+          document.getElementById('log-dose-modal-med-name').textContent = med.name;
+          document.getElementById('log-dose-modal-scheduled-time').textContent = formatDateTimeForDisplay(scheduledTime);
+          
+          const now = new Date();
+          document.getElementById('modal-log-dose-datetime').value = toLocalISOString(now);
+      
+          // Populate batch dropdown
+          const batchSelect = document.getElementById('modal-log-dose-batch-select');
+          batchSelect.innerHTML = '';
+          const medStock = med.stock || [];
+          const stockWithRemaining = medStock.map((batch, index) => {
+              const stockId = `${med.id}-${index}`;
+              const takenFromBatch = appState.doses.filter(d => d.stockId === stockId && d.status === 'taken').length;
+              return { ...batch, index, remaining: batch.amount - takenFromBatch };
+          });
+      
+          const validBatches = stockWithRemaining
+              .filter(batch => !batch.disposed && batch.remaining > 0 && new Date(batch.expiryDate) >= new Date())
+              .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+      
+          if (validBatches.length > 0) {
+              validBatches.forEach(batch => {
+                  const option = document.createElement('option');
+                  option.value = `${med.id}-${batch.index}`;
+                  option.textContent = `Batch #${batch.index + 1} (Expires: ${new Date(batch.expiryDate).toLocaleDateString()}, Remaining: ${batch.remaining})`;
+                  batchSelect.appendChild(option);
+              });
+          } else {
+              const option = document.createElement('option');
+              option.value = '';
+              option.textContent = 'No valid stock available';
+              batchSelect.appendChild(option);
+              batchSelect.disabled = true;
+          }
+      
+          document.getElementById('log-dose-modal').classList.remove('hidden');
       };
 
-      const handleLogDose = async (medIdOverride, datetimeOverride, statusOverride, source = 'manual_log', stockId = null) => {
+      const handleLogDose = async (medIdOverride, datetimeOverride, statusOverride, source = 'manual_log', stockId = null, tags = []) => {
         const medId = medIdOverride || document.getElementById("med-select").value;
         const datetimeTaken = datetimeOverride || document.getElementById("dose-datetime").value;
         const status = statusOverride || appState.logDoseStatus;
@@ -1417,6 +1474,7 @@
             doseUpdatedAt: Timestamp.now(),
             doseUpdatedBy: appState.user.uid,
             doseCreatedApp: "Medication Manager",
+            tags
         };
 
         try {
@@ -1808,18 +1866,25 @@
       document.getElementById('modal-save-stock-btn').addEventListener('click', handleSaveStock);
 
       document.getElementById('modal-taken-on-time-btn').addEventListener('click', () => {
-          handleLogDose(appState.currentModalLogDoseMedId, appState.currentModalLogDoseScheduledTime, 'taken', 'calendar_log');
+          const selectedStockId = document.getElementById('modal-log-dose-batch-select').value;
+          handleLogDose(appState.currentModalLogDoseMedId, appState.currentModalLogDoseScheduledTime, 'taken', 'calendar_log', selectedStockId);
           document.getElementById('log-dose-modal').classList.add('hidden');
       });
       document.getElementById('modal-taken-now-btn').addEventListener('click', () => {
           const now = new Date();
-          handleLogDose(appState.currentModalLogDoseMedId, toLocalISOString(now), 'taken', 'calendar_log');
+          const selectedStockId = document.getElementById('modal-log-dose-batch-select').value;
+          handleLogDose(appState.currentModalLogDoseMedId, toLocalISOString(now), 'taken', 'calendar_log', selectedStockId);
           document.getElementById('log-dose-modal').classList.add('hidden');
       });
       document.getElementById('modal-log-custom-time-btn').addEventListener('click', () => {
           const customTime = document.getElementById('modal-log-dose-datetime').value;
-          handleLogDose(appState.currentModalLogDoseMedId, customTime, 'taken', 'calendar_log');
+          const selectedStockId = document.getElementById('modal-log-dose-batch-select').value;
+          handleLogDose(appState.currentModalLogDoseMedId, customTime, 'taken', 'calendar_log', selectedStockId);
           document.getElementById('log-dose-modal').classList.add('hidden');
+      });
+      document.getElementById('modal-skipped-btn').addEventListener('click', () => {
+        handleLogDose(appState.currentModalLogDoseMedId, appState.currentModalLogDoseScheduledTime, 'missed', 'calendar_log', null, ['skipped']);
+        document.getElementById('log-dose-modal').classList.add('hidden');
       });
     </script>
 </body>
