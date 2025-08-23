@@ -186,6 +186,13 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         .hidden { display: none !important; }
+
+        /* Stock Styles */
+        .stock-item { border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+        .expiry-safe { border-left: 5px solid #48bb78; }
+        .expiry-soon { border-left: 5px solid #f59e0b; }
+        .expiry-expired { border-left: 5px solid #e53e3e; }
+        .disposed { opacity: 0.5; background-color: #a0aec0; }
     </style>
 </head>
 <body>
@@ -226,6 +233,7 @@
             <button class="tab-button active" data-tab="dashboard">Dashboard</button>
             <button class="tab-button" data-tab="schedule">Schedule</button>
             <button class="tab-button" data-tab="meds">Medications</button>
+            <button class="tab-button" data-tab="stock">Stock</button>
             <button class="tab-button" data-tab="history">History</button>
             <button class="tab-button" data-tab="settings">Settings</button>
         </nav>
@@ -270,6 +278,7 @@
                     <div class="mt-4">
                         <div class="input-group"><label for="med-select">Select Medicine</label><select id="med-select"></select></div>
                         <div class="input-group"><label for="dose-datetime">Date and Time Taken</label><input id="dose-datetime" type="datetime-local" /></div>
+                        <div class="input-group"><label for="dose-notes">Notes</label><textarea id="dose-notes" placeholder="e.g., took with food, felt dizzy after..."></textarea></div>
                         <div class="input-group">
                             <label>Status</label>
                             <div class="flex gap-2">
@@ -319,15 +328,30 @@
                         <div class="input-group"><label for="restock-med-select">Select Medicine to Restock</label><select id="restock-med-select"></select></div>
                         <div class="input-group"><label for="restock-amount">Amount</label><input id="restock-amount" type="number" placeholder="Number of doses to add" min="1" /></div>
                         <div class="input-group"><label for="restock-expiry">Expiry Date</label><input id="restock-expiry" type="date" /></div>
+                        <div class="input-group"><label for="restock-lot">Lot Number</label><input id="restock-lot" type="text" placeholder="e.g., AB12345" /></div>
+                        <div class="input-group"><label for="restock-location">Location</label><input id="restock-location" type="text" placeholder="e.g., Bathroom Cabinet" /></div>
                         <div class="button-group"><button id="restock-btn" class="main-button"><i class="fa-solid fa-box"></i> Restock</button></div>
                     </div>
                 </details>
-                <div class="input-group">
-                    <label for="tag-filter-input">Filter by Tags</label>
-                    <input type="text" id="tag-filter-input" placeholder="e.g., pain-relief, daily" />
+                <div class="flex justify-between items-center mb-4">
+                    <div class="input-group mb-0 flex-grow">
+                        <label for="tag-filter-input">Filter by Tags</label>
+                        <input type="text" id="tag-filter-input" placeholder="e.g., pain-relief, daily" />
+                    </div>
+                    <div class="flex items-center ml-4">
+                        <label for="show-archived-toggle" class="mr-2">Show Archived</label>
+                        <input type="checkbox" id="show-archived-toggle" class="w-5 h-5" />
+                    </div>
                 </div>
                 <h3>Your Medications</h3>
                 <ul id="medicine-list" class="medicine-list"></ul>
+            </fieldset>
+        </div>
+
+        <div id="tab-content-stock" class="tab-content">
+            <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg">
+                <legend class="text-2xl font-semibold px-2 mb-4">Stock Management</legend>
+                <div id="stock-list-container"></div>
             </fieldset>
         </div>
 
@@ -370,6 +394,7 @@
             <div class="input-group"><label for="modal-dose-dosage">Dosage</label><input id="modal-dose-dosage" type="text" disabled /></div>
             <div class="input-group"><label for="modal-dose-datetime">Date and Time</label><input id="modal-dose-datetime" type="datetime-local" /></div>
             <div class="input-group"><label for="modal-dose-status">Status</label><select id="modal-dose-status"><option value="taken">Taken</option><option value="missed">Missed</option><option value="unknown">Unknown</option></select></div>
+            <div class="input-group"><label for="modal-dose-notes">Notes</label><textarea id="modal-dose-notes"></textarea></div>
             <div class="button-group">
                 <button id="modal-save-dose-btn" class="main-button">Save Changes</button>
                 <button id="modal-delete-dose-btn" class="destructive-button">Delete Entry</button>
@@ -398,6 +423,14 @@
             <div class="button-group">
                 <button id="modal-save-med-btn" class="main-button">Save Changes</button>
             </div>
+        </div>
+    </div>
+
+    <div id="stock-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2 id="stock-modal-title">Stock for...</h2>
+            <div id="stock-modal-list" class="mt-4"></div>
         </div>
     </div>
 
@@ -442,6 +475,7 @@
           currentModalMedId: null,
           adherenceChart: null,
           tagFilter: '',
+          showArchived: false,
           unsubscribe: {
               theme: null,
               meds: null,
@@ -454,6 +488,7 @@
         body: document.body,
         versionDisplay: document.getElementById('version-display'),
         tagFilterInput: document.getElementById('tag-filter-input'),
+        showArchivedToggle: document.getElementById('show-archived-toggle'),
       };
 
       // --- Helper Functions ---
@@ -495,6 +530,7 @@
           renderDashboard();
           renderCalendarView();
           renderDoseTable();
+          renderStockTab();
       };
       
       const fetchAllTags = () => {
@@ -525,15 +561,21 @@
           const restockSelect = document.getElementById("restock-med-select");
           list.innerHTML = medSelect.innerHTML = restockSelect.innerHTML = '';
 
-          const filteredMedicines = appState.medicines.filter(med => {
-            if (!appState.tagFilter) return true;
-            const filterTags = appState.tagFilter.toLowerCase().split(',').map(t => t.trim());
-            return filterTags.every(filterTag => med.tags?.some(medTag => medTag.toLowerCase().includes(filterTag)));
-          });
+          let filteredMedicines = appState.medicines;
 
+          if (!appState.showArchived) {
+            filteredMedicines = filteredMedicines.filter(med => !med.isArchived);
+          }
+
+          if (appState.tagFilter) {
+            const filterTags = appState.tagFilter.toLowerCase().split(',').map(t => t.trim());
+            filteredMedicines = filteredMedicines.filter(med => 
+                filterTags.every(filterTag => med.tags?.some(medTag => medTag.toLowerCase().includes(filterTag)))
+            );
+          }
 
           if (filteredMedicines.length === 0) {
-              list.innerHTML = `<p class="text-center text-[var(--text-color-secondary)]">No medicines added yet.</p>`;
+              list.innerHTML = `<p class="text-center text-[var(--text-color-secondary)]">No medicines to display.</p>`;
               medSelect.innerHTML = restockSelect.innerHTML = `<option value="">No medicines available</option>`;
               return;
           }
@@ -545,15 +587,19 @@
               const streak = calculateStreakForMed(med.id);
               const icon = med.icon || 'fa-solid fa-pills';
               const color = med.color || '#4c51bf';
+              const isArchived = med.isArchived || false;
 
               const soonestExpiry = med.stock?.length > 0
                   ? new Date(Math.min(...med.stock.map(r => new Date(r.expiryDate)))).toLocaleDateString() : 'N/A';
               
               const listItem = document.createElement("li");
               listItem.className = "medicine-item";
+              if (isArchived) {
+                  listItem.style.opacity = "0.5";
+              }
               listItem.innerHTML = `
                   <div class="medicine-item-details">
-                      <span class="medicine-item-name"><i class="${icon}" style="color:${color};"></i> ${med.name}</span>
+                      <span class="medicine-item-name"><i class="${icon}" style="color:${color};"></i> ${med.name} ${isArchived ? '(Archived)' : ''}</span>
                       <span class="medicine-item-dosage">(${med.dosage})</span>
                       <p class="text-[var(--text-color-secondary)] text-sm">
                           Current Stock: <span class="font-bold text-[var(--text-color-primary)]">${currentStock}</span> | 
@@ -568,6 +614,8 @@
                       </div>
                   </div>
                   <div class="medicine-actions">
+                      <button class="secondary-button view-stock-btn" data-id="${med.id}"><i class="fa-solid fa-boxes-stacked"></i></button>
+                      <button class="secondary-button archive-med-btn" data-id="${med.id}">${isArchived ? '<i class="fa-solid fa-box-open"></i>' : '<i class="fa-solid fa-archive"></i>'}</button>
                       <button class="secondary-button edit-med-btn" data-id="${med.id}"><i class="fa-solid fa-edit"></i></button>
                       <button class="destructive-button delete-med-btn" data-id="${med.id}"><i class="fa-solid fa-trash"></i></button>
                   </div>`;
@@ -580,18 +628,22 @@
 
           document.querySelectorAll(".delete-med-btn").forEach(btn => btn.addEventListener("click", handleDeleteMedicine));
           document.querySelectorAll(".edit-med-btn").forEach(btn => btn.addEventListener("click", handleEditMedicine));
+          document.querySelectorAll(".archive-med-btn").forEach(btn => btn.addEventListener("click", handleArchiveMedicine));
+          document.querySelectorAll(".view-stock-btn").forEach(btn => btn.addEventListener("click", handleViewStock));
       };
       
       const renderDashboard = () => {
           const container = document.getElementById('dashboard-cards-container');
           container.innerHTML = '';
           
-          if (appState.medicines.length === 0) {
-             container.innerHTML = `<p class="text-center text-[var(--text-color-secondary)] md:col-span-2">No medicines to display. Add one from the Medications tab.</p>`;
+          const activeMedicines = appState.medicines.filter(med => !med.isArchived);
+
+          if (activeMedicines.length === 0) {
+             container.innerHTML = `<p class="text-center text-[var(--text-color-secondary)] md:col-span-2">No active medicines. Add one from the Medications tab.</p>`;
              return;
           }
 
-          appState.medicines.forEach(med => {
+          activeMedicines.forEach(med => {
               const totalRestocked = med.stock?.reduce((sum, r) => sum + r.amount, 0) || 0;
               const totalTaken = appState.doses.filter(d => d.medId === med.id && d.status === 'taken').length;
               const currentStock = totalRestocked - totalTaken;
@@ -673,6 +725,7 @@
             dayDiv.innerHTML = `<div class="calendar-day-header">${day.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}</div>`;
 
             appState.medicines.forEach(med => {
+                if (med.isArchived) return;
                 if (med.schedule?.days?.includes(dayName)) {
                     med.schedule.times.split(',').map(t => t.trim()).filter(Boolean).forEach(time => {
                         const loggedDose = appState.doses.find(d => {
@@ -694,9 +747,9 @@
                         } else if (new Date(`${dayStr}T${time}`) < new Date()) {
                             doseElement.classList.add('unknown');
                             unknownCount++;
-                            doseElement.addEventListener('click', () => handleLogDose(med.id, `${dayStr}T${time}`, 'unknown'));
+                            doseElement.addEventListener('click', () => handleLogDose(med.id, `${dayStr}T${time}`, 'unknown', 'calendar_log'));
                         } else {
-                            doseElement.addEventListener('click', () => handleLogDose(med.id, `${dayStr}T${time}`, 'taken'));
+                            doseElement.addEventListener('click', () => handleLogDose(med.id, `${dayStr}T${time}`, 'taken', 'calendar_log'));
                         }
                         dayDiv.appendChild(doseElement);
                     });
@@ -727,11 +780,11 @@
         tableBody.innerHTML = tableHeader.innerHTML = '';
 
         if (appState.doses.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="5" class="text-center text-[var(--text-color-secondary)]">No dose history found.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-[var(--text-color-secondary)]">No dose history found.</td></tr>`;
             return;
         }
 
-        ['date', 'medicineName', 'dosage', 'status', 'actions'].forEach(headerText => {
+        ['date', 'medicineName', 'dosage', 'status', 'doseNotes', 'actions'].forEach(headerText => {
             const th = document.createElement('th');
             th.textContent = headerText.replace(/([A-Z])/g, ' $1').toUpperCase();
             if (headerText !== 'actions') {
@@ -761,6 +814,7 @@
                 <td>${dose.medicineName}</td>
                 <td>${dose.dosage}</td>
                 <td class="${dose.status === 'taken' ? 'text-green-500' : dose.status === 'missed' ? 'text-red-500' : 'text-gray-500'}">${dose.status}</td>
+                <td>${dose.doseNotes || ''}</td>
                 <td><button class="secondary-button edit-dose-btn" data-id="${dose.id}"><i class="fa-solid fa-edit"></i> Edit</button></td>
             `;
             tableBody.appendChild(row);
@@ -769,6 +823,60 @@
         document.querySelectorAll('.edit-dose-btn').forEach(btn => {
             btn.addEventListener('click', (e) => handleEditDose(e.target.closest('button').dataset.id));
         });
+      };
+
+      const renderStockTab = () => {
+        const container = document.getElementById('stock-list-container');
+        container.innerHTML = '';
+
+        appState.medicines.forEach(med => {
+            if (med.isArchived) return;
+
+            const medHeader = document.createElement('h3');
+            medHeader.className = 'text-xl font-bold mt-4 mb-2';
+            medHeader.textContent = med.name;
+            container.appendChild(medHeader);
+
+            if (!med.stock || med.stock.length === 0) {
+                container.innerHTML += `<p class="text-sm text-[var(--text-color-secondary)]">No stock entries for this medicine.</p>`;
+                return;
+            }
+
+            med.stock.forEach((stockItem, index) => {
+                const stockId = `${med.id}-${index}`;
+                const dosesTakenFromStock = appState.doses.filter(d => d.stockId === stockId && d.status === 'taken').length;
+                const remaining = stockItem.amount - dosesTakenFromStock;
+                
+                const expiryDate = new Date(stockItem.expiryDate);
+                const daysUntilExpiry = Math.ceil((expiryDate - new Date()) / (1000 * 60 * 60 * 24));
+                
+                let expiryClass = 'expiry-safe';
+                if (daysUntilExpiry <= 0) expiryClass = 'expiry-expired';
+                else if (daysUntilExpiry <= EXPIRY_WARNING_DAYS) expiryClass = 'expiry-soon';
+
+                const stockDiv = document.createElement('div');
+                stockDiv.className = `stock-item ${expiryClass} ${stockItem.disposed ? 'disposed' : ''}`;
+                
+                stockDiv.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="font-bold">Batch #${index + 1}</p>
+                            <p class="text-sm">Remaining: ${remaining} / ${stockItem.amount}</p>
+                            <p class="text-sm">Expires: ${expiryDate.toLocaleDateString()}</p>
+                            <p class="text-sm">Lot: ${stockItem.stockLotNumber || 'N/A'}, Location: ${stockItem.stockLocation || 'N/A'}</p>
+                        </div>
+                        <div>
+                            ${!stockItem.disposed ? `<button class="main-button log-from-stock-btn" data-med-id="${med.id}" data-stock-index="${index}">Log Use</button>` : ''}
+                            ${daysUntilExpiry <= 0 && !stockItem.disposed ? `<button class="destructive-button dispose-stock-btn" data-med-id="${med.id}" data-stock-index="${index}">Dispose</button>` : ''}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(stockDiv);
+            });
+        });
+
+        document.querySelectorAll('.log-from-stock-btn').forEach(btn => btn.addEventListener('click', handleLogFromStock));
+        document.querySelectorAll('.dispose-stock-btn').forEach(btn => btn.addEventListener('click', handleDisposeStock));
       };
 
       // --- Data Handling ---
@@ -835,8 +943,22 @@
             },
             includeInStreak: document.getElementById("new-med-streak").checked,
             stock: [],
-            createdAt: Timestamp.now(),
+            medicineCreatedAt: Timestamp.now(),
+            medicineCreatedBy: appState.user.uid,
+            medicineUpdatedAt: Timestamp.now(),
+            medicineUpdatedBy: appState.user.uid,
+            isArchived: false,
+            archivedAt: null,
+            medicineSource: "manual_entry",
+            lastRestockedAt: null,
         };
+
+        if (newMed.schedule.days.length > 0) {
+            newMed.medicineScheduledCreatedAt = Timestamp.now();
+            newMed.medicineScheduleCreatedBy = appState.user.uid;
+            newMed.medicineScheduleUpdatedAt = Timestamp.now();
+            newMed.medicineScheduleUpdatedBy = appState.user.uid;
+        }
 
         try {
             await addDoc(collection(db, `users/${appState.user.uid}/medications`), newMed);
@@ -861,6 +983,7 @@
           document.getElementById('modal-dose-dosage').value = dose.dosage;
           document.getElementById('modal-dose-datetime').value = dose.date;
           document.getElementById('modal-dose-status').value = dose.status;
+          document.getElementById('modal-dose-notes').value = dose.doseNotes || '';
           
           document.getElementById('edit-dose-modal').classList.remove('hidden');
       };
@@ -876,6 +999,9 @@
             await updateDoc(docRef, {
                 date: document.getElementById('modal-dose-datetime').value,
                 status: document.getElementById('modal-dose-status').value,
+                doseNotes: document.getElementById('modal-dose-notes').value,
+                doseUpdatedAt: Timestamp.now(),
+                doseUpdatedBy: appState.user.uid,
             });
             showMessage("Dose updated successfully!", "success");
             document.getElementById('edit-dose-modal').classList.add('hidden');
@@ -917,6 +1043,32 @@
 
           document.getElementById('edit-med-modal').classList.remove('hidden');
       };
+
+      const handleArchiveMedicine = async (e) => {
+        const medId = e.target.closest("button").dataset.id;
+        const med = appState.medicines.find(m => m.id === medId);
+        if (!med) return;
+
+        const newArchivedState = !med.isArchived;
+        const confirmationMessage = newArchivedState 
+            ? "Archive this medicine? It will be hidden from most views."
+            : "Unarchive this medicine?";
+
+        if (confirm(confirmationMessage)) {
+            try {
+                const docRef = doc(db, `users/${appState.user.uid}/medications`, medId);
+                await updateDoc(docRef, {
+                    isArchived: newArchivedState,
+                    archivedAt: newArchivedState ? Timestamp.now() : null,
+                    medicineUpdatedAt: Timestamp.now(),
+                    medicineUpdatedBy: appState.user.uid,
+                });
+                showMessage(`Medicine ${newArchivedState ? 'archived' : 'unarchived'}.`, "success");
+            } catch (err) {
+                showMessage("Error updating medicine status: " + err.message, "error");
+            }
+        }
+      };
       
       const handleSaveMedicine = async () => {
           if (!appState.currentModalMedId) return;
@@ -934,8 +1086,18 @@
                   days: Array.from(document.querySelectorAll('#modal-schedule-day-container .day-checkbox:checked')).map(cb => cb.id.replace('modal-day-', '')),
                   times: document.getElementById("modal-repetition-times").value.trim()
               },
-              includeInStreak: document.getElementById("modal-med-streak").checked
+              includeInStreak: document.getElementById("modal-med-streak").checked,
+              medicineUpdatedAt: Timestamp.now(),
+              medicineUpdatedBy: appState.user.uid,
           };
+
+          const originalMed = appState.medicines.find(m => m.id === appState.currentModalMedId);
+          const scheduleChanged = JSON.stringify(originalMed.schedule) !== JSON.stringify(updatedData.schedule);
+
+          if (scheduleChanged) {
+              updatedData.medicineScheduleUpdatedAt = Timestamp.now();
+              updatedData.medicineScheduleUpdatedBy = appState.user.uid;
+          }
 
           try {
               const docRef = doc(db, `users/${appState.user.uid}/medications`, appState.currentModalMedId);
@@ -959,10 +1121,11 @@
         } catch (err) { showMessage("Error deleting medicine: " + err.message, "error"); }
       };
       
-      const handleLogDose = async (medIdOverride, datetimeOverride, statusOverride) => {
+      const handleLogDose = async (medIdOverride, datetimeOverride, statusOverride, source = 'manual_log', stockId = null) => {
         const medId = medIdOverride || document.getElementById("med-select").value;
         const datetimeTaken = datetimeOverride || document.getElementById("dose-datetime").value;
         const status = statusOverride || appState.logDoseStatus;
+        const notes = document.getElementById("dose-notes").value;
 
         if (!medId || !datetimeTaken) return showMessage("Please select a medicine and a date/time.", "error");
 
@@ -984,15 +1147,27 @@
         }
 
         const logEntry = {
-            medId, medicineName: selectedMed.name, dosage: selectedMed.dosage,
-            date: datetimeTaken, status, createdAt: Timestamp.now(),
-            uploadedBy: appState.user.email, uploadedApp: "Medication Manager",
+            medId,
+            medicineName: selectedMed.name,
+            dosage: selectedMed.dosage,
+            date: datetimeTaken,
+            status,
+            doseNotes: notes,
+            doseSource: source,
+            stockId: stockId,
+            doseReminderSentAt: null,
+            doseCreatedAt: Timestamp.now(),
+            doseCreatedBy: appState.user.uid,
+            doseUpdatedAt: Timestamp.now(),
+            doseUpdatedBy: appState.user.uid,
+            doseCreatedApp: "Medication Manager",
         };
 
         try {
             await addDoc(collection(db, `users/${appState.user.uid}/doses`), logEntry);
             showMessage(`Dose logged successfully: ${selectedMed.name} (${status})`, "success");
             setDefaultDateTime();
+            document.getElementById("dose-notes").value = '';
         } catch (err) { showMessage("Error logging dose: " + err.message, "error"); }
       };
       
@@ -1000,6 +1175,8 @@
         const medId = document.getElementById("restock-med-select").value;
         const amount = parseInt(document.getElementById("restock-amount").value);
         const expiryDate = document.getElementById("restock-expiry").value;
+        const lotNumber = document.getElementById("restock-lot").value.trim();
+        const location = document.getElementById("restock-location").value.trim();
 
         if (!medId || !amount || !expiryDate || amount <= 0) {
             return showMessage("Please select a medicine, enter a positive amount, and an expiry date.", "error");
@@ -1011,23 +1188,113 @@
         const newRestockEntry = {
             amount,
             expiryDate,
-            restockDate: new Date().toISOString(),
+            stockLotNumber: lotNumber,
+            stockLocation: location,
+            disposed: false,
+            stockCreatedAt: Timestamp.now(),
+            stockCreatedBy: appState.user.uid,
+            stockUpdatedAt: Timestamp.now(),
+            stockUpdatedBy: appState.user.uid,
         };
 
         try {
             const medDocRef = doc(db, `users/${appState.user.uid}/medications`, medId);
             const updatedStock = [...(selectedMed.stock || []), newRestockEntry];
-            await updateDoc(medDocRef, { stock: updatedStock });
+            await updateDoc(medDocRef, {
+                stock: updatedStock,
+                lastRestockedAt: Timestamp.now(),
+                medicineUpdatedAt: Timestamp.now(),
+                medicineUpdatedBy: appState.user.uid,
+            });
             
             showMessage(`Restocked ${amount} doses of ${selectedMed.name}!`, "success");
             document.getElementById("restock-amount").value = "";
             document.getElementById("restock-expiry").value = "";
+            document.getElementById("restock-lot").value = "";
+            document.getElementById("restock-location").value = "";
         } catch (err) { showMessage("Error restocking medicine: " + err.message, "error"); }
       };
-      
-      const handleExportData = async () => { /* Placeholder for export logic */ };
-      const handleExportCsv = async () => { /* Placeholder for export logic */ };
-      const handleImportData = async (e) => { /* Placeholder for import logic */ };
+
+      const handleViewStock = (e) => {
+        const medId = e.target.closest("button").dataset.id;
+        const med = appState.medicines.find(m => m.id === medId);
+        if (!med) return;
+
+        document.getElementById('stock-modal-title').textContent = `Stock for ${med.name}`;
+        const stockList = document.getElementById('stock-modal-list');
+        stockList.innerHTML = '';
+
+        if (!med.stock || med.stock.length === 0) {
+            stockList.innerHTML = `<p class="text-sm text-[var(--text-color-secondary)]">No stock entries for this medicine.</p>`;
+        } else {
+            med.stock.forEach((stockItem, index) => {
+                const stockId = `${med.id}-${index}`;
+                const dosesTakenFromStock = appState.doses.filter(d => d.stockId === stockId && d.status === 'taken').length;
+                const remaining = stockItem.amount - dosesTakenFromStock;
+                
+                const expiryDate = new Date(stockItem.expiryDate);
+                const daysUntilExpiry = Math.ceil((expiryDate - new Date()) / (1000 * 60 * 60 * 24));
+                
+                let expiryClass = 'expiry-safe';
+                if (daysUntilExpiry <= 0) expiryClass = 'expiry-expired';
+                else if (daysUntilExpiry <= EXPIRY_WARNING_DAYS) expiryClass = 'expiry-soon';
+
+                const stockDiv = document.createElement('div');
+                stockDiv.className = `stock-item ${expiryClass} ${stockItem.disposed ? 'disposed' : ''}`;
+                
+                stockDiv.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="font-bold">Batch #${index + 1}</p>
+                            <p class="text-sm">Remaining: ${remaining} / ${stockItem.amount}</p>
+                            <p class="text-sm">Expires: ${expiryDate.toLocaleDateString()}</p>
+                            <p class="text-sm">Lot: ${stockItem.stockLotNumber || 'N/A'}, Location: ${stockItem.stockLocation || 'N/A'}</p>
+                        </div>
+                        <div>
+                            ${!stockItem.disposed ? `<button class="main-button log-from-stock-btn" data-med-id="${med.id}" data-stock-index="${index}">Log Use</button>` : ''}
+                            ${daysUntilExpiry <= 0 && !stockItem.disposed ? `<button class="destructive-button dispose-stock-btn" data-med-id="${med.id}" data-stock-index="${index}">Dispose</button>` : ''}
+                        </div>
+                    </div>
+                `;
+                stockList.appendChild(stockDiv);
+            });
+        }
+
+        document.getElementById('stock-modal').classList.remove('hidden');
+        document.querySelectorAll('.log-from-stock-btn').forEach(btn => btn.addEventListener('click', handleLogFromStock));
+        document.querySelectorAll('.dispose-stock-btn').forEach(btn => btn.addEventListener('click', handleDisposeStock));
+      };
+
+      const handleLogFromStock = async (e) => {
+        const medId = e.target.dataset.medId;
+        const stockIndex = parseInt(e.target.dataset.stockIndex);
+        const stockId = `${medId}-${stockIndex}`;
+        
+        await handleLogDose(medId, new Date().toISOString().slice(0, 16), 'taken', 'stock_log', stockId);
+        document.getElementById('stock-modal').classList.add('hidden');
+      };
+
+      const handleDisposeStock = async (e) => {
+        const medId = e.target.dataset.medId;
+        const stockIndex = parseInt(e.target.dataset.stockIndex);
+        
+        const med = appState.medicines.find(m => m.id === medId);
+        if (!med || !med.stock || !med.stock[stockIndex]) return;
+
+        if (confirm(`Are you sure you want to mark Batch #${stockIndex + 1} of ${med.name} as disposed?`)) {
+            const updatedStock = [...med.stock];
+            updatedStock[stockIndex].disposed = true;
+
+            try {
+                const medDocRef = doc(db, `users/${appState.user.uid}/medications`, medId);
+                await updateDoc(medDocRef, { stock: updatedStock });
+                showMessage("Stock marked as disposed.", "success");
+                document.getElementById('stock-modal').classList.add('hidden');
+            } catch (err) {
+                showMessage("Error disposing stock: " + err.message, "error");
+            }
+        }
+      };
 
       // --- Auth & App Lifecycle ---
       const cleanupListeners = () => {
@@ -1105,7 +1372,7 @@
       document.getElementById("logout-btn").addEventListener("click", () => signOut(auth));
       document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
       document.getElementById("add-med-btn").addEventListener("click", handleAddMedicine);
-      document.getElementById("log-dose-btn").addEventListener("click", () => handleLogDose());
+      document.getElementById("log-dose-btn").addEventListener("click", () => handleLogDose(null, null, null, 'manual_log'));
       document.getElementById("restock-btn").addEventListener("click", handleRestockMedicine);
 
       document.getElementById("search-input").addEventListener("input", (e) => {
@@ -1116,6 +1383,11 @@
       ui.tagFilterInput.addEventListener("input", (e) => {
         appState.tagFilter = e.target.value;
         renderMedicines();
+      });
+
+      ui.showArchivedToggle.addEventListener('change', (e) => {
+          appState.showArchived = e.target.checked;
+          renderMedicines();
       });
 
       document.getElementById("status-taken").addEventListener("click", () => {

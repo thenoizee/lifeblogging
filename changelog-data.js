@@ -2,10 +2,24 @@
 
 export const changelogData = [
     {
+        version: "v7.13.0-alpha",
+        date: "2025-08-23",
+        changes: [
+            "All: 1st release of the .apk with Mood widget for android devices.",
+        "In the MediManager: Improved the stock tracking features - stock tab, view all current/expired stocks, log from specific stock, stock disposal visual reminders.",
+        "In the MediManager: Last restocked data added.",
+        "In the MediManager: Introduced notes to logging doses.",
+        "In the MediManager: Introduced archive medicine feature.",
+        "In the MediManager: Improved metadata handling.",
+        "In the Analyser: Updated title heading of Analyser App to 'Lifeblogging & Self-Quantifying Analyser App'.",
+        ]
+    },
+    {
         version: "v7.12.0-alpha",
         date: "2025-08-22",
         changes: [
             "In MediManager: Introduced feature - users can now select an icon and pick a colour for each medicine.",
+            "In MediManager: Users can now filter medicines by applied tags.",
         ]
     },
     {
