@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v7.13.1-alpha",
+        date: "2025-08-23",
+        changes: [
+            "In the MediManager: Medicine icon choices have been made clearer with a link to the Font Awesome library.",
+            "In the MediManager: Tag filtering has been made easier with option to click existing tags.",
+            "In the MediManager: Moved 'Stock Management' under Medicines and moved Schedule and Log one-off doses under 'Record Doses'.",
+        ]
+    },
+
+    {
         version: "v7.13.0-alpha",
         date: "2025-08-23",
         changes: [
