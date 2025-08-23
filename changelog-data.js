@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v7.15.1-alpha",
+        date: "2025-08-24",
+        changes: [
+            "In the MediManager: Stock count bug fix v2.",
+        ]
+    },
+    {
         version: "v7.15.0-alpha",
         date: "2025-08-24",
         changes: [
