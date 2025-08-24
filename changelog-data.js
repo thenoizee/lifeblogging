@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v7.18.0-alpha",
+        date: "2025-08-24",
+        changes: [
+            "In the MediManager: Users can now specify a One-off dosage (does not affect scheduled doses).",
+            "In the MediManager: Users can now specify dosage sizes from specific days without creating a new Medicine ie. it may decrease/increase from a certain day.",
+            "In the MediManager: Updated the importing data guide.",
+        ]
+    },
+    {
         version: "v7.17.0-alpha",
         date: "2025-08-24",
         changes: [
