@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v7.18.1-alpha",
+        date: "2025-08-24",
+        changes: [
+            "In the MediManager: Fixed import bug where any value in the taken column was written as 'Taken'.",
+        ]
+    },
+    {
         version: "v7.18.0-alpha",
         date: "2025-08-24",
         changes: [

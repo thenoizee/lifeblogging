@@ -304,7 +304,6 @@
                 <legend class="text-2xl font-semibold px-2 mb-4">Log a One-off Dose</legend>
                  <div class="mt-4">
                     <div class="input-group"><label for="med-select">Select Medicine</label><select id="med-select"></select></div>
-                    <div class="input-group"><label for="one-off-dosage">Dosage</label><input id="one-off-dosage" type="text" placeholder="e.g., 200mg" /></div>
                     <div class="input-group"><label for="dose-datetime">Date and Time Taken</label><input id="dose-datetime" type="datetime-local" /></div>
                     <div class="input-group"><label for="dose-notes">Notes</label><textarea id="dose-notes" placeholder="e.g., took with food, felt dizzy after..."></textarea></div>
                     <div class="input-group">
@@ -495,15 +494,6 @@
                 <input id="modal-med-streak" type="checkbox" class="w-auto">
                 <label for="modal-med-streak" class="mb-0 cursor-pointer">Include in daily streak?</label>
             </div>
-            <div id="dosage-history-section">
-                <h3>Dosage History</h3>
-                <div id="dosage-history-list"></div>
-                <div class="flex gap-2 mt-2">
-                    <input type="text" id="new-dosage-amount" placeholder="New Dosage" class="flex-grow">
-                    <input type="date" id="new-dosage-date">
-                    <button id="add-dosage-history-btn" class="main-button">Add</button>
-                </div>
-            </div>
             <div class="button-group">
                 <button id="modal-save-med-btn" class="main-button">Save Changes</button>
             </div>
@@ -625,7 +615,7 @@
         <div class="modal-content modal-content-lg">
             <span class="close-btn">&times;</span>
             <h2 class="text-2xl font-bold mb-4">Review Import Data</h2>
-            <p class="text-sm text-[var(--text-color-secondary)] mb-4">Review the data below. Doses for medicines not found in your list will be skipped (indicated by <span class="font-bold text-red-500">greyed out italics</span>). Click 'Confirm Import' to save to your history.</p>
+            <p class="text-sm text-[var(--text-color-secondary)] mb-4">Review the data below. Doses for medicines not found in your list will be skipped. Click 'Confirm Import' to save to your history.</p>
             <div class="table-container max-h-96">
                 <table id="import-review-table">
                     <thead></thead>
@@ -1309,7 +1299,6 @@
             archivedAt: null,
             medicineSource: "manual_entry",
             lastRestockedAt: null,
-            dosageHistory: [{ dosage, effectiveDate: toLocalISOString(new Date()).split('T')[0] }]
         };
 
         if (newMed.schedule.days.length > 0) {
@@ -1401,73 +1390,8 @@
               `;
           });
           document.getElementById('modal-repetition-times').value = med.schedule?.times || '';
-          
-          renderDosageHistory(med.dosageHistory || []);
+
           document.getElementById('edit-med-modal').classList.remove('hidden');
-      };
-      
-      const renderDosageHistory = (history) => {
-        const list = document.getElementById('dosage-history-list');
-        list.innerHTML = '';
-        if (!history || history.length === 0) {
-            list.innerHTML = '<p class="text-sm text-[var(--text-color-secondary)]">No dosage history.</p>';
-            return;
-        }
-        history.forEach((item, index) => {
-            const div = document.createElement('div');
-            div.className = 'flex justify-between items-center p-2 border-b border-[var(--border-color)]';
-            div.innerHTML = `
-                <span>${item.dosage} (from ${item.effectiveDate})</span>
-                <button class="destructive-button text-xs" data-index="${index}"><i class="fa-solid fa-trash"></i></button>
-            `;
-            div.querySelector('button').addEventListener('click', handleDeleteDosageHistory);
-            list.appendChild(div);
-        });
-      };
-
-      const handleAddDosageHistory = async () => {
-        const medId = appState.currentModalMedId;
-        const newDosage = document.getElementById('new-dosage-amount').value.trim();
-        const newDate = document.getElementById('new-dosage-date').value;
-
-        if (!medId || !newDosage || !newDate) {
-            return showMessage("Please enter a new dosage and effective date.", "error");
-        }
-
-        const med = appState.medicines.find(m => m.id === medId);
-        if (!med) return;
-
-        const newHistory = [...(med.dosageHistory || []), { dosage: newDosage, effectiveDate: newDate }];
-        newHistory.sort((a, b) => new Date(a.effectiveDate) - new Date(b.effectiveDate));
-
-        try {
-            const docRef = doc(db, `users/${appState.user.uid}/medications`, medId);
-            await updateDoc(docRef, { dosageHistory: newHistory });
-            renderDosageHistory(newHistory);
-            document.getElementById('new-dosage-amount').value = '';
-            document.getElementById('new-dosage-date').value = '';
-            showMessage("Dosage history updated.", "success");
-        } catch (err) {
-            showMessage("Error updating dosage history: " + err.message, "error");
-        }
-      };
-      
-      const handleDeleteDosageHistory = async (e) => {
-        const index = e.target.closest('button').dataset.index;
-        const medId = appState.currentModalMedId;
-        const med = appState.medicines.find(m => m.id === medId);
-        if (!med || !med.dosageHistory || !med.dosageHistory[index]) return;
-        
-        const newHistory = med.dosageHistory.filter((_, i) => i != index);
-
-        try {
-            const docRef = doc(db, `users/${appState.user.uid}/medications`, medId);
-            await updateDoc(docRef, { dosageHistory: newHistory });
-            renderDosageHistory(newHistory);
-            showMessage("Dosage history entry removed.", "success");
-        } catch (err) {
-            showMessage("Error removing dosage history: " + err.message, "error");
-        }
       };
 
       const handleArchiveMedicine = async (e) => {
@@ -1597,7 +1521,6 @@
         const datetimeTaken = datetimeOverride || document.getElementById("dose-datetime").value;
         const status = statusOverride || appState.logDoseStatus;
         const notes = document.getElementById("dose-notes").value.trim();
-        const dosage = document.getElementById("one-off-dosage").value.trim();
 
         if (!medId || !datetimeTaken) return showMessage("Please select a medicine and a date/time.", "error");
 
@@ -1637,7 +1560,7 @@
         const logEntry = {
             medId,
             medicineName: selectedMed.name,
-            dosage: dosage || selectedMed.dosage,
+            dosage: selectedMed.dosage,
             date: datetimeTaken,
             status,
             doseNotes: notes,
@@ -1657,7 +1580,6 @@
             showMessage(`Dose logged successfully: ${selectedMed.name} (${status})`, "success");
             setDefaultDateTime();
             document.getElementById("dose-notes").value = '';
-            document.getElementById("one-off-dosage").value = '';
         } catch (err) { showMessage("Error logging dose: " + err.message, "error"); }
       };
       
@@ -2040,7 +1962,6 @@
       document.getElementById('modal-save-dose-btn').addEventListener('click', handleSaveDose);
       document.getElementById('modal-delete-dose-btn').addEventListener('click', handleDeleteDose);
       document.getElementById('modal-save-stock-btn').addEventListener('click', handleSaveStock);
-      document.getElementById('add-dosage-history-btn').addEventListener('click', handleAddDosageHistory);
 
       document.getElementById('modal-taken-on-time-btn').addEventListener('click', () => {
           const selectedStockId = document.getElementById('modal-log-dose-batch-select').value;
@@ -2084,7 +2005,7 @@
             }
 
             appState.dosesToImportCache = parsedData.map(row => {
-                const status = row['Taken'] ? 'taken' : 'missed';
+                const status = row['Taken'] && row['Taken'].toLowerCase().trim() === 'taken' ? 'taken' : 'missed';
                 const date = row['Taken (ISO 8601)'] || row['Reminded (ISO 8601)'];
                 const csvTags = row['Tags'] ? row['Tags'].split(',').map(t => t.trim()) : [];
                 const finalTags = ['imported', ...csvTags];
@@ -2133,7 +2054,7 @@
               const row = document.createElement('tr');
               const medExists = appState.medicines.some(m => m.name === dose.medicineName);
               if (!medExists) {
-                  row.classList.add('opacity-50', 'italic', 'text-red-500');
+                  row.classList.add('opacity-50', 'italic');
                   row.title = "This medicine was not found in your list and will be skipped.";
               }
 
