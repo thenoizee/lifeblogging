@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v7.17.0-alpha",
+        date: "2025-08-24",
+        changes: [
+            "In the MediManager: The importer now imports 'Reminders' column from apps that may record this data.",
+            "In the MediManager: Imported data now has updated metadata and tags. 'Tags' on Medicines are now called 'Labels'.",
+            "In the MediManager: Added a guide to the import process.",
+            "In the MediManager: Users can now review the data being imported before confirming.",
+
+        ]
+    },
+    {
         version: "v7.16.0-alpha",
         date: "2025-08-24",
         changes: [
