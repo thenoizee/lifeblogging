@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v7.19.0-alpha",
+        date: "2025-08-24",
+        changes: [
+            "In the MediManager: Imported data with a reminder time but no 'taken' status/date will now appear as unknown in the history calendar.",
+            "In the MediManager: Added a 'Stock will run out on' view on dashboard, assuming taking at correct times all the time.",
+            "In the MediManager: Added 'Unknown expiry date' option (choosing this will default to the expiry date in either 1 month, or the date the supply is calculated to run out, whichever is sooner).",
+            "In the MediManager: You can no longer edit imported data. You can still apply tags to doses.",
+        ]
+    },
+    {
         version: "v7.18.1-alpha",
         date: "2025-08-24",
         changes: [

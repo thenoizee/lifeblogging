@@ -385,7 +385,17 @@
                     <div class="mt-4">
                         <div class="input-group"><label for="restock-med-select">Select Medicine to Restock</label><select id="restock-med-select"></select></div>
                         <div class="input-group"><label for="restock-amount">Amount</label><input id="restock-amount" type="number" placeholder="Number of doses to add" min="1" /></div>
-                        <div class="input-group"><label for="restock-expiry">Expiry Date</label><input id="restock-expiry" type="date" /></div>
+                        <div class="input-group">
+                            <label for="restock-expiry">Expiry Date</label>
+                            <div class="flex items-center gap-2">
+                                <input id="restock-expiry" type="date" class="flex-grow" />
+                                <input type="checkbox" id="expiry-unknown-checkbox" class="w-auto">
+                                <label for="expiry-unknown-checkbox" class="mb-0 cursor-pointer">Unknown</label>
+                            </div>
+                             <p class="text-xs text-[var(--text-color-secondary)] mt-1">
+                                If unknown, the expiry will be set to 1 month from today, or the date the supply runs out per the schedule (whichever is sooner).
+                            </p>
+                        </div>
                         <div class="input-group"><label for="restock-lot">Lot Number</label><input id="restock-lot" type="text" placeholder="e.g., AB12345" /></div>
                         <div class="input-group"><label for="restock-location">Location</label><input id="restock-location" type="text" placeholder="e.g., Bathroom Cabinet" /></div>
                         <div class="button-group"><button id="restock-btn" class="main-button"><i class="fa-solid fa-box"></i> Restock</button></div>
@@ -460,10 +470,15 @@
             <div class="input-group"><label for="modal-dose-status">Status</label><select id="modal-dose-status"><option value="taken">Taken</option><option value="missed">Missed</option><option value="unknown">Unknown</option></select></div>
             <div class="input-group"><label for="modal-dose-notes">Notes</label><textarea id="modal-dose-notes"></textarea></div>
             <div class="input-group"><label for="modal-dose-batch">Batch</label><input id="modal-dose-batch" type="text" disabled /></div>
+             <div class="input-group">
+                <label for="modal-dose-tags">Tags (comma-separated)</label>
+                <input id="modal-dose-tags" type="text" />
+            </div>
             <div class="button-group">
                 <button id="modal-save-dose-btn" class="main-button">Save Changes</button>
                 <button id="modal-delete-dose-btn" class="destructive-button">Delete Entry</button>
             </div>
+             <p id="modal-imported-message" class="text-sm text-yellow-500 mt-4 text-center hidden">Imported data cannot be edited, except for tags.</p>
         </div>
     </div>
     
@@ -841,6 +856,19 @@
           return totalRemaining;
       };
 
+      const calculateDailyUsage = (med) => {
+        if (!med.schedule || !med.schedule.days || !med.schedule.times) {
+            return 0;
+        }
+        const dosesPerDay = med.schedule.times.split(',').filter(Boolean).length;
+        const daysPerWeek = med.schedule.days.length;
+        
+        if (daysPerWeek === 0 || dosesPerDay === 0) return 0;
+
+        // This is a simplification; for more complex schedules, a more detailed calculation might be needed
+        return (dosesPerDay * daysPerWeek) / 7;
+      };
+
       const renderMedicines = () => {
           const list = document.getElementById("medicine-list");
           const medSelect = document.getElementById("med-select");
@@ -946,6 +974,13 @@
                   if (daysToExpiry <= EXPIRY_WARNING_DAYS) expiryClass = 'warning';
                   if (daysToExpiry <= 0) expiryClass = 'danger';
               }
+              
+              const dailyUsage = calculateDailyUsage(med);
+              const daysUntilRunOut = dailyUsage > 0 ? Math.floor(currentStock / dailyUsage) : Infinity;
+              const runOutDate = new Date();
+              if (daysUntilRunOut !== Infinity) {
+                runOutDate.setDate(runOutDate.getDate() + daysUntilRunOut);
+              }
 
               let stockClass = '';
               if (currentStock <= LOW_STOCK_THRESHOLD) stockClass = 'warning';
@@ -968,7 +1003,10 @@
                         <p class="text-2xl font-bold">${currentStock}</p>
                     </div>
                   </div>
-                  <p class="text-sm text-right mt-2">Expires in: ${daysToExpiry} days</p>
+                  <div class="flex justify-between items-end mt-2">
+                    <p class="text-sm">Runs out on: <strong>${daysUntilRunOut !== Infinity ? runOutDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}</strong></p>
+                    <p class="text-sm text-right">Expires in: ${daysToExpiry} days</p>
+                  </div>
               `;
               container.appendChild(card);
           });
@@ -1323,22 +1361,55 @@
       };
       
       const handleEditDose = (doseId) => {
-          const dose = appState.doses.find(d => d.id === doseId);
-          if (!dose) return;
-          
-          appState.currentModalDoseId = doseId;
-          document.getElementById('modal-dose-med-name').value = dose.medicineName;
-          document.getElementById('modal-dose-dosage').value = dose.dosage;
-          document.getElementById('modal-dose-datetime').value = dose.date;
-          document.getElementById('modal-dose-status').value = dose.status;
-          document.getElementById('modal-dose-notes').value = dose.doseNotes || '';
-          document.getElementById('modal-dose-batch').value = dose.stockId ? `Batch #${parseInt(dose.stockId.split('-')[1]) + 1}` : 'N/A';
-          
-          document.getElementById('edit-dose-modal').classList.remove('hidden');
-      };
+        const dose = appState.doses.find(d => d.id === doseId);
+        if (!dose) return;
+        
+        appState.currentModalDoseId = doseId;
+        document.getElementById('modal-dose-med-name').value = dose.medicineName;
+        document.getElementById('modal-dose-dosage').value = dose.dosage;
+        document.getElementById('modal-dose-datetime').value = dose.date;
+        document.getElementById('modal-dose-status').value = dose.status;
+        document.getElementById('modal-dose-notes').value = dose.doseNotes || '';
+        document.getElementById('modal-dose-tags').value = dose.tags?.join(', ') || '';
+        document.getElementById('modal-dose-batch').value = dose.stockId ? `Batch #${parseInt(dose.stockId.split('-')[1]) + 1}` : 'N/A';
+        
+        const isImported = dose.doseSource && dose.doseSource.includes('import');
+        document.getElementById('modal-dose-datetime').disabled = isImported;
+        document.getElementById('modal-dose-status').disabled = isImported;
+        document.getElementById('modal-dose-notes').disabled = isImported;
+        document.getElementById('modal-save-dose-btn').classList.toggle('hidden', isImported);
+        document.getElementById('modal-delete-dose-btn').classList.toggle('hidden', isImported);
+        document.getElementById('modal-imported-message').classList.toggle('hidden', !isImported);
+
+        if(!isImported) {
+             document.getElementById('modal-save-dose-btn').classList.remove('hidden');
+        }
+        
+        document.getElementById('edit-dose-modal').classList.remove('hidden');
+    };
       
-      const handleSaveDose = async () => {
+    const handleSaveDose = async () => {
         if (!appState.currentModalDoseId) return;
+        const dose = appState.doses.find(d => d.id === appState.currentModalDoseId);
+        if (dose.doseSource && dose.doseSource.includes('import')) {
+            // Only allow tag updates for imported doses
+            const newTags = document.getElementById('modal-dose-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+             try {
+                const docRef = doc(db, `users/${appState.user.uid}/doses`, appState.currentModalDoseId);
+                await updateDoc(docRef, {
+                    tags: newTags,
+                    doseUpdatedAt: Timestamp.now(),
+                    doseUpdatedBy: appState.user.uid,
+                });
+                showMessage("Tags updated successfully!", "success");
+                document.getElementById('edit-dose-modal').classList.add('hidden');
+            } catch (err) {
+                showMessage("Error updating tags: " + err.message, "error");
+            }
+            return;
+        }
+
+        // Full update for non-imported doses
         const newDate = new Date(document.getElementById('modal-dose-datetime').value);
         if (newDate > new Date()) {
             return showMessage("Cannot edit a dose in the future.", "error");
@@ -1349,13 +1420,16 @@
                 date: document.getElementById('modal-dose-datetime').value,
                 status: document.getElementById('modal-dose-status').value,
                 doseNotes: document.getElementById('modal-dose-notes').value,
+                tags: document.getElementById('modal-dose-tags').value.split(',').map(t => t.trim()).filter(Boolean),
                 doseUpdatedAt: Timestamp.now(),
                 doseUpdatedBy: appState.user.uid,
             });
             showMessage("Dose updated successfully!", "success");
             document.getElementById('edit-dose-modal').classList.add('hidden');
-        } catch (err) { showMessage("Error updating dose: " + err.message, "error"); }
-      };
+        } catch (err) {
+            showMessage("Error updating dose: " + err.message, "error");
+        }
+    };
 
       const handleDeleteDose = async () => {
         if (!appState.currentModalDoseId || !confirm("Delete this dose entry?")) return;
@@ -2005,7 +2079,19 @@
             }
 
             appState.dosesToImportCache = parsedData.map(row => {
-                const status = row['Taken'] && row['Taken'].toLowerCase().trim() === 'taken' ? 'taken' : 'missed';
+                let status;
+                const takenStatus = row['Taken'] ? row['Taken'].toLowerCase().trim() : '';
+                
+                if (takenStatus === 'missed') {
+                    status = 'missed';
+                } else if (takenStatus === 'taken' || (row['Taken (ISO 8601)'] && row['Taken (ISO 8601)'].trim() !== '')) {
+                    status = 'taken';
+                } else if (row['Reminded (ISO 8601)'] && row['Reminded (ISO 8601)'].trim() !== '') {
+                    status = 'unknown';
+                } else {
+                    status = 'missed';
+                }
+
                 const date = row['Taken (ISO 8601)'] || row['Reminded (ISO 8601)'];
                 const csvTags = row['Tags'] ? row['Tags'].split(',').map(t => t.trim()) : [];
                 const finalTags = ['imported', ...csvTags];
@@ -2114,6 +2200,39 @@
           appState.dosesToImportCache = [];
       });
 
+      document.getElementById('expiry-unknown-checkbox').addEventListener('change', (e) => {
+        const expiryInput = document.getElementById('restock-expiry');
+        const medId = document.getElementById("restock-med-select").value;
+        const amount = parseInt(document.getElementById("restock-amount").value);
+        const selectedMed = appState.medicines.find(med => med.id === medId);
+
+        if (e.target.checked) {
+            let expiryDate = new Date();
+            const oneMonthFromNow = new Date();
+            oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+
+            if(selectedMed && amount) {
+                const dailyUsage = calculateDailyUsage(selectedMed);
+                if (dailyUsage > 0) {
+                    const daysSupply = Math.floor(amount / dailyUsage);
+                    const supplyRunOutDate = new Date();
+                    supplyRunOutDate.setDate(supplyRunOutDate.getDate() + daysSupply);
+
+                    expiryDate = supplyRunOutDate < oneMonthFromNow ? supplyRunOutDate : oneMonthFromNow;
+                } else {
+                    expiryDate = oneMonthFromNow;
+                }
+            } else {
+                expiryDate = oneMonthFromNow;
+            }
+
+            expiryInput.value = expiryDate.toISOString().split('T')[0];
+            expiryInput.disabled = true;
+        } else {
+            expiryInput.disabled = false;
+            expiryInput.value = '';
+        }
+      });
 
     </script>
 </body>
