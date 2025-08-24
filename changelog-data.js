@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v7.16.0-alpha",
+        date: "2025-08-24",
+        changes: [
+            "In the MediManager: Made improvements to the Import Data function.",
+            "Updated .gitignore file.",
+        ]
+    },
+    {
         version: "v7.15.1-alpha",
         date: "2025-08-24",
         changes: [
