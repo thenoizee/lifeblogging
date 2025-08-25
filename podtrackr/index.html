@@ -89,6 +89,7 @@
                             <i class="ph-bold ph-headphones"></i>
                             <span>PodTrackr</span>
                         </a>
+                        <a href="/" class="hidden md:block bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
                         <nav id="main-nav" class="hidden md:flex items-center space-x-6">
                             <a href="#" id="dashboard-link" class="nav-link">Dashboard</a>
                             <a href="#" id="feed-link" class="nav-link">Feed</a>
@@ -132,7 +133,6 @@
 
     </div>
     
-    <!-- Log Episode Modal -->
     <div id="log-episode-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="card p-8 rounded-lg shadow-lg max-w-sm w-full">
             <h2 class="text-2xl font-bold mb-4">Log Episode</h2>
@@ -158,7 +158,6 @@
         </div>
     </div>
     
-    <!-- Edit History Modal -->
     <div id="edit-history-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="card p-8 rounded-lg shadow-lg max-w-sm w-full">
             <h2 class="text-2xl font-bold mb-4">Edit Listen Entry</h2>
@@ -182,7 +181,6 @@
         </div>
     </div>
 
-    <!-- Notes Modal -->
     <div id="notes-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="card p-8 rounded-lg shadow-lg max-w-lg w-full">
             <h2 class="text-2xl font-bold mb-4">Episode Notes</h2>
@@ -195,7 +193,6 @@
         </div>
     </div>
 
-    <!-- Confirmation Modal -->
     <div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="card p-8 rounded-lg shadow-lg max-w-sm w-full text-center">
             <p id="confirm-modal-text" class="text-lg mb-6"></p>
@@ -210,7 +207,7 @@
         // Firebase and App Initialization
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, orderBy, limit, writeBatch, updateDoc, addDoc, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, orderBy, limit, writeBatch, updateDoc, addDoc, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- Firebase Config ---
         const firebaseConfig = {
@@ -228,10 +225,7 @@
         const db = getFirestore(app);
 
         // --- Cloud Function URL ---
-        // TODO: Replace this with your actual Cloud Function URL after deployment.
         const cloudFunctionUrl = 'https://us-central1-sammy-7298f.cloudfunctions.net/podcastIndexProxy'; 
-        // For local testing with Firebase emulators, use:
-        // const cloudFunctionUrl = 'http://127.0.0.1:5001/sammy-7298f/us-central1/podcastIndexProxy';
 
         // --- App State ---
         let currentUser = null;
@@ -243,6 +237,8 @@
         let episodeForNotes = null;
         let editingHistoryItem = null;
         let confirmCallback = null;
+        let themeDocRef = null;
+        let themeUnsubscribe = null;
 
         // --- UI Elements ---
         const contentEl = document.getElementById('content');
@@ -360,17 +356,24 @@
             document.documentElement.classList.remove('light', 'dark');
             document.documentElement.classList.add(theme);
             themeIconEl.className = theme === 'dark' ? 'ph-bold ph-moon text-xl' : 'ph-bold ph-sun text-xl';
-            localStorage.setItem('theme', theme);
         };
 
-        themeToggleEl.addEventListener('click', () => {
+        const toggleTheme = async () => {
+            if (!themeDocRef) return;
             const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
             applyTheme(newTheme);
-        });
+            try {
+                await setDoc(themeDocRef, { theme: newTheme }, { merge: true });
+            } catch (error) {
+                console.error("Error updating theme in Firestore:", error);
+                applyTheme(newTheme === 'dark' ? 'light' : 'dark');
+            }
+        };
+
+        themeToggleEl.addEventListener('click', toggleTheme);
         
         // --- API Functions ---
         async function fetchFromPodcastIndex(endpoint, params = {}) {
-            // This function now calls our secure Cloud Function proxy.
             if (cloudFunctionUrl === 'YOUR_CLOUD_FUNCTION_URL_HERE') {
                 contentEl.innerHTML = `<div class="card p-8 text-center"><h2 class="text-2xl font-bold mb-4">Configuration Needed</h2><p>Please deploy the Firebase Cloud Function and update the <code>cloudFunctionUrl</code> variable in the script.</p></div>`;
                 return null;
@@ -424,7 +427,7 @@
                         renderStatsView();
                         break;
                     case 'history':
-                        historyFilter = null; // Clear filter when navigating to main history
+                        historyFilter = null; 
                         renderHistoryView();
                         break;
                     case 'history-filtered':
@@ -589,7 +592,7 @@
                     ${recentEpisodes.map(ep => {
                         const isPlayed = listenedEpisodeIds.has(String(ep.id));
                         const podcast = followedPodcasts.find(p => p.id == ep.feedId);
-                        if (!podcast) return ''; // Failsafe if podcast not found
+                        if (!podcast) return ''; 
                         return `
                         <div class="card p-4 rounded-lg">
                             <div class="flex items-start space-x-4">
@@ -688,7 +691,7 @@
             }
 
             const totalEpisodes = yearlyHistory.length;
-            const totalSeconds = yearlyHistory.reduce((sum, h) => sum + (h.duration || 2700), 0); // Default to 45 mins if no duration
+            const totalSeconds = yearlyHistory.reduce((sum, h) => sum + (h.duration || 2700), 0);
             const totalMinutes = totalSeconds / 60;
             const totalHours = (totalMinutes / 60).toFixed(1);
             const avgMinutesPerDay = (totalMinutes / 365).toFixed(1);
@@ -702,10 +705,10 @@
                 .sort(([, a], [, b]) => b - a)
                 .slice(0, 5);
 
-            const dailyTotals = Array(7).fill(0); // Total minutes for each day of the week
+            const dailyTotals = Array(7).fill(0); 
             yearlyHistory.forEach(h => {
-                const day = h.listenedAt.toDate().getDay(); // 0 = Sunday, 1 = Monday, etc.
-                dailyTotals[day] += (h.duration || 2700) / 60; // Add minutes
+                const day = h.listenedAt.toDate().getDay(); 
+                dailyTotals[day] += (h.duration || 2700) / 60;
             });
             const daysInYear = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0 ? 366 : 365;
             const avgDailyMinutes = dailyTotals.map(total => total / (daysInYear / 7));
@@ -1071,7 +1074,6 @@
             const noteText = noteSnap.exists() ? noteSnap.data().text : '';
             const isPlayed = !historyQuerySnap.empty;
 
-            // Find the latest rating from all listen entries for this episode
             let latestRating = 0;
             if (!historyQuerySnap.empty) {
                 const ratedEntries = historyQuerySnap.docs
@@ -1357,7 +1359,7 @@
                 if (historyId) {
                     const historyDocRef = doc(db, `users/${currentUser.uid}/history`, historyId);
                     await updateDoc(historyDocRef, { rating: newRating });
-                    render(); // Re-render to show the updated stars
+                    render(); 
                 }
                 return;
             }
@@ -1565,7 +1567,7 @@
                 podcastId,
                 podcastTitle,
                 podcastArtwork,
-                duration: parseInt(episodeDuration) || 2700, // Default to 45 mins if no duration
+                duration: parseInt(episodeDuration) || 2700,
                 listenedAt: date,
                 createdAt: new Date(),
                 rating: rating
@@ -1620,7 +1622,6 @@
         
         closeLogModalBtnEl.addEventListener('click', () => logEpisodeModalEl.classList.add('hidden'));
         
-        // --- Edit Modal Handlers ---
         editModalRatingStarsEl.addEventListener('click', (e) => {
             const star = e.target.closest('i');
             if (!star || !star.dataset.value) return;
@@ -1657,7 +1658,6 @@
 
         closeEditModalBtnEl.addEventListener('click', () => editHistoryModalEl.classList.add('hidden'));
 
-        // --- Notes Modal Handlers ---
         saveNotesBtnEl.addEventListener('click', async () => {
             if (!episodeForNotes) return;
             const { episodeId, episodeTitle, podcastId, podcastTitle, podcastArtwork, episodeDuration } = episodeForNotes;
@@ -1675,7 +1675,6 @@
         });
         closeNotesModalBtnEl.addEventListener('click', () => notesModalEl.classList.add('hidden'));
 
-        // --- Confirmation Modal Handlers ---
         confirmModalYesBtnEl.addEventListener('click', () => {
             if (confirmCallback) {
                 confirmCallback(true);
@@ -1690,18 +1689,24 @@
             confirmModalEl.classList.add('hidden');
         });
 
-        // --- Initialization ---
         onAuthStateChanged(auth, user => {
             currentUser = user;
             if (user) {
+                themeDocRef = doc(db, 'users', user.uid, 'settings', 'theme');
+                if (themeUnsubscribe) themeUnsubscribe();
+                themeUnsubscribe = onSnapshot(themeDocRef, (doc) => {
+                    const theme = doc.data()?.theme || 'dark';
+                    applyTheme(theme);
+                });
                 currentView = 'dashboard';
             } else {
+                if (themeUnsubscribe) themeUnsubscribe();
+                themeDocRef = null;
+                applyTheme('dark'); 
                 currentView = 'login';
             }
             render();
         });
-
-        applyTheme(localStorage.getItem('theme') || 'dark');
 
     </script>
 </body>

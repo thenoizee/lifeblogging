@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v8.0.1-alpha",
+        date: "2025-08-25",
+        changes: [
+            "In PodTrackr: Added a link back to the Hub page for consistency.",
+            "In PodTrackr: Updated dark mode logic to align with user settings across the hub.",
+        ]
+    },
+    {
         version: "v8.0.0-alpha",
         date: "2025-08-25",
         changes: [
