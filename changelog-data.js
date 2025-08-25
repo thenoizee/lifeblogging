@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v8.2.1-alpha",
+        date: "2025-08-25",
+        changes: [
+            "In PodTrackr: Added a meta field for SEO.",
+        ]
+    },
+    {
         version: "v8.2.0-alpha",
         date: "2025-08-25",
         changes: [
