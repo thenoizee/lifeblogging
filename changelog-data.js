@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+        version: "v8.0.0-alpha",
+        date: "2025-08-25",
+        changes: [
+            "Hub: Introduced PodTrackr, a new app for tracking podcast listening history.",
+            "In PodTrackr: Users can now search for any podcast via the Podcast Index API and add them to a personal library.",
+            "In PodTrackr: View detailed podcast pages, including full episode lists and descriptions.",
+            "In PodTrackr: Log listened episodes with specific dates/times and add a star rating.",
+            "In PodTrackr: View personal listening history and statistics, filterable by podcast or episode.",
+            "In PodTrackr: Added a 'Listenlist' to save both podcasts and individual episodes for later.",
+        ]
+    },
+    {
         version: "v7.19.0-alpha",
         date: "2025-08-24",
         changes: [
