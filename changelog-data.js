@@ -1,6 +1,15 @@
 // /changelog-data.js
 
 export const changelogData = [
+    {
+        version: "v8.2.0-alpha",
+        date: "2025-08-25",
+        changes: [
+            "All: Updated the frequency of data refreshes in the Mood Widget in release v1.1.0-dev.",
+            "In the Logger: Visual update to Activity & Location.",
+            "In the MediManager: Bugfix with scheduled doses not appearing as taken if it was not taken on time.",
+        ]
+    },
      {
         version: "v8.1.0-alpha",
         date: "2025-08-25",
