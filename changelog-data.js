@@ -1,6 +1,14 @@
 // /changelog-data.js
 
 export const changelogData = [
+     {
+        version: "v8.1.0-alpha",
+        date: "2025-08-25",
+        changes: [
+            "In the MediManager: The 'Record Doses' page is now optimized for mobile devices, featuring a swipeable single-day view for scheduled doses on smaller screens.",
+            "In the MediManager: Fixed a bug where the dose logging modal would not appear for future scheduled doses. The modal will now correctly appear for any scheduled dose that has not yet been logged.",
+        ]
+    },
     {
         version: "v8.0.1-alpha",
         date: "2025-08-25",
