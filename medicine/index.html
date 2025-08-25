@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MediManager</title>
+    <title>MediManagr</title>
     <link rel="icon" href="/favicons/pills.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -91,6 +91,19 @@
         input, select, textarea {
             width: 100%; padding: 12px; border: 1px solid var(--border-color); background-color: var(--input-bg-color);
             color: var(--text-color-primary); border-radius: 8px; font-size: 16px; box-sizing: border-box; transition: all 0.2s ease;
+        }
+        .custom-select-wrapper { position: relative; }
+        .custom-select-wrapper select { appearance: none; -webkit-appearance: none; -moz-appearance: none; }
+        .custom-select-wrapper::after {
+            content: '\f078'; /* Font Awesome caret-down */
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            top: 50%;
+            right: 15px;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: var(--text-color-secondary);
         }
         input:focus, select:focus, textarea:focus { outline: none; border-color: var(--button-bg); box-shadow: 0 0 0 2px rgba(76, 81, 191, 0.2); }
         .button-group { display: flex; gap: 10px; margin-top: 25px; flex-wrap: wrap; }
@@ -281,7 +294,7 @@
       
       <div id="main-app-container" class="hidden">
         <div class="flex justify-between items-start mb-10">
-            <h1 class="text-4xl font-bold">MediManager</h1>
+            <h1 class="text-4xl font-bold">MediManagr</h1>
             <div class="flex items-center gap-4">
                 <a href="/" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
                 <span id="version-display" class="text-sm font-semibold text-gray-500 dark:text-gray-400"></span>
@@ -310,6 +323,17 @@
              <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg mt-4">
                 <legend class="text-2xl font-semibold px-2 mb-4">Adherence</legend>
                 <div class="w-full h-64 flex items-center justify-center"><canvas id="adherence-chart"></canvas></div>
+            </fieldset>
+            <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg mt-4">
+                <legend class="text-2xl font-semibold px-2 mb-4">Medication Breakdown</legend>
+                <div class="flex justify-center gap-2 mb-4">
+                    <button class="secondary-button chart-filter-btn" data-filter="allTime">All Time</button>
+                    <button class="secondary-button chart-filter-btn" data-filter="last30Days">Last 30 Days</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="w-full h-80 flex items-center justify-center"><canvas id="med-distribution-pie-chart"></canvas></div>
+                    <div class="w-full h-80 flex items-center justify-center"><canvas id="med-distribution-bar-chart"></canvas></div>
+                </div>
             </fieldset>
         </div>
 
@@ -413,14 +437,26 @@
                  <details class="bg-[var(--input-bg-color)] p-4 rounded-lg mb-6">
                     <summary class="font-bold cursor-pointer">Restock Medicine</summary>
                     <div class="mt-4">
-                        <div class="input-group"><label for="restock-med-select">Select Medicine to Restock</label><select id="restock-med-select"></select></div>
+                        <div class="input-group">
+                            <label for="restock-med-select">Select Medicine to Restock</label>
+                            <div class="custom-select-wrapper">
+                                <select id="restock-med-select"></select>
+                            </div>
+                        </div>
                         <div class="input-group"><label for="restock-amount">Amount</label><input id="restock-amount" type="number" placeholder="Number of doses to add" min="1" /></div>
                         <div class="input-group">
                             <label for="restock-expiry">Expiry Date</label>
-                            <div class="flex items-center gap-2">
-                                <input id="restock-expiry" type="date" class="flex-grow" />
-                                <input type="checkbox" id="expiry-unknown-checkbox" class="w-auto">
-                                <label for="expiry-unknown-checkbox" class="mb-0 cursor-pointer">Unknown</label>
+                            <div class="flex items-center gap-4">
+                                <div class="relative flex-grow">
+                                    <input id="restock-expiry" type="date" class="w-full pr-10" />
+                                    <span class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-[var(--text-color-secondary)]">
+                                        <i class="fa-solid fa-calendar-days"></i>
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <input type="checkbox" id="expiry-unknown-checkbox" class="w-4 h-4">
+                                    <label for="expiry-unknown-checkbox" class="mb-0 cursor-pointer">Unknown</label>
+                                </div>
                             </div>
                              <p class="text-xs text-[var(--text-color-secondary)] mt-1">
                                 If unknown, the expiry will be set to 1 month from today, or the date the supply runs out per the schedule (whichever is sooner).
@@ -718,6 +754,9 @@
           currentModalLogDoseScheduledTime: null,
           currentEditingStock: { medId: null, stockIndex: null },
           adherenceChart: null,
+          medsPieChart: null,
+          medsBarChart: null,
+          medsChartFilter: 'allTime',
           tagFilter: '',
           showArchived: false,
           dosesToImportCache: [],
@@ -809,6 +848,7 @@
           renderStockTab();
           renderTagFilterButtons();
           renderHistoryCalendar();
+          renderMedicineDistributionCharts();
       };
       
       const fetchAllTags = () => {
@@ -1153,6 +1193,63 @@
           });
       };
 
+      const renderMedicineDistributionCharts = () => {
+        if (appState.medsPieChart) appState.medsPieChart.destroy();
+        if (appState.medsBarChart) appState.medsBarChart.destroy();
+
+        let filteredDoses = appState.doses.filter(d => d.status === 'taken');
+
+        if (appState.medsChartFilter === 'last30Days') {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            filteredDoses = filteredDoses.filter(d => parseLocalDate(d.date) >= thirtyDaysAgo);
+        }
+
+        if (filteredDoses.length === 0) {
+            document.getElementById('med-distribution-pie-chart').style.display = 'none';
+            document.getElementById('med-distribution-bar-chart').style.display = 'none';
+            return;
+        }
+
+        document.getElementById('med-distribution-pie-chart').style.display = 'block';
+        document.getElementById('med-distribution-bar-chart').style.display = 'block';
+
+        const doseCounts = filteredDoses.reduce((acc, dose) => {
+            const medName = dose.medicineName;
+            acc[medName] = (acc[medName] || 0) + 1;
+            return acc;
+        }, {});
+
+        const labels = Object.keys(doseCounts);
+        const data = Object.values(doseCounts);
+        const backgroundColors = labels.map(label => {
+            const med = appState.medicines.find(m => m.name === label);
+            return med ? med.color : '#a0aec0';
+        });
+
+        // Pie Chart
+        const pieCtx = document.getElementById('med-distribution-pie-chart').getContext('2d');
+        appState.medsPieChart = new Chart(pieCtx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{ data: data, backgroundColor: backgroundColors }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, title: { display: true, text: 'Dose Distribution' } } }
+        });
+
+        // Bar Chart
+        const barCtx = document.getElementById('med-distribution-bar-chart').getContext('2d');
+        appState.medsBarChart = new Chart(barCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{ label: 'Doses Taken', data: data, backgroundColor: backgroundColors }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: 'Total Doses per Medication' } }, scales: { y: { beginAtZero: true } } }
+        });
+      };
+
       const renderHistoryCalendar = () => {
         const calendarContainer = document.getElementById('history-calendar');
         const monthDisplay = document.getElementById('history-month-display');
@@ -1332,31 +1429,29 @@
         dayToCheck.setHours(0, 0, 0, 0);
 
         while (true) {
-            const dayStr = dayToCheck.toISOString().split('T')[0];
             const dayName = DAYS_OF_WEEK[dayToCheck.getDay() === 0 ? 6 : dayToCheck.getDay() - 1];
-            let allDosesForMedTaken = true;
-            let hasScheduleForDay = false;
+            let dayContributesToStreak = false;
 
             if (med.schedule.days.includes(dayName)) {
                 const scheduledTimes = med.schedule.times.split(',').map(t => t.trim()).filter(Boolean);
-                if (scheduledTimes.length > 0) {
-                    hasScheduleForDay = true;
-                    for (const time of scheduledTimes) {
-                        const loggedDose = appState.doses.find(d => {
-                            if (d.medId !== medId) return false;
-                            const doseDateStr = new Date(d.date).toISOString().split('T')[0];
-                            const doseTime = new Date(d.date).toTimeString().substring(0, 5);
-                            return doseDateStr === dayStr && doseTime === time;
-                        });
-                        if (!loggedDose || loggedDose.status !== 'taken') {
-                            allDosesForMedTaken = false;
-                            break;
-                        }
+                const scheduledDosesCount = scheduledTimes.length;
+
+                if (scheduledDosesCount > 0) {
+                    const takenDosesOnDay = appState.doses.filter(d => {
+                        if (d.medId !== medId || d.status !== 'taken') return false;
+                        const doseDate = parseLocalDate(d.date);
+                        return doseDate.getFullYear() === dayToCheck.getFullYear() &&
+                               doseDate.getMonth() === dayToCheck.getMonth() &&
+                               doseDate.getDate() === dayToCheck.getDate();
+                    });
+
+                    if (takenDosesOnDay.length >= scheduledDosesCount) {
+                        dayContributesToStreak = true;
                     }
                 }
             }
 
-            if (hasScheduleForDay && allDosesForMedTaken) {
+            if (dayContributesToStreak) {
                 streak++;
                 dayToCheck.setDate(dayToCheck.getDate() - 1);
             } else {
@@ -1699,7 +1794,7 @@
             doseCreatedBy: appState.user.uid,
             doseUpdatedAt: Timestamp.now(),
             doseUpdatedBy: appState.user.uid,
-            doseCreatedApp: "Medication Manager",
+            doseCreatedApp: "MediManagr",
             tags: finalTags
         };
 
@@ -2112,6 +2207,16 @@
         handleLogDose(appState.currentModalLogDoseMedId, appState.currentModalLogDoseScheduledTime, 'missed', 'calendar_log', null, ['skipped']);
         document.getElementById('log-dose-modal').classList.add('hidden');
       });
+      
+      // Chart filter listeners
+      document.querySelectorAll('.chart-filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            appState.medsChartFilter = e.target.dataset.filter;
+            document.querySelectorAll('.chart-filter-btn').forEach(b => b.classList.replace('main-button', 'secondary-button'));
+            e.target.classList.replace('secondary-button', 'main-button');
+            renderMedicineDistributionCharts();
+        });
+      });
 
       // --- Import/Export Logic ---
       const handleImportDoses = async (event) => {
@@ -2227,7 +2332,7 @@
                       doseCreatedBy: appState.user.uid,
                       doseUpdatedAt: Timestamp.now(),
                       doseUpdatedBy: appState.user.uid,
-                      doseCreatedApp: "Medication Manager (Import)"
+                      doseCreatedApp: "MediManagr (Import)"
                   });
                   importedCount++;
               }

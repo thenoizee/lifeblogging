@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v8.3.0-alpha",
+        date: "2025-08-25",
+        changes: [
+            "In the MediManagr: Updated name of app from 'MediManager' to 'MediManagr' in line with the other apps.",
+            "In the MediManagr: Updated streak calculation logic - imported doses are now included as part of the streak, assuming it meets criteria.",
+            "In the MediManagr: Added bar charts and pie charts to visualise overall spread of different medicines on the Dashboard.",
+        ]
+    },
+
+
+    {
         version: "v8.2.2-alpha",
         date: "2025-08-25",
         changes: [
