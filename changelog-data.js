@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v8.2.2-alpha",
+        date: "2025-08-25",
+        changes: [
+            "All: Added favicons to every page.",
+        ]
+    },
+    {
         version: "v8.2.1-alpha",
         date: "2025-08-25",
         changes: [
