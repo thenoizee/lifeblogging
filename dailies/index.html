@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dailies - Lifeblogging Hub</title>
+    <link rel="icon" href="/favicons/check-double.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -39,6 +40,15 @@
             --heatmap-25-bg: #ffedd5; --heatmap-25-border: #fb923c; /* 1-49% */
             --heatmap-50-bg: #f0fdf4; --heatmap-50-border: #86efac; /* 50-99% */
             --heatmap-100-bg: #dcfce7; --heatmap-100-border: #4ade80; /* 100% */
+        }
+        .dark-mode {
+            --bg-color: #1a202c;
+            --card-bg-color: #2d3748;
+            --text-color-primary: #edf2f7;
+            --text-color-secondary: #a0aec0;
+            --input-bg-color: #4a5568;
+            --border-color: #4a5568;
+            --shadow-color: rgba(0, 0, 0, 0.4);
         }
         body {
             font-family: var(--font-family);
@@ -104,13 +114,39 @@
                 color: var(--text-color-secondary);
             }
         }
+        .theme-switcher {
+            background-color: var(--card-bg-color);
+            border: 1px solid var(--text-color-secondary);
+            border-radius: 9999px;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
+        }
+        .theme-switcher:hover:not(:disabled) { opacity: 0.8; }
+        .theme-switcher:disabled { cursor: not-allowed; opacity: 0.5; }
+        .theme-icon {
+            width: 1.5rem;
+            height: 1.5rem;
+            color: var(--text-color-primary);
+        }
+        .dark-mode .sun-icon { display: block; }
+        .dark-mode .moon-icon { display: none; }
+        .sun-icon { display: none; }
+        .moon-icon { display: block; }
     </style>
 </head>
 <body class="min-h-screen pt-12 pb-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-7xl mx-auto">
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-4xl font-bold text-[var(--text-color-primary)]"><i class="fa-solid fa-check-double mr-2"></i>Dailies</h1>
-            <a href="/" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
+            <div class="flex items-center gap-4">
+                <span id="version-display" class="text-sm font-semibold text-gray-500 dark:text-gray-400"></span>
+                <button id="theme-toggle" class="theme-switcher" title="Toggle dark mode" disabled>
+                    <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                    <svg class="theme-icon moon-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                </button>
+                <a href="/" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
+            </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="md:col-span-1">
@@ -201,6 +237,7 @@
     </div>
     
     <script type="module">
+        import { changelogData } from '/changelog-data.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, setDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -229,6 +266,8 @@
             firstEntryDates: new Map(), // NEW: To store first entry date for each attribute
             isLoading: false,
             editingTask: null,
+            themeUnsubscribe: null,
+            themeDocRef: null
         };
 
         const ui = {
@@ -255,6 +294,9 @@
             viewWeekBtn: document.getElementById('view-week-btn'),
             jumpTodayBtn: document.getElementById('jump-today-btn'),
             tooltip: document.getElementById('tooltip'),
+            themeToggle: document.getElementById('theme-toggle'),
+            versionDisplay: document.getElementById('version-display'),
+            body: document.body
         };
 
         let dailyPlanRef;
@@ -620,6 +662,26 @@
             renderCalendar();
         };
 
+        const applyTheme = (theme) => {
+            if (theme === 'dark') {
+                ui.body.classList.add('dark-mode');
+            } else {
+                ui.body.classList.remove('dark-mode');
+            }
+        };
+
+        const toggleTheme = async () => {
+            if (!appState.themeDocRef) return;
+            const newTheme = ui.body.classList.contains('dark-mode') ? 'light' : 'dark';
+            applyTheme(newTheme);
+            try {
+                await setDoc(appState.themeDocRef, { theme: newTheme }, { merge: true });
+            } catch (error) {
+                console.error("Error updating theme in Firestore:", error);
+                applyTheme(newTheme === 'dark' ? 'light' : 'dark'); // Revert on error
+            }
+        };
+
         const addEventListeners = () => {
             ui.addTaskBtn.addEventListener('click', () => {
                 appState.editingTask = null;
@@ -696,6 +758,7 @@
             ui.viewYearBtn.addEventListener('click', () => setView('year'));
             ui.viewMonthBtn.addEventListener('click', () => setView('month'));
             ui.viewWeekBtn.addEventListener('click', () => setView('week'));
+            ui.themeToggle.addEventListener('click', toggleTheme);
         };
 
         // --- Initialization ---
@@ -703,6 +766,13 @@
             if (user) {
                 appState.user = user;
                 dailyPlanRef = doc(db, 'users', user.uid, 'settings', 'dailyPlan');
+                appState.themeDocRef = doc(db, 'users', user.uid, 'settings', 'theme');
+                ui.themeToggle.disabled = false;
+                if (appState.themeUnsubscribe) appState.themeUnsubscribe();
+                appState.themeUnsubscribe = onSnapshot(appState.themeDocRef, (doc) => {
+                    const theme = doc.data()?.theme || 'light';
+                    applyTheme(theme);
+                });
                 onSnapshot(dailyPlanRef, (doc) => {
                     appState.dailyPlan = doc.data()?.dailyLogs || [];
                     renderDailyPlan();
@@ -712,12 +782,18 @@
             } else {
                 appState.user = null;
                 appState.dailyPlan = [];
+                if (appState.themeUnsubscribe) appState.themeUnsubscribe();
+                ui.themeToggle.disabled = true;
+                applyTheme('light');
                 renderDailyPlan();
                 ui.calendarView.innerHTML = '<p class="text-center col-span-7">Please log in.</p>';
             }
         });
         
-        document.addEventListener('DOMContentLoaded', addEventListeners);
+        document.addEventListener('DOMContentLoaded', () => {
+            ui.versionDisplay.textContent = changelogData[0].version;
+            addEventListeners()
+        });
 
     </script>
 </body>

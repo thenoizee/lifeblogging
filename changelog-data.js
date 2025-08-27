@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v8.4.1-alpha",
+        date: "2025-08-27",
+        changes: [
+            "In Dailies: Added dark mode, current version information, and the favicon.",
+            "In the Hub: Updated MediManagr link.",
+           ]
+    },
+    {
         version: "v8.4.0-alpha",
         date: "2025-08-27",
         changes: [
