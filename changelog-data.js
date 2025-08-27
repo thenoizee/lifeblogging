@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v8.5.0-alpha",
+        date: "2025-08-27",
+        changes: [
+            "In Dailies: Manual entries from the Logger/Analyser can now be assigned a specific day, improving daily overviews without altering original data.",
+            "In Dailies: Visual improvements in dark mode.",
+           ]
+    },
+    {
         version: "v8.4.1-alpha",
         date: "2025-08-27",
         changes: [

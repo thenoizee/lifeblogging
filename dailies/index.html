@@ -49,6 +49,12 @@
             --input-bg-color: #4a5568;
             --border-color: #4a5568;
             --shadow-color: rgba(0, 0, 0, 0.4);
+             /* Dark Heatmap Colors */
+            --heatmap-0-bg: #3f2222; --heatmap-0-border: #ef4444;
+            --heatmap-25-bg: #432c1d; --heatmap-25-border: #f97316;
+            --heatmap-50-bg: #1c3a2e; --heatmap-50-border: #22c55e;
+            --heatmap-100-bg: #1c4532; --heatmap-100-border: #4ade80;
+            --status-future-bg: #374151; --status-future-border: #6b7280;
         }
         body {
             font-family: var(--font-family);
@@ -148,7 +154,7 @@
                 <a href="/" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
             </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="md:col-span-1">
                 <div id="daily-plan-container" class="bg-[var(--card-bg-color)] shadow-lg rounded-xl p-6">
                     <h2 class="text-2xl font-bold text-[var(--text-color-primary)] mb-4">Daily Plan</h2>
@@ -159,7 +165,7 @@
                     </button>
                 </div>
             </div>
-            <div class="md:col-span-2">
+            <div class="md:col-span-1">
                 <div class="bg-[var(--card-bg-color)] shadow-lg rounded-xl p-6">
                     <div class="flex justify-between items-center mb-4">
                         <button id="prev-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-300 ease-in-out shadow-lg">&lt;</button>
@@ -174,6 +180,18 @@
                     </div>
                     <div id="calendar-view" class="grid"></div>
                 </div>
+            </div>
+        </div>
+        <div class="mt-6">
+             <div id="daily-data-review-container" class="bg-[var(--card-bg-color)] shadow-lg rounded-xl p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <button id="prev-day-review-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-300 ease-in-out shadow-lg">&lt; Prev Day</button>
+                    <h2 class="text-2xl font-bold text-[var(--text-color-primary)]">Daily Log Triage: <span id="review-date-display"></span></h2>
+                    <button id="next-day-review-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-300 ease-in-out shadow-lg">Next Day &gt;</button>
+                </div>
+                <div id="review-actions-container" class="text-center mb-4 border-b border-[var(--border-color)] pb-4">
+                    </div>
+                <div id="triage-entries-list" class="space-y-3"></div>
             </div>
         </div>
     </div>
@@ -240,16 +258,16 @@
         import { changelogData } from '/changelog-data.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, setDoc, getDocs, collection, addDoc, query, where, Timestamp, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
-           apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
-           authDomain: "sammy-7298f.firebaseapp.com",
-           projectId: "sammy-7298f",
-           storageBucket: "sammy-7298f.firebasestorage.app",
-           messagingSenderId: "963185683535",
-           appId: "1:963185683535:web:807df8941feba46c208e3a",
-           measurementId: "G-JT1YF2ELN3",
+            apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
+            authDomain: "sammy-7298f.firebaseapp.com",
+            projectId: "sammy-7298f",
+            storageBucket: "sammy-7298f.firebasestorage.app",
+            messagingSenderId: "963185683535",
+            appId: "1:963185683535:web:807df8941feba46c208e3a",
+            measurementId: "G-JT1YF2ELN3",
         };
 
         const app = initializeApp(firebaseConfig);
@@ -262,12 +280,19 @@
             currentDate: new Date(),
             currentView: 'month',
             logs: new Map(),
+            dailyAssignments: new Map(),
             attributeNames: new Set(),
-            firstEntryDates: new Map(), // NEW: To store first entry date for each attribute
+            firstEntryDates: new Map(),
             isLoading: false,
             editingTask: null,
             themeUnsubscribe: null,
-            themeDocRef: null
+            themeDocRef: null,
+            reviewDate: new Date(),
+            attributeColors: {},
+            assignmentsUnsubscribe: null,
+            assignedLogIds: new Set(),
+            reviewedDays: new Set(),
+            reviewedDaysUnsubscribe: null
         };
 
         const ui = {
@@ -296,15 +321,23 @@
             tooltip: document.getElementById('tooltip'),
             themeToggle: document.getElementById('theme-toggle'),
             versionDisplay: document.getElementById('version-display'),
-            body: document.body
+            body: document.body,
+            reviewDateDisplay: document.getElementById('review-date-display'),
+            triageEntriesList: document.getElementById('triage-entries-list'),
+            prevDayReviewBtn: document.getElementById('prev-day-review-btn'),
+            nextDayReviewBtn: document.getElementById('next-day-review-btn'),
+            reviewActionsContainer: document.getElementById('review-actions-container')
         };
 
         let dailyPlanRef;
+        let attributeColorsUnsubscribe = null;
+        let attributeColorsDocRef = null;
         const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
         const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
         const toYYYYMMDD = (date) => date.toISOString().split('T')[0];
         const dateFromYYYYMMDD = (str) => {
+            if (!str) return null;
             const [year, month, day] = str.split('-').map(Number);
             return new Date(year, month - 1, day);
         };
@@ -313,10 +346,11 @@
         const getWeekRangeForDate = (date) => {
             const start = new Date(date);
             const dayOfWeek = start.getDay();
-            start.setDate(start.getDate() - dayOfWeek);
+            const diff = start.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // adjust when day is sunday
+            start.setDate(diff);
             start.setHours(0, 0, 0, 0);
             const end = new Date(start);
-            end.setDate(start.getDate() + 6);
+            end.setDate(end.getDate() + 6);
             end.setHours(23, 59, 59, 999);
             return { start, end };
         };
@@ -324,21 +358,23 @@
         const isTaskActiveOnDate = (task, date) => {
             const d = new Date(date);
             d.setHours(0, 0, 0, 0);
-            if (task.startDate) {
-                if (d < dateFromYYYYMMDD(task.startDate)) return false;
-            }
-            if (task.endDate) {
-                if (d > dateFromYYYYMMDD(task.endDate)) return false;
-            }
+            const startDate = dateFromYYYYMMDD(task.startDate);
+            const endDate = dateFromYYYYMMDD(task.endDate);
+
+            if (startDate && d < startDate) return false;
+            if (endDate && d > endDate) return false;
+            
             const schedule = task.schedule || { type: 'daily' };
             if (schedule.type === 'weekly_days') {
-                return schedule.days.includes(d.getDay());
+                const dayOfWeek = d.getDay();
+                return schedule.days.includes(dayOfWeek);
             }
             return true;
         };
         
         const getTaskStatusForDate = (task, date) => {
-            const logsForDay = appState.logs.get(toYYYYMMDD(date)) || [];
+            const dateStr = toYYYYMMDD(date);
+            const logsForDay = (appState.logs.get(dateStr) || []).concat(appState.dailyAssignments.get(dateStr) || []);
             const schedule = task.schedule || { type: 'daily' };
             let completedCount = 0;
             let requiredCount = parseInt(task.count);
@@ -348,7 +384,7 @@
                 requiredCount = schedule.times;
                 let current = new Date(start);
                 while (current <= end) {
-                    const dailyLogs = appState.logs.get(toYYYYMMDD(current)) || [];
+                    const dailyLogs = (appState.logs.get(toYYYYMMDD(current)) || []).concat(appState.dailyAssignments.get(toYYYYMMDD(current)) || []);
                     completedCount += dailyLogs.filter(log => log.attributeName === task.attributeName).length;
                     current.setDate(current.getDate() + 1);
                 }
@@ -404,13 +440,18 @@
                 const firstEntry = appState.firstEntryDates.get(task.attributeName);
                 const firstEntryHTML = firstEntry ? `<div class="text-xs text-gray-500">First log: ${firstEntry.toLocaleDateString()}</div>` : '';
                 const dateRangeHTML = (task.startDate || task.endDate) ? `<div class="text-xs text-gray-500">Active: ${task.startDate || '...'} to ${task.endDate || '...'}</div>` : '';
-
+                
+                const color = appState.attributeColors[task.attributeName] || '#64748b';
+                
                 taskElement.innerHTML = `
-                    <div>
-                        <span class="font-semibold">${task.attributeName} (x${task.count})</span>
-                        <div class="text-xs text-[var(--text-color-secondary)]">${scheduleInfo}</div>
-                        ${dateRangeHTML}
-                        ${firstEntryHTML}
+                    <div class="flex items-center">
+                         <span class="w-3 h-3 rounded-full mr-3" style="background-color: ${color};"></span>
+                        <div>
+                            <span class="font-semibold">${task.attributeName} (x${task.count})</span>
+                            <div class="text-xs text-[var(--text-color-secondary)]">${scheduleInfo}</div>
+                            ${dateRangeHTML}
+                            ${firstEntryHTML}
+                        </div>
                     </div>
                     <div>
                         <button class="edit-task-btn p-2 text-blue-500 hover:text-blue-700" data-index="${index}"><i class="fa-solid fa-edit"></i></button>
@@ -434,7 +475,7 @@
         
         const renderMonthView = () => {
             ui.calendarView.innerHTML = '';
-            ui.calendarView.className = 'grid grid-cols-7 gap-2 month-view'; // Add class for responsive styling
+            ui.calendarView.className = 'grid grid-cols-7 gap-2 month-view';
             const year = appState.currentDate.getFullYear();
             const month = appState.currentDate.getMonth();
             const firstDayOfMonth = (new Date(year, month, 1).getDay() + 6) % 7;
@@ -522,12 +563,191 @@
                     break;
             }
         };
+        
+        const renderDailyDataReview = () => {
+            if (!appState.user) return;
+            const reviewDate = appState.reviewDate;
+            const reviewDateStr = toYYYYMMDD(reviewDate);
+            ui.reviewDateDisplay.textContent = reviewDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+        
+            // Render the "Mark as Reviewed" button/status
+            ui.reviewActionsContainer.innerHTML = '';
+            const isReviewed = appState.reviewedDays.has(reviewDateStr);
+            if (isReviewed) {
+                ui.reviewActionsContainer.innerHTML = `
+                    <div class="inline-flex items-center gap-2 text-green-600 font-semibold p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span>Day Reviewed</span>
+                    </div>`;
+            } else {
+                const button = document.createElement('button');
+                button.className = 'bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg disabled:opacity-50 disabled:cursor-not-allowed';
+                button.innerHTML = '<i class="fa-solid fa-check"></i> Mark as Reviewed';
+                button.addEventListener('click', handleMarkDayAsReviewed);
+                ui.reviewActionsContainer.appendChild(button);
+            }
+
+            const prevDate = new Date(reviewDate);
+            prevDate.setDate(reviewDate.getDate() - 1);
+            const prevDateStr = toYYYYMMDD(prevDate);
+            const nextDate = new Date(reviewDate);
+            nextDate.setDate(reviewDate.getDate() + 1);
+            const nextDateStr = toYYYYMMDD(nextDate);
+        
+            const originalLogsForDay = appState.logs.get(reviewDateStr) || [];
+            const unassignedLogsForDay = originalLogsForDay.filter(log => !appState.assignedLogIds.has(log.id));
+            const assignmentsForDay = appState.dailyAssignments.get(reviewDateStr) || [];
+            
+            const allEntriesForDay = unassignedLogsForDay
+                .concat(assignmentsForDay)
+                .sort((a,b) => new Date(a.date || a.originalLogDate) - new Date(b.date || b.originalLogDate));
+
+            ui.triageEntriesList.innerHTML = '';
+            if(allEntriesForDay.length === 0){
+                ui.triageEntriesList.innerHTML = `<p class="text-sm text-center text-[var(--text-color-secondary)]">No entries to review for this day.</p>`;
+            } else {
+                allEntriesForDay.forEach(entry => {
+                    const entryElement = document.createElement('div');
+                    const color = appState.attributeColors[entry.attributeName] || '#64748b';
+                    entryElement.className = `p-3 rounded-lg border-l-4`;
+                    entryElement.style.borderColor = color;
+                    entryElement.style.backgroundColor = `color-mix(in srgb, ${color} 15%, var(--card-bg-color))`;
+
+                    const logDate = new Date(entry.date || entry.originalLogDate);
+                    
+                    let createdAtDate;
+                    if (entry.createdAt) {
+                        if (typeof entry.createdAt.toDate === 'function') {
+                            createdAtDate = entry.createdAt.toDate();
+                        } else if (entry.createdAt.seconds) { 
+                            createdAtDate = new Timestamp(entry.createdAt.seconds, entry.createdAt.nanoseconds).toDate();
+                        }
+                    }
+                    const createdAt = createdAtDate ? createdAtDate.toLocaleString() : 'N/A';
+                    
+                    let actionButtons = '';
+                    if (entry.originalLogId) { 
+                        actionButtons = `<button class="unassign-btn bg-red-500 text-white px-2 py-1 rounded-md text-xs" data-assignment-id='${entry.id}'>Unassign</button>`;
+                    } else if (logDate.getHours() < 6) {
+                        actionButtons = `
+                            <div class="flex flex-col gap-1 text-right">
+                                <p class="text-xs font-semibold text-yellow-600 dark:text-yellow-400 mb-1">For Yesterday?</p>
+                                <button class="move-btn bg-blue-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${prevDateStr}'>Move to ${prevDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'})}</button>
+                            </div>
+                        `;
+                    } else {
+                         actionButtons = `
+                            <div class="flex flex-col gap-1 text-right">
+                                <button class="move-btn bg-blue-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${prevDateStr}'>Move to Yesterday</button>
+                                <button class="move-btn bg-green-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${nextDateStr}'>Move to Tomorrow</button>
+                            </div>
+                        `;
+                    }
+
+                    let statusBadge = '';
+                    if (entry.originalLogId) {
+                        const originalDate = new Date(entry.originalLogDate);
+                        const formattedOrigDate = originalDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
+                        statusBadge = `<span class="text-xs font-semibold px-2 py-1 rounded-md bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">Moved from ${formattedOrigDate}</span>`;
+                    } else {
+                        statusBadge = `<span class="text-xs font-semibold px-2 py-1 rounded-md bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">Original Log</span>`;
+                    }
+
+                    entryElement.innerHTML = `
+                        <div class="flex justify-between items-start">
+                             <div>
+                                <div class="flex items-center gap-3 mb-1">
+                                     <p class="font-semibold">${entry.attributeName}: ${entry.attributeValue}</p>
+                                     ${statusBadge}
+                                </div>
+                                 <p class="text-xs text-[var(--text-color-secondary)]">
+                                     Logged: ${logDate.toLocaleString()} | Added: ${createdAt} via ${entry.uploadedApp || 'Unknown'}
+                                 </p>
+                             </div>
+                             <div class="flex-shrink-0 ml-4">${actionButtons}</div>
+                        </div>
+                    `;
+                    ui.triageEntriesList.appendChild(entryElement);
+                });
+            }
+            
+            document.querySelectorAll('.move-btn').forEach(btn => btn.addEventListener('click', handleAssignEntry));
+            document.querySelectorAll('.unassign-btn').forEach(btn => btn.addEventListener('click', handleUnassignEntry));
+        };
+
+        const handleMarkDayAsReviewed = async (e) => {
+            const button = e.currentTarget;
+            button.disabled = true;
+            button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+
+            const dateStr = toYYYYMMDD(appState.reviewDate);
+            try {
+                const reviewedDocRef = doc(db, `users/${appState.user.uid}/reviewed_days`, dateStr);
+                await setDoc(reviewedDocRef, { reviewedAt: Timestamp.now() });
+                // The onSnapshot listener will handle the UI update
+            } catch (error) {
+                console.error("Error marking day as reviewed:", error);
+                alert("Could not save review status. Please try again.");
+                // Re-enable button on error
+                button.disabled = false;
+                button.innerHTML = '<i class="fa-solid fa-check"></i> Mark as Reviewed';
+            }
+        };
+
+        const handleAssignEntry = async (e) => {
+            const button = e.currentTarget;
+            const allButtonsInContainer = button.parentElement.querySelectorAll('button');
+            allButtonsInContainer.forEach(btn => btn.disabled = true);
+            button.textContent = 'Saving...';
+
+            const log = JSON.parse(button.dataset.logId);
+            const assignedDateStr = button.dataset.targetDate;
+        
+            let createdAtTimestamp = log.createdAt;
+            if (log.createdAt && typeof log.createdAt.toDate !== 'function' && log.createdAt.seconds) {
+                createdAtTimestamp = new Timestamp(log.createdAt.seconds, log.createdAt.nanoseconds);
+            }
+
+            const assignment = {
+                originalLogId: log.id,
+                originalLogDate: log.date,
+                assignedDate: assignedDateStr,
+                attributeName: log.attributeName,
+                attributeValue: log.attributeValue,
+                assignedBy: appState.user.uid,
+                assignedAt: Timestamp.now(),
+                uploadedApp: log.uploadedApp || 'Unknown',
+                createdAt: createdAtTimestamp
+            };
+        
+            try {
+                await addDoc(collection(db, `users/${appState.user.uid}/daily_log_assignments`), assignment);
+            } catch (error) {
+                console.error("Error creating assignment:", error);
+                alert("Could not move the entry. Please try again.");
+                renderDailyDataReview();
+            }
+        };
+
+        const handleUnassignEntry = async (e) => {
+            const button = e.currentTarget;
+            button.disabled = true;
+            button.textContent = 'Removing...';
+
+            const assignmentId = button.dataset.assignmentId;
+            try {
+                await deleteDoc(doc(db, `users/${appState.user.uid}/daily_log_assignments`, assignmentId));
+            } catch(error) {
+                console.error("Error removing assignment:", error);
+                alert("Could not unassign the entry. Please try again.");
+                renderDailyDataReview();
+            }
+        };
+        
 
         // --- Data Fetching ---
         const fetchLogsForDateRange = async () => {
             if (!appState.user) return;
-            const year = appState.currentDate.getFullYear();
-            const month = appState.currentDate.getMonth();
             appState.logs.clear();
             try {
                 const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
@@ -536,20 +756,55 @@
                     const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
                     const dataSnapshot = await getDocs(dataRef);
                     dataSnapshot.forEach(doc => {
-                        const log = doc.data();
+                        const log = {id: doc.id, ...doc.data()};
                         const logDate = new Date(log.date);
-                        if (logDate.getFullYear() === year) { // Fetch all logs for the current year for simplicity
-                            const logDateStr = toYYYYMMDD(logDate);
-                            if (!appState.logs.has(logDateStr)) appState.logs.set(logDateStr, []);
-                            appState.logs.get(logDateStr).push(log);
-                        }
+                        const logDateStr = toYYYYMMDD(logDate);
+                        if (!appState.logs.has(logDateStr)) appState.logs.set(logDateStr, []);
+                        appState.logs.get(logDateStr).push(log);
                     });
                 }
             } catch (error) {
                 console.error("Error fetching logs:", error);
             } finally {
                 renderCalendar();
+                renderDailyDataReview();
             }
+        };
+
+        const setupAssignmentsListener = () => {
+            if (appState.assignmentsUnsubscribe) appState.assignmentsUnsubscribe();
+            if (!appState.user) return;
+
+            const assignmentsRef = collection(db, `users/${appState.user.uid}/daily_log_assignments`);
+            appState.assignmentsUnsubscribe = onSnapshot(assignmentsRef, (querySnapshot) => {
+                appState.dailyAssignments.clear();
+                appState.assignedLogIds.clear();
+                querySnapshot.forEach((doc) => {
+                    const assignment = {id: doc.id, ...doc.data()};
+                    if (assignment.originalLogId) {
+                        appState.assignedLogIds.add(assignment.originalLogId);
+                    }
+                    const assignedDateStr = assignment.assignedDate;
+                    if (!appState.dailyAssignments.has(assignedDateStr)) {
+                        appState.dailyAssignments.set(assignedDateStr, []);
+                    }
+                    appState.dailyAssignments.get(assignedDateStr).push(assignment);
+                });
+                renderCalendar();
+                renderDailyDataReview();
+            }, (error) => console.error("Error listening to assignments:", error));
+        };
+
+        const setupReviewedDaysListener = () => {
+            if (appState.reviewedDaysUnsubscribe) appState.reviewedDaysUnsubscribe();
+            if(!appState.user) return;
+
+            const reviewedDaysRef = collection(db, `users/${appState.user.uid}/reviewed_days`);
+            appState.reviewedDaysUnsubscribe = onSnapshot(reviewedDaysRef, (snapshot) => {
+                appState.reviewedDays.clear();
+                snapshot.forEach(doc => appState.reviewedDays.add(doc.id));
+                renderDailyDataReview();
+            }, (error) => console.error("Error listening to reviewed days:", error));
         };
 
         const fetchAllAttributeNames = async () => {
@@ -579,7 +834,7 @@
                 console.error("Error fetching attribute names:", error);
             }
             populateAttributeSelect();
-            renderDailyPlan(); // Re-render plan to show first entry dates
+            renderDailyPlan();
         };
 
         const populateAttributeSelect = () => {
@@ -664,15 +919,15 @@
 
         const applyTheme = (theme) => {
             if (theme === 'dark') {
-                ui.body.classList.add('dark-mode');
+                document.documentElement.classList.add('dark-mode');
             } else {
-                ui.body.classList.remove('dark-mode');
+                document.documentElement.classList.remove('dark-mode');
             }
         };
 
         const toggleTheme = async () => {
             if (!appState.themeDocRef) return;
-            const newTheme = ui.body.classList.contains('dark-mode') ? 'light' : 'dark';
+            const newTheme = document.documentElement.classList.contains('dark-mode') ? 'light' : 'dark';
             applyTheme(newTheme);
             try {
                 await setDoc(appState.themeDocRef, { theme: newTheme }, { merge: true });
@@ -738,7 +993,7 @@
                     case 'month': appState.currentDate.setMonth(appState.currentDate.getMonth() - 1); break;
                     case 'week': appState.currentDate.setDate(appState.currentDate.getDate() - 7); break;
                 }
-                fetchLogsForDateRange();
+                renderCalendar();
             });
 
             ui.nextBtn.addEventListener('click', () => {
@@ -747,18 +1002,27 @@
                     case 'month': appState.currentDate.setMonth(appState.currentDate.getMonth() + 1); break;
                     case 'week': appState.currentDate.setDate(appState.currentDate.getDate() + 7); break;
                 }
-                fetchLogsForDateRange();
+                renderCalendar();
             });
 
             ui.jumpTodayBtn.addEventListener('click', () => {
                 appState.currentDate = new Date();
-                fetchLogsForDateRange();
+                renderCalendar();
             });
 
             ui.viewYearBtn.addEventListener('click', () => setView('year'));
             ui.viewMonthBtn.addEventListener('click', () => setView('month'));
             ui.viewWeekBtn.addEventListener('click', () => setView('week'));
             ui.themeToggle.addEventListener('click', toggleTheme);
+            
+            ui.prevDayReviewBtn.addEventListener('click', () => {
+                appState.reviewDate.setDate(appState.reviewDate.getDate() - 1);
+                renderDailyDataReview();
+            });
+             ui.nextDayReviewBtn.addEventListener('click', () => {
+                appState.reviewDate.setDate(appState.reviewDate.getDate() + 1);
+                renderDailyDataReview();
+            });
         };
 
         // --- Initialization ---
@@ -767,22 +1031,43 @@
                 appState.user = user;
                 dailyPlanRef = doc(db, 'users', user.uid, 'settings', 'dailyPlan');
                 appState.themeDocRef = doc(db, 'users', user.uid, 'settings', 'theme');
+                attributeColorsDocRef = doc(db, 'users', user.uid, 'settings', 'attributeColors');
+                
                 ui.themeToggle.disabled = false;
                 if (appState.themeUnsubscribe) appState.themeUnsubscribe();
                 appState.themeUnsubscribe = onSnapshot(appState.themeDocRef, (doc) => {
                     const theme = doc.data()?.theme || 'light';
                     applyTheme(theme);
                 });
+
+                if (attributeColorsUnsubscribe) attributeColorsUnsubscribe();
+                attributeColorsUnsubscribe = onSnapshot(attributeColorsDocRef, (doc) => {
+                    appState.attributeColors = doc.data() || {};
+                    renderDailyPlan();
+                });
+
                 onSnapshot(dailyPlanRef, (doc) => {
                     appState.dailyPlan = doc.data()?.dailyLogs || [];
                     renderDailyPlan();
                     fetchLogsForDateRange();
                 });
                 fetchAllAttributeNames();
+                setupAssignmentsListener(); 
+                setupReviewedDaysListener();
+
             } else {
                 appState.user = null;
                 appState.dailyPlan = [];
                 if (appState.themeUnsubscribe) appState.themeUnsubscribe();
+                if (attributeColorsUnsubscribe) attributeColorsUnsubscribe();
+                if (appState.assignmentsUnsubscribe) {
+                    appState.assignmentsUnsubscribe();
+                    appState.assignmentsUnsubscribe = null;
+                }
+                if (appState.reviewedDaysUnsubscribe) {
+                    appState.reviewedDaysUnsubscribe();
+                    appState.reviewedDaysUnsubscribe = null;
+                }
                 ui.themeToggle.disabled = true;
                 applyTheme('light');
                 renderDailyPlan();
