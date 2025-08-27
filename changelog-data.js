@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v8.4.0-alpha",
+        date: "2025-08-27",
+        changes: [
+            "Hub: Introduced Dailies, a new app for tracking daily task completion with a heatmap-style calendar view.",
+            "In Dailies: Users can define a daily plan with required tasks and track their completion percentage.",
+            "In Dailies: The app provides year, month, and week views of your daily task history.",
+        ]
+    },
+    {
         version: "v8.3.0-alpha",
         date: "2025-08-25",
         changes: [
