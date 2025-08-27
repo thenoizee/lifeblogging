@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v8.6.0-alpha",
+        date: "2025-08-28",
+        changes: [
+            "In PodTrackr: Implemented a routing system, allowing tabs to function as separate pages and enabling browser back/forward navigation.",
+            "In PodTrackr: Added an option to log an episode with an 'unknown' listen date.",
+            "In PodTrackr: The Listenlist now displays more detailed information, including the date an episode was added, its original publishing date, and its duration.",
+        ]
+    },
+    {
         version: "v8.5.0-alpha",
         date: "2025-08-27",
         changes: [

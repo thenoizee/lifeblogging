@@ -87,18 +87,18 @@
             <div class="container mx-auto px-4">
                 <div class="flex items-center justify-between py-4">
                     <div class="flex items-center space-x-8">
-                        <a href="#" id="home-link" class="flex items-center space-x-2 text-2xl font-bold text-[var(--primary-color)]">
+                        <a href="#dashboard" class="flex items-center space-x-2 text-2xl font-bold text-[var(--primary-color)]">
                             <i class="ph-bold ph-headphones"></i>
                             <span>PodTrackr</span>
                         </a>
                         <a href="/" class="hidden md:block bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
                         <nav id="main-nav" class="hidden md:flex items-center space-x-6">
-                            <a href="#" id="dashboard-link" class="nav-link">Dashboard</a>
-                            <a href="#" id="feed-link" class="nav-link">Feed</a>
-                            <a href="#" id="stats-link" class="nav-link">Stats</a>
-                            <a href="#" id="history-link" class="nav-link">History</a>
-                            <a href="#" id="listenlist-link" class="nav-link">Listenlist</a>
-                            <a href="#" id="settings-link" class="nav-link">Settings</a>
+                            <a href="#dashboard" class="nav-link">Dashboard</a>
+                            <a href="#feed" class="nav-link">Feed</a>
+                            <a href="#stats" class="nav-link">Stats</a>
+                            <a href="#history" class="nav-link">History</a>
+                            <a href="#listenlist" class="nav-link">Listenlist</a>
+                            <a href="#settings" class="nav-link">Settings</a>
                         </nav>
                     </div>
                     <div class="flex items-center space-x-4">
@@ -150,6 +150,7 @@
                 <button id="log-finished-now-btn" class="w-full btn-primary p-2 rounded-md">Just Finished Listening</button>
                 <button id="log-started-now-btn" class="w-full btn-primary p-2 rounded-md">Just Started Listening</button>
                 <button id="log-on-publish-btn" class="w-full btn-primary p-2 rounded-md">Immediately After Publishing</button>
+                <button id="log-unknown-btn" class="w-full bg-gray-500 text-white p-2 rounded-md">Listened (Date Unknown)</button>
                 <div class="card p-3 rounded-lg border border-gray-500/50">
                     <label for="log-date" class="block mb-2 font-medium">Finished at Other Time</label>
                     <input type="datetime-local" id="log-date" class="w-full p-2 rounded-md bg-[var(--background)]">
@@ -231,7 +232,6 @@
 
         // --- App State ---
         let currentUser = null;
-        let currentView = 'login';
         let currentPodcastId = null;
         let currentEpisodeContext = null;
         let historyFilter = null;
@@ -250,14 +250,7 @@
         const loadingSpinnerEl = document.getElementById('loading-spinner');
         const themeToggleEl = document.getElementById('theme-toggle');
         const themeIconEl = document.getElementById('theme-icon');
-        const homeLinkEl = document.getElementById('home-link');
         const mainNavEl = document.getElementById('main-nav');
-        const dashboardLinkEl = document.getElementById('dashboard-link');
-        const feedLinkEl = document.getElementById('feed-link');
-        const statsLinkEl = document.getElementById('stats-link');
-        const historyLinkEl = document.getElementById('history-link');
-        const settingsLinkEl = document.getElementById('settings-link');
-        const listenlistLinkEl = document.getElementById('listenlist-link');
         const logEpisodeModalEl = document.getElementById('log-episode-modal');
         const logEpisodeTitleEl = document.getElementById('log-episode-title');
         const logDateInputEl = document.getElementById('log-date');
@@ -265,6 +258,7 @@
         const logStartedNowBtnEl = document.getElementById('log-started-now-btn');
         const logOnPublishBtnEl = document.getElementById('log-on-publish-btn');
         const logPastBtnEl = document.getElementById('log-past-btn');
+        const logUnknownBtnEl = document.getElementById('log-unknown-btn');
         const closeLogModalBtnEl = document.getElementById('close-log-modal-btn');
         const notesModalEl = document.getElementById('notes-modal');
         const notesEpisodeTitleEl = document.getElementById('notes-episode-title');
@@ -320,13 +314,14 @@
         }
         
         function toLocalISOString(date) {
-            const tzoffset = (new Date()).getTimezoneOffset() * 60000; //offset in milliseconds
+            if (!date) return '';
+            const tzoffset = (new Date()).getTimezoneOffset() * 60000;
             const localISOTime = (new Date(date - tzoffset)).toISOString().slice(0, -1);
             return localISOTime.substring(0, 16);
         }
 
         function formatDateWithRelativeTime(date) {
-            if (!(date instanceof Date) || isNaN(date)) return '';
+            if (!date || !(date instanceof Date) || isNaN(date)) return 'Date Unknown';
             
             const day = date.getDate().toString().padStart(2, '0');
             const month = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -339,7 +334,7 @@
 
             return `${absolutePart} (${relativePart})`;
         }
-
+        
         function renderStars(currentRating = 0, interactive = false) {
             let starsHtml = '';
             for (let i = 1; i <= 5; i++) {
@@ -396,64 +391,47 @@
             }
         }
 
-        // --- UI Rendering ---
-        function updateNav() {
-            dashboardLinkEl.classList.toggle('active', currentView === 'dashboard');
-            feedLinkEl.classList.toggle('active', currentView === 'feed');
-            statsLinkEl.classList.toggle('active', currentView === 'stats');
-            historyLinkEl.classList.toggle('active', currentView === 'history' || currentView === 'history-filtered');
-            settingsLinkEl.classList.toggle('active', currentView === 'settings');
-            listenlistLinkEl.classList.toggle('active', currentView === 'listenlist');
-        }
-
-        function render() {
+        // --- Routing ---
+        function handleRouteChange() {
+            const hash = window.location.hash || '#dashboard';
+            const [view, param] = hash.slice(1).split('/');
+            
             if (!currentUser) {
                 renderLoginView();
-                authContainerEl.innerHTML = ``;
-                searchContainerEl.classList.add('hidden');
-                mainNavEl.classList.add('hidden');
-            } else {
-                authContainerEl.innerHTML = `<button id="logout-btn" class="btn-primary px-4 py-2 rounded-md">Logout</button>`;
-                searchContainerEl.classList.remove('hidden');
-                mainNavEl.classList.remove('hidden');
-                updateNav();
-
-                switch (currentView) {
-                    case 'dashboard':
-                        renderDashboard();
-                        break;
-                    case 'feed':
-                        renderFeedView();
-                        break;
-                    case 'stats':
-                        renderStatsView();
-                        break;
-                    case 'history':
-                        historyFilter = null; 
-                        renderHistoryView();
-                        break;
-                    case 'history-filtered':
-                        renderHistoryView(historyFilter);
-                        break;
-                    case 'settings':
-                        renderSettingsView();
-                        break;
-                    case 'listenlist':
-                        renderListenlistView();
-                        break;
-                    case 'search':
-                        renderSearchView();
-                        break;
-                    case 'podcast':
-                        renderPodcastDetailView(currentPodcastId);
-                        break;
-                    case 'episode':
-                        renderEpisodeDetailView(currentEpisodeContext);
-                        break;
-                    default:
-                        renderDashboard();
-                }
+                return;
             }
+            
+            authContainerEl.innerHTML = `<button id="logout-btn" class="btn-primary px-4 py-2 rounded-md">Logout</button>`;
+            searchContainerEl.classList.remove('hidden');
+            mainNavEl.classList.remove('hidden');
+            updateNav(view);
+
+            switch (view) {
+                case 'dashboard': renderDashboard(); break;
+                case 'feed': renderFeedView(); break;
+                case 'stats': renderStatsView(); break;
+                case 'history': renderHistoryView(); break;
+                case 'settings': renderSettingsView(); break;
+                case 'listenlist': renderListenlistView(); break;
+                case 'search': renderSearchView(param ? decodeURIComponent(param) : ''); break;
+                case 'podcast': renderPodcastDetailView(param); break;
+                case 'episode': renderEpisodeDetailView(param); break;
+                default: renderDashboard();
+            }
+        }
+        
+        function updateNav(activeView) {
+            document.querySelectorAll('#main-nav a').forEach(link => {
+                const linkView = new URL(link.href).hash.slice(1);
+                link.classList.toggle('active', linkView === activeView);
+            });
+        }
+        
+        window.addEventListener('hashchange', handleRouteChange);
+
+        // --- UI Rendering ---
+        function render() {
+            handleRouteChange();
         }
 
         function renderLoginView() {
@@ -504,7 +482,7 @@
                         <h2 class="text-2xl font-semibold mb-4">Your Podcasts</h2>
                         <div id="dashboard-podcasts" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                             ${podcasts.length > 0 ? podcasts.map(p => `
-                                <a href="#" data-podcast-id="${p.id}" class="podcast-link group">
+                                <a href="#podcast/${p.id}" class="podcast-link group">
                                     <div class="aspect-square rounded-lg overflow-hidden shadow-lg relative">
                                         <img src="${p.artwork}" alt="${p.title}" class="w-full h-full object-cover">
                                         <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center play-button">
@@ -524,19 +502,13 @@
                                     <img src="${h.podcastArtwork}" class="w-16 h-16 rounded-md object-cover">
                                     <div>
                                         <div class="flex items-center space-x-2">
-                                            <a href="#" class="episode-link font-semibold hover:text-[var(--primary-color)] transition-colors"
-                                                data-episode-id="${h.episodeId}"
-                                                data-episode-title="${h.episodeTitle}"
-                                                data-episode-duration="${h.duration}"
-                                                data-podcast-id="${h.podcastId}"
-                                                data-podcast-title="${h.podcastTitle}"
-                                                data-podcast-artwork="${h.podcastArtwork}">
+                                            <a href="#episode/${h.episodeId}" class="episode-link font-semibold hover:text-[var(--primary-color)] transition-colors">
                                                 ${h.episodeTitle ?? 'Untitled Episode'}
                                             </a>
                                             ${renderStars(h.rating)}
                                         </div>
                                         <p class="text-sm text-[var(--text-secondary)]">${h.podcastTitle ?? 'Unknown Podcast'}</p>
-                                        <p class="text-xs text-[var(--text-secondary)] mt-1">Finished listening to on: ${h.listenedAt ? formatDateWithRelativeTime(h.listenedAt.toDate()) : 'N/A'}</p>
+                                        <p class="text-xs text-[var(--text-secondary)] mt-1">Finished listening to on: ${formatDateWithRelativeTime(h.listenedAt?.toDate())}</p>
                                         ${h.createdAt ? `<p class="text-xs text-[var(--text-secondary)]">Marked as listened to on: ${formatDateWithRelativeTime(h.createdAt.toDate())}</p>` : ''}
                                     </div>
                                 </div>
@@ -600,16 +572,10 @@
                             <div class="flex items-start space-x-4">
                                 <img src="${podcast.artwork}" class="w-20 h-20 rounded-md object-cover">
                                 <div class="flex-grow">
-                                    <a href="#" class="episode-link font-semibold hover:text-[var(--primary-color)] transition-colors"
-                                       data-episode-id="${ep.id}"
-                                       data-episode-title="${ep.title}"
-                                       data-episode-duration="${ep.duration}"
-                                       data-podcast-id="${podcast.id}"
-                                       data-podcast-title="${podcast.title}"
-                                       data-podcast-artwork="${podcast.artwork}">
+                                    <a href="#episode/${ep.id}" class="episode-link font-semibold hover:text-[var(--primary-color)] transition-colors">
                                         ${ep.title ?? 'Untitled Episode'}
                                     </a>
-                                    <a href="#" data-podcast-id="${podcast.id}" class="podcast-link text-sm text-[var(--primary-color)] hover:underline block">${podcast.title ?? 'Unknown Podcast'}</a>
+                                    <a href="#podcast/${podcast.id}" class="podcast-link text-sm text-[var(--primary-color)] hover:underline block">${podcast.title ?? 'Unknown Podcast'}</a>
                                     <div class="flex items-center space-x-3 text-sm text-[var(--text-secondary)] mt-1">
                                         <p>${formatDateWithRelativeTime(new Date(ep.datePublished * 1000))}</p>
                                         <p class="font-medium">${formatDuration(ep.duration)}</p>
@@ -661,7 +627,7 @@
 
             const history = historySnap.docs.map(doc => ({...doc.data(), id: doc.id}));
 
-            const years = [...new Set(history.map(h => h.listenedAt.toDate().getFullYear()))].sort((a,b) => b - a);
+            const years = [...new Set(history.map(h => h.listenedAt?.toDate().getFullYear()).filter(Boolean))].sort((a,b) => b - a);
             const selectedYear = years[0] || new Date().getFullYear();
             
             contentEl.innerHTML = `
@@ -684,7 +650,7 @@
         }
 
         function renderYearlyStats(history, year) {
-            const yearlyHistory = history.filter(h => h.listenedAt.toDate().getFullYear() === year);
+            const yearlyHistory = history.filter(h => h.listenedAt?.toDate().getFullYear() === year);
             const statsContentEl = document.getElementById('stats-content');
 
             if (yearlyHistory.length === 0) {
@@ -709,8 +675,10 @@
 
             const dailyTotals = Array(7).fill(0); 
             yearlyHistory.forEach(h => {
-                const day = h.listenedAt.toDate().getDay(); 
-                dailyTotals[day] += (h.duration || 2700) / 60;
+                if(h.listenedAt) {
+                    const day = h.listenedAt.toDate().getDay(); 
+                    dailyTotals[day] += (h.duration || 2700) / 60;
+                }
             });
             const daysInYear = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0 ? 366 : 365;
             const avgDailyMinutes = dailyTotals.map(total => total / (daysInYear / 7));
@@ -825,16 +793,10 @@
                                     <tr class="border-b border-[var(--background)]">
                                         <td class="p-2 flex items-center space-x-3">
                                             <img src="${h.podcastArtwork}" class="w-10 h-10 rounded-md object-cover">
-                                            <a href="#" class="podcast-link hover:text-[var(--primary-color)] transition-colors" data-podcast-id="${h.podcastId}">${h.podcastTitle ?? 'Unknown Podcast'}</a>
+                                            <a href="#podcast/${h.podcastId}" class="podcast-link hover:text-[var(--primary-color)] transition-colors">${h.podcastTitle ?? 'Unknown Podcast'}</a>
                                         </td>
                                         <td class="p-2">
-                                            <a href="#" class="episode-link hover:text-[var(--primary-color)] transition-colors"
-                                                data-episode-id="${h.episodeId}"
-                                                data-episode-title="${h.episodeTitle}"
-                                                data-episode-duration="${h.duration}"
-                                                data-podcast-id="${h.podcastId}"
-                                                data-podcast-title="${h.podcastTitle}"
-                                                data-podcast-artwork="${h.podcastArtwork}">
+                                            <a href="#episode/${h.episodeId}" class="episode-link hover:text-[var(--primary-color)] transition-colors">
                                                 ${h.episodeTitle ?? 'Untitled Episode'}
                                             </a>
                                         </td>
@@ -846,15 +808,11 @@
                                         <td class="p-2">
                                             <button class="notes-btn rounded-full w-10 h-10 flex items-center justify-center ${noteExists ? 'btn-primary' : 'hover:bg-[var(--background)]'}" title="${noteExists ? 'View/Edit Note' : 'Add Note'}"
                                                 data-episode-id="${h.episodeId}"
-                                                data-episode-title="${h.episodeTitle}"
-                                                data-podcast-id="${h.podcastId}"
-                                                data-podcast-title="${h.podcastTitle}"
-                                                data-podcast-artwork="${h.podcastArtwork}"
-                                                data-episode-duration="${h.duration}">
+                                                data-episode-title="${h.episodeTitle}">
                                                 <i class="ph ${noteExists ? 'ph-fill ph-note text-white' : 'ph-note-pencil'} text-xl"></i>
                                             </button>
                                         </td>
-                                        <td class="p-2">${formatDateWithRelativeTime(new Date(h.listenedAt.seconds * 1000))}</td>
+                                        <td class="p-2">${formatDateWithRelativeTime(h.listenedAt?.toDate())}</td>
                                         <td class="p-2">
                                             <button class="edit-history-btn p-2 rounded-full hover:bg-[var(--background)]" title="Edit Entry" data-history-id="${h.id}">
                                                 <i class="ph ph-pencil-simple text-xl"></i>
@@ -870,32 +828,44 @@
 
             if (filter) {
                 document.getElementById('clear-filter-btn').addEventListener('click', () => {
-                    historyFilter = null;
-                    currentView = 'history';
-                    render();
+                    window.location.hash = '#history';
                 });
             }
 
             hideLoading();
         }
 
-        function renderSearchView(results = []) {
-            contentEl.innerHTML = `
-                <h1 class="text-3xl font-bold mb-6">Search Results</h1>
-                <div id="search-results" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
-                    ${results.length > 0 ? results.map(p => `
-                        <div class="text-center group relative">
-                            <a href="#" data-podcast-id="${p.id}" class="podcast-link block">
-                                <div class="aspect-square rounded-lg overflow-hidden shadow-lg mb-2">
-                                    <img src="${p.artwork}" alt="${p.title}" class="w-full h-full object-cover transition-transform group-hover:scale-105">
-                                </div>
-                                <h3 class="font-semibold truncate">${p.title ?? 'Untitled Podcast'}</h3>
-                                <p class="text-sm text-[var(--text-secondary)] truncate">${p.author ?? 'Unknown Author'}</p>
-                            </a>
-                        </div>
-                    `).join('') : '<p class="col-span-full text-center text-[var(--text-secondary)]">Search for podcasts to get started.</p>'}
-                </div>
-            `;
+        function renderSearchView(query) {
+            contentEl.innerHTML = `<h1 class="text-3xl font-bold mb-6">Search Results for "${query}"</h1><div id="search-results"></div>`;
+            if (query) {
+                performSearch(query);
+            }
+        }
+        
+        async function performSearch(query) {
+            const searchResultsEl = document.getElementById('search-results');
+            showLoading();
+            const results = await fetchFromPodcastIndex('/search/byterm', { q: query });
+            if (results && results.feeds) {
+                searchResultsEl.innerHTML = `
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                        ${results.feeds.map(p => `
+                            <div class="text-center group relative">
+                                <a href="#podcast/${p.id}" class="podcast-link block">
+                                    <div class="aspect-square rounded-lg overflow-hidden shadow-lg mb-2">
+                                        <img src="${p.artwork}" alt="${p.title}" class="w-full h-full object-cover transition-transform group-hover:scale-105">
+                                    </div>
+                                    <h3 class="font-semibold truncate">${p.title ?? 'Untitled Podcast'}</h3>
+                                    <p class="text-sm text-[var(--text-secondary)] truncate">${p.author ?? 'Unknown Author'}</p>
+                                </a>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                searchResultsEl.innerHTML = `<p class="text-center text-[var(--text-secondary)]">No results found.</p>`;
+            }
+            hideLoading();
         }
 
         async function renderPodcastDetailView(podcastId) {
@@ -984,13 +954,7 @@
                                 <div class="card p-4 rounded-lg">
                                     <div class="flex items-center justify-between">
                                         <div class="flex-1 min-w-0">
-                                            <a href="#" class="episode-link font-semibold hover:text-[var(--primary-color)] transition-colors truncate block"
-                                               data-episode-id="${ep.id}"
-                                               data-episode-title="${ep.title}"
-                                               data-episode-duration="${ep.duration}"
-                                               data-podcast-id="${podcastId}"
-                                               data-podcast-title="${podcast.title}"
-                                               data-podcast-artwork="${podcast.artwork}">
+                                            <a href="#episode/${ep.id}" class="episode-link font-semibold hover:text-[var(--primary-color)] transition-colors truncate block">
                                                 ${ep.title ?? 'Untitled Episode'}
                                             </a>
                                             <div class="flex items-center space-x-3 text-sm text-[var(--text-secondary)] mt-1">
@@ -1042,7 +1006,7 @@
                     <h2 class="text-2xl font-semibold mb-4">You might also like...</h2>
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                         ${recommendations.map(p => `
-                            <a href="#" data-podcast-id="${p.id}" class="podcast-link group">
+                            <a href="#podcast/${p.id}" class="podcast-link group">
                                 <div class="aspect-square rounded-lg overflow-hidden shadow-lg relative">
                                     <img src="${p.artwork}" alt="${p.title}" class="w-full h-full object-cover">
                                 </div>
@@ -1056,10 +1020,9 @@
             hideLoading();
         }
 
-        async function renderEpisodeDetailView(context) {
+        async function renderEpisodeDetailView(episodeId) {
             showLoading();
-            const { episodeId, podcastId, podcastTitle, podcastArtwork } = context;
-
+            
             const [apiEpisodeData, noteSnap, historyQuerySnap] = await Promise.all([
                 fetchFromPodcastIndex('/episodes/byid', { id: episodeId }),
                 getDoc(doc(db, `users/${currentUser.uid}/notes`, episodeId)),
@@ -1072,6 +1035,11 @@
                 hideLoading();
                 return;
             }
+
+            // Fetch podcast details from API to ensure we have the artwork and title
+            const podcastDetailsData = await fetchFromPodcastIndex('/podcasts/byfeedid', { id: episode.feedId });
+            const podcastTitle = podcastDetailsData?.feed?.title ?? 'Unknown Podcast';
+            const podcastArtwork = podcastDetailsData?.feed?.artwork ?? '';
 
             const noteText = noteSnap.exists() ? noteSnap.data().text : '';
             const isPlayed = !historyQuerySnap.empty;
@@ -1093,7 +1061,7 @@
                     <div class="md:w-1/4">
                         <img src="${podcastArtwork}" alt="${podcastTitle}" class="w-full rounded-lg shadow-lg">
                         <h1 class="text-3xl font-bold mt-4">${episode.title ?? 'Untitled Episode'}</h1>
-                        <a href="#" data-podcast-id="${podcastId}" class="podcast-link text-xl text-[var(--primary-color)] hover:underline mt-1 block">${podcastTitle ?? 'Unknown Podcast'}</a>
+                        <a href="#podcast/${episode.feedId}" class="podcast-link text-xl text-[var(--primary-color)] hover:underline mt-1 block">${podcastTitle}</a>
                         <div class="text-sm text-[var(--text-secondary)] mt-2 space-y-1">
                             <p>${formatDateWithRelativeTime(new Date(episode.datePublished * 1000))}</p>
                             <p class="font-medium">${formatDuration(episode.duration)}</p>
@@ -1106,14 +1074,14 @@
                         
                         <div class="flex flex-col space-y-2 mt-6">
                             <button class="mark-played-btn w-full btn-primary p-2 rounded-md flex items-center justify-center space-x-2"
-                                    data-episode-id="${episode.id}" data-episode-title="${episode.title}" data-podcast-id="${podcastId}"
+                                    data-episode-id="${episode.id}" data-episode-title="${episode.title}" data-podcast-id="${episode.feedId}"
                                     data-podcast-title="${podcastTitle}" data-podcast-artwork="${podcastArtwork}" data-episode-duration="${episode.duration}"
                                     data-date-published="${episode.datePublished}">
                                 <i class="ph-bold ${isPlayed ? 'ph-arrow-clockwise' : 'ph-check'}"></i>
                                 <span>${isPlayed ? 'Log Again?' : 'Mark as Listened'}</span>
                             </button>
                              <button class="add-to-listenlist-btn w-full btn-primary p-2 rounded-md flex items-center justify-center space-x-2"
-                                    data-episode-id="${episode.id}" data-episode-title="${episode.title}" data-podcast-id="${podcastId}"
+                                    data-episode-id="${episode.id}" data-episode-title="${episode.title}" data-podcast-id="${episode.feedId}"
                                     data-podcast-title="${podcastTitle}" data-podcast-artwork="${podcastArtwork}" data-episode-duration="${episode.duration}">
                                 <i class="ph-bold ph-list-plus"></i>
                                 <span>Add to Listenlist</span>
@@ -1147,7 +1115,7 @@
                     updatedAt: new Date(),
                     episodeId: episode.id,
                     episodeTitle: episode.title,
-                    podcastId: podcastId,
+                    podcastId: episode.feedId,
                     podcastTitle: podcastTitle,
                     podcastArtwork: podcastArtwork,
                     episodeDuration: episode.duration
@@ -1205,11 +1173,12 @@
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
                         ${podcastListenlist.length > 0 ? podcastListenlist.map(p => `
                             <div>
-                                <a href="#" data-podcast-id="${p.id}" class="podcast-link group block">
+                                <a href="#podcast/${p.id}" class="podcast-link group block">
                                     <div class="aspect-square rounded-lg overflow-hidden shadow-lg relative">
                                         <img src="${p.artwork}" alt="${p.title}" class="w-full h-full object-cover">
                                     </div>
                                     <h3 class="mt-2 font-semibold truncate">${p.title ?? 'Untitled Podcast'}</h3>
+                                    <p class="text-xs text-[var(--text-secondary)]">Added ${timeAgo(p.addedAt.toDate())}</p>
                                 </a>
                                 <button data-podcast-id="${p.id}" class="remove-podcast-from-listenlist-btn w-full text-sm mt-1 bg-red-600 text-white p-1 rounded-md hover:bg-red-700 transition">Remove</button>
                             </div>
@@ -1225,16 +1194,15 @@
                                 <div class="flex items-center space-x-4">
                                     <img src="${ep.podcastArtwork}" class="w-16 h-16 rounded-md object-cover">
                                     <div>
-                                        <a href="#" class="episode-link font-semibold hover:text-[var(--primary-color)] transition-colors"
-                                            data-episode-id="${ep.id}"
-                                            data-episode-title="${ep.episodeTitle}"
-                                            data-episode-duration="${ep.episodeDuration}"
-                                            data-podcast-id="${ep.podcastId}"
-                                            data-podcast-title="${ep.podcastTitle}"
-                                            data-podcast-artwork="${ep.podcastArtwork}">
+                                        <a href="#episode/${ep.id}" class="episode-link font-semibold hover:text-[var(--primary-color)] transition-colors">
                                             ${ep.episodeTitle ?? 'Untitled Episode'}
                                         </a>
-                                        <a href="#" class="podcast-link text-sm text-[var(--primary-color)] hover:underline" data-podcast-id="${ep.podcastId}">${ep.podcastTitle ?? 'Unknown Podcast'}</a>
+                                        <a href="#podcast/${ep.podcastId}" class="podcast-link text-sm text-[var(--primary-color)] hover:underline">${ep.podcastTitle ?? 'Unknown Podcast'}</a>
+                                        <div class="text-xs text-[var(--text-secondary)] mt-1">
+                                            <p>Published: ${formatDateWithRelativeTime(new Date(ep.datePublished * 1000))}</p>
+                                            <p>Duration: ${formatDuration(ep.episodeDuration)}</p>
+                                            <p>Added to list: ${timeAgo(ep.addedAt.toDate())}</p>
+                                        </div>
                                     </div>
                                 </div>
                                 <button data-episode-id="${ep.id}" class="remove-from-listenlist-btn bg-red-600 text-white rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0">
@@ -1269,7 +1237,7 @@
                     podcastTitle: h.podcastTitle,
                     podcastArtwork: h.podcastArtwork,
                     duration: h.duration,
-                    listenedAt: h.listenedAt.toDate().toISOString(),
+                    listenedAt: h.listenedAt ? h.listenedAt.toDate().toISOString() : 'Unknown',
                     rating: h.rating
                 }));
                 
@@ -1324,47 +1292,11 @@
         searchInputEl.addEventListener('search', async e => {
             const query = e.target.value;
             if (query.length < 3) return;
-            
-            currentView = 'search';
-            showLoading();
-            const results = await fetchFromPodcastIndex('/search/byterm', { q: query });
-            renderSearchView(results ? results.feeds : []);
-            hideLoading();
+            window.location.hash = `#search/${encodeURIComponent(query)}`;
         });
-
+        
         contentEl.addEventListener('click', async e => {
             const button = e.target.closest('button');
-            const podcastLink = e.target.closest('.podcast-link');
-            const episodeLink = e.target.closest('.episode-link');
-            const ratingStarsContainer = e.target.closest('.rating-stars');
-
-            if (podcastLink) {
-                e.preventDefault();
-                currentPodcastId = podcastLink.dataset.podcastId;
-                currentView = 'podcast';
-                render();
-                return;
-            }
-
-            if (episodeLink) {
-                e.preventDefault();
-                currentEpisodeContext = episodeLink.dataset;
-                currentView = 'episode';
-                render();
-                return;
-            }
-            
-            if (ratingStarsContainer && e.target.closest('i')) {
-                const star = e.target.closest('i');
-                const newRating = parseInt(star.dataset.value);
-                const historyId = ratingStarsContainer.dataset.historyId;
-                if (historyId) {
-                    const historyDocRef = doc(db, `users/${currentUser.uid}/history`, historyId);
-                    await updateDoc(historyDocRef, { rating: newRating });
-                    render(); 
-                }
-                return;
-            }
 
             if (button) {
 
@@ -1381,8 +1313,7 @@
 
                 if(button.id === 'view-all-listened-btn') {
                     historyFilter = { podcastId: button.dataset.podcastId, podcastTitle: button.dataset.podcastTitle };
-                    currentView = 'history-filtered';
-                    render();
+                    window.location.hash = `#history/podcast/${button.dataset.podcastId}`;
                     return;
                 }
 
@@ -1393,7 +1324,7 @@
                     if (historyDoc.exists()) {
                         editingHistoryItem = { id: historyDoc.id, ...historyDoc.data() };
                         editHistoryTitleEl.textContent = editingHistoryItem.episodeTitle;
-                        editDateInputEl.value = toLocalISOString(editingHistoryItem.listenedAt.toDate());
+                        editDateInputEl.value = toLocalISOString(editingHistoryItem.listenedAt?.toDate());
                         
                         editModalRatingStarsEl.innerHTML = renderStars(editingHistoryItem.rating || 0, true);
                         editModalRatingStarsEl.dataset.currentRating = editingHistoryItem.rating || 0;
@@ -1405,8 +1336,7 @@
                 if(button.classList.contains('view-history-btn')) {
                     historyFilter = { episodeId: button.dataset.episodeId };
                     currentEpisodeContext = button.dataset;
-                    currentView = 'history-filtered';
-                    render();
+                    window.location.hash = `#history/episode/${button.dataset.episodeId}`;
                     return;
                 }
 
@@ -1496,71 +1426,23 @@
                     showConfirmModal(`Are you sure you want to remove ${podcastTitle} from your library?`, async (confirmed) => {
                         if (confirmed) {
                             await deleteDoc(doc(db, `users/${currentUser.uid}/podcasts`, podcastId));
-                            currentView = 'dashboard';
-                            render();
+                            window.location.hash = '#dashboard';
                         }
                     });
                 }
             }
         });
 
-        homeLinkEl.addEventListener('click', e => {
-            e.preventDefault();
-            historyFilter = null;
-            currentView = 'dashboard';
-            render();
-        });
-
-        dashboardLinkEl.addEventListener('click', e => {
-            e.preventDefault();
-            historyFilter = null;
-            currentView = 'dashboard';
-            render();
-        });
-
-        feedLinkEl.addEventListener('click', e => {
-            e.preventDefault();
-            historyFilter = null;
-            currentView = 'feed';
-            render();
-        });
-        
-        statsLinkEl.addEventListener('click', e => {
-            e.preventDefault();
-            historyFilter = null;
-            currentView = 'stats';
-            render();
-        });
-        
-        historyLinkEl.addEventListener('click', e => {
-            e.preventDefault();
-            historyFilter = null;
-            currentView = 'history';
-            render();
-        });
-        
-        settingsLinkEl.addEventListener('click', e => {
-            e.preventDefault();
-            historyFilter = null;
-            currentView = 'settings';
-            render();
-        });
-        
-        listenlistLinkEl.addEventListener('click', e => {
-            e.preventDefault();
-            historyFilter = null;
-            currentView = 'listenlist';
-            render();
-        });
-
         async function logEpisode(date, rating = 0) {
             if (!episodeToLog) return;
             const { episodeId, episodeTitle, podcastId, podcastTitle, podcastArtwork, episodeDuration, datePublished } = episodeToLog;
 
-            const publishDate = new Date(parseInt(datePublished) * 1000);
-            if (date.getTime() < publishDate.getTime()) {
-                showConfirmModal(`Listen date (${date.toLocaleDateString()}) cannot be before the publication date of ${publishDate.toLocaleDateString()}.`, () => {});
-                return;
+            if (date) {
+                const publishDate = new Date(parseInt(datePublished) * 1000);
+                if (date.getTime() < publishDate.getTime()) {
+                    showConfirmModal(`Listen date (${date.toLocaleDateString()}) cannot be before the publication date of ${publishDate.toLocaleDateString()}.`, () => {});
+                    return;
+                }
             }
 
             await addDoc(collection(db, `users/${currentUser.uid}/history`), {
@@ -1622,6 +1504,11 @@
             logEpisode(new Date(logDateInputEl.value), rating);
         });
         
+        logUnknownBtnEl.addEventListener('click', () => {
+            const rating = parseInt(logModalStarContainer.dataset.currentRating) || 0;
+            logEpisode(null, rating);
+        });
+        
         closeLogModalBtnEl.addEventListener('click', () => logEpisodeModalEl.classList.add('hidden'));
         
         editModalRatingStarsEl.addEventListener('click', (e) => {
@@ -1634,7 +1521,7 @@
 
         saveEditBtnEl.addEventListener('click', async () => {
             if (!editingHistoryItem) return;
-            const newDate = new Date(editDateInputEl.value);
+            const newDate = editDateInputEl.value ? new Date(editDateInputEl.value) : null;
             const newRating = parseInt(editModalRatingStarsEl.dataset.currentRating);
 
             const historyDocRef = doc(db, `users/${currentUser.uid}/history`, editingHistoryItem.id);
@@ -1700,12 +1587,10 @@
                     const theme = doc.data()?.theme || 'dark';
                     applyTheme(theme);
                 });
-                currentView = 'dashboard';
             } else {
                 if (themeUnsubscribe) themeUnsubscribe();
                 themeDocRef = null;
                 applyTheme('dark'); 
-                currentView = 'login';
             }
             render();
         });
