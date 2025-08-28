@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v8.7.1-alpha",
+    date: "2025-08-28",
+    changes: [
+        "All: Updated the icon(512x512) for the entire application.",
+        "In the Analyser: It is now possible to import more than 500 entries at one time."
+        ]
+    },
+    {
     version: "v8.7.0-alpha",
     date: "2025-08-28",
     changes: [

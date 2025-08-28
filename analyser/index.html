@@ -468,13 +468,19 @@
                     <label for="value-filter-attribute" class="block font-semibold mb-2">Attribute for Value Filter</label>
                     <select id="value-filter-attribute" class="w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
                 </div>
-                <div class="flex-1">
-                    <label for="value-filter-min" class="block font-semibold mb-2">Minimum Value</label>
-                    <input type="number" id="value-filter-min" placeholder="e.g., 5" class="w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <div id="numerical-filter-container" class="flex-1 grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="value-filter-min" class="block font-semibold mb-2">Minimum Value</label>
+                        <input type="number" id="value-filter-min" placeholder="e.g., 5" class="w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label for="value-filter-max" class="block font-semibold mb-2">Maximum Value</label>
+                        <input type="number" id="value-filter-max" placeholder="e.g., 10" class="w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
                 </div>
-                <div class="flex-1">
-                    <label for="value-filter-max" class="block font-semibold mb-2">Maximum Value</label>
-                    <input type="number" id="value-filter-max" placeholder="e.g., 10" class="w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <div id="string-filter-container" class="flex-1 hidden">
+                    <label for="value-filter-string" class="block font-semibold mb-2">Value contains</label>
+                    <input type="text" id="value-filter-string" placeholder="e.g., great" class="w-full rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
             </div>
         </fieldset>
@@ -1042,6 +1048,7 @@
     const valueFilterAttribute = document.getElementById('value-filter-attribute');
     const valueFilterMin = document.getElementById('value-filter-min');
     const valueFilterMax = document.getElementById('value-filter-max');
+    const valueFilterString = document.getElementById('value-filter-string');
 
     // Modals
     const dataModal = document.getElementById('data-modal');
@@ -1330,29 +1337,28 @@
             return true;
         });
 
-        // Filter by value range
-        const numericValueAttribute = valueFilterAttribute.value;
-        const minVal = parseFloat(valueFilterMin.value);
-        const maxVal = parseFloat(valueFilterMax.value);
-        
+        // Filter by attribute value
+        const valueAttribute = valueFilterAttribute.value;
         const filteredByValue = filteredByDate.filter(dp => {
-            // If no attribute is selected, this filter is skipped
-            if (!numericValueAttribute) {
-                return true;
+            if (valueAttribute) {
+                if (dp.attributeName !== valueAttribute) {
+                    return false; // Exclude data points with non-matching attribute names
+                }
+                const isNumerical = !isNaN(parseFloat(dp.attributeValue)) && isFinite(dp.attributeValue);
+                if (isNumerical) {
+                    const minVal = parseFloat(valueFilterMin.value);
+                    const maxVal = parseFloat(valueFilterMax.value);
+                    const dpValue = parseFloat(dp.attributeValue);
+                    if (!isNaN(minVal) && dpValue < minVal) return false;
+                    if (!isNaN(maxVal) && dpValue > maxVal) return false;
+                } else {
+                    const filterString = valueFilterString.value.toLowerCase();
+                    if (filterString && !String(dp.attributeValue).toLowerCase().includes(filterString)) {
+                        return false;
+                    }
+                }
             }
-
-            // If an attribute is selected, we only proceed if the datapoint matches that attribute name.
-            if (dp.attributeName === numericValueAttribute) {
-                const dpValue = parseFloat(dp.attributeValue);
-                // Check if the value is a number and within the specified range
-                if (isNaN(dpValue) || !isFinite(dpValue)) return false;
-                if (!isNaN(minVal) && dpValue < minVal) return false;
-                if (!isNaN(maxVal) && dpValue > maxVal) return false;
-                return true;
-            }
-
-            // All other attribute names are filtered out
-            return false;
+            return true;
         });
         
         // Filter by tags and search term
@@ -1595,27 +1601,31 @@
         correlationKey2.innerHTML = '';
         valueFilterAttribute.innerHTML = `<option value="">-- Select Attribute --</option>`;
 
-        if (numericAttributeNames.size === 0) {
-            const defaultOption = '<option value="">No numerical attributes found</option>';
+        if (allAttributeNames.size === 0) {
+            const defaultOption = '<option value="">No attributes found</option>';
             keySelect.innerHTML = defaultOption;
             correlationKey1.innerHTML = defaultOption;
             correlationKey2.innerHTML = defaultOption;
+            valueFilterAttribute.innerHTML = defaultOption;
             currentChartKey = '';
             renderChart();
             return;
         }
 
-        const sortedKeys = Array.from(numericAttributeNames).sort();
+        const sortedKeys = Array.from(allAttributeNames).sort();
         
         sortedKeys.forEach(key => {
             const option = document.createElement('option');
             option.value = key;
             option.textContent = key;
-            keySelect.appendChild(option);
-            keySelect2.appendChild(option.cloneNode(true));
-            correlationKey1.appendChild(option.cloneNode(true));
-            correlationKey2.appendChild(option.cloneNode(true));
             valueFilterAttribute.appendChild(option.cloneNode(true));
+
+            if (numericAttributeNames.has(key)) {
+                keySelect.appendChild(option.cloneNode(true));
+                keySelect2.appendChild(option.cloneNode(true));
+                correlationKey1.appendChild(option.cloneNode(true));
+                correlationKey2.appendChild(option.cloneNode(true));
+            }
         });
         
         if (sortedKeys.includes(currentChartKey)) {
@@ -1970,15 +1980,31 @@
         renderDataTable();
     });
 
-    valueFilterAttribute.addEventListener('change', () => {
+    valueFilterAttribute.addEventListener('change', (e) => {
+        const selectedAttribute = e.target.value;
+        if (!selectedAttribute) {
+            numericalFilterContainer.classList.add('hidden');
+            stringFilterContainer.classList.add('hidden');
+            renderDataTable();
+            return;
+        }
+
+        const allDataPoints = Object.values(currentDataCache).flat();
+        const firstDataPoint = allDataPoints.find(dp => dp.attributeName === selectedAttribute && dp.attributeValue !== undefined && dp.attributeValue !== null);
+
+        if (firstDataPoint && !isNaN(parseFloat(firstDataPoint.attributeValue)) && isFinite(firstDataPoint.attributeValue)) {
+            numericalFilterContainer.classList.remove('hidden');
+            stringFilterContainer.classList.add('hidden');
+        } else {
+            numericalFilterContainer.classList.add('hidden');
+            stringFilterContainer.classList.remove('hidden');
+        }
         renderDataTable();
     });
-    valueFilterMin.addEventListener('input', () => {
-        renderDataTable();
-    });
-    valueFilterMax.addEventListener('input', () => {
-        renderDataTable();
-    });
+
+    valueFilterMin.addEventListener('input', renderDataTable);
+    valueFilterMax.addEventListener('input', renderDataTable);
+    valueFilterString.addEventListener('input', renderDataTable);
     
     manualAddBtn.addEventListener('click', async () => {
         if (!userId) {
@@ -2254,7 +2280,8 @@
             
             originalDataHeaders = Object.keys(parsedData[0]);
             let uploadCount = 0;
-            const batch = writeBatch(db);
+            let batch = writeBatch(db);
+            let operationCount = 0;
             const dataCollectionRef = collection(db, `users/${userId}/sources/${sourceId}/data`);
             
             for (const originalRow of parsedData) {
@@ -2288,9 +2315,19 @@
                 
                 batch.set(docRef, docData, { merge: true });
                 uploadCount++;
+                operationCount++;
+
+                if (operationCount === 500) {
+                    await batch.commit();
+                    batch = writeBatch(db);
+                    operationCount = 0;
+                }
             }
 
-            await batch.commit();
+            if (operationCount > 0) {
+                await batch.commit();
+            }
+
             showMessage(`Successfully uploaded ${uploadCount} data points to '${sourceId}'.`, 'success');
         } catch (error) {
             console.error("Error processing or uploading file:", error);
