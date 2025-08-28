@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v8.7.0-alpha",
+    date: "2025-08-28",
+    changes: [
+        "In the Logger: Merged the 'Dailies' app functionality directly into the Logger page for a more streamlined experience.",
+        "In the Logger: The separate '/dailies' page has been deprecated and is no longer needed.",
+        "In the Logger (Dailies): Fixed an issue where the triage view incorrectly stated a log was 'Moved from' a date when it was the original log date.",
+        "In the Logger (Dailies): The calendar heatmap now displays a checkmark icon for reviewed days, preserving the color gradient for completion status.",
+        "In the Logger: Restored the original narrower layout and styling for a more focused user interface.",
+        "In the Logger: Added app icons to the 'Logger' and 'Dailies' section headers for better visual identification.",
+        "In the Logger: The 'Back to Hub' button has been restyled to be consistent with other applications in the hub.",
+        ]
+    },
+    {
         version: "v8.6.0-alpha",
         date: "2025-08-28",
         changes: [

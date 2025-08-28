@@ -1,0 +1,1 @@
+Dailies has been merged into the Logger as of 28/08/2025 (v8.7.0-alpha).
