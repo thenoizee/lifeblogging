@@ -355,6 +355,7 @@
         <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg">
             <legend class="text-2xl font-semibold px-2 mb-4">2. Import Data to Current Collection</legend>
             <p class="mb-4">Choose a CSV or JSON file to import. The first row must be headers, and a 'date' column in YYYY-MM-DD format is required for all data.</p>
+            <p class="text-sm text-yellow-600 dark:text-yellow-400 mb-4">Note: While you can import more than 500 entries at once, it is not recommended. Large imports may be slow and could cause the application to crash.</p>
             <div class="flex flex-col md:flex-row gap-4">
                 <div class="flex-1">
                     <label for="upload-source-select" class="block font-semibold mb-2">Select Destination Collection</label>
@@ -548,7 +549,16 @@
     
     <div class="card">
         <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg">
-            <legend class="text-2xl font-semibold px-2 mb-4">6. Data Table</legend>
+            <legend class="text-2xl font-semibold px-2 mb-4">6. Manage Displayed Columns</legend>
+            <p class="mb-4">Select which columns to display for each collection. Your preferences will be saved.</p>
+            <div id="column-selection-container" class="space-y-4"></div>
+            <button id="save-column-prefs-btn" class="mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg hidden"><i class="fa-solid fa-save mr-2"></i>Save Column Preferences</button>
+        </fieldset>
+    </div>
+
+    <div class="card">
+        <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg">
+            <legend class="text-2xl font-semibold px-2 mb-4">7. Data Table</legend>
             <div id="bulk-actions-container" class="mb-4 p-4 bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg hidden">
                 <div class="flex items-center justify-between">
                     <div>
@@ -571,12 +581,13 @@
                     </tbody>
                 </table>
             </div>
+            <div id="pagination-controls" class="mt-4 flex justify-between items-center"></div>
         </fieldset>
     </div>
 
     <div class="card">
         <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg">
-            <legend class="text-2xl font-semibold px-2 mb-4">7. Manage Tags & Categories</legend>
+            <legend class="text-2xl font-semibold px-2 mb-4">8. Manage Tags & Categories</legend>
             <p class="mb-4">View and manage all tags used across your data points. You can delete a tag to remove it from all associated data.</p>
             <div id="tag-list-container" class="tag-list-container">
                 <p id="no-tags-message" class="text-center py-4">No tags found.</p>
@@ -586,7 +597,7 @@
 
     <div class="card">
         <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg">
-            <legend class="text-2xl font-semibold px-2 mb-4">8. Manage Attribute Colors</legend>
+            <legend class="text-2xl font-semibold px-2 mb-4">9. Manage Attribute Colors</legend>
             <p class="mb-4">Customize the display color for each attribute name in the data table.</p>
             <div id="attribute-colors-container" class="space-y-2">
                 <p id="no-attributes-message" class="text-center py-4">No attributes found to color.</p>
@@ -754,12 +765,16 @@
     let originalDataHeaders = [];
     let lastSelectedIndex = -1;
     let attributeColors = {}; // For custom attribute colors
+    let columnPreferences = {}; // For column visibility
+    let currentPage = 1;
+    const rowsPerPage = 50;
     
     // Theme-related global variables
     const themeToggle = document.getElementById('theme-toggle');
     const body = document.body;
     let themeDocRef = null;
     let attributeColorsDocRef = null;
+    let columnPrefsDocRef = null;
     let themeUnsubscribe = null;
     let attributeColorsUnsubscribe = null;
     const versionDisplay = document.getElementById('version-display');
@@ -836,13 +851,14 @@
                  versionDisplay.textContent = changelogData[0].version;
             }
 
-            onAuthStateChanged(auth, (user) => {
+            onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     userId = user.uid;
                     
                     // Setup theme listener
                     themeDocRef = doc(db, 'users', userId, 'settings', 'theme');
                     attributeColorsDocRef = doc(db, 'users', userId, 'settings', 'attributeColors');
+                    columnPrefsDocRef = doc(db, `users/${userId}/settings/columnPrefs`);
 
                     themeToggle.disabled = false;
                     if (themeUnsubscribe) themeUnsubscribe();
@@ -863,6 +879,13 @@
                     }, (error) => {
                         console.error("Error getting attribute colors:", error);
                     });
+
+                    const columnPrefsDoc = await getDoc(columnPrefsDocRef);
+                    if (columnPrefsDoc.exists()) {
+                        columnPreferences = columnPrefsDoc.data();
+                    } else {
+                        columnPreferences = {};
+                    }
 
                     document.getElementById('user-id-display').textContent = user.email || 'Anonymous User';
                     
@@ -1184,6 +1207,7 @@
             updateSourcesCheckboxes(); // This will now show all sources as checked
             updateUploadSourceSelect();
             updateManualCollectionSelect();
+            renderColumnSelectionUI();
             
             dataLoadingStatus.classList.add('hidden');
         }, (error) => {
@@ -1324,6 +1348,7 @@
         updateTagList();
         updateManualTagsList();
         renderAttributeColorsUI();
+        renderColumnSelectionUI();
     }
     
     function getVisibleDataPoints() {
@@ -1399,11 +1424,12 @@
             return sortDirection === 'asc' ? comparison : -comparison;
         });
 
+        const paginatedData = sortedDataPoints.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
         dataTableHeader.innerHTML = '';
         dataTableBody.innerHTML = '';
 
-        if (sortedDataPoints.length === 0) {
+        if (paginatedData.length === 0) {
             const row = document.createElement('tr');
             const cell = document.createElement('td');
             cell.colSpan = 100;
@@ -1411,6 +1437,7 @@
             cell.textContent = 'No data to display. Try adjusting your filters.';
             row.appendChild(cell);
             dataTableBody.appendChild(row);
+            renderPagination(sortedDataPoints.length);
             updateBulkActionsVisibility();
             return;
         }
@@ -1425,6 +1452,14 @@
             !preferredOrder.includes(key) && !['tags', 'fileSource', 'uploadedBy', 'uploadedApp', 'id', 'datapointUpdatedTime', 'datapointUpdatedBy', 'collectionName'].includes(key)
         )];
         headers.push('tags');
+
+        const visibleHeaders = headers.filter(header => {
+            const source = sortedDataPoints[0]?.source;
+            if (source && columnPreferences[source]) {
+                return columnPreferences[source].includes(header);
+            }
+            return true; // Show all by default
+        });
 
         const thCheckbox = document.createElement('th');
         thCheckbox.className = 'px-6 py-3';
@@ -1446,12 +1481,11 @@
         thCheckbox.appendChild(selectAllCheckbox);
         dataTableHeader.appendChild(thCheckbox);
         
-        // Update select-all checkbox state based on current selection
         const allVisibleIds = sortedDataPoints.map(dp => dp.id);
         const allSelected = allVisibleIds.length > 0 && allVisibleIds.every(id => selectedDataPointIds.has(id));
         selectAllCheckbox.checked = allSelected;
 
-        headers.forEach(headerText => {
+        visibleHeaders.forEach(headerText => {
             const th = document.createElement('th');
             const headerNames = {
                 attributeName: 'Attribute Name',
@@ -1481,7 +1515,7 @@
             dataTableHeader.appendChild(th);
         });
 
-        sortedDataPoints.forEach((dataPoint, index) => {
+        paginatedData.forEach((dataPoint, index) => {
             const row = document.createElement('tr');
             
             const tdCheckbox = document.createElement('td');
@@ -1516,16 +1550,15 @@
             row.appendChild(tdCheckbox);
             
             row.addEventListener('click', (e) => {
-                // If the bulk actions bar is visible and the click is not on a specific input, toggle the checkbox
                 if (!bulkActionsContainer.classList.contains('hidden') && e.target.tagName.toLowerCase() !== 'input') {
                     const checkbox = row.querySelector('input[type="checkbox"]');
-                    checkbox.click(); // Programmatically click the checkbox to fire its event listener
+                    checkbox.click();
                 } else if (bulkActionsContainer.classList.contains('hidden')) {
                     showDataModal(dataPoint);
                 }
             });
 
-            headers.forEach(header => {
+            visibleHeaders.forEach(header => {
                 const cell = document.createElement('td');
                 cell.className = 'px-6 py-4 text-sm';
                 
@@ -1537,7 +1570,6 @@
                     span.className = 'px-2 py-1 rounded-full text-xs font-semibold';
                     if (color) {
                         span.style.backgroundColor = color;
-                        // Simple algorithm to determine if text should be dark or light for readability
                         const hexColor = color.replace('#', '');
                         const r = parseInt(hexColor.substr(0, 2), 16);
                         const g = parseInt(hexColor.substr(2, 2), 16);
@@ -1545,7 +1577,7 @@
                         const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
                         span.style.color = (yiq >= 128) ? '#1a202c' : '#ffffff';
                     } else {
-                        span.classList.add('tag'); // Fallback to default tag style
+                        span.classList.add('tag');
                     }
                     cell.appendChild(span);
                 } else if (header === 'tags' && dataPoint.tags && dataPoint.tags.length > 0) {
@@ -1568,7 +1600,44 @@
             });
             dataTableBody.appendChild(row);
         });
+        renderPagination(sortedDataPoints.length);
         updateBulkActionsVisibility();
+    }
+
+    function renderPagination(totalRows) {
+        const paginationControls = document.getElementById('pagination-controls');
+        paginationControls.innerHTML = '';
+        const pageCount = Math.ceil(totalRows / rowsPerPage);
+
+        if (pageCount <= 1) return;
+
+        const prevButton = document.createElement('button');
+        prevButton.textContent = 'Previous';
+        prevButton.disabled = currentPage === 1;
+        prevButton.className = 'px-4 py-2 rounded-lg bg-gray-200 text-gray-800 disabled:opacity-50';
+        prevButton.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                renderDataTable();
+            }
+        });
+        paginationControls.appendChild(prevButton);
+
+        const pageInfo = document.createElement('span');
+        pageInfo.textContent = `Page ${currentPage} of ${pageCount}`;
+        paginationControls.appendChild(pageInfo);
+
+        const nextButton = document.createElement('button');
+        nextButton.textContent = 'Next';
+        nextButton.disabled = currentPage === pageCount;
+        nextButton.className = 'px-4 py-2 rounded-lg bg-gray-200 text-gray-800 disabled:opacity-50';
+        nextButton.addEventListener('click', () => {
+            if (currentPage < pageCount) {
+                currentPage++;
+                renderDataTable();
+            }
+        });
+        paginationControls.appendChild(nextButton);
     }
     
     function updateBulkActionsVisibility() {
@@ -2317,7 +2386,7 @@
                 uploadCount++;
                 operationCount++;
 
-                if (operationCount === 500) {
+                if (operationCount === 499) { // Firestore batch limit is 500
                     await batch.commit();
                     batch = writeBatch(db);
                     operationCount = 0;
@@ -2933,7 +3002,85 @@
             attributeColorsContainer.appendChild(row);
         });
     }
-    
+
+    // --- Column Selection Logic ---
+    function renderColumnSelectionUI() {
+        const columnSelectionContainer = document.getElementById('column-selection-container');
+        columnSelectionContainer.innerHTML = '';
+
+        const allColumns = new Set();
+        selectedSources.forEach(sourceId => {
+            (currentDataCache[sourceId] || []).forEach(dp => {
+                Object.keys(dp).forEach(key => allColumns.add(key));
+            });
+        });
+
+        if (allColumns.size === 0) {
+            columnSelectionContainer.innerHTML = '<p>No columns to display.</p>';
+            document.getElementById('save-column-prefs-btn').classList.add('hidden');
+            return;
+        }
+
+        selectedSources.forEach(sourceId => {
+            const sourceColumns = new Set();
+            (currentDataCache[sourceId] || []).forEach(dp => {
+                Object.keys(dp).forEach(key => sourceColumns.add(key));
+            });
+
+            const fieldset = document.createElement('fieldset');
+            fieldset.className = 'border p-4 rounded-lg';
+            const legend = document.createElement('legend');
+            legend.className = 'font-semibold px-2';
+            legend.textContent = `Columns for ${sourceId}`;
+            fieldset.appendChild(legend);
+
+            const grid = document.createElement('div');
+            grid.className = 'grid grid-cols-2 md:grid-cols-4 gap-2';
+
+            Array.from(sourceColumns).sort().forEach(column => {
+                const isChecked = columnPreferences[sourceId]?.includes(column) ?? true;
+                const div = document.createElement('div');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `col-${sourceId}-${column}`;
+                checkbox.value = column;
+                checkbox.checked = isChecked;
+                checkbox.className = 'mr-2';
+                const label = document.createElement('label');
+                label.htmlFor = `col-${sourceId}-${column}`;
+                label.textContent = column;
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                grid.appendChild(div);
+            });
+            fieldset.appendChild(grid);
+            columnSelectionContainer.appendChild(fieldset);
+        });
+
+        document.getElementById('save-column-prefs-btn').classList.remove('hidden');
+    }
+
+    document.getElementById('save-column-prefs-btn').addEventListener('click', async () => {
+        const newPrefs = {};
+        selectedSources.forEach(sourceId => {
+            const selectedColumns = [];
+            document.querySelectorAll(`#column-selection-container input[id^="col-${sourceId}-"]:checked`).forEach(checkbox => {
+                selectedColumns.push(checkbox.value);
+            });
+            newPrefs[sourceId] = selectedColumns;
+        });
+
+        try {
+            await setDoc(columnPrefsDocRef, newPrefs, { merge: true });
+            columnPreferences = newPrefs;
+            renderDataTable();
+            showMessage("Column preferences saved!", "success");
+        } catch (error) {
+            console.error("Error saving column preferences:", error);
+            showMessage("Could not save column preferences.", "error");
+        }
+    });
+
     saveAttributeColorsBtn.addEventListener('click', async () => {
         if (!attributeColorsDocRef) return;
         try {

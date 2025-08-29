@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v8.9.0-alpha",
+        date: "2025-08-29",
+        changes: [
+            "In the Analyser: Added a note to the importer recommending users import no more than 500 entries at a time to ensure stability.",
+            "In the Analyser: Implemented data pagination in the data table to improve performance with large datasets.",
+            "In the Analyser: Users can now select which columns to display for each collection, and these preferences are saved.",
+        ]
+    },
+    {
         version: "v8.8.0-alpha",
         date: "2025-08-29",
         changes: [
