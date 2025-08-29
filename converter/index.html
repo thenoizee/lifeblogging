@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV &lt;-> JSON Converter - Lifeblogging Hub</title>
+    <link rel="icon" href="/favicons/exchange.svg" type="image/svg+xml">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link rel="manifest" href="/manifest.json" />
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => console.log('Service Worker registered successfully:', registration))
+                    .catch(err => console.log('Service Worker registration failed:', err));
+            });
+        }
+    </script>
+    <style>
+        :root {
+            --bg-color: #f7fafc;
+            --card-bg-color: white;
+            --text-color-primary: #1a202c;
+            --text-color-secondary: #4a5568;
+            --input-bg-color: #e2e8f0;
+            --border-color: #e2e8f0;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+        }
+        .dark {
+            --bg-color: #1a202c;
+            --card-bg-color: #2d3748;
+            --text-color-primary: #edf2f7;
+            --text-color-secondary: #a0aec0;
+            --input-bg-color: #4a5568;
+            --border-color: #4a5568;
+            --shadow-color: rgba(0, 0, 0, 0.4);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color-primary);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        textarea {
+            background-color: var(--input-bg-color);
+            color: var(--text-color-primary);
+            border-color: var(--border-color);
+            min-height: 200px;
+        }
+        .theme-switcher {
+            background-color: var(--card-bg-color);
+            border: 1px solid var(--text-color-secondary);
+        }
+    </style>
+</head>
+<body class="min-h-screen pt-12 pb-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="bg-[var(--card-bg-color)] shadow-lg rounded-xl p-8">
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-4xl font-bold text-[var(--text-color-primary)] flex items-center"><i class="fas fa-exchange-alt mr-3"></i>CSV &lt;-> JSON Converter</h1>
+                <div class="flex items-center gap-4">
+                    <a href="/" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
+                    <button id="theme-toggle" class="theme-switcher rounded-full p-2" title="Toggle dark mode">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <h2 class="text-2xl font-semibold mb-2">CSV</h2>
+                    <textarea id="csv-input" class="w-full p-2 border rounded" placeholder="Paste CSV here..."></textarea>
+                    <div class="mt-4 flex gap-2">
+                        <button id="csv-to-json-btn" class="flex-1 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">To JSON <i class="fas fa-arrow-right"></i></button>
+                        <input type="file" id="csv-file-input" class="hidden" accept=".csv">
+                        <button id="upload-csv-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300"><i class="fas fa-upload"></i></button>
+                    </div>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-semibold mb-2">JSON</h2>
+                    <textarea id="json-input" class="w-full p-2 border rounded" placeholder="Paste JSON here..."></textarea>
+                    <div class="mt-4 flex gap-2">
+                        <button id="json-to-csv-btn" class="flex-1 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700"><i class="fas fa-arrow-left"></i> To CSV</button>
+                        <input type="file" id="json-file-input" class="hidden" accept=".json">
+                        <button id="upload-json-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300"><i class="fas fa-upload"></i></button>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-8">
+                <button id="download-btn" class="w-full bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 hidden"><i class="fas fa-download"></i> Download Result</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const csvInput = document.getElementById('csv-input');
+        const jsonInput = document.getElementById('json-input');
+        const csvToJsonBtn = document.getElementById('csv-to-json-btn');
+        const jsonToCsvBtn = document.getElementById('json-to-csv-btn');
+        const uploadCsvBtn = document.getElementById('upload-csv-btn');
+        const csvFileInput = document.getElementById('csv-file-input');
+        const uploadJsonBtn = document.getElementById('upload-json-btn');
+        const jsonFileInput = document.getElementById('json-file-input');
+        const downloadBtn = document.getElementById('download-btn');
+        const themeToggle = document.getElementById('theme-toggle');
+
+        let lastConversionType = '';
+
+        // Theme Toggle
+        const applyTheme = (theme) => {
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        };
+        themeToggle.addEventListener('click', () => {
+            const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
+            applyTheme(newTheme);
+            localStorage.setItem('theme', newTheme);
+        });
+        applyTheme(localStorage.getItem('theme') || 'light');
+
+
+        // Converters
+        csvToJsonBtn.addEventListener('click', () => {
+            Papa.parse(csvInput.value, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    jsonInput.value = JSON.stringify(results.data, null, 2);
+                    lastConversionType = 'json';
+                    downloadBtn.classList.remove('hidden');
+                }
+            });
+        });
+
+        jsonToCsvBtn.addEventListener('click', () => {
+            try {
+                const json = JSON.parse(jsonInput.value);
+                const csv = Papa.unparse(json);
+                csvInput.value = csv;
+                lastConversionType = 'csv';
+                downloadBtn.classList.remove('hidden');
+            } catch (e) {
+                alert('Invalid JSON');
+            }
+        });
+
+        // File Uploads
+        uploadCsvBtn.addEventListener('click', () => csvFileInput.click());
+        csvFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                csvInput.value = event.target.result;
+            };
+            reader.readAsText(file);
+        });
+
+        uploadJsonBtn.addEventListener('click', () => jsonFileInput.click());
+        jsonFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                jsonInput.value = event.target.result;
+            };
+            reader.readAsText(file);
+        });
+        
+        // Download
+        downloadBtn.addEventListener('click', () => {
+            let content, filename, mimeType;
+            if (lastConversionType === 'json') {
+                content = jsonInput.value;
+                filename = 'converted.json';
+                mimeType = 'application/json';
+            } else if (lastConversionType === 'csv') {
+                content = csvInput.value;
+                filename = 'converted.csv';
+                mimeType = 'text/csv';
+            } else {
+                return;
+            }
+
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
+    </script>
+</body>
+</html>

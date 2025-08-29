@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v8.8.0-alpha",
+        date: "2025-08-29",
+        changes: [
+            "In the Hub: Re-organized the main page into 'Apps' and 'Tools' sections.",
+            "In the Hub: Introduced a new CSV to JSON (and vice-versa) converter tool.",
+            "In the Hub: Added a new Timestamp Converter tool for handling timezones and various time formats.",
+        ]
+    },
+    {
     version: "v8.7.1-alpha",
     date: "2025-08-28",
     changes: [
