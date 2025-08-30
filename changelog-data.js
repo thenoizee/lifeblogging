@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v8.9.1-alpha",
+        date: "2025-08-30",
+        changes: [
+            "In the Analyser: Fixed an issue where importing data from CSV or JSON files would not apply the correct metadata. Imports now correctly include the 'imported' tag, the file source, and the original file name.",
+        ]
+    },
+    {
         version: "v8.9.0-alpha",
         date: "2025-08-29",
         changes: [
