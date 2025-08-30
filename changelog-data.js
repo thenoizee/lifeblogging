@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v8.9.3-alpha",
+    date: "2025-08-30",
+    changes: [
+        "In the Logger: Data now refreshes automatically in the Dailies section after adding entries via quick log.",
+        "In the Logger: Users can now mark Reviewed Days as not reviewed after submission, and other visual improvements.",
+    ]
+    },
+    {
     version: "v8.9.2-alpha",
     date: "2025-08-30",
     changes: [

@@ -1189,6 +1189,7 @@
                   sessionLogs.splice(index, 1);
                   renderSessionLogs();
                   showMessage("Log successfully undone.", "success");
+                  fetchLogsForDateRange(); 
               } catch (err) {
                   showMessage("Error undoing log: " + err.message, "error");
               }
@@ -1235,6 +1236,8 @@
           renderSessionLogs();
           fetchAndPopulateTags(userId);
           setDefaultDateTime();
+          fetchLogsForDateRange();
+          fetchAllAttributeNames();
 
         } catch (err) {
           console.error(err);
@@ -1497,18 +1500,10 @@
                 const status = getDayStatus(date);
                 const dayEl = document.createElement('div');
                 dayEl.className = `calendar-day ${getHeatmapClass(status.percentage)}`;
-                dayEl.style.position = 'relative';
-
-                let dayContent = '';
-
-                if (appState.reviewedDays.has(toYYYYMMDD(date))) {
-                    dayContent += `<div class="reviewed-day-indicator"><i class="fa-solid fa-check"></i></div>`;
-                }
                 
                 const dayNumber = `<span class="day-number">${day}</span>`;
                 const dayWeekday = `<span class="day-weekday md:hidden">${WEEKDAYS[date.getDay()].slice(0,3)}</span>`;
-                dayContent += `<div>${dayNumber} ${dayWeekday}</div>`;
-                dayEl.innerHTML = dayContent;
+                dayEl.innerHTML = `<div>${dayNumber} ${dayWeekday}</div>`;
                 
                 if (toYYYYMMDD(date) === toYYYYMMDD(new Date())) dayEl.classList.add('today-text');
 
@@ -1530,17 +1525,10 @@
                 const status = getDayStatus(date);
                 const dayEl = document.createElement('div');
                 dayEl.className = `calendar-day ${getHeatmapClass(status.percentage)}`;
-                dayEl.style.position = 'relative';
-
-                let dayContent = '';
-                if (appState.reviewedDays.has(toYYYYMMDD(date))) {
-                    dayContent += `<div class="reviewed-day-indicator"><i class="fa-solid fa-check"></i></div>`;
-                }
 
                 const dayNumber = `<span class="day-number">${date.getDate()}</span>`;
                 const dayWeekday = `<span class="day-weekday md:hidden">${WEEKDAYS[date.getDay()].slice(0,3)}</span>`;
-                dayContent += `<div>${dayNumber} ${dayWeekday}</div>`;
-                dayEl.innerHTML = dayContent;
+                dayEl.innerHTML = `<div>${dayNumber} ${dayWeekday}</div>`;
 
                 if (toYYYYMMDD(date) === toYYYYMMDD(new Date())) dayEl.classList.add('today-text');
 
@@ -1590,15 +1578,20 @@
             const reviewDateStr = toYYYYMMDD(reviewDate);
             uiDailies.reviewDateDisplay.textContent = reviewDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
         
-            // Render the "Mark as Reviewed" button/status
             uiDailies.reviewActionsContainer.innerHTML = '';
             const isReviewed = appState.reviewedDays.has(reviewDateStr);
             if (isReviewed) {
                 uiDailies.reviewActionsContainer.innerHTML = `
-                    <div class="inline-flex items-center gap-2 text-green-600 font-semibold p-2 rounded-lg bg-green-100 dark-mode:bg-green-900/50">
-                        <i class="fa-solid fa-circle-check"></i>
-                        <span>Day Reviewed</span>
+                    <div class="inline-flex items-center gap-4">
+                        <div class="inline-flex items-center gap-2 text-green-600 font-semibold p-2 rounded-lg bg-green-100 dark-mode:bg-green-900/50">
+                            <i class="fa-solid fa-circle-check"></i>
+                            <span>Day Reviewed</span>
+                        </div>
+                        <button id="unreview-day-btn" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition">
+                            <i class="fa-solid fa-undo"></i> Unreview
+                        </button>
                     </div>`;
+                document.getElementById('unreview-day-btn').addEventListener('click', handleUnreviewDay);
             } else {
                 const button = document.createElement('button');
                 button.className = 'bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg disabled:opacity-50 disabled:cursor-not-allowed';
@@ -1646,22 +1639,24 @@
                     const createdAt = createdAtDate ? createdAtDate.toLocaleString() : 'N/A';
                     
                     let actionButtons = '';
-                    if (entry.originalLogId) { 
-                        actionButtons = `<button class="unassign-btn bg-red-500 text-white px-2 py-1 rounded-md text-xs" data-assignment-id='${entry.id}'>Unassign</button>`;
-                    } else if (logDate.getHours() < 6) {
-                        actionButtons = `
-                            <div class="flex flex-col gap-1 text-right">
-                                <p class="text-xs font-semibold text-yellow-600 dark:text-yellow-400 mb-1">For Yesterday?</p>
-                                <button class="move-btn bg-blue-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${prevDateStr}'>Move to ${prevDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'})}</button>
-                            </div>
-                        `;
-                    } else {
-                         actionButtons = `
-                            <div class="flex flex-col gap-1 text-right">
-                                <button class="move-btn bg-blue-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${prevDateStr}'>Move to Yesterday</button>
-                                <button class="move-btn bg-green-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${nextDateStr}'>Move to Tomorrow</button>
-                            </div>
-                        `;
+                    if (!isReviewed) {
+                        if (entry.originalLogId) { 
+                            actionButtons = `<button class="unassign-btn bg-red-500 text-white px-2 py-1 rounded-md text-xs" data-assignment-id='${entry.id}'>Unassign</button>`;
+                        } else if (logDate.getHours() < 6) {
+                            actionButtons = `
+                                <div class="flex flex-col gap-1 text-right">
+                                    <p class="text-xs font-semibold text-yellow-600 dark:text-yellow-400 mb-1">For Yesterday?</p>
+                                    <button class="move-btn bg-blue-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${prevDateStr}'>Move to ${prevDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'})}</button>
+                                </div>
+                            `;
+                        } else {
+                            actionButtons = `
+                                <div class="flex flex-col gap-1 text-right">
+                                    <button class="move-btn bg-blue-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${prevDateStr}'>Move to Yesterday</button>
+                                    <button class="move-btn bg-green-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${nextDateStr}'>Move to Tomorrow</button>
+                                </div>
+                            `;
+                        }
                     }
 
                     let statusBadge = '';
@@ -1704,13 +1699,22 @@
             try {
                 const reviewedDocRef = doc(db, `users/${appState.user.uid}/reviewed_days`, dateStr);
                 await setDoc(reviewedDocRef, { reviewedAt: Timestamp.now() });
-                // The onSnapshot listener will handle the UI update
             } catch (error) {
                 console.error("Error marking day as reviewed:", error);
                 alert("Could not save review status. Please try again.");
-                // Re-enable button on error
                 button.disabled = false;
                 button.innerHTML = '<i class="fa-solid fa-check"></i> Mark as Reviewed';
+            }
+        };
+
+        const handleUnreviewDay = async () => {
+            const dateStr = toYYYYMMDD(appState.reviewDate);
+            try {
+                const reviewedDocRef = doc(db, `users/${appState.user.uid}/reviewed_days`, dateStr);
+                await deleteDoc(reviewedDocRef);
+            } catch (error) {
+                console.error("Error un-reviewing day:", error);
+                alert("Could not un-review the day. Please try again.");
             }
         };
 
