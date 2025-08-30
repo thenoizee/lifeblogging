@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v8.9.2-alpha",
+    date: "2025-08-30",
+    changes: [
+        "In PodTrackr: Fixed a critical bug where the 'View History' buttons for specific podcasts and episodes incorrectly displayed the entire listening history instead of a filtered view.",
+        "In PodTrackr: Resolved an issue that caused long loading times for podcast episode pages and fixed a related console error.",
+        "In PodTrackr: Corrected a bug that showed 'No history for undefined' for episodes that had not been listened to yet.",
+        "In PodTrackr: On a podcast's detail page, episodes that have been listened to are now highlighted with an italicized title and a green 'listened' button for better visibility.",
+        "In PodTrackr: Users can now add a podcast to their Listenlist directly from the podcast's main page.",
+        ]
+    },
+    {
         version: "v8.9.1-alpha",
         date: "2025-08-30",
         changes: [

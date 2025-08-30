@@ -77,6 +77,13 @@
         .rating-stars i:hover ~ i {
             color: #9ca3af !important; /* Tailwind gray-400 */
         }
+        .listened-episode .episode-link {
+            font-style: italic;
+        }
+
+        .listened-episode .mark-played-btn {
+            background-color: #16a34a; /* A green color for listened */
+        }
     </style>
 </head>
 <body class="antialiased">
@@ -394,7 +401,7 @@
         // --- Routing ---
         function handleRouteChange() {
             const hash = window.location.hash || '#dashboard';
-            const [view, param] = hash.slice(1).split('/');
+            const [view, ...params] = hash.slice(1).split('/');
             
             if (!currentUser) {
                 renderLoginView();
@@ -410,12 +417,20 @@
                 case 'dashboard': renderDashboard(); break;
                 case 'feed': renderFeedView(); break;
                 case 'stats': renderStatsView(); break;
-                case 'history': renderHistoryView(); break;
+                case 'history': 
+                    if (params.length === 2 && params[0] === 'podcast') {
+                        renderHistoryView({ podcastId: params[1] });
+                    } else if (params.length === 2 && params[0] === 'episode') {
+                        renderHistoryView({ episodeId: params[1] });
+                    } else {
+                        renderHistoryView();
+                    }
+                    break;
                 case 'settings': renderSettingsView(); break;
                 case 'listenlist': renderListenlistView(); break;
-                case 'search': renderSearchView(param ? decodeURIComponent(param) : ''); break;
-                case 'podcast': renderPodcastDetailView(param); break;
-                case 'episode': renderEpisodeDetailView(param); break;
+                case 'search': renderSearchView(params[0] ? decodeURIComponent(params[0]) : ''); break;
+                case 'podcast': renderPodcastDetailView(params[0]); break;
+                case 'episode': renderEpisodeDetailView(params[0]); break;
                 default: renderDashboard();
             }
         }
@@ -760,12 +775,15 @@
                 history = history.filter(h => h.episodeId === filter.episodeId);
                 if (history.length > 0) {
                     title = `History for: ${history[0].episodeTitle}`;
-                } else if (currentEpisodeContext) {
+                } else if (currentEpisodeContext && currentEpisodeContext.episodeTitle) {
                     title = `No History for: ${currentEpisodeContext.episodeTitle}`;
                 }
             } else if (filter && filter.podcastId) {
+                const podcastDetails = await getDoc(doc(db, `users/${currentUser.uid}/podcasts`, filter.podcastId));
+                const podcastTitle = podcastDetails.exists() ? podcastDetails.data().title : "a podcast";
+
                 history = history.filter(h => h.podcastId === filter.podcastId);
-                title = `History for: ${filter.podcastTitle}`;
+                title = `History for: ${podcastTitle}`;
             }
 
             contentEl.innerHTML = `
@@ -950,8 +968,9 @@
                         <div class="space-y-4">
                             ${episodes.map(ep => {
                                 const isPlayed = listenedEpisodeIds.has(String(ep.id));
+                                const episodeClasses = isPlayed ? 'listened-episode' : '';
                                 return `
-                                <div class="card p-4 rounded-lg">
+                                <div class="card p-4 rounded-lg ${episodeClasses}">
                                     <div class="flex items-center justify-between">
                                         <div class="flex-1 min-w-0">
                                             <a href="#episode/${ep.id}" class="episode-link font-semibold hover:text-[var(--primary-color)] transition-colors truncate block">
@@ -1036,7 +1055,6 @@
                 return;
             }
 
-            // Fetch podcast details from API to ensure we have the artwork and title
             const podcastDetailsData = await fetchFromPodcastIndex('/podcasts/byfeedid', { id: episode.feedId });
             const podcastTitle = podcastDetailsData?.feed?.title ?? 'Unknown Podcast';
             const podcastArtwork = podcastDetailsData?.feed?.artwork ?? '';
@@ -1048,7 +1066,7 @@
             if (!historyQuerySnap.empty) {
                 const ratedEntries = historyQuerySnap.docs
                     .map(doc => doc.data())
-                    .filter(data => data.rating > 0);
+                    .filter(data => data.rating > 0 && data.listenedAt); 
 
                 if (ratedEntries.length > 0) {
                     ratedEntries.sort((a, b) => b.listenedAt.seconds - a.listenedAt.seconds);
@@ -1314,7 +1332,6 @@
                 if(button.id === 'view-all-listened-btn') {
                     historyFilter = { podcastId: button.dataset.podcastId, podcastTitle: button.dataset.podcastTitle };
                     window.location.hash = `#history/podcast/${button.dataset.podcastId}`;
-                    return;
                 }
 
                 if(button.classList.contains('edit-history-btn')) {
@@ -1337,7 +1354,6 @@
                     historyFilter = { episodeId: button.dataset.episodeId };
                     currentEpisodeContext = button.dataset;
                     window.location.hash = `#history/episode/${button.dataset.episodeId}`;
-                    return;
                 }
 
                 if (button.classList.contains('add-podcast-to-listenlist-btn')) {
