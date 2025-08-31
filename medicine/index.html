@@ -138,7 +138,7 @@
         table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
         th { background-color: var(--input-bg-color); color: var(--text-color-secondary); font-weight: 600; cursor: pointer; position: sticky; top: 0; }
-        tr:hover { background-color: var(--input-bg-color); }
+        tbody tr:hover { background-color: var(--input-bg-color); }
         .import-export-container { display: flex; gap: 10px; flex-wrap: wrap; }
         .import-export-container button, .import-export-container label { flex-grow: 1; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .calendar-container { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
@@ -653,7 +653,7 @@
                         <li><strong>Required Columns:</strong>
                             <ul class="list-['-_'] list-inside ml-4">
                                 <li><code>Name</code> & <code>Dosage</code>: Must match an existing medicine in your list.</li>
-                                <li><code>Taken (ISO 8601)</code> OR <code>Reminded (ISO 8601)</code>: At least one must contain a valid date. The 'Taken' date is prioritized as the main event time.</li>
+                                <li><code>Taken (ISO 8601)</code> OR <code>Reminded (ISO 8601)</code>: At least one must contain a valid date in ISO 8601 format (e.g., <code>YYYY-MM-DDTHH:mm:ss</code>). **Note: This format uses UTC time.** The 'Taken' date is prioritized as the main event time.</li>
                             </ul>
                         </li>
                         <li><strong>Optional Columns (Used if present):</strong>
@@ -1296,8 +1296,13 @@
 
             dosesForDay.forEach(dose => {
                 const doseEntry = document.createElement('div');
-                doseEntry.className = `history-dose-entry calendar-dose ${dose.status}`;
+                doseEntry.className = `history-dose-entry calendar-dose ${dose.status} cursor-pointer`;
                 doseEntry.textContent = `${dose.medicineName} (${dose.dosage})`;
+                doseEntry.dataset.id = dose.id;
+                doseEntry.addEventListener('click', (e) => {
+                    const doseId = e.currentTarget.dataset.id;
+                    if (doseId) handleEditDose(doseId);
+                });
                 dayDiv.appendChild(doseEntry);
             });
 
@@ -1314,10 +1319,12 @@
             tableBody.innerHTML = `<tr><td colspan="7" class="text-center text-[var(--text-color-secondary)]">No dose history found.</td></tr>`;
             return;
         }
+        
+        const toTitleCase = (str) => str.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase());
 
-        ['date', 'medicineName', 'dosage', 'status', 'doseNotes', 'doseSource', 'actions'].forEach(headerText => {
+        ['date', 'medicineName', 'dosage', 'status', 'doseNotes', 'doseReminderSentAt', 'doseSource'].forEach(headerText => {
             const th = document.createElement('th');
-            th.textContent = headerText.replace(/([A-Z])/g, ' $1').toUpperCase();
+            th.textContent = toTitleCase(headerText);
             if (headerText !== 'actions') {
                 th.onclick = () => {
                     appState.doseTableSort.direction = (appState.doseTableSort.column === headerText && appState.doseTableSort.direction === 'asc') ? 'desc' : 'asc';
@@ -1342,20 +1349,25 @@
 
         sortedData.forEach(dose => {
             const row = document.createElement('tr');
+            row.className = 'cursor-pointer';
+            row.dataset.id = dose.id;
             row.innerHTML = `
                 <td>${dose.date ? new Date(dose.date).toLocaleString() : 'N/A'}</td>
                 <td>${dose.medicineName}</td>
                 <td>${dose.dosage}</td>
                 <td class="${dose.status === 'taken' ? 'text-green-500' : dose.status === 'missed' ? 'text-red-500' : 'text-gray-500'}">${dose.status}</td>
                 <td>${dose.doseNotes || ''}</td>
+                <td>${dose.doseReminderSentAt ? dose.doseReminderSentAt.toDate().toLocaleString() : 'N/A'}</td>
                 <td>${dose.doseSource || 'manual'}</td>
-                <td><button class="secondary-button edit-dose-btn" data-id="${dose.id}"><i class="fa-solid fa-edit"></i> Edit</button></td>
             `;
             tableBody.appendChild(row);
         });
 
-        document.querySelectorAll('.edit-dose-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => handleEditDose(e.target.closest('button').dataset.id));
+        document.querySelectorAll('#dose-table-body tr').forEach(row => {
+            row.addEventListener('click', (e) => {
+                const doseId = e.currentTarget.dataset.id;
+                if (doseId) handleEditDose(doseId);
+            });
         });
       };
 
@@ -1739,7 +1751,7 @@
           document.getElementById('log-dose-modal').classList.remove('hidden');
       };
 
-      const handleLogDose = async (medIdOverride, datetimeOverride, statusOverride, source = 'manual_log', stockId = null, tags = []) => {
+      const handleLogDose = async (medIdOverride, datetimeOverride, statusOverride, source = 'manual_log', stockId = null, tags = [], scheduledTime = null) => {
         const medId = medIdOverride || document.getElementById("med-select").value;
         const datetimeTaken = datetimeOverride || document.getElementById("dose-datetime").value;
         const status = statusOverride || appState.logDoseStatus;
@@ -1789,7 +1801,7 @@
             doseNotes: notes,
             doseSource: source,
             stockId: status === 'taken' ? assignedStockId : null,
-            doseReminderSentAt: null,
+            doseReminderSentAt: scheduledTime ? Timestamp.fromDate(parseLocalDate(scheduledTime)) : null,
             doseCreatedAt: Timestamp.now(),
             doseCreatedBy: appState.user.uid,
             doseUpdatedAt: Timestamp.now(),
@@ -2188,23 +2200,23 @@
 
       document.getElementById('modal-taken-on-time-btn').addEventListener('click', () => {
           const selectedStockId = document.getElementById('modal-log-dose-batch-select').value;
-          handleLogDose(appState.currentModalLogDoseMedId, appState.currentModalLogDoseScheduledTime, 'taken', 'calendar_log', selectedStockId, ['taken']);
+          handleLogDose(appState.currentModalLogDoseMedId, appState.currentModalLogDoseScheduledTime, 'taken', 'calendar_log', selectedStockId, ['taken'], appState.currentModalLogDoseScheduledTime);
           document.getElementById('log-dose-modal').classList.add('hidden');
       });
       document.getElementById('modal-taken-now-btn').addEventListener('click', () => {
           const now = new Date();
           const selectedStockId = document.getElementById('modal-log-dose-batch-select').value;
-          handleLogDose(appState.currentModalLogDoseMedId, toLocalISOString(now), 'taken', 'calendar_log', selectedStockId, ['taken']);
+          handleLogDose(appState.currentModalLogDoseMedId, toLocalISOString(now), 'taken', 'calendar_log', selectedStockId, ['taken'], appState.currentModalLogDoseScheduledTime);
           document.getElementById('log-dose-modal').classList.add('hidden');
       });
       document.getElementById('modal-log-custom-time-btn').addEventListener('click', () => {
           const customTime = document.getElementById('modal-log-dose-datetime').value;
           const selectedStockId = document.getElementById('modal-log-dose-batch-select').value;
-          handleLogDose(appState.currentModalLogDoseMedId, customTime, 'taken', 'calendar_log', selectedStockId, ['taken']);
+          handleLogDose(appState.currentModalLogDoseMedId, customTime, 'taken', 'calendar_log', selectedStockId, ['taken'], appState.currentModalLogDoseScheduledTime);
           document.getElementById('log-dose-modal').classList.add('hidden');
       });
       document.getElementById('modal-skipped-btn').addEventListener('click', () => {
-        handleLogDose(appState.currentModalLogDoseMedId, appState.currentModalLogDoseScheduledTime, 'missed', 'calendar_log', null, ['skipped']);
+        handleLogDose(appState.currentModalLogDoseMedId, appState.currentModalLogDoseScheduledTime, 'missed', 'calendar_log', null, ['skipped'], appState.currentModalLogDoseScheduledTime);
         document.getElementById('log-dose-modal').classList.add('hidden');
       });
       

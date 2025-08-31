@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v8.10.0-alpha",
+        date: "2025-08-31",
+        changes: [
+            "In MediManagr: The 'Record Doses' page is now optimized for mobile devices, featuring a swipeable single-day view for scheduled doses on smaller screens.",
+            "In MediManagr: Dose entries in the full-month calendar on the 'History' tab are now clickable, opening the edit modal.",
+            "In MediManagr: The history table now correctly displays the scheduled time for doses logged via the calendar in the 'Dose Reminder Sent At' column.",
+            "In MediManagr: Added a note to the data import guide clarifying that ISO 8601 dates use UTC time.",
+        ]
+    },
+    {
     version: "v8.9.3-alpha",
     date: "2025-08-30",
     changes: [
