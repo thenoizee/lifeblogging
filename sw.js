@@ -13,6 +13,7 @@ const urlsToCache = [
   '/changelog/index.html',
   '/converter/index.html',
   '/timestamp/index.html',
+  '/account/index.html',
   '/changelog-data.js',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',

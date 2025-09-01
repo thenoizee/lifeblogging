@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v8.11.0-alpha",
+        date: "2025-09-01",
+        changes: [
+            "In the Hub: Introduced a dedicated Account page, replacing the previous dropdown menu for a more robust user management experience.",
+            "In the Account Page: Implemented Dark Mode on the new Account page, ensuring theme consistency across the hub.",
+            "In the Account Page: Added a comprehensive Data Management section, allowing users to export all their data from every app into a single JSON file, and import it back.",
+            "In the Account Page: Introduced a secure account deletion feature, allowing users to permanently remove their account and all associated data.",
+            "In the Account Page: Added functionality for linking and unlinking third-party accounts, starting with Google.",
+        ]
+    },
+    {
         version: "v8.10.0-alpha",
         date: "2025-08-31",
         changes: [
