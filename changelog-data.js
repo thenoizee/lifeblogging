@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v9.0.0-alpha",
+        date: "2025-09-02",
+        changes: [
+            "Hub: Introduced RecipeManagr, a powerful new app for managing your digital recipe collection.",
+            "In RecipeManagr: Store detailed recipes with ingredients, instructions, and metadata like cooking times and ratings.",
+            "In RecipeManagr: Import recipes in bulk from services like RecipeSage via URL or file upload (.txt and .jsonld).",
+            "In RecipeManagr: Includes features like a shopping list generator, appliance management, and unit conversion.",
+        ]
+    },
+    {
         version: "v8.11.0-alpha",
         date: "2025-09-01",
         changes: [
