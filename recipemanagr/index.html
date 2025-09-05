@@ -105,7 +105,6 @@
             </div>
         </div>
 
-        <!-- Tabs Navigation -->
         <div class="mb-6">
             <div class="border-b border-gray-200 dark:border-gray-700">
                 <nav class="-mb-px flex space-x-8" aria-label="Tabs">
@@ -119,9 +118,7 @@
             </div>
         </div>
 
-        <!-- Tab Content -->
         <div id="tab-content-container">
-            <!-- Recipes Tab Panel -->
             <div id="recipes-tab-panel">
                 <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg mb-6">
                     <h3 class="text-xl font-bold mb-4">Filter & Sort</h3>
@@ -148,19 +145,23 @@
                 </div>
             </div>
 
-            <!-- Add/Edit Recipe Tab Panel -->
             <div id="add-recipe-tab-panel" class="hidden">
                  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg mb-6">
-                    <h2 class="text-2xl font-bold mb-4">Import from RecipeSage</h2>
+                    <h2 class="text-2xl font-bold mb-4">Import Recipes</h2>
                      <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium mb-1">Import from URL (.txt or .jsonld)</label>
-                            <div id="import-form" class="flex flex-col md:flex-row gap-2 relative">
-                                <input type="url" id="import-url-input" placeholder="Enter RecipeSage export URL" class="flex-grow p-2 border rounded dark:bg-gray-700 dark:border-gray-600" required>
-                                <button id="clear-import-url-btn" class="absolute right-2 top-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white">&times;</button>
-                                <button id="fetch-url-btn" type="button" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 flex items-center justify-center">
-                                    <i class="fas fa-cloud-download-alt mr-2"></i> Fetch from URL
-                                </button>
+                            <label class="block text-sm font-medium mb-1">Import from RecipeSage TXT URL</label>
+                            <div class="flex flex-col md:flex-row gap-2">
+                                <input type="url" id="import-txt-url-input" placeholder="Enter RecipeSage TXT export URL" class="flex-grow p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                                <button id="fetch-txt-url-btn" type="button" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Fetch TXT</button>
+                            </div>
+                        </div>
+                        <div class="text-center text-sm font-semibold">OR</div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Import from URL (JSON-LD)</label>
+                            <div id="import-form" class="flex flex-col md:flex-row gap-2">
+                                <input type="url" id="import-url-input" placeholder="Enter recipe URL" class="flex-grow p-2 border rounded dark:bg-gray-700 dark:border-gray-600" required>
+                                <button id="fetch-url-btn" type="button" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Fetch JSON-LD</button>
                             </div>
                         </div>
                         <div class="text-center text-sm font-semibold">OR</div>
@@ -385,13 +386,13 @@
             const generateShoppingListBtn = document.getElementById('generate-shopping-list-btn');
             const manageAppliancesBtn = document.getElementById('manage-appliances-btn');
             const fetchUrlBtn = document.getElementById('fetch-url-btn');
+            const fetchTxtUrlBtn = document.getElementById('fetch-txt-url-btn');
             const importReviewSection = document.getElementById('import-review-section');
             const batchImportBtn = document.getElementById('batch-import-btn');
             const loadFirstRecipeBtn = document.getElementById('load-first-recipe-btn');
             const importSummaryText = document.getElementById('import-summary-text');
             const importFileInput = document.getElementById('import-file-input');
-            const clearImportUrlBtn = document.getElementById('clear-import-url-btn');
-
+            
             // Tab Elements
             const recipesTabBtn = document.getElementById('recipes-tab-btn');
             const addRecipeTabBtn = document.getElementById('add-recipe-tab-btn');
@@ -768,6 +769,7 @@
                 fetchedRecipesCache = [];
                 importReviewSection.classList.add('hidden');
                 document.getElementById('import-url-input').value = '';
+                document.getElementById('import-txt-url-input').value = '';
                 formSummary.textContent = "Add a New Recipe";
                 addRecipeBtn.textContent = "Add Recipe";
                 document.getElementById('form-buttons').querySelector('#cancel-edit-btn')?.remove();
@@ -1541,26 +1543,24 @@
                 if (minutes > 0) duration += `${minutes}M`;
                 return duration;
             }
-
+            
             function parseRecipeSageTxt(txtContent) {
                 const recipes = [];
-                // Split by '---' on its own line, potentially surrounded by whitespace.
-                const recipeBlocks = txtContent.split(/^\s*---\s*$/m);
+                let content = txtContent.trim().replace(/\r\n/g, '\n');
+                
+                const lines = content.split('\n');
+                let firstRecipeTitleFromHeader = '';
+                if (lines.length > 0 && lines[0].trim().startsWith('==== Recipes ====')) {
+                    firstRecipeTitleFromHeader = lines[0].replace(/^==== Recipes ====/, '').replace(/^-/, '').trim();
+                    lines.shift();
+                    content = lines.join('\n');
+                }
 
-                for (const block of recipeBlocks) {
-                    let trimmedBlock = block.trim();
-                    if (trimmedBlock.length === 0) continue;
-                    
-                    // Remove the initial header if it exists on the first block
-                    if (trimmedBlock.startsWith('==== Recipes ====')) {
-                        const lines = trimmedBlock.split('\n');
-                        const headerLineIndex = lines.findIndex(l => l.trim().startsWith('==== Recipes ===='));
-                        if (headerLineIndex !== -1) {
-                            lines.splice(headerLineIndex, 1);
-                            trimmedBlock = lines.join('\n').trim();
-                        }
-                    }
-                    if (trimmedBlock.length === 0) continue;
+                const recipeBlocks = content.split(/^\s*---\s*$/m);
+
+                recipeBlocks.forEach((block, index) => {
+                    const trimmedBlock = block.trim();
+                    if (!trimmedBlock) return;
 
                     const recipe = {
                         recipeIngredient: [],
@@ -1568,69 +1568,103 @@
                         comment: [],
                         keywords: []
                     };
-                    const lines = trimmedBlock.split('\n');
-                    let currentSection = null;
-                    let titleFound = false;
+                    let blockLines = trimmedBlock.split('\n');
+                    let currentSection = 'meta';
+                    let currentSectionData = null;
 
-                    for (const line of lines) {
+                    // Handle Title
+                    if (index === 0 && firstRecipeTitleFromHeader) {
+                        recipe.name = firstRecipeTitleFromHeader;
+                    } else {
+                        const titleLineIndex = blockLines.findIndex(line => line.trim() !== '');
+                        if (titleLineIndex !== -1) {
+                            recipe.name = blockLines[titleLineIndex].trim();
+                            blockLines = blockLines.slice(titleLineIndex + 1);
+                        } else {
+                            return; 
+                        }
+                    }
+                    if (recipe.name.toLowerCase().startsWith('title:')) {
+                        recipe.name = recipe.name.substring(6).trim();
+                    }
+
+                    for (const line of blockLines) {
                         const trimmedLine = line.trim();
-                        if (trimmedLine.length === 0) {
-                            currentSection = null;
+                        if (!trimmedLine) {
+                            currentSection = 'meta';
                             continue;
                         }
 
-                        const lowerLine = trimmedLine.toLowerCase();
                         const separatorIndex = trimmedLine.indexOf(':');
-
-                        if (separatorIndex > 0) {
+                        if (currentSection === 'meta' && separatorIndex > 0) {
                             const key = trimmedLine.substring(0, separatorIndex).toLowerCase().trim();
                             const value = trimmedLine.substring(separatorIndex + 1).trim();
-                            let keyProcessed = false;
-
+                            
+                            let keyProcessed = true;
                             switch (key) {
-                                case 'title': recipe.name = value; titleFound = true; keyProcessed = true; break;
-                                case 'description': recipe.description = value; keyProcessed = true; break;
-                                case 'source': recipe.creditText = value; keyProcessed = true; break;
-                                case 'url': recipe.url = value; keyProcessed = true; break;
-                                case 'yield': case 'servings': recipe.recipeYield = value; keyProcessed = true; break;
-                                case 'activetime': case 'prep time': recipe.prepTime = textDurationToISO(value); keyProcessed = true; break;
-                                case 'cooktime': case 'cook time': recipe.cookTime = textDurationToISO(value); keyProcessed = true; break;
-                                case 'totaltime': case 'total time': recipe.totalTime = textDurationToISO(value); keyProcessed = true; break;
-                                case 'labels': case 'tags': case 'folders':
-                                    recipe.keywords = value.split(',').map(k => k.trim());
-                                    keyProcessed = true;
-                                    break;
-                                case 'createdat':
-                                    recipe.datePublished = new Date(value).toISOString();
-                                    keyProcessed = true;
-                                    break;
-                                case 'rating':
-                                    recipe.rating = parseInt(value, 10) || 0;
-                                    keyProcessed = true;
-                                    break;
+                                case 'description': recipe.description = value; break;
+                                case 'source': recipe.creditText = value; break;
+                                case 'url': recipe.url = value; break;
+                                case 'yield': case 'servings': recipe.recipeYield = value; break;
+                                case 'prep time': case 'prep': recipe.prepTime = textDurationToISO(value); break;
+                                case 'cook time': case 'cook': recipe.cookTime = textDurationToISO(value); break;
+                                case 'total time': case 'total': recipe.totalTime = textDurationToISO(value); break;
+                                case 'tags': case 'folders': recipe.keywords = value.split(/[,/]/).map(k => k.trim()).filter(Boolean); break;
+                                case 'createdat': recipe.datePublished = new Date(value).toISOString(); break;
+                                case 'updatedat': recipe.dateModified = new Date(value).toISOString(); break;
+                                case 'rating': recipe.rating = parseInt(value, 10) || 0; break;
+                                default: keyProcessed = false; break;
                             }
-                            if (keyProcessed) {
-                                currentSection = null;
-                                continue;
-                            }
+                            if (keyProcessed) continue;
                         }
 
-                        if (lowerLine === 'ingredients') { currentSection = 'ingredients'; continue; }
-                        if (lowerLine === 'directions' || lowerLine === 'instructions') { currentSection = 'instructions'; continue; }
-                        if (lowerLine === 'notes') { currentSection = 'notes'; continue; }
+                        const lowerLine = trimmedLine.toLowerCase();
+                        if (lowerLine === 'ingredients') {
+                            currentSection = 'ingredients';
+                            currentSectionData = { section: 'Ingredients', items: [] };
+                            if (!recipe.recipeIngredient.find(s => s.section === 'Ingredients')) recipe.recipeIngredient.push(currentSectionData);
+                            continue;
+                        }
+                        if (lowerLine.startsWith('direction') || lowerLine === 'instructions') {
+                            currentSection = 'instructions';
+                            currentSectionData = { section: 'Instructions', items: [] };
+                            if (!recipe.recipeInstructions.find(s => s.section === 'Instructions')) recipe.recipeInstructions.push(currentSectionData);
+                            continue;
+                        }
+                        if (lowerLine === 'notes') {
+                            currentSection = 'notes';
+                            currentSectionData = [];
+                            recipe.comment = currentSectionData;
+                            continue;
+                        }
+
+                        if (trimmedLine === trimmedLine.toUpperCase() && !trimmedLine.match(/\d/) && separatorIndex === -1 && trimmedLine.length > 1) {
+                            if (currentSection !== 'instructions') {
+                                currentSection = 'ingredients';
+                                currentSectionData = { section: trimmedLine, items: [] };
+                                recipe.recipeIngredient.push(currentSectionData);
+                            } else {
+                                currentSection = 'instructions';
+                                currentSectionData = { section: trimmedLine, items: [] };
+                                recipe.recipeInstructions.push(currentSectionData);
+                            }
+                            continue;
+                        }
                         
-                        if (currentSection === 'ingredients') recipe.recipeIngredient.push(trimmedLine.replace(/^- /, ''));
-                        else if (currentSection === 'instructions') recipe.recipeInstructions.push({ text: trimmedLine.replace(/^\d+\.\s*/, '') });
-                        else if (currentSection === 'notes') recipe.comment.push({ text: trimmedLine });
-                        else if (!titleFound) {
-                            recipe.name = trimmedLine;
-                            titleFound = true;
+                        if (currentSection === 'ingredients' && currentSectionData) {
+                            currentSectionData.items.push({ text: trimmedLine.replace(/^- /, '') });
+                        } else if (currentSection === 'instructions' && currentSectionData) {
+                            currentSectionData.items.push({ text: trimmedLine.replace(/^\d+\.\s*/, '') });
+                        } else if (currentSection === 'notes' && currentSectionData) {
+                            currentSectionData.push({ text: trimmedLine });
                         }
                     }
+
                     if (recipe.name) {
                         recipes.push(recipe);
                     }
-                }
+                });
+
                 return recipes;
             }
 
@@ -1638,7 +1672,8 @@
                 const file = event.target.files[0];
                 if (!file) return;
 
-                fetchUrlBtn.disabled = true;
+                const btnToDisable = event.target.id === 'import-file-input' ? fetchUrlBtn : importFileInput;
+                btnToDisable.disabled = true;
                 showNotification(`Processing ${file.name}...`, 'info');
                 importReviewSection.classList.add('hidden');
 
@@ -1668,7 +1703,7 @@
                     console.error('File import failed:', error);
                     showNotification(`Failed to process file: ${error.message}`, 'error');
                 } finally {
-                    fetchUrlBtn.disabled = false;
+                    btnToDisable.disabled = false;
                     event.target.value = ''; // Reset file input
                 }
             }
@@ -1723,13 +1758,20 @@
                     document.getElementById('recipe-discovered-date').value = new Date(recipe.datePublished).toISOString().split('T')[0];
                 }
 
-                if (Array.isArray(recipe.recipeIngredient)) {
-                    document.getElementById('recipe-ingredients').value = recipe.recipeIngredient.join('\n');
+                 if (Array.isArray(recipe.recipeIngredient)) {
+                    document.getElementById('recipe-ingredients').value = recipe.recipeIngredient.map(section => {
+                        const header = section.section !== 'Ingredients' && section.section !== 'General' ? `[${section.section}]\n` : '';
+                        const items = section.items.map(item => (typeof item === 'object' ? item.text : item)).join('\n');
+                        return header + items;
+                    }).join('\n\n');
                 }
 
                 if (Array.isArray(recipe.recipeInstructions)) {
-                    const instructionsText = recipe.recipeInstructions.map(step => (typeof step === 'object' && step.text) ? step.text : step).join('\n');
-                    document.getElementById('recipe-instructions').value = instructionsText;
+                     document.getElementById('recipe-instructions').value = recipe.recipeInstructions.map(section => {
+                        const header = section.section !== 'Instructions' && section.section !== 'General' ? `[${section.section}]\n` : '';
+                        const items = section.items.map(item => item.text).join('\n');
+                        return header + items;
+                    }).join('\n\n');
                 }
                 
                 let notes = '';
@@ -1782,7 +1824,7 @@
 
                 let labels = [];
                 if (recipe.keywords) {
-                    const keywords = Array.isArray(recipe.keywords) ? recipe.keywords : recipe.keywords.split(',').map(k => k.trim());
+                    const keywords = Array.isArray(recipe.keywords) ? recipe.keywords : recipe.keywords.split(/[,/]/).map(k => k.trim()).filter(Boolean);
                     labels.push(...keywords);
                 }
                 if (recipe.recipeCategory) {
@@ -1793,9 +1835,8 @@
                     labels.push('imported');
                 }
 
-                const instructions = Array.isArray(recipe.recipeInstructions) 
-                    ? recipe.recipeInstructions.map(step => (typeof step === 'object' && step.text) ? step.text : step).join('\n')
-                    : (recipe.recipeInstructions || '');
+                const instructions = recipe.recipeInstructions;
+                const ingredients = recipe.recipeIngredient;
                 
                 let notes = '';
                 if (Array.isArray(recipe.comment)) {
@@ -1815,12 +1856,12 @@
                     cookTime: parseISODurationToMinutes(recipe.cookTime) || 0,
                     totalTime: parseISODurationToMinutes(recipe.totalTime) || 0,
                     discoveredDate: recipe.datePublished ? new Date(recipe.datePublished).toISOString().split('T')[0] : '',
-                    ingredients: parseSections(Array.isArray(recipe.recipeIngredient) ? recipe.recipeIngredient.join('\n') : ''),
-                    instructions: parseSections(instructions),
+                    ingredients: ingredients,
+                    instructions: instructions,
                     notes: notes,
                     labels: [...new Set(labels)],
                     imageUrl: getImageUrl(recipe.image) || '',
-                    rating: 0,
+                    rating: recipe.rating || 0,
                     ingredientNotes: {},
                     instructionNotes: {},
                     createdAt: recipe.datePublished ? new Date(recipe.datePublished) : serverTimestamp(),
@@ -1832,31 +1873,28 @@
                 };
             }
 
-            async function handleFetchUrl() {
-                const url = document.getElementById('import-url-input').value.trim();
+            async function handleFetchFromUrl(url, type) {
                 if (!url) {
                     showNotification('Please enter a URL.', 'error');
                     return;
                 }
-
-                fetchUrlBtn.disabled = true;
-                fetchUrlBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Fetching...';
+                const btn = type === 'txt' ? fetchTxtUrlBtn : fetchUrlBtn;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Fetching...';
                 importReviewSection.classList.add('hidden');
 
                 try {
                     const response = await fetch(url);
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     
-                    let isJson = false;
-                    try {
-                        const data = await response.clone().json(); 
-                        fetchedRecipesCache = data.recipes || (Array.isArray(data) ? data : [data]);
-                        isJson = true;
-                        showNotification('Successfully parsed JSON-LD data.', 'success');
-                    } catch (jsonError) {
+                    if (type === 'txt') {
                         const textContent = await response.text();
                         fetchedRecipesCache = parseRecipeSageTxt(textContent);
                         showNotification('Successfully parsed TXT data.', 'success');
+                    } else { // jsonld
+                        const data = await response.json();
+                        fetchedRecipesCache = data.recipes || (Array.isArray(data) ? data : [data]);
+                        showNotification('Successfully parsed JSON-LD data.', 'success');
                     }
                     
                     if (!fetchedRecipesCache || fetchedRecipesCache.length === 0) {
@@ -1870,12 +1908,13 @@
 
                 } catch (error) {
                     console.error('Import failed:', error);
-                    showNotification('Failed to fetch recipe data. Check the URL and if it allows cross-origin requests.', 'error');
+                    showNotification('Failed to fetch recipe data. Check the URL and file type.', 'error');
                 } finally {
-                    fetchUrlBtn.disabled = false;
-                    fetchUrlBtn.innerHTML = '<i class="fas fa-cloud-download-alt mr-2"></i> Fetch Recipe Info';
+                    btn.disabled = false;
+                    btn.innerHTML = type === 'txt' ? 'Fetch TXT' : 'Fetch JSON-LD';
                 }
             }
+
 
             async function handleBatchImport() {
                 if(fetchedRecipesCache.length === 0) {
@@ -1884,7 +1923,7 @@
                 }
 
                 showNotification(`Importing ${fetchedRecipesCache.length} recipes...`, 'info', 0);
-                const url = document.getElementById('import-url-input').value.trim();
+                const url = document.getElementById('import-url-input').value.trim() || document.getElementById('import-txt-url-input').value.trim();
                 const batch = writeBatch(db);
                 const recipesCol = collection(db, `users/${userId}/recipes`);
 
@@ -1921,7 +1960,8 @@
                 resetForm();
                 switchTab('add-recipe');
             });
-            fetchUrlBtn.addEventListener('click', handleFetchUrl);
+            fetchUrlBtn.addEventListener('click', () => handleFetchFromUrl(document.getElementById('import-url-input').value.trim(), 'jsonld'));
+            fetchTxtUrlBtn.addEventListener('click', () => handleFetchFromUrl(document.getElementById('import-txt-url-input').value.trim(), 'txt'));
             importFileInput.addEventListener('change', handleFileImport);
             batchImportBtn.addEventListener('click', handleBatchImport);
             loadFirstRecipeBtn.addEventListener('click', () => {
@@ -1944,12 +1984,6 @@
                 resetForm();
             });
             
-            clearImportUrlBtn.addEventListener('click', () => {
-                document.getElementById('import-url-input').value = '';
-                importReviewSection.classList.add('hidden');
-                fetchedRecipesCache = [];
-            });
-
             themeToggle.addEventListener('click', () => {
                 const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
                 applyTheme(newTheme);
@@ -2073,4 +2107,3 @@
     </script>
 </body>
 </html>
-

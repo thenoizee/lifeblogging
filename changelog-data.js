@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.1.0-alpha",
+    date: "2025-09-05",
+    changes: [
+        "In the Analyser: Fixed a critical bug where dates in DD/MM/YYYY format were not being sorted chronologically in the data table.",
+        "In the Analyser: Resolved an issue where clicking on a table column header did not correctly toggle between ascending and descending sort order.",
+        "In the Analyser: Added a new feature allowing users to select the number of entries displayed per page in the data table for better navigation of large datasets.",
+    ]
+    },
+    {
         version: "v9.0.0-alpha",
         date: "2025-09-02",
         changes: [

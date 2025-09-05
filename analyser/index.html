@@ -559,17 +559,29 @@
     <div class="card">
         <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg">
             <legend class="text-2xl font-semibold px-2 mb-4">7. Data Table</legend>
-            <div id="bulk-actions-container" class="mb-4 p-4 bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg hidden">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h3 class="text-lg font-semibold text-blue-800 dark:text-blue-100">Bulk Actions</h3>
-                        <p class="text-sm text-blue-700 dark:text-blue-200"><span id="selected-count">0</span> items selected</p>
+            <div class="flex items-center justify-between mb-4">
+                <div id="bulk-actions-container" class="p-4 bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg hidden">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-blue-800 dark:text-blue-100">Bulk Actions</h3>
+                            <p class="text-sm text-blue-700 dark:text-blue-200"><span id="selected-count">0</span> items selected</p>
+                        </div>
+                        <div class="flex space-x-2 ml-4">
+                            <button id="bulk-edit-tags-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700"><i class="fa-solid fa-tags mr-2"></i>Edit Tags</button>
+                            <button id="bulk-delete-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700"><i class="fa-solid fa-trash-can mr-2"></i>Delete</button>
+                            <button id="clear-selection-btn" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600"><i class="fa-solid fa-times-circle mr-2"></i>Clear Selection</button>
+                        </div>
                     </div>
-                    <div class="flex space-x-2">
-                        <button id="bulk-edit-tags-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700"><i class="fa-solid fa-tags mr-2"></i>Edit Tags</button>
-                        <button id="bulk-delete-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700"><i class="fa-solid fa-trash-can mr-2"></i>Delete</button>
-                        <button id="clear-selection-btn" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600"><i class="fa-solid fa-times-circle mr-2"></i>Clear Selection</button>
-                    </div>
+                </div>
+                <div class="ml-auto flex items-center space-x-2">
+                    <label for="rows-per-page-select" class="text-sm font-medium">Rows per page:</label>
+                    <select id="rows-per-page-select" class="rounded-lg p-1 bg-[var(--input-bg-color)] text-[var(--text-color-primary)] border border-[var(--border-color)]">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                        <option value="250">250</option>
+                    </select>
                 </div>
             </div>
             <div class="table-container">
@@ -767,7 +779,7 @@
     let attributeColors = {}; // For custom attribute colors
     let columnPreferences = {}; // For column visibility
     let currentPage = 1;
-    const rowsPerPage = 50;
+    let rowsPerPage = 50;
     
     // Theme-related global variables
     const themeToggle = document.getElementById('theme-toggle');
@@ -781,6 +793,32 @@
     const correlationContent = document.getElementById('correlation-content');
     const toggleCorrelationBtn = document.getElementById('toggle-correlation-btn');
     const correlationSection = document.getElementById('correlation-section');
+
+    /**
+     * Parses a date value from various formats into a Date object.
+     * @param {*} dateValue The value to parse (Firestore Timestamp, string, or number).
+     * @returns {Date|null} A Date object or null if invalid.
+     */
+    function parseDate(dateValue) {
+        if (!dateValue) return null;
+        if (dateValue.toDate) return dateValue.toDate(); // Firestore Timestamp
+
+        if (typeof dateValue === 'string') {
+            // Regex to match DD/MM/YYYY HH:MM or DD/MM/YYYY HH:MM:SS
+            const dmyhmsRegex = /(\d{1,2})\/(\d{1,2})\/(\d{4})\s(\d{1,2}):(\d{2})(?::(\d{2}))?/;
+            const match = dateValue.match(dmyhmsRegex);
+            
+            if (match) {
+                const [, day, month, year, hours, minutes, seconds] = match;
+                // new Date(year, monthIndex, day, hours, minutes, seconds)
+                return new Date(year, month - 1, day, hours, minutes, seconds || 0);
+            }
+
+            // Fallback for ISO-like formats (YYYY-MM-DDTHH:MM or YYYY-MM-DD HH:MM)
+            return new Date(dateValue.replace(' ', 'T'));
+        }
+        return new Date(dateValue); // Fallback for numbers (timestamps)
+    }
 
 
     // Helper function to show a temporary message box
@@ -1072,6 +1110,7 @@
     const valueFilterMin = document.getElementById('value-filter-min');
     const valueFilterMax = document.getElementById('value-filter-max');
     const valueFilterString = document.getElementById('value-filter-string');
+    const rowsPerPageSelect = document.getElementById('rows-per-page-select');
 
     // Modals
     const dataModal = document.getElementById('data-modal');
@@ -1356,7 +1395,8 @@
         
         // Filter by date range
         const filteredByDate = allDataPoints.filter(dp => {
-            const dpDate = new Date(dp.date);
+            const dpDate = parseDate(dp.date);
+            if (!dpDate || isNaN(dpDate)) return true;
             if (startDateFilter.value && dpDate < new Date(startDateFilter.value)) return false;
             if (endDateFilter.value && dpDate > new Date(endDateFilter.value)) return false;
             return true;
@@ -1400,25 +1440,27 @@
     function renderDataTable() {
         const visibleDataPoints = getVisibleDataPoints();
 
-        const sortedDataPoints = visibleDataPoints.sort((a, b) => {
+        const sortedDataPoints = [...visibleDataPoints].sort((a, b) => {
             const aValue = a[sortColumn];
             const bValue = b[sortColumn];
-
-            // Primary sort logic
             let comparison;
+
             if (sortColumn === 'date' || sortColumn === 'createdAt') {
-                const aDate = aValue?.toDate ? aValue.toDate() : new Date(aValue);
-                const bDate = bValue?.toDate ? bValue.toDate() : new Date(bValue);
-                comparison = aDate - bDate;
+                const aDate = parseDate(aValue);
+                const bDate = parseDate(bValue);
+                if (!aDate || isNaN(aDate)) return 1;
+                if (!bDate || isNaN(bDate)) return -1;
+                comparison = aDate.getTime() - bDate.getTime();
             } else {
                 comparison = String(aValue || '').localeCompare(String(bValue || ''), undefined, { numeric: true });
             }
 
-            // Tie-breaker for 'date' column
             if (sortColumn === 'date' && comparison === 0) {
-                const aCreatedAt = a.createdAt?.toMillis() || 0;
-                const bCreatedAt = b.createdAt?.toMillis() || 0;
-                comparison = aCreatedAt - bCreatedAt;
+                const aCreatedAt = parseDate(a.createdAt);
+                const bCreatedAt = parseDate(b.createdAt);
+                if (!aCreatedAt || isNaN(aCreatedAt)) return 1;
+                if (!bCreatedAt || isNaN(bCreatedAt)) return -1;
+                comparison = aCreatedAt.getTime() - bCreatedAt.getTime();
             }
 
             return sortDirection === 'asc' ? comparison : -comparison;
@@ -1591,8 +1633,8 @@
                     });
                     cell.appendChild(tagsDiv);
                 } else if (header === 'date' || header === 'createdAt') {
-                    const dateObj = dataPoint[header]?.toDate ? dataPoint[header].toDate() : new Date(dataPoint[header]);
-                    cell.textContent = !isNaN(dateObj) ? dateObj.toLocaleString() : dataPoint[header] || '-';
+                    const dateObj = parseDate(dataPoint[header]);
+                    cell.textContent = dateObj && !isNaN(dateObj) ? dateObj.toLocaleString() : dataPoint[header] || '-';
                 } else {
                     cell.textContent = dataPoint[header] === undefined || dataPoint[header] === null ? '-' : dataPoint[header];
                 }
@@ -1734,7 +1776,7 @@
 
             const filteredData = allDataPoints
                 .filter(dp => dp.attributeName === selectedAttributeName && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue)))
-                .sort((a, b) => new Date(a.date) - new Date(b.date));
+                .sort((a, b) => parseDate(a.date) - parseDate(b.date));
             
             chartDataPoints = [...new Set([...chartDataPoints, ...filteredData])];
 
@@ -1743,7 +1785,7 @@
             datasets.push({
                 label: selectedAttributeName,
                 data: filteredData.map(dp => ({
-                    x: new Date(dp.date).getTime(),
+                    x: parseDate(dp.date).getTime(),
                     y: parseFloat(dp.attributeValue)
                 })),
                 borderColor: color,
@@ -2002,11 +2044,14 @@
 
         dataForCorr.forEach(dp => {
             if (dp.attributeName && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue))) {
-                const dateStr = new Date(dp.date).toISOString().split('T')[0];
-                if (!dateMap[dateStr]) {
-                    dateMap[dateStr] = {};
+                const dpDate = parseDate(dp.date);
+                if (dpDate && !isNaN(dpDate)) {
+                    const dateStr = dpDate.toISOString().split('T')[0];
+                    if (!dateMap[dateStr]) {
+                        dateMap[dateStr] = {};
+                    }
+                    dateMap[dateStr][dp.attributeName] = parseFloat(dp.attributeValue);
                 }
-                dateMap[dateStr][dp.attributeName] = parseFloat(dp.attributeValue);
             }
         });
 
@@ -2075,6 +2120,12 @@
     valueFilterMax.addEventListener('input', renderDataTable);
     valueFilterString.addEventListener('input', renderDataTable);
     
+    rowsPerPageSelect.addEventListener('change', (e) => {
+        rowsPerPage = parseInt(e.target.value, 10);
+        currentPage = 1; // Reset to first page when changing page size
+        renderDataTable();
+    });
+
     manualAddBtn.addEventListener('click', async () => {
         if (!userId) {
             showMessage("Please sign in to add data.", 'error');
