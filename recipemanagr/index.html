@@ -427,11 +427,59 @@
             
             const processData = (data, defaultSectionName) => {
                 if (!data) return [];
-                if (Array.isArray(data) && typeof data[0] === 'object' && data[0] !== null && 'items' in data[0]) return data;
-                if (Array.isArray(data)) return [{ section: defaultSectionName, items: data }];
-                if (typeof data === 'string') return parseSections(data);
-                return [];
+                let sections;
+
+                if (typeof data === 'string') {
+                    sections = parseSections(data);
+                } else if (Array.isArray(data)) {
+                    if (data.length === 0) return [];
+                    if (typeof data[0] === 'object' && data[0] !== null && 'items' in data[0]) {
+                        sections = data;
+                    } else { // Handle flat array of strings by parsing for sections
+                        const parsedFromFlatArray = [];
+                        let currentSectionForFlatArray = { section: defaultSectionName, items: [] };
+                        data.forEach(line => {
+                            const match = line.trim().match(/^\[(.*?)\]:?$/);
+                            if (match && line.trim().endsWith(']')) {
+                                if (currentSectionForFlatArray.items.length > 0) {
+                                    parsedFromFlatArray.push(currentSectionForFlatArray);
+                                }
+                                currentSectionForFlatArray = { section: match[1].trim(), items: [] };
+                            } else {
+                                currentSectionForFlatArray.items.push(line);
+                            }
+                        });
+                        if (currentSectionForFlatArray.items.length > 0 || parsedFromFlatArray.length === 0) {
+                            parsedFromFlatArray.push(currentSectionForFlatArray);
+                        }
+                        sections = parsedFromFlatArray;
+                    }
+                } else {
+                    return [];
+                }
+
+                // Normalize items to ensure they are objects with a .text property
+                return sections.map(section => {
+                    if (!section || !Array.isArray(section.items)) {
+                        return { section: (section && section.section) || defaultSectionName, items: [] };
+                    }
+                    const normalizedItems = section.items.map(item => {
+                        if (typeof item === 'string') {
+                            return { text: item };
+                        }
+                        if (typeof item === 'object' && item !== null && typeof item.text === 'string') {
+                            return item;
+                        }
+                        return null; 
+                    }).filter(Boolean);
+
+                    return {
+                        section: section.section,
+                        items: normalizedItems
+                    };
+                });
             };
+
 
             function switchTab(tabName) {
                 if (tabName === 'add-recipe') {
@@ -634,29 +682,41 @@
                 let currentSection = { section: 'General', items: [] };
 
                 for (const line of lines) {
-                    const match = line.match(/^\[(.*?)\]\s*$/); 
-                    if (match) {
-                        if (currentSection.items.length > 0) sections.push(currentSection);
+                    const match = line.trim().match(/^\[(.*?)\]:?$/);
+                    // A line is a heading if it consists only of the bracketed text (and optional colon)
+                    if (match && match[0] === line.trim()) {
+                        if (currentSection.items.length > 0) {
+                            sections.push(currentSection);
+                        }
                         currentSection = { section: match[1].trim(), items: [] };
                     } else {
                         const parts = line.split('##');
-                        const item = { text: parts[0].trim() };
-                        if (parts.length > 1) {
-                            item.tip = parts[1].trim();
+                        const itemText = parts[0].trim();
+                        if (itemText) {
+                            const item = { text: itemText };
+                            if (parts.length > 1) {
+                                item.tip = parts[1].trim();
+                            }
+                            currentSection.items.push(item);
                         }
-                        currentSection.items.push(item);
                     }
                 }
-                if (currentSection.items.length > 0 || sections.length === 0) sections.push(currentSection);
+                if (currentSection.items.length > 0 || sections.length === 0) {
+                    sections.push(currentSection);
+                }
                 return sections;
-            }
+            };
 
             const formatSections = (sectionsArray) => {
                  if (!Array.isArray(sectionsArray)) return '';
                  return sectionsArray.map(sec => {
-                     if (!sec) return ''; 
+                     if (!sec || !Array.isArray(sec.items)) return ''; 
                      const header = sec.section && sec.section !== 'General' ? `[${sec.section}]\n` : '';
-                     const items = Array.isArray(sec.items) ? sec.items.map(item => typeof item === 'string' ? item : item.text + (item.tip ? ` ## ${item.tip}` : '')).join('\n') : '';
+                     const items = sec.items.map(item => {
+                         if (typeof item === 'string') return item;
+                         if (typeof item === 'object' && item.text) return item.text + (item.tip ? ` ## ${item.tip}` : '');
+                         return '';
+                     }).join('\n');
                      return header + items;
                  }).join('\n\n');
             }
@@ -709,7 +769,8 @@
                         rating: currentRating,
                         imageUrl,
                         updatedAt: serverTimestamp(),
-                        updatedBy: userId
+                        updatedBy: userId,
+                        approvals: editingRecipeId ? (recipesCache.find(r => r.id === editingRecipeId)?.approvals || []) : []
                     };
 
                     if (!editingRecipeId) {
@@ -841,6 +902,7 @@
                 
                 recipe.ingredientNotes = recipe.ingredientNotes || {};
                 recipe.instructionNotes = recipe.instructionNotes || {};
+                recipe.approvals = recipe.approvals || [];
 
                 const ingredientsData = processData(recipe.ingredients, 'Ingredients');
                 const instructionsData = processData(recipe.instructions, 'Instructions');
@@ -866,28 +928,39 @@
                         `;
                     }
                 } catch(e) { console.error("Could not fetch last cooked history", e); }
+                
+                function createSafeKey(str) {
+                    if (typeof str !== 'string') return '';
+                    return str.replace(/[.$#[\]/]/g, '_');
+                }
 
                 const renderNote = (note) => note ? `<div class="mt-1 p-2 bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-200 rounded-md text-xs italic"><i class="fas fa-thumbtack mr-2"></i>${note}</div>` : '';
 
                 const ingredientsHtml = ingredientsData.map(section => `
                     <h5 class="font-bold mt-3 text-gray-500 dark:text-gray-400 uppercase text-sm">${section.section}</h5>
                     <ul class="list-none space-y-2 mt-1 pl-2">
-                        ${(section.items || []).map(item => `<li data-type="ingredient" data-key="${item.text}" class="relative pl-4 before:content-['•'] before:absolute before:left-0 group">
-                            <span class="cursor-pointer hover:text-gray-500">${item.text} ${item.tip ? `<span class="text-xs text-gray-400 italic">(${item.tip})</span>` : ''}</span>
+                        ${(section.items || []).map(item => {
+                            const itemText = item ? item.text : '';
+                            const itemTip = item ? item.tip : '';
+                            return `<li data-type="ingredient" data-key="${itemText}" class="relative pl-4 before:content-['•'] before:absolute before:left-0 group">
+                            <span class="cursor-pointer hover:text-gray-500">${itemText} ${itemTip ? `<span class="text-xs text-gray-400 italic">(${itemTip})</span>` : ''}</span>
                             <button class="add-note-btn opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 hover:text-indigo-700 ml-2"><i class="fas fa-plus-circle"></i></button>
-                            ${renderNote(recipe.ingredientNotes[btoa(item.text)])}
-                        </li>`).join('')}
+                            ${renderNote(recipe.ingredientNotes[createSafeKey(itemText)])}
+                        </li>`}).join('')}
                     </ul>
                 `).join('');
 
                 const instructionsHtml = instructionsData.map(section => `
                     <h5 class="font-bold mt-3 text-gray-500 dark:text-gray-400 uppercase text-sm">${section.section}</h5>
                     <ol class="list-decimal list-inside space-y-3 mt-1">
-                         ${(section.items || []).map(item => `<li data-type="instruction" data-key="${item.text}" class="group">
-                            <span class="cursor-pointer hover:text-gray-500">${item.text} ${item.tip ? `<span class="text-xs text-gray-400 italic">(${item.tip})</span>` : ''}</span>
+                         ${(section.items || []).map(item => {
+                             const itemText = item ? item.text : '';
+                             const itemTip = item ? item.tip : '';
+                             return `<li data-type="instruction" data-key="${itemText}" class="group">
+                            <span class="cursor-pointer hover:text-gray-500">${itemText} ${itemTip ? `<span class="text-xs text-gray-400 italic">(${itemTip})</span>` : ''}</span>
                             <button class="add-note-btn opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 hover:text-indigo-700 ml-2"><i class="fas fa-plus-circle"></i></button>
-                            ${renderNote(recipe.instructionNotes[btoa(item.text)])}
-                        </li>`).join('')}
+                            ${renderNote(recipe.instructionNotes[createSafeKey(itemText)])}
+                        </li>`}).join('')}
                     </ol>
                 `).join('');
                 
@@ -926,6 +999,14 @@
                                         <div id="modal-labels-container" class="flex flex-wrap gap-1 mt-1"></div>
                                     </div>
                                 </div>
+                                <div id="approvals-section" class="mt-4">
+                                     <h4 class="text-xl font-bold mb-2 border-b dark:border-gray-700 pb-1">Approved By</h4>
+                                     <div id="approvals-list" class="flex flex-wrap gap-2 mb-2"></div>
+                                     <div class="flex gap-2">
+                                         <input type="text" id="approval-name-input" placeholder="Name" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-sm flex-grow">
+                                         <button id="add-approval-btn" class="bg-green-500 text-white font-bold py-1 px-3 rounded-lg hover:bg-green-600 text-sm"><i class="fas fa-plus"></i></button>
+                                     </div>
+                                 </div>
                                  <h4 class="text-xl font-bold mb-2 mt-4 border-b dark:border-gray-700 pb-1">Ingredients</h4>
                                 <div id="modal-ingredients">${ingredientsHtml}</div>
                                 <div class="mt-4">
@@ -963,7 +1044,7 @@
                 
                 renderModalRating(recipe.id, recipe.rating || 0);
                 renderModalLabels(recipe);
-
+                renderApprovals(recipe.id, recipe.approvals);
 
                 const closeModal = () => {
                         modalContainer.classList.add('hidden');
@@ -1013,7 +1094,7 @@
                         e.stopPropagation();
                         const type = listItem.dataset.type;
                         const key = listItem.dataset.key;
-                        const encodedKey = btoa(key);
+                        const encodedKey = createSafeKey(key);
                         const noteMap = type === 'ingredient' ? 'ingredientNotes' : 'instructionNotes';
                         
                         const currentNote = recipe[noteMap][encodedKey] || '';
@@ -1381,6 +1462,43 @@
                 });
             }
 
+            function renderApprovals(recipeId, approvals) {
+                const container = document.getElementById('approvals-list');
+                container.innerHTML = '';
+                (approvals || []).forEach(name => {
+                    const approvalEl = document.createElement('span');
+                    approvalEl.className = 'bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200 text-xs px-2 py-1 rounded-full flex items-center gap-1';
+                    approvalEl.innerHTML = `${name} <button data-name="${name}" class="remove-approval-btn text-red-500 hover:text-red-700 text-xs"><i class="fas fa-times-circle"></i></button>`;
+                    container.appendChild(approvalEl);
+                });
+
+                container.querySelectorAll('.remove-approval-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const nameToRemove = e.currentTarget.dataset.name;
+                        const newApprovals = (approvals || []).filter(name => name !== nameToRemove);
+                        await updateRecipeField(recipeId, { approvals: newApprovals });
+                        let recipeInCache = recipesCache.find(r => r.id === recipeId);
+                        if (recipeInCache) recipeInCache.approvals = newApprovals;
+                        renderApprovals(recipeId, newApprovals);
+                        showNotification('Approval removed!');
+                    });
+                });
+
+                document.getElementById('add-approval-btn').onclick = async () => {
+                    const input = document.getElementById('approval-name-input');
+                    const newName = input.value.trim();
+                    if (newName) {
+                        const newApprovals = [...(approvals || []), newName];
+                        await updateRecipeField(recipeId, { approvals: newApprovals });
+                        let recipeInCache = recipesCache.find(r => r.id === recipeId);
+                        if (recipeInCache) recipeInCache.approvals = newApprovals;
+                        renderApprovals(recipeId, newApprovals);
+                        input.value = '';
+                        showNotification('Approval added!');
+                    }
+                };
+            }
+
             async function updateRecipeField(recipeId, fieldsToUpdate) {
                 if (!userId || !recipeId) return;
                 try {
@@ -1411,7 +1529,7 @@
                         
                         const tipHtml = (typeof item === 'object' && item.tip) ? `<span class="text-xs text-gray-400 italic">(${item.tip})</span>` : '';
                         const noteKey = (typeof item === 'object') ? item.text : item;
-                        const noteHtml = recipe.ingredientNotes && recipe.ingredientNotes[btoa(noteKey)] ? renderNote(recipe.ingredientNotes[btoa(noteKey)]) : '';
+                        const noteHtml = recipe.ingredientNotes && recipe.ingredientNotes[createSafeKey(noteKey)] ? renderNote(recipe.ingredientNotes[createSafeKey(noteKey)]) : '';
                         
                         convertedHtml += `<li data-type="ingredient" data-key="${noteKey}" class="relative pl-4 before:content-['•'] before:absolute before:left-0 group">
                             <span class="cursor-pointer hover:text-gray-500">${convertedText} ${tipHtml}</span>
@@ -1498,6 +1616,7 @@
                 if (!isMultiSelectMode) {
                     optionsPanel.classList.add('hidden');
                 }
+                selectionCountEl.textContent = `${selectedRecipeIds.size} recipes selected`;
             }
 
             function parseISODurationToMinutes(isoDuration) {
@@ -1542,6 +1661,39 @@
                 if (hours > 0) duration += `${hours}H`;
                 if (minutes > 0) duration += `${minutes}M`;
                 return duration;
+            }
+
+            function normalizeJsonLdStructure(data, defaultSectionName) {
+                if (!Array.isArray(data)) return [{ section: defaultSectionName, items: [] }];
+
+                const sections = [];
+                let currentSection = { section: defaultSectionName, items: [] };
+
+                data.forEach(item => {
+                    if (typeof item === 'object' && item !== null && item['@type'] === 'HowToSection') {
+                        if (currentSection.items.length > 0) {
+                            sections.push(currentSection);
+                        }
+                        currentSection = { section: item.text.replace(/\[|\]|:/g, '').trim(), items: [] };
+                    } else if (typeof item === 'object' && item !== null && item['@type'] === 'HowToStep') {
+                        currentSection.items.push({ text: item.text });
+                    } else if (typeof item === 'string') {
+                        const match = item.trim().match(/^\[(.*?)\]:?$/);
+                        if (match && item.trim().endsWith(']')) {
+                             if (currentSection.items.length > 0) {
+                                sections.push(currentSection);
+                            }
+                            currentSection = { section: match[1].trim(), items: [] };
+                        } else {
+                            currentSection.items.push({ text: item });
+                        }
+                    }
+                });
+                
+                if (currentSection.items.length > 0 || sections.length === 0) {
+                    sections.push(currentSection);
+                }
+                return sections;
             }
             
             function parseRecipeSageTxt(txtContent) {
@@ -1757,22 +1909,9 @@
                 if (recipe.datePublished) {
                     document.getElementById('recipe-discovered-date').value = new Date(recipe.datePublished).toISOString().split('T')[0];
                 }
-
-                 if (Array.isArray(recipe.recipeIngredient)) {
-                    document.getElementById('recipe-ingredients').value = recipe.recipeIngredient.map(section => {
-                        const header = section.section !== 'Ingredients' && section.section !== 'General' ? `[${section.section}]\n` : '';
-                        const items = section.items.map(item => (typeof item === 'object' ? item.text : item)).join('\n');
-                        return header + items;
-                    }).join('\n\n');
-                }
-
-                if (Array.isArray(recipe.recipeInstructions)) {
-                     document.getElementById('recipe-instructions').value = recipe.recipeInstructions.map(section => {
-                        const header = section.section !== 'Instructions' && section.section !== 'General' ? `[${section.section}]\n` : '';
-                        const items = section.items.map(item => item.text).join('\n');
-                        return header + items;
-                    }).join('\n\n');
-                }
+                
+                document.getElementById('recipe-ingredients').value = formatSections(normalizeJsonLdStructure(recipe.recipeIngredient, 'Ingredients'));
+                document.getElementById('recipe-instructions').value = formatSections(normalizeJsonLdStructure(recipe.recipeInstructions, 'Instructions'));
                 
                 let notes = '';
                 if (Array.isArray(recipe.comment)) {
@@ -1835,8 +1974,8 @@
                     labels.push('imported');
                 }
 
-                const instructions = recipe.recipeInstructions;
-                const ingredients = recipe.recipeIngredient;
+                const ingredients = normalizeJsonLdStructure(recipe.recipeIngredient, 'Ingredients');
+                const instructions = normalizeJsonLdStructure(recipe.recipeInstructions, 'Instructions');
                 
                 let notes = '';
                 if (Array.isArray(recipe.comment)) {
@@ -1864,6 +2003,7 @@
                     rating: recipe.rating || 0,
                     ingredientNotes: {},
                     instructionNotes: {},
+                    approvals: [],
                     createdAt: recipe.datePublished ? new Date(recipe.datePublished) : serverTimestamp(),
                     updatedAt: serverTimestamp(),
                     createdBy: userId,

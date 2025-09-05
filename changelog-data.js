@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v9.2.0-alpha",
+        date: "2025-09-06",
+        changes: [
+            "In RecipeManagr: Fixed a critical bug that caused ingredients to display as 'undefined' when importing recipes with special characters or from certain JSON-LD formats.",
+            "In RecipeManagr: Improved the recipe import logic to correctly identify section headings (e.g., `[Sauce]`) in various formats, preventing them from being misinterpreted as recipe steps.",
+            "In RecipeManagr: Added the ability for users to click on ingredients and instructions in the recipe detail view to strike them through, useful for tracking progress while cooking.",
+            "In RecipeManagr: Implemented a new feature allowing users to add and manage an 'Approved By' list for each recipe to keep track of who enjoyed the meal.",
+            "In RecipeManagr: Fixed a visual bug where using 'Select all in Label' would not update the selection count display.",
+        ]
+    },
+    {
     version: "v9.1.0-alpha",
     date: "2025-09-05",
     changes: [
