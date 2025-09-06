@@ -1,6 +1,16 @@
 // /changelog-data.js
 
 export const changelogData = [
+     {
+        version: "v9.5.0-alpha",
+        date: "2025-09-07",
+        changes: [
+            "In HydrationTrackr: Fixed a critical bug where dates from WaterMinder CSV imports were incorrectly parsed as MM/DD/YYYY, causing entries to be logged in the future. The importer now correctly handles the DD/MM/YYYY format.",
+            "In HydrationTrackr: Added the ability for users to edit past hydration entries. From the history table, users can now modify the date, time, drink type, and amount of any log.",
+            "In HydrationTrackr: Implemented entry deletion, allowing users to remove individual logs from their history via the new edit modal.",
+            "In HydrationTrackr: Introduced a bulk actions bar on the history page, allowing users to select multiple entries at once and perform actions, starting with bulk deletion."
+        ]
+    },
     {
         version: "v9.4.0-alpha",
         date: "2025-09-06",

@@ -55,7 +55,8 @@
         .card { background-color: var(--card-bg-color); border-radius: 1rem; box-shadow: 0 4px 12px var(--shadow-color); padding: 1.5rem; margin-bottom: 1.5rem; }
         input, select { background-color: var(--input-bg-color); color: var(--text-color-primary); border: 1px solid var(--border-color); }
         .main-button { background-color: var(--button-bg); color: white; transition: background-color 0.2s; }
-        .main-button:hover { background-color: var(--button-hover); }
+        .main-button:hover:not(:disabled) { background-color: var(--button-hover); }
+        .main-button:disabled { opacity: 0.5; cursor: not-allowed; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
@@ -180,6 +181,12 @@
             <div id="tab-content-history" class="tab-content">
                 <div class="card">
                     <h2 class="text-2xl font-bold mb-4">Intake History</h2>
+                    <div id="bulk-actions-bar" class="hidden bg-blue-100 dark-mode:bg-blue-900/50 border border-blue-300 dark-mode:border-blue-700 p-2 rounded-lg mb-4 flex justify-between items-center">
+                        <span id="selection-count">0 items selected</span>
+                        <div>
+                            <button id="bulk-delete-btn" class="bg-red-500 text-white font-bold py-1 px-3 rounded-lg hover:bg-red-600 text-sm">Delete Selected</button>
+                        </div>
+                    </div>
                     <div class="w-full h-64 mb-4"><canvas id="history-chart"></canvas></div>
                     <div id="history-table-container" class="max-h-96 overflow-y-auto"></div>
                 </div>
@@ -211,11 +218,22 @@
                 <div class="card">
                     <h2 class="text-2xl font-bold mb-4">Data Management</h2>
                     <div class="text-left space-y-4">
-                       <p class="text-[var(--text-color-secondary)] text-sm">
-                           Import your hydration history from a CSV file. The file must contain 'date', 'amount', and 'drinkType' columns. The date should be in a format like `YYYY-MM-DD HH:MM`.
-                        </p>
-                        <input type="file" id="import-csv-input" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200" accept=".csv">
-                        <button id="import-btn" class="main-button w-full py-3 rounded-lg font-bold">Import Data</button>
+                       <div>
+                            <h3 class="font-semibold">Generic CSV Import</h3>
+                            <p class="text-[var(--text-color-secondary)] text-sm">
+                               Import your hydration history from a generic CSV file. The file must contain 'date', 'amount', and 'drinkType' columns. The date should be in a format like `YYYY-MM-DD HH:MM`.
+                            </p>
+                            <input type="file" id="import-csv-input" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 mt-2" accept=".csv">
+                            <button id="import-btn" class="main-button w-full py-3 rounded-lg font-bold mt-2">Import Generic Data</button>
+                        </div>
+                        <div class="border-t border-[var(--border-color)] pt-4">
+                            <h3 class="font-semibold">WaterMinder Import</h3>
+                            <p class="text-[var(--text-color-secondary)] text-sm">
+                               Import your history directly from a WaterMinder CSV export file.
+                            </p>
+                            <input type="file" id="import-waterminder-input" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-sky-100 file:text-sky-700 hover:file:bg-sky-200 mt-2" accept=".csv">
+                            <button id="import-waterminder-btn" class="main-button w-full py-3 rounded-lg font-bold mt-2 bg-sky-600 hover:bg-sky-700">Import from WaterMinder</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -237,11 +255,36 @@
         </button>
     </nav>
 
+    <div id="edit-log-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="card p-6 rounded-lg shadow-lg max-w-sm w-full text-left">
+            <h2 class="text-2xl font-bold mb-4">Edit Entry</h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="edit-datetime" class="block font-semibold mb-1">Date & Time</label>
+                    <input type="datetime-local" id="edit-datetime" class="w-full p-2 rounded-lg">
+                </div>
+                <div>
+                    <label for="edit-drink-type" class="block font-semibold mb-1">Drink Type</label>
+                    <select id="edit-drink-type" class="w-full p-2 rounded-lg"></select>
+                </div>
+                <div>
+                    <label for="edit-amount" class="block font-semibold mb-1">Amount (ml)</label>
+                    <input type="number" id="edit-amount" class="w-full p-2 rounded-lg">
+                </div>
+            </div>
+            <div class="flex space-x-2 mt-6">
+                <button id="save-edit-btn" class="flex-1 main-button py-2 rounded-lg font-bold">Save Changes</button>
+                <button id="cancel-edit-btn" class="flex-1 bg-gray-500 text-white py-2 rounded-lg font-bold">Cancel</button>
+            </div>
+            <button id="delete-log-btn" class="w-full mt-2 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-bold">Delete Entry</button>
+        </div>
+    </div>
+
     <script type="module">
         import { changelogData } from '/changelog-data.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, where, orderBy, Timestamp, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, where, orderBy, Timestamp, getDocs, writeBatch, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- CONSTANTS ---
         const DB_COLLECTION = 'hydrationtrackr';
@@ -265,6 +308,8 @@
         let waterLogUnsubscribe = null;
         let historyChart = null;
         let reminderIntervalId = null;
+        let selectedHistoryIds = new Set();
+        let editingLogId = null;
 
         // --- UI ELEMENTS ---
         const ui = {
@@ -286,7 +331,19 @@
             versionDisplay: document.getElementById('version-display'),
             importBtn: document.getElementById('import-btn'),
             importCsvInput: document.getElementById('import-csv-input'),
-            customDatetimeInput: document.getElementById('custom-datetime')
+            customDatetimeInput: document.getElementById('custom-datetime'),
+            importWaterMinderInput: document.getElementById('import-waterminder-input'),
+            importWaterMinderBtn: document.getElementById('import-waterminder-btn'),
+            editLogModal: document.getElementById('edit-log-modal'),
+            editDatetimeInput: document.getElementById('edit-datetime'),
+            editDrinkTypeSelect: document.getElementById('edit-drink-type'),
+            editAmountInput: document.getElementById('edit-amount'),
+            saveEditBtn: document.getElementById('save-edit-btn'),
+            cancelEditBtn: document.getElementById('cancel-edit-btn'),
+            deleteLogBtn: document.getElementById('delete-log-btn'),
+            bulkActionsBar: document.getElementById('bulk-actions-bar'),
+            selectionCount: document.getElementById('selection-count'),
+            bulkDeleteBtn: document.getElementById('bulk-delete-btn')
         };
         const defaultDrinkFactors = { water: 1, coffee: 0.8, tea: 0.9, juice: 0.8, other: 0.5 };
         
@@ -442,61 +499,99 @@
             const historyQuery = query(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`), orderBy('date', 'desc'));
             const snapshot = await getDocs(historyQuery);
             
-            const logsByDay = {};
-            const historyTable = document.createElement('table');
-            historyTable.className = 'w-full text-left';
-            historyTable.innerHTML = `<thead><tr><th class="p-2">Date</th><th class="p-2">Total</th><th class="p-2">Details</th></tr></thead><tbody></tbody>`;
-            const tbody = historyTable.querySelector('tbody');
+            const allLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+            // Chart Logic
+            const logsByDay = {};
             const settingsDoc = await getDoc(doc(db, 'users', currentUser.uid, 'settings', 'water'));
             const settings = settingsDoc.data() || { drinkFactors: defaultDrinkFactors };
             const drinkFactors = settings.drinkFactors || defaultDrinkFactors;
 
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                const date = data.date ? data.date.toDate() : (data.timestamp ? data.timestamp.toDate() : new Date());
+            allLogs.forEach(log => {
+                const date = log.date.toDate();
                 const dayStr = date.toISOString().split('T')[0];
-                if (!logsByDay[dayStr]) {
-                    logsByDay[dayStr] = { total: 0, details: {} };
-                }
-                const amount = data.attributeValue !== undefined ? data.attributeValue : data.amount;
-                const drinkType = data.attributeName || (data.tags && data.tags.length > 0 ? data.tags[0] : data.drinkType) || 'water';
+                if (!logsByDay[dayStr]) logsByDay[dayStr] = 0;
                 
+                const amount = log.attributeValue !== undefined ? log.attributeValue : log.amount;
+                const drinkType = log.attributeName || (log.tags && log.tags.length > 0 ? log.tags[0] : log.drinkType) || 'water';
                 const factor = drinkFactors[drinkType] || 1;
-                logsByDay[dayStr].total += amount * factor;
-                logsByDay[dayStr].details[drinkType] = (logsByDay[dayStr].details[drinkType] || 0) + amount;
+                logsByDay[dayStr] += amount * factor;
             });
-
             const sortedDays = Object.keys(logsByDay).sort().reverse();
-            
-            sortedDays.slice(0, 30).forEach(day => {
-                const row = document.createElement('tr');
-                const detailsHtml = Object.entries(logsByDay[day].details).map(([drink, amount]) => `${drink}: ${amount}ml`).join(', ');
-                row.innerHTML = `<td class="p-2 border-t border-[var(--border-color)]">${new Date(day).toLocaleDateString()}</td><td class="p-2 border-t border-[var(--border-color)]">${Math.round(logsByDay[day].total)}ml</td><td class="p-2 border-t border-[var(--border-color)] text-sm">${detailsHtml}</td>`;
-                tbody.appendChild(row);
-            });
-
-            document.getElementById('history-table-container').innerHTML = '';
-            document.getElementById('history-table-container').appendChild(historyTable);
-
             const chartData = {
                 labels: sortedDays.slice(0, 7).reverse(),
                 datasets: [{
-                    label: 'Water Intake (ml)',
-                    data: sortedDays.slice(0, 7).reverse().map(day => Math.round(logsByDay[day].total)),
+                    label: 'Hydration Intake (ml)',
+                    data: sortedDays.slice(0, 7).reverse().map(day => Math.round(logsByDay[day])),
                     borderColor: 'var(--button-bg)',
                     backgroundColor: 'rgba(59, 130, 246, 0.2)',
                     fill: true,
                     tension: 0.1
                 }]
             };
-
             const ctx = document.getElementById('history-chart').getContext('2d');
             if(historyChart) historyChart.destroy();
-            historyChart = new Chart(ctx, {
-                type: 'line',
-                data: chartData,
-                options: { responsive: true, maintainAspectRatio: false }
+            historyChart = new Chart(ctx, { type: 'line', data: chartData, options: { responsive: true, maintainAspectRatio: false } });
+
+            // Table Logic
+            const historyTable = document.createElement('table');
+            historyTable.className = 'w-full text-left';
+            historyTable.innerHTML = `
+                <thead><tr>
+                    <th class="p-2 w-10"><input type="checkbox" id="select-all-checkbox"></th>
+                    <th class="p-2">Date & Time</th>
+                    <th class="p-2">Drink</th>
+                    <th class="p-2">Amount</th>
+                    <th class="p-2">Actions</th>
+                </tr></thead><tbody></tbody>`;
+            const tbody = historyTable.querySelector('tbody');
+
+            allLogs.forEach(log => {
+                const row = document.createElement('tr');
+                row.dataset.docId = log.id;
+                const drinkType = log.attributeName || (log.tags && log.tags.length > 0 ? log.tags[0] : log.drinkType) || 'water';
+                const amount = log.attributeValue !== undefined ? log.attributeValue : log.amount;
+                row.innerHTML = `
+                    <td class="p-2 border-t border-[var(--border-color)] align-middle"><input type="checkbox" class="row-checkbox" ${selectedHistoryIds.has(log.id) ? 'checked' : ''}></td>
+                    <td class="p-2 border-t border-[var(--border-color)] align-middle">${log.date.toDate().toLocaleString()}</td>
+                    <td class="p-2 border-t border-[var(--border-color)] align-middle capitalize">${drinkType}</td>
+                    <td class="p-2 border-t border-[var(--border-color)] align-middle">${amount}ml</td>
+                    <td class="p-2 border-t border-[var(--border-color)] align-middle">
+                        <button class="edit-log-btn p-2 rounded-full hover:bg-gray-200 dark-mode:hover:bg-gray-600"><i class="fa-solid fa-pencil text-blue-500 pointer-events-none"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('history-table-container').innerHTML = '';
+            document.getElementById('history-table-container').appendChild(historyTable);
+
+            document.getElementById('select-all-checkbox').checked = allLogs.length > 0 && allLogs.every(log => selectedHistoryIds.has(log.id));
+
+            document.getElementById('select-all-checkbox').addEventListener('change', (e) => {
+                const isChecked = e.target.checked;
+                allLogs.forEach(log => {
+                    if (isChecked) selectedHistoryIds.add(log.id);
+                    else selectedHistoryIds.delete(log.id);
+                });
+                renderHistory();
+                updateBulkActionsUI();
+            });
+            
+            tbody.querySelectorAll('.row-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const docId = e.target.closest('tr').dataset.docId;
+                    if (e.target.checked) selectedHistoryIds.add(docId);
+                    else selectedHistoryIds.delete(docId);
+                    updateBulkActionsUI();
+                });
+            });
+
+            tbody.querySelectorAll('.edit-log-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const docId = e.target.closest('tr').dataset.docId;
+                    openEditModal(docId, allLogs);
+                });
             });
         }
         
@@ -554,15 +649,118 @@
             }
         }
 
+        function updateBulkActionsUI() {
+            if (selectedHistoryIds.size > 0) {
+                ui.bulkActionsBar.classList.remove('hidden');
+                ui.selectionCount.textContent = `${selectedHistoryIds.size} items selected`;
+            } else {
+                ui.bulkActionsBar.classList.add('hidden');
+            }
+        }
+
+        async function openEditModal(docId, allLogs) {
+            editingLogId = docId;
+            const log = allLogs.find(l => l.id === docId);
+            if (!log) return;
+
+            const toLocalISOString = (date) => {
+                const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+                return new Date(date - tzoffset).toISOString().slice(0, 16);
+            };
+
+            ui.editDatetimeInput.value = toLocalISOString(log.date.toDate());
+            ui.editAmountInput.value = log.attributeValue;
+
+            ui.editDrinkTypeSelect.innerHTML = '';
+            Object.keys(defaultDrinkFactors).forEach(drink => {
+                const option = document.createElement('option');
+                option.value = drink;
+                option.textContent = drink.charAt(0).toUpperCase() + drink.slice(1);
+                ui.editDrinkTypeSelect.appendChild(option);
+            });
+            ui.editDrinkTypeSelect.value = log.attributeName;
+            
+            ui.editLogModal.classList.remove('hidden');
+        }
+
+        async function handleSaveEdit() {
+            if (!editingLogId) return;
+            const newDate = new Date(ui.editDatetimeInput.value);
+            const newAmount = parseInt(ui.editAmountInput.value);
+            const newDrinkType = ui.editDrinkTypeSelect.value;
+            
+            if (isNaN(newAmount) || newAmount <= 0) {
+                alert("Please enter a valid amount.");
+                return;
+            }
+
+            try {
+                const docRef = doc(db, `users/${currentUser.uid}/${DB_COLLECTION}`, editingLogId);
+                await updateDoc(docRef, {
+                    date: Timestamp.fromDate(newDate),
+                    attributeName: newDrinkType,
+                    attributeValue: newAmount,
+                    datapointUpdatedTime: Timestamp.now(),
+                    datapointUpdatedBy: currentUser.uid,
+                });
+                ui.editLogModal.classList.add('hidden');
+                editingLogId = null;
+                renderHistory();
+            } catch (error) {
+                console.error("Error updating log:", error);
+                alert("Failed to update entry.");
+            }
+        }
+        
+        async function handleDeleteLog() {
+            if (!editingLogId) return;
+            if (confirm("Are you sure you want to delete this entry? This cannot be undone.")) {
+                try {
+                    await deleteDoc(doc(db, `users/${currentUser.uid}/${DB_COLLECTION}`, editingLogId));
+                    ui.editLogModal.classList.add('hidden');
+                    editingLogId = null;
+                    selectedHistoryIds.delete(editingLogId);
+                    updateBulkActionsUI();
+                    renderHistory();
+                } catch(error) {
+                    console.error("Error deleting log:", error);
+                    alert("Failed to delete entry.");
+                }
+            }
+        }
+
+        async function handleBulkDelete() {
+            if (selectedHistoryIds.size === 0) return;
+            if (confirm(`Are you sure you want to delete ${selectedHistoryIds.size} entries? This cannot be undone.`)) {
+                try {
+                    const batch = writeBatch(db);
+                    selectedHistoryIds.forEach(id => {
+                        batch.delete(doc(db, `users/${currentUser.uid}/${DB_COLLECTION}`, id));
+                    });
+                    await batch.commit();
+                    selectedHistoryIds.clear();
+                    updateBulkActionsUI();
+                    renderHistory();
+                } catch (error) {
+                    console.error("Error during bulk delete:", error);
+                    alert("Failed to delete entries.");
+                }
+            }
+        }
+
         async function handleImport() {
             const file = ui.importCsvInput.files[0];
             if (!file) { alert('Please select a CSV file to import.'); return; }
+            ui.importBtn.disabled = true;
+            ui.importBtn.textContent = 'Importing...';
 
             Papa.parse(file, {
                 header: true, skipEmptyLines: true,
                 complete: async (results) => {
                     if (!results.data.length || !results.meta.fields.includes('date') || !results.meta.fields.includes('amount') || !results.meta.fields.includes('drinkType')) {
                         alert('Invalid CSV format. Please ensure it has date, amount, and drinkType columns.');
+                        ui.importBtn.disabled = false;
+                        ui.importBtn.textContent = 'Import Generic Data';
                         return;
                     }
 
@@ -597,6 +795,77 @@
                         renderHistory();
                         updateStreak();
                     } catch (error) { console.error("Error importing data:", error); alert("An error occurred during import."); }
+                    finally {
+                        ui.importBtn.disabled = false;
+                        ui.importBtn.textContent = 'Import Generic Data';
+                        ui.importCsvInput.value = '';
+                    }
+                }
+            });
+        }
+        
+        async function handleWaterMinderImport() {
+            const file = ui.importWaterMinderInput.files[0];
+            if (!file) { alert('Please select a WaterMinder CSV file.'); return; }
+            ui.importWaterMinderBtn.disabled = true;
+            ui.importWaterMinderBtn.textContent = 'Importing...';
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: async (results) => {
+                    const requiredColumns = ['Drink Name', 'Amount Logged(ml)', 'Date', 'Time'];
+                    if (!results.data.length || !requiredColumns.every(col => results.meta.fields.includes(col))) {
+                        alert('Invalid WaterMinder CSV format. Please ensure it has the required columns: ' + requiredColumns.join(', '));
+                        ui.importWaterMinderBtn.disabled = false;
+                        ui.importWaterMinderBtn.textContent = 'Import from WaterMinder';
+                        return;
+                    }
+
+                    const batch = writeBatch(db);
+                    let count = 0;
+
+                    results.data.forEach(row => {
+                        const amount = parseInt(row['Amount Logged(ml)']);
+                        const dateParts = row['Date'].split('/'); // MM/DD/YYYY
+                        const timeParts = row['Time'].split(':'); // HH:MM:SS
+
+                        if (!isNaN(amount) && dateParts.length === 3 && timeParts.length === 3) {
+                            // Correctly parse MM/DD/YYYY format by specifying parts: new Date(year, monthIndex, day, ...)
+                            const entryDate = new Date(dateParts[2], dateParts[0] - 1, dateParts[1], timeParts[0], timeParts[1], timeParts[2]);
+
+                            const docRef = doc(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`));
+                            const now = Timestamp.now();
+                            batch.set(docRef, {
+                                attributeName: row['Drink Name'].toLowerCase() || 'water',
+                                attributeValue: amount,
+                                status: "taken",
+                                tags: ["imported", "waterminder-import"],
+                                date: Timestamp.fromDate(entryDate),
+                                createdAt: now,
+                                uploadedBy: currentUser.email || "anonymous",
+                                uploadedApp: "HydrationTrackr (WaterMinder Import)",
+                                fileSource: file.name,
+                                datapointUpdatedBy: currentUser.uid,
+                                datapointUpdatedTime: now
+                            });
+                            count++;
+                        }
+                    });
+
+                    try {
+                        await batch.commit();
+                        alert(`${count} records imported successfully from WaterMinder!`);
+                        renderHistory();
+                        updateStreak();
+                    } catch (error) {
+                        console.error("Error importing WaterMinder data:", error);
+                        alert("An error occurred during the WaterMinder import.");
+                    } finally {
+                        ui.importWaterMinderBtn.disabled = false;
+                        ui.importWaterMinderBtn.textContent = 'Import from WaterMinder';
+                        ui.importWaterMinderInput.value = '';
+                    }
                 }
             });
         }
@@ -649,7 +918,11 @@
                 document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
                 navButton.classList.add('active');
                 document.getElementById(`tab-content-${tabId}`).classList.add('active');
-                if (tabId === 'history') renderHistory();
+                if (tabId === 'history') {
+                    selectedHistoryIds.clear();
+                    updateBulkActionsUI();
+                    renderHistory();
+                }
             }
         });
         document.getElementById("sign-in-btn").addEventListener("click", async () => {
@@ -667,6 +940,11 @@
         document.getElementById("logout-btn").addEventListener("click", () => signOut(auth));
         
         ui.importBtn.addEventListener('click', handleImport);
+        ui.importWaterMinderBtn.addEventListener('click', handleWaterMinderImport);
+        ui.saveEditBtn.addEventListener('click', handleSaveEdit);
+        ui.cancelEditBtn.addEventListener('click', () => ui.editLogModal.classList.add('hidden'));
+        ui.deleteLogBtn.addEventListener('click', handleDeleteLog);
+        ui.bulkDeleteBtn.addEventListener('click', handleBulkDelete);
 
         document.addEventListener('DOMContentLoaded', () => {
             const LATEST_VERSION = changelogData[0].version;
