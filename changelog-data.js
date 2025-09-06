@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v9.3.0-alpha",
+        date: "2025-09-06",
+        changes: [
+            "In the Hub: Integrated the new HydrationTrackr app, accessible from the main hub.",
+            "In the Hub: Updated the Service Worker to dynamically use the latest version from the changelog for caching, improving update reliability.",
+            "In the HydrationTrackr: Added a 'Back to Hub' link for consistent navigation across all applications.",
+            "In the Hub: Added HydrationTrackr to the list of cached applications for offline use in the service worker."
+        ]
+    },
+    {
         version: "v9.2.0-alpha",
         date: "2025-09-06",
         changes: [

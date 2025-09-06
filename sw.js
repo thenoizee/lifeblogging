@@ -1,5 +1,7 @@
-import { changelogData } from '/changelog-data.js';
+// Import the changelog data to get the latest version
+importScripts('/changelog-data.js');
 
+// Use the latest version from the changelog for the cache name
 const LATEST_VERSION = changelogData[0].version;
 const CACHE_NAME = `lifeblogging-hub-${LATEST_VERSION}`;
 
@@ -7,13 +9,17 @@ const CACHE_NAME = `lifeblogging-hub-${LATEST_VERSION}`;
 const urlsToCache = [
   '/',
   '/index.html',
-  '/app/index.html',
+  '/analyser/index.html',
   '/log/index.html',
   '/medicine/index.html',
   '/changelog/index.html',
   '/converter/index.html',
   '/timestamp/index.html',
   '/account/index.html',
+  '/recipemanagr/index.html',
+  '/podtrackr/index.html',
+  '/hydration/index.html', // Add the new hydration app
+  '/recipemanagr/style.css',
   '/changelog-data.js',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
@@ -22,6 +28,7 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
+  self.skipWaiting(); // Force the new service worker to activate immediately
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
@@ -50,10 +57,11 @@ self.addEventListener('activate', event => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
-    })
+    }).then(() => self.clients.claim()) // Take control of all open clients
   );
 });
