@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v9.4.0-alpha",
+        date: "2025-09-06",
+        changes: [
+            "In HydrationTrackr: Overhauled the data model to be consistent with other apps, now writing to a dedicated 'hydrationtrackr' collection and including detailed metadata for both the collection and each individual entry (e.g., `attributeName`, `attributeValue`, `status`, `uploadedBy`).",
+            "In HydrationTrackr: Improved mobile accessibility by replacing top tabs with a more user-friendly bottom navigation bar.",
+            "In HydrationTrackr: Added a CSV import feature and the ability to log entries with a custom date and time, which now defaults to the current time.",
+            "In HydrationTrackr: Implemented backward compatibility to ensure older data entries remain visible and functional.",
+        ]
+    },
+    {
         version: "v9.3.1-alpha",
         date: "2025-09-06",
         changes: [
