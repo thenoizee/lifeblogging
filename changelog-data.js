@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v9.3.1-alpha",
+        date: "2025-09-06",
+        changes: [
+            "In HydrationTrackr: Added the project version number to the top-right corner of the page for consistency with other hub applications."
+        ]
+    },
+    {
         version: "v9.3.0-alpha",
         date: "2025-09-06",
         changes: [
