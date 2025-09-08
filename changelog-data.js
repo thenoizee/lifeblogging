@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v9.7.0-alpha",
+        date: "2025-09-09",
+        changes: [
+            "In RecipeManagr: Users can now link recipes to each other. A new multi-select option in the recipe editor allows for creating relationships between recipes, which are then displayed in the recipe detail view.",
+            "In RecipeManagr: Fixed a bug where the theme toggle was unresponsive, and implemented local storage persistence for the user's light/dark mode preference.",
+            "In RecipeManagr: Inline comments (tips) for ingredients and instructions are now editable directly from the recipe detail modal by clicking on the note.",
+            "In RecipeManagr: Introduced a new 'Timeline' tab that displays a complete, reverse chronological history of all cooked recipes, conveniently grouped by year."
+        ]
+    },
+    {
     version: "v9.6.0-alpha",
     date: "2025-09-09",
     changes: [
