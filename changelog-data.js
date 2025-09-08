@@ -1,6 +1,17 @@
 // /changelog-data.js
 
 export const changelogData = [
+    {
+    version: "v9.6.0-alpha",
+    date: "2025-09-09",
+    changes: [
+        "In HydrationTrackr: Introduced a dual streak system on the dashboard, now tracking both consecutive days of meeting the hydration goal (Goal Streak) and consecutive days of logging any amount (Log Streak).",
+        "In HydrationTrackr: Users can now add notes to custom hydration entries, and these notes are visible in the history table.",
+        "In HydrationTrackr: The history table now also displays any tags associated with an entry, providing more context at a glance.",
+        "In HydrationTrackr: Fixed a UI bug where the multi-selection bar in the history view had poor contrast in dark mode.",
+        "In HydrationTrackr: Corrected the streak calculation logic to ensure the log streak starts at 1 on the first day data is entered.",
+        ]
+     },
      {
         version: "v9.5.0-alpha",
         date: "2025-09-07",

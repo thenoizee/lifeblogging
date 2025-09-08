@@ -53,7 +53,7 @@
         }
         .container { max-width: 800px; margin: auto; padding: 1.5rem; padding-bottom: 6rem; }
         .card { background-color: var(--card-bg-color); border-radius: 1rem; box-shadow: 0 4px 12px var(--shadow-color); padding: 1.5rem; margin-bottom: 1.5rem; }
-        input, select { background-color: var(--input-bg-color); color: var(--text-color-primary); border: 1px solid var(--border-color); }
+        input, select, textarea { background-color: var(--input-bg-color); color: var(--text-color-primary); border: 1px solid var(--border-color); }
         .main-button { background-color: var(--button-bg); color: white; transition: background-color 0.2s; }
         .main-button:hover:not(:disabled) { background-color: var(--button-hover); }
         .main-button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -97,6 +97,10 @@
         }
         .nav-button i { font-size: 1.25rem; margin-bottom: 0.25rem; }
         .nav-button span { display: block; font-size: 0.75rem; }
+        .dark-mode #bulk-actions-bar {
+            background-color: #1e3a8a; 
+            border-color: #3b82f6;
+        }
     </style>
 </head>
 <body class="pt-12 pb-12">
@@ -146,9 +150,17 @@
                             <div class="text-md sm:text-lg text-[var(--text-color-secondary)] mb-4">Goal: <span id="today-goal">2000</span>ml</div>
                         </div>
                         <div class="text-right">
-                            <h2 class="text-xl sm:text-2xl font-bold mb-4">Streak</h2>
-                            <div class="text-5xl sm:text-6xl font-bold mb-2"><i class="fa-solid fa-fire-flame-curved text-orange-500"></i> <span id="streak-count">0</span></div>
-                            <div class="text-md sm:text-lg text-[var(--text-color-secondary)] mb-4">Days</div>
+                             <h2 class="text-xl sm:text-2xl font-bold mb-4">Streaks</h2>
+                             <div class="flex gap-4">
+                                <div>
+                                    <div class="text-5xl sm:text-6xl font-bold mb-2"><i class="fa-solid fa-fire-flame-curved text-orange-500"></i> <span id="goal-streak-count">0</span></div>
+                                    <div class="text-md sm:text-lg text-[var(--text-color-secondary)] mb-4">Goal Days</div>
+                                </div>
+                                <div>
+                                     <div class="text-5xl sm:text-6xl font-bold mb-2"><i class="fa-solid fa-calendar-check text-green-500"></i> <span id="log-streak-count">0</span></div>
+                                     <div class="text-md sm:text-lg text-[var(--text-color-secondary)] mb-4">Logged Days</div>
+                                </div>
+                             </div>
                         </div>
                     </div>
                     <div class="progress-bar-bg w-full h-4 rounded-full overflow-hidden">
@@ -173,7 +185,8 @@
                             <option value="other">Other</option>
                         </select>
                         <input type="datetime-local" id="custom-datetime" class="p-3 rounded-lg">
-                        <button id="log-custom-btn" class="main-button py-3 px-6 rounded-lg font-bold">Log Custom</button>
+                        <textarea id="custom-notes" placeholder="Notes (e.g., after workout)" class="p-3 rounded-lg sm:col-span-2"></textarea>
+                        <button id="log-custom-btn" class="main-button py-3 px-6 rounded-lg font-bold sm:col-span-2">Log Custom</button>
                     </div>
                 </div>
             </div>
@@ -271,6 +284,10 @@
                     <label for="edit-amount" class="block font-semibold mb-1">Amount (ml)</label>
                     <input type="number" id="edit-amount" class="w-full p-2 rounded-lg">
                 </div>
+                 <div>
+                    <label for="edit-notes" class="block font-semibold mb-1">Notes</label>
+                    <textarea id="edit-notes" class="w-full p-2 rounded-lg"></textarea>
+                </div>
             </div>
             <div class="flex space-x-2 mt-6">
                 <button id="save-edit-btn" class="flex-1 main-button py-2 rounded-lg font-bold">Save Changes</button>
@@ -323,7 +340,8 @@
             todayGoal: document.getElementById('today-goal'),
             todayProgress: document.getElementById('today-progress'),
             dailyGoalInput: document.getElementById('daily-goal'),
-            streakCount: document.getElementById('streak-count'),
+            goalStreakCount: document.getElementById('goal-streak-count'),
+            logStreakCount: document.getElementById('log-streak-count'),
             drinkFactorsContainer: document.getElementById('drink-factors'),
             enableReminders: document.getElementById('enable-reminders'),
             reminderOptions: document.getElementById('reminder-options'),
@@ -338,6 +356,7 @@
             editDatetimeInput: document.getElementById('edit-datetime'),
             editDrinkTypeSelect: document.getElementById('edit-drink-type'),
             editAmountInput: document.getElementById('edit-amount'),
+            editNotesInput: document.getElementById('edit-notes'),
             saveEditBtn: document.getElementById('save-edit-btn'),
             cancelEditBtn: document.getElementById('cancel-edit-btn'),
             deleteLogBtn: document.getElementById('delete-log-btn'),
@@ -420,7 +439,7 @@
                 ui.reminderIntervalInput.value = settings.reminders?.interval || 60;
                 ui.reminderOptions.classList.toggle('hidden', !ui.enableReminders.checked);
                 updateDashboard(settings);
-                updateStreak();
+                updateStreaks();
                 setupReminders(settings.reminders);
             });
 
@@ -471,7 +490,7 @@
             ui.todayProgress.style.width = `${Math.min(percentage, 100)}%`;
         }
 
-        async function logWater(amount, drinkType = 'water', entryDate = null, tags = ["manual_entry"], fileSource = "Entered via HydrationTrackr") {
+        async function logWater(amount, drinkType = 'water', entryDate = null, notes = "", tags = ["manual_entry"], fileSource = "Entered via HydrationTrackr") {
             if (!currentUser || amount <= 0) return;
             try {
                 const now = Timestamp.now();
@@ -479,6 +498,7 @@
                     attributeName: drinkType,
                     attributeValue: amount,
                     status: "taken",
+                    notes: notes,
                     tags: tags,
                     date: entryDate ? Timestamp.fromDate(new Date(entryDate)) : now,
                     createdAt: now,
@@ -489,7 +509,7 @@
                     fileSource: fileSource
                 };
                 await addDoc(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`), logEntry);
-                updateStreak();
+                updateStreaks();
             } catch (error) { console.error("Error logging water:", error); }
         }
         
@@ -542,6 +562,8 @@
                     <th class="p-2">Date & Time</th>
                     <th class="p-2">Drink</th>
                     <th class="p-2">Amount</th>
+                    <th class="p-2">Notes</th>
+                    <th class="p-2">Tags</th>
                     <th class="p-2">Actions</th>
                 </tr></thead><tbody></tbody>`;
             const tbody = historyTable.querySelector('tbody');
@@ -551,11 +573,16 @@
                 row.dataset.docId = log.id;
                 const drinkType = log.attributeName || (log.tags && log.tags.length > 0 ? log.tags[0] : log.drinkType) || 'water';
                 const amount = log.attributeValue !== undefined ? log.attributeValue : log.amount;
+                const notes = log.notes || '-';
+                const tags = log.tags ? log.tags.join(', ') : '-';
+
                 row.innerHTML = `
                     <td class="p-2 border-t border-[var(--border-color)] align-middle"><input type="checkbox" class="row-checkbox" ${selectedHistoryIds.has(log.id) ? 'checked' : ''}></td>
                     <td class="p-2 border-t border-[var(--border-color)] align-middle">${log.date.toDate().toLocaleString()}</td>
                     <td class="p-2 border-t border-[var(--border-color)] align-middle capitalize">${drinkType}</td>
                     <td class="p-2 border-t border-[var(--border-color)] align-middle">${amount}ml</td>
+                    <td class="p-2 border-t border-[var(--border-color)] align-middle">${notes}</td>
+                    <td class="p-2 border-t border-[var(--border-color)] align-middle">${tags}</td>
                     <td class="p-2 border-t border-[var(--border-color)] align-middle">
                         <button class="edit-log-btn p-2 rounded-full hover:bg-gray-200 dark-mode:hover:bg-gray-600"><i class="fa-solid fa-pencil text-blue-500 pointer-events-none"></i></button>
                     </td>
@@ -595,7 +622,7 @@
             });
         }
         
-        async function updateStreak() {
+        async function updateStreaks() {
             if(!currentUser) return;
             const settingsDoc = await getDoc(doc(db, 'users', currentUser.uid, 'settings', 'water'));
             const settings = settingsDoc.data() || { dailyGoal: 2000, drinkFactors: defaultDrinkFactors };
@@ -608,33 +635,53 @@
 
             logsSnap.forEach(doc => {
                 const data = doc.data();
-                const date = data.date ? data.date.toDate() : (data.timestamp ? data.timestamp.toDate() : new Date());
+                const date = data.date ? data.date.toDate() : new Date();
                 const dayStr = date.toISOString().split('T')[0];
                 if (!logsByDay[dayStr]) { logsByDay[dayStr] = 0; }
                 const amount = data.attributeValue !== undefined ? data.attributeValue : data.amount;
-                const drinkType = data.attributeName || (data.tags && data.tags.length > 0 ? data.tags[0] : data.drinkType) || 'water';
+                const drinkType = data.attributeName || 'water';
                 logsByDay[dayStr] += amount * (drinkFactors[drinkType] || 1);
             });
 
-            let streak = 0;
+            let goalStreak = 0;
+            let logStreak = 0;
             let currentDate = new Date();
-            
             const todayStr = currentDate.toISOString().split('T')[0];
+
+            // Calculate Goal Streak
             if ((logsByDay[todayStr] || 0) >= goal) {
-                streak++;
-                currentDate.setDate(currentDate.getDate() - 1);
-            } else {
-                 currentDate.setDate(currentDate.getDate() - 1);
+                goalStreak = 1;
+                let prevDate = new Date();
+                prevDate.setDate(prevDate.getDate() - 1);
+                while (true) {
+                    const prevDayStr = prevDate.toISOString().split('T')[0];
+                    if ((logsByDay[prevDayStr] || 0) >= goal) {
+                        goalStreak++;
+                        prevDate.setDate(prevDate.getDate() - 1);
+                    } else {
+                        break;
+                    }
+                }
             }
             
-            while(true) {
-                const dayStr = currentDate.toISOString().split('T')[0];
-                if((logsByDay[dayStr] || 0) >= goal) {
-                    streak++;
-                    currentDate.setDate(currentDate.getDate() - 1);
-                } else { break; }
+            // Calculate Log Streak
+             if (logsByDay[todayStr] > 0) {
+                logStreak = 1;
+                 let prevDate = new Date();
+                prevDate.setDate(prevDate.getDate() - 1);
+                while (true) {
+                    const prevDayStr = prevDate.toISOString().split('T')[0];
+                    if ((logsByDay[prevDayStr] || 0) > 0) {
+                        logStreak++;
+                        prevDate.setDate(prevDate.getDate() - 1);
+                    } else {
+                        break;
+                    }
+                }
             }
-            ui.streakCount.textContent = streak;
+
+            ui.goalStreakCount.textContent = goalStreak;
+            ui.logStreakCount.textContent = logStreak;
         }
 
         function setupReminders(reminderSettings) {
@@ -670,6 +717,7 @@
 
             ui.editDatetimeInput.value = toLocalISOString(log.date.toDate());
             ui.editAmountInput.value = log.attributeValue;
+            ui.editNotesInput.value = log.notes || '';
 
             ui.editDrinkTypeSelect.innerHTML = '';
             Object.keys(defaultDrinkFactors).forEach(drink => {
@@ -688,6 +736,7 @@
             const newDate = new Date(ui.editDatetimeInput.value);
             const newAmount = parseInt(ui.editAmountInput.value);
             const newDrinkType = ui.editDrinkTypeSelect.value;
+            const newNotes = ui.editNotesInput.value;
             
             if (isNaN(newAmount) || newAmount <= 0) {
                 alert("Please enter a valid amount.");
@@ -700,6 +749,7 @@
                     date: Timestamp.fromDate(newDate),
                     attributeName: newDrinkType,
                     attributeValue: newAmount,
+                    notes: newNotes,
                     datapointUpdatedTime: Timestamp.now(),
                     datapointUpdatedBy: currentUser.uid,
                 });
@@ -793,7 +843,7 @@
                         await batch.commit();
                         alert(`${count} records imported successfully!`);
                         renderHistory();
-                        updateStreak();
+                        updateStreaks();
                     } catch (error) { console.error("Error importing data:", error); alert("An error occurred during import."); }
                     finally {
                         ui.importBtn.disabled = false;
@@ -831,7 +881,6 @@
                         const timeParts = row['Time'].split(':'); // HH:MM:SS
 
                         if (!isNaN(amount) && dateParts.length === 3 && timeParts.length === 3) {
-                            // Correctly parse MM/DD/YYYY format by specifying parts: new Date(year, monthIndex, day, ...)
                             const entryDate = new Date(dateParts[2], dateParts[0] - 1, dateParts[1], timeParts[0], timeParts[1], timeParts[2]);
 
                             const docRef = doc(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`));
@@ -857,7 +906,7 @@
                         await batch.commit();
                         alert(`${count} records imported successfully from WaterMinder!`);
                         renderHistory();
-                        updateStreak();
+                        updateStreaks();
                     } catch (error) {
                         console.error("Error importing WaterMinder data:", error);
                         alert("An error occurred during the WaterMinder import.");
@@ -878,16 +927,18 @@
         document.querySelectorAll('.quick-add-btn').forEach(btn => {
             const tags = ["quick_log"];
             const source = "Entered via Quick Log";
-            btn.addEventListener('click', (e) => logWater(parseInt(e.target.dataset.amount), e.target.dataset.drink, null, tags, source));
+            btn.addEventListener('click', (e) => logWater(parseInt(e.target.dataset.amount), e.target.dataset.drink, null, "", tags, source));
         });
         document.getElementById('log-custom-btn').addEventListener('click', () => {
             const amountInput = document.getElementById('custom-amount');
             const amount = parseInt(amountInput.value);
             const drinkType = document.getElementById('custom-drink-type').value;
             const entryDate = ui.customDatetimeInput.value || null;
+            const notes = document.getElementById('custom-notes').value;
             if(amount > 0) {
-                logWater(amount, drinkType, entryDate);
+                logWater(amount, drinkType, entryDate, notes);
                 amountInput.value = '';
+                 document.getElementById('custom-notes').value = '';
                 setDefaultDateTime();
             }
         });
