@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v9.7.1-alpha",
+        date: "2025-09-09",
+        changes: [
+            "Released Text/Merge Generator: The tool is now integrated into the main Lifeblogging Hub with a new icon and category for simple text merges."
+        ]
+    },
+    {
         version: "v9.7.0-alpha",
         date: "2025-09-09",
         changes: [
