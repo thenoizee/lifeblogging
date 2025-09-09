@@ -873,6 +873,7 @@
                 gapi.client.setToken(null);
                 updateSigninStatus(false);
                 setSyncState('unknown');
+                localStorage.removeItem('googleDriveFileId');
             });
         }
 
@@ -883,10 +884,31 @@
         }
         
         async function getFileId() {
+            const storedFileId = localStorage.getItem('googleDriveFileId');
+            if (storedFileId) {
+                try {
+                    await gapi.client.drive.files.get({ fileId: storedFileId, fields: 'id' });
+                    return storedFileId;
+                } catch (error) {
+                    localStorage.removeItem('googleDriveFileId');
+                }
+            }
             try {
-                const res = await gapi.client.drive.files.list({ q: `name='${TEMPLATE_FILENAME}'`, fields: 'files(id)', spaces: 'drive' });
-                return res.result.files.length > 0 ? res.result.files[0].id : null;
-            } catch (e) { return null; }
+                const res = await gapi.client.drive.files.list({
+                    q: `name='${TEMPLATE_FILENAME}' and trashed = false`,
+                    fields: 'files(id, name)',
+                    spaces: 'drive'
+                });
+                if (res.result.files.length > 0) {
+                    const foundFileId = res.result.files[0].id;
+                    localStorage.setItem('googleDriveFileId', foundFileId);
+                    return foundFileId;
+                }
+                return null;
+            } catch (e) {
+                console.error("Error searching for file in Drive:", e);
+                return null;
+            }
         }
 
         async function saveToDrive() {
@@ -896,17 +918,32 @@
             const data = localStorage.getItem('userTemplates') || '[]';
             const blob = new Blob([data], {type: 'application/json'});
             const formData = new FormData();
-            formData.append('metadata', new Blob([JSON.stringify({ name: TEMPLATE_FILENAME })], {type: 'application/json'}));
+            
+            const metadata = { name: TEMPLATE_FILENAME, mimeType: 'application/json' };
+            formData.append('metadata', new Blob([JSON.stringify(metadata)], {type: 'application/json'}));
             formData.append('file', blob);
 
             const path = `/upload/drive/v3/files${fileId ? `/${fileId}` : ''}?uploadType=multipart`;
             try {
-                await gapi.client.request({ path, method: fileId ? 'PATCH' : 'POST', body: formData });
-                driveStatus.textContent = `Saved at ${new Date().toLocaleTimeString()}`;
-                setSyncState('synced');
+                const response = await gapi.client.request({
+                    path,
+                    method: fileId ? 'PATCH' : 'POST',
+                    body: formData
+                });
+                
+                if (response && response.status === 200) {
+                    if (!fileId && response.result && response.result.id) {
+                        localStorage.setItem('googleDriveFileId', response.result.id);
+                    }
+                    driveStatus.textContent = `Saved at ${new Date().toLocaleTimeString()}`;
+                    setSyncState('synced');
+                } else {
+                   throw new Error(response.result.error.message);
+                }
             } catch (e) {
-                driveStatus.textContent = "Error saving.";
+                driveStatus.textContent = "Error saving. Check console for details.";
                 setSyncState('error');
+                console.error("Save to drive error:", e);
             }
         }
 
