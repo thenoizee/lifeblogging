@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+        version: "v9.7.3-alpha",
+        date: "2025-09-10",
+        changes: [
+            "In the Text/Merge Generator: Bug fix.",
+        ]
+    },
+    {
+        version: "v9.7.2-alpha",
+        date: "2025-09-09",
+        changes: [
+            "In the Text/Merge Generator: Bug fix."
+        ]
+    },
+    {
         version: "v9.7.1-alpha",
         date: "2025-09-09",
         changes: [
