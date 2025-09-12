@@ -146,8 +146,8 @@
                     <div class="flex justify-between items-start">
                         <div>
                             <h2 class="text-xl sm:text-2xl font-bold mb-4">Today's Intake</h2>
-                            <div class="text-5xl sm:text-6xl font-bold mb-2"><span id="today-total">0</span>ml</div>
-                            <div class="text-md sm:text-lg text-[var(--text-color-secondary)] mb-4">Goal: <span id="today-goal">2000</span>ml</div>
+                            <div class="text-5xl sm:text-6xl font-bold mb-2"><span id="today-total">0</span>ml (<span id="today-percentage">0</span>%)</div>
+                            <div class="text-md sm:text-lg text-[var(--text-color-secondary)] mb-4">Goal: <span id="today-goal">2000</span>ml | Remaining: <span id="today-remaining">2000</span>ml</div>
                         </div>
                         <div class="text-right">
                              <h2 class="text-xl sm:text-2xl font-bold mb-4">Streaks</h2>
@@ -234,7 +234,7 @@
                        <div>
                             <h3 class="font-semibold">Generic CSV Import</h3>
                             <p class="text-[var(--text-color-secondary)] text-sm">
-                               Import your hydration history from a generic CSV file. The file must contain 'date', 'amount', and 'drinkType' columns. The date should be in a format like `YYYY-MM-DD HH:MM`.
+                               Import your hydration history from a generic CSV file. The file must contain 'date', 'amount', 'drinkType', and 'dailyGoal' columns. The date should be in a format like `YYYY-MM-DD HH:MM`.
                             </p>
                             <input type="file" id="import-csv-input" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 mt-2" accept=".csv">
                             <button id="import-btn" class="main-button w-full py-3 rounded-lg font-bold mt-2">Import Generic Data</button>
@@ -246,6 +246,13 @@
                             </p>
                             <input type="file" id="import-waterminder-input" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-sky-100 file:text-sky-700 hover:file:bg-sky-200 mt-2" accept=".csv">
                             <button id="import-waterminder-btn" class="main-button w-full py-3 rounded-lg font-bold mt-2 bg-sky-600 hover:bg-sky-700">Import from WaterMinder</button>
+                        </div>
+                        <div class="border-t border-[var(--border-color)] pt-4">
+                            <h3 class="font-semibold">Export Data</h3>
+                            <p class="text-[var(--text-color-secondary)] text-sm">
+                               Export your hydration history to a CSV file.
+                            </p>
+                            <button id="export-csv-btn" class="main-button w-full py-3 rounded-lg font-bold mt-2 bg-green-600 hover:bg-green-700">Export to CSV</button>
                         </div>
                     </div>
                 </div>
@@ -339,6 +346,8 @@
             todayTotal: document.getElementById('today-total'),
             todayGoal: document.getElementById('today-goal'),
             todayProgress: document.getElementById('today-progress'),
+            todayPercentage: document.getElementById('today-percentage'),
+            todayRemaining: document.getElementById('today-remaining'),
             dailyGoalInput: document.getElementById('daily-goal'),
             goalStreakCount: document.getElementById('goal-streak-count'),
             logStreakCount: document.getElementById('log-streak-count'),
@@ -352,6 +361,7 @@
             customDatetimeInput: document.getElementById('custom-datetime'),
             importWaterMinderInput: document.getElementById('import-waterminder-input'),
             importWaterMinderBtn: document.getElementById('import-waterminder-btn'),
+            exportCsvBtn: document.getElementById('export-csv-btn'),
             editLogModal: document.getElementById('edit-log-modal'),
             editDatetimeInput: document.getElementById('edit-datetime'),
             editDrinkTypeSelect: document.getElementById('edit-drink-type'),
@@ -486,18 +496,23 @@
         function updateDashboard(settings) {
             const total = parseInt(ui.todayTotal.textContent);
             const goal = parseInt(ui.todayGoal.textContent);
-            const percentage = goal > 0 ? (total / goal) * 100 : 0;
+            const percentage = goal > 0 ? Math.round((total / goal) * 100) : 0;
+            const remaining = Math.max(0, goal - total);
             ui.todayProgress.style.width = `${Math.min(percentage, 100)}%`;
+            ui.todayPercentage.textContent = percentage;
+            ui.todayRemaining.textContent = remaining;
         }
 
-        async function logWater(amount, drinkType = 'water', entryDate = null, notes = "", tags = ["manual_entry"], fileSource = "Entered via HydrationTrackr") {
+        async function logWater(amount, drinkType = 'water', entryDate = null, notes = "", tags = ["manual_entry"], fileSource = "HydrationTrackr") {
             if (!currentUser || amount <= 0) return;
             try {
                 const now = Timestamp.now();
+                const settingsDoc = await getDoc(doc(db, 'users', currentUser.uid, 'settings', 'water'));
+                const settings = settingsDoc.data() || { dailyGoal: 2000 };
                 const logEntry = {
                     attributeName: drinkType,
                     attributeValue: amount,
-                    status: "taken",
+                    status: "drank",
                     notes: notes,
                     tags: tags,
                     date: entryDate ? Timestamp.fromDate(new Date(entryDate)) : now,
@@ -506,7 +521,8 @@
                     datapointUpdatedBy: currentUser.uid,
                     uploadedBy: currentUser.email || "anonymous",
                     uploadedApp: "HydrationTrackr",
-                    fileSource: fileSource
+                    fileSource: fileSource,
+                    dailyGoal: settings.dailyGoal
                 };
                 await addDoc(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`), logEntry);
                 updateStreaks();
@@ -807,8 +823,8 @@
             Papa.parse(file, {
                 header: true, skipEmptyLines: true,
                 complete: async (results) => {
-                    if (!results.data.length || !results.meta.fields.includes('date') || !results.meta.fields.includes('amount') || !results.meta.fields.includes('drinkType')) {
-                        alert('Invalid CSV format. Please ensure it has date, amount, and drinkType columns.');
+                    if (!results.data.length || !results.meta.fields.includes('date') || !results.meta.fields.includes('amount') || !results.meta.fields.includes('drinkType') || !results.meta.fields.includes('dailyGoal')) {
+                        alert('Invalid CSV format. Please ensure it has date, amount, drinkType, and dailyGoal columns.');
                         ui.importBtn.disabled = false;
                         ui.importBtn.textContent = 'Import Generic Data';
                         return;
@@ -825,13 +841,15 @@
                             batch.set(docRef, {
                                 attributeName: row.drinkType || 'water',
                                 attributeValue: amount,
-                                status: "taken",
+                                status: "drank",
                                 tags: ["imported"],
                                 date: Timestamp.fromDate(new Date(row.date)),
+                                dailyGoal: parseInt(row.dailyGoal) || 2000,
                                 createdAt: now,
                                 uploadedBy: currentUser.email || "anonymous",
                                 uploadedApp: "HydrationTrackr (Import)",
-                                fileSource: file.name,
+                                fileSource: "HydrationTrackr",
+                                fileSourceName: file.name,
                                 datapointUpdatedBy: currentUser.uid,
                                 datapointUpdatedTime: now
                             });
@@ -864,7 +882,7 @@
                 header: true,
                 skipEmptyLines: true,
                 complete: async (results) => {
-                    const requiredColumns = ['Drink Name', 'Amount Logged(ml)', 'Date', 'Time'];
+                    const requiredColumns = ['Drink Name', 'Amount Logged(ml)', 'Date', 'Time', 'Daily Goal Amount(ml)'];
                     if (!results.data.length || !requiredColumns.every(col => results.meta.fields.includes(col))) {
                         alert('Invalid WaterMinder CSV format. Please ensure it has the required columns: ' + requiredColumns.join(', '));
                         ui.importWaterMinderBtn.disabled = false;
@@ -888,13 +906,15 @@
                             batch.set(docRef, {
                                 attributeName: row['Drink Name'].toLowerCase() || 'water',
                                 attributeValue: amount,
-                                status: "taken",
+                                status: "drank",
                                 tags: ["imported", "waterminder-import"],
                                 date: Timestamp.fromDate(entryDate),
+                                dailyGoal: parseInt(row['Daily Goal Amount(ml)']) || 2000,
                                 createdAt: now,
                                 uploadedBy: currentUser.email || "anonymous",
                                 uploadedApp: "HydrationTrackr (WaterMinder Import)",
-                                fileSource: file.name,
+                                fileSource: "HydrationTrackr",
+                                fileSourceName: file.name,
                                 datapointUpdatedBy: currentUser.uid,
                                 datapointUpdatedTime: now
                             });
@@ -918,6 +938,51 @@
                 }
             });
         }
+        
+        async function handleExportCSV() {
+            if (!currentUser) return;
+
+            ui.exportCsvBtn.disabled = true;
+            ui.exportCsvBtn.textContent = 'Exporting...';
+
+            try {
+                const querySnapshot = await getDocs(query(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`), orderBy('date', 'desc')));
+                const dataToExport = querySnapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        date: data.date.toDate().toISOString(),
+                        drinkType: data.attributeName,
+                        amount: data.attributeValue,
+                        notes: data.notes || '',
+                        tags: data.tags ? data.tags.join(',') : '',
+                        dailyGoal: data.dailyGoal || ''
+                    };
+                });
+
+                if (dataToExport.length === 0) {
+                    alert("No data to export.");
+                    return;
+                }
+
+                const csv = Papa.unparse(dataToExport);
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", "hydration_export.csv");
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+            } catch (error) {
+                console.error("Error exporting data:", error);
+                alert("An error occurred during the export.");
+            } finally {
+                ui.exportCsvBtn.disabled = false;
+                ui.exportCsvBtn.textContent = 'Export to CSV';
+            }
+        }
 
         // --- EVENT LISTENERS ---
         ui.enableReminders.addEventListener('change', () => {
@@ -926,7 +991,7 @@
         });
         document.querySelectorAll('.quick-add-btn').forEach(btn => {
             const tags = ["quick_log"];
-            const source = "Entered via Quick Log";
+            const source = "HydrationTrackr";
             btn.addEventListener('click', (e) => logWater(parseInt(e.target.dataset.amount), e.target.dataset.drink, null, "", tags, source));
         });
         document.getElementById('log-custom-btn').addEventListener('click', () => {
@@ -992,6 +1057,7 @@
         
         ui.importBtn.addEventListener('click', handleImport);
         ui.importWaterMinderBtn.addEventListener('click', handleWaterMinderImport);
+        ui.exportCsvBtn.addEventListener('click', handleExportCSV);
         ui.saveEditBtn.addEventListener('click', handleSaveEdit);
         ui.cancelEditBtn.addEventListener('click', () => ui.editLogModal.classList.add('hidden'));
         ui.deleteLogBtn.addEventListener('click', handleDeleteLog);

@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+        version: "v9.9.0-alpha",
+        date: "2025-09-12",
+        changes: [
+            "In HydrationTrackr: The dashboard now shows your daily intake as a percentage of your goal, and also displays the remaining amount needed to drink to reach your goal.",
+            "In HydrationTrackr: You can now export your entire hydration history to a CSV file from the Settings > Data Management section.",
+            "In HydrationTrackr: When importing data from a WaterMinder CSV, the specific daily goal from the file is now correctly imported for each entry.",
+            "In HydrationTrackr: Generic CSV imports now support a 'dailyGoal' column to allow for historical goals to be imported.",
+            "In HydrationTrackr: The internal status for a logged drink has been updated from 'taken' to 'drank' for better clarity and consistency.",
+            "In HydrationTrackr: The 'fileSource' for all data logged within the app is now consistently set to 'HydrationTrackr', making it easier to distinguish from imported data in the Analyser App.",
+        ]
+    },
+    {
         version: "v9.8.0-alpha",
         date: "2025-09-12",
         changes: [
