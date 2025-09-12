@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Printing Label Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono&family=Lora&family=Merriweather&family=Playfair+Display&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --paper-width: 210mm;
+            --paper-height: 297mm;
+            --label-width: 80mm;
+            --label-height: 50mm;
+            --corner-radius: 0mm;
+            --margin-top: 10mm;
+            --margin-left: 10mm;
+            --grid-gap: 2mm;
+            --cols: 2;
+            --font-size: 12pt;
+            --font-family: 'Inter', sans-serif;
+            --align-items: center; /* vertical */
+            --justify-content: center; /* horizontal */
+            --font-weight: normal;
+            --font-style: normal;
+        }
+
+        /* This hides the print area on-screen without using display:none, which breaks printing */
+        #print-area {
+            position: fixed;
+            top: -9999px;
+            left: -9999px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Apply the grid layout to BOTH the on-screen preview AND the hidden print version */
+        #label-grid, #print-grid {
+            display: grid;
+            grid-template-columns: repeat(var(--cols), var(--label-width));
+            justify-content: start; /* Align grid to the start */
+            gap: var(--grid-gap);
+            background-color: white;
+            width: var(--paper-width);
+            height: var(--paper-height);
+            padding-top: var(--margin-top);
+            padding-bottom: var(--margin-top);
+            padding-left: var(--margin-left);
+            padding-right: var(--margin-left);
+            box-sizing: border-box;
+        }
+
+        /* Apply shadow only to the on-screen version */
+        #label-grid {
+             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+             overflow: hidden; /* This clips overflowing labels in the preview */
+        }
+
+        .label {
+            /* Width is now controlled by the grid container */
+            height: var(--label-height);
+            border: 1px dashed #ccc;
+            border-radius: var(--corner-radius);
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: var(--align-items);
+            justify-content: var(--justify-content);
+            padding: 2mm;
+            box-sizing: border-box;
+            font-size: var(--font-size);
+            font-family: var(--font-family);
+            font-weight: var(--font-weight);
+            font-style: var(--font-style);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            position: relative; /* For label number */
+        }
+        
+        .label::before {
+            content: attr(data-label-number);
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 8pt;
+            color: #aaa;
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        .label.selected {
+            background-color: #e0f2fe;
+            border-color: #0ea5e9;
+            border-style: solid;
+        }
+        
+        /* Hide default summary marker */
+        summary {
+            list-style: none;
+        }
+        summary::-webkit-details-marker {
+            display: none;
+        }
+        
+        /* Instructs browser to remove its default headers and footers */
+        @page {
+            size: auto;
+            margin: 0mm;
+        }
+
+        /* Print-specific styles */
+        @media print {
+            /* Hide the main user interface completely */
+            #app {
+                display: none;
+            }
+
+            /* Reset body and prepare it for the print content */
+            body {
+                margin: 0;
+            }
+            
+            #print-area, #print-area * {
+                visibility: visible;
+            }
+            #print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+             #print-area #print-grid {
+                overflow: visible; /* Ensure nothing is clipped when printing */
+            }
+             #print-area .label::before {
+                display: none; /* Hide label numbers when printing */
+            }
+            .print-label {
+                border: 1px solid transparent; /* Hide border for printing */
+                page-break-inside: avoid;
+            }
+            .print-label.not-selected {
+                visibility: hidden; /* Don't print unselected labels */
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="app" class="flex flex-col lg:flex-row min-h-screen">
+        <!-- Controls Panel -->
+        <div id="controls" class="w-full lg:w-96 bg-white shadow-lg p-6 space-y-4">
+            <h1 class="text-2xl font-bold text-gray-900">Label Generator</h1>
+            
+            <!-- Paper & Presets -->
+            <details class="p-4 border rounded-lg bg-gray-50 group" open>
+                <summary class="text-lg font-semibold cursor-pointer flex justify-between items-center">
+                    <span>Paper & Presets</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </summary>
+                <div class="mt-4 pt-4 border-t space-y-3">
+                    <div>
+                        <label for="presets" class="block text-sm font-medium text-gray-700">Label Sheet Presets</label>
+                        <select id="presets" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500"></select>
+                    </div>
+                    <div>
+                        <label for="paperSize" class="block text-sm font-medium text-gray-700">Paper Size</label>
+                        <select id="paperSize" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                            <option value="A4">A4 (210 x 297mm)</option>
+                            <option value="Letter">US Letter (8.5 x 11in)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="orientation" class="block text-sm font-medium text-gray-700">Orientation</label>
+                        <select id="orientation" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                            <option value="portrait">Portrait</option>
+                            <option value="landscape">Landscape</option>
+                        </select>
+                    </div>
+                     <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="marginTop" class="block text-sm font-medium text-gray-700">Margin Top (mm)</label>
+                            <input type="number" id="marginTop" value="10" min="0" step="0.1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                        </div>
+                        <div>
+                            <label for="marginLeft" class="block text-sm font-medium text-gray-700">Margin Left (mm)</label>
+                            <input type="number" id="marginLeft" value="10" min="0" step="0.1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <!-- Grid Layout -->
+            <details class="p-4 border rounded-lg bg-gray-50 group" open>
+                <summary class="text-lg font-semibold cursor-pointer flex justify-between items-center">
+                     <span>Layout</span>
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </summary>
+                <div class="mt-4 pt-4 border-t space-y-3">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="rows" class="block text-sm font-medium text-gray-700">Rows</label>
+                            <input type="number" id="rows" value="5" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                        </div>
+                        <div>
+                            <label for="cols" class="block text-sm font-medium text-gray-700">Columns</label>
+                            <input type="number" id="cols" value="2" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="gridGap" class="block text-sm font-medium text-gray-700">Gap (mm)</label>
+                            <input type="number" id="gridGap" value="2" min="0" step="0.1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                        </div>
+                        <div>
+                            <label for="startPosition" class="block text-sm font-medium text-gray-700">Start at Label #</label>
+                            <input type="number" id="startPosition" value="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                        </div>
+                    </div>
+                     <p class="text-xs text-gray-500">"Start at" is for CSV import on partial sheets.</p>
+                </div>
+            </details>
+
+            <!-- Label Size -->
+            <details class="p-4 border rounded-lg bg-gray-50 group">
+                 <summary class="text-lg font-semibold cursor-pointer flex justify-between items-center">
+                     <span>Label Size (mm)</span>
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                 </summary>
+                <div class="mt-4 pt-4 border-t space-y-3">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="labelWidth" class="block text-sm font-medium text-gray-700">Width</label>
+                            <input type="number" id="labelWidth" value="80" min="10" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                        </div>
+                        <div>
+                            <label for="labelHeight" class="block text-sm font-medium text-gray-700">Height</label>
+                            <input type="number" id="labelHeight" value="50" min="10" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                        </div>
+                    </div>
+                     <div class="flex items-center mt-3">
+                        <input id="autoFitWidth" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500">
+                        <label for="autoFitWidth" class="ml-2 block text-sm font-medium text-gray-700">Auto-fit width to page</label>
+                    </div>
+                     <div class="flex items-center mt-3">
+                        <input id="autoFitHeight" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500">
+                        <label for="autoFitHeight" class="ml-2 block text-sm font-medium text-gray-700">Auto-fit height to page</label>
+                    </div>
+                     <div class="mt-3">
+                        <label for="cornerRadius" class="block text-sm font-medium text-gray-700">Corner Radius (mm)</label>
+                        <input type="number" id="cornerRadius" value="0" min="0" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                    </div>
+                </div>
+            </details>
+
+            <!-- Typography -->
+            <details class="p-4 border rounded-lg bg-gray-50 group">
+                <summary class="text-lg font-semibold cursor-pointer flex justify-between items-center">
+                    <span>Typography & Alignment</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 L-4-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </summary>
+                <div class="mt-4 pt-4 border-t space-y-3">
+                    <div>
+                        <label for="fontFamily" class="block text-sm font-medium text-gray-700">Font</label>
+                        <select id="fontFamily" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                            <option value="'Inter', sans-serif" selected>Inter (Sans-serif)</option>
+                            <option value="'Lora', serif">Lora (Serif)</option>
+                            <option value="'Merriweather', serif">Merriweather (Serif)</option>
+                            <option value="'Playfair Display', serif">Playfair Display (Serif)</option>
+                            <option value="'Roboto Mono', monospace">Roboto Mono (Monospace)</option>
+                            <option value="Arial, sans-serif">Arial</option>
+                            <option value="'Times New Roman', Times, serif">Times New Roman</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="fontSize" class="block text-sm font-medium text-gray-700">Font Size (pt)</label>
+                            <input type="number" id="fontSize" value="12" min="6" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                        </div>
+                         <div class="flex items-end space-x-2">
+                            <button id="fontBold" class="p-2 rounded-md border bg-white hover:bg-sky-100 data-[active=true]:bg-sky-500 data-[active=true]:text-white" data-active="false">
+                                <svg class="h-5 w-5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path></svg>
+                            </button>
+                            <button id="fontItalic" class="p-2 rounded-md border bg-white hover:bg-sky-100 data-[active=true]:bg-sky-500 data-[active=true]:text-white" data-active="false">
+                               <svg class="h-5 w-5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"></line><line x1="14" y1="20" x2="5" y2="20"></line><line x1="15" y1="4" x2="9" y2="20"></line></svg>
+                            </button>
+                        </div>
+                    </div>
+                     <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="vAlign" class="block text-sm font-medium text-gray-700">Vertical</label>
+                            <select id="vAlign" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                                <option value="flex-start">Top</option>
+                                <option value="center" selected>Middle</option>
+                                <option value="flex-end">Bottom</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="hAlign" class="block text-sm font-medium text-gray-700">Horizontal</label>
+                            <select id="hAlign" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                                <option value="flex-start">Left</option>
+                                <option value="center" selected>Center</option>
+                                <option value="flex-end">Right</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <!-- Content -->
+            <details class="p-4 border rounded-lg bg-gray-50 group">
+                 <summary class="text-lg font-semibold cursor-pointer flex justify-between items-center">
+                     <span>Content</span>
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                 </summary>
+                 <div class="mt-4 pt-4 border-t space-y-3">
+                     <div>
+                         <label for="csvFile" class="block text-sm font-medium text-gray-700">Import from CSV</label>
+                         <p class="text-xs text-gray-500 mb-1">Each row in the CSV will populate one label.</p>
+                         <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100"/>
+                     </div>
+                     <div>
+                         <label for="labelText" class="block text-sm font-medium text-gray-700">Manual Text</label>
+                         <p class="text-xs text-gray-500 mb-1">Applies to all currently selected labels.</p>
+                        <textarea id="labelText" rows="4" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500" placeholder="Enter common text here..."></textarea>
+                     </div>
+                 </div>
+            </details>
+
+            <!-- Selection and Actions -->
+             <div class="space-y-4 pt-4 border-t">
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="selectAll" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">Select All</button>
+                    <button id="deselectAll" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">Deselect All</button>
+                </div>
+                <button id="printButton" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v6a2 2 0 002 2h1v-4a1 1 0 011-1h8a1 1 0 011 1v4h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd" /></svg>
+                    Print Labels
+                </button>
+            </div>
+        </div>
+
+        <!-- Preview Area -->
+        <main class="flex-1 p-8 bg-gray-200 flex items-start justify-center overflow-auto">
+            <div id="label-grid-container">
+                <div id="label-grid">
+                    <!-- Labels will be generated here by JavaScript -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Hidden area for printing -->
+    <div id="print-area"></div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const controls = {
+                presets: document.getElementById('presets'),
+                paperSize: document.getElementById('paperSize'),
+                orientation: document.getElementById('orientation'),
+                marginTop: document.getElementById('marginTop'),
+                marginLeft: document.getElementById('marginLeft'),
+                rows: document.getElementById('rows'),
+                cols: document.getElementById('cols'),
+                gridGap: document.getElementById('gridGap'),
+                startPosition: document.getElementById('startPosition'),
+                labelWidth: document.getElementById('labelWidth'),
+                labelHeight: document.getElementById('labelHeight'),
+                autoFitWidth: document.getElementById('autoFitWidth'),
+                autoFitHeight: document.getElementById('autoFitHeight'),
+                cornerRadius: document.getElementById('cornerRadius'),
+                fontFamily: document.getElementById('fontFamily'),
+                fontSize: document.getElementById('fontSize'),
+                fontBold: document.getElementById('fontBold'),
+                fontItalic: document.getElementById('fontItalic'),
+                vAlign: document.getElementById('vAlign'),
+                hAlign: document.getElementById('hAlign'),
+                labelText: document.getElementById('labelText'),
+                csvFile: document.getElementById('csvFile'),
+            };
+
+            const actions = {
+                selectAll: document.getElementById('selectAll'),
+                deselectAll: document.getElementById('deselectAll'),
+                printButton: document.getElementById('printButton'),
+            };
+
+            const labelGrid = document.getElementById('label-grid');
+            const root = document.documentElement;
+            
+            const PRESETS = {
+                'custom': { name: 'Custom...' },
+                'avery_5160': { name: 'Avery 5160', paper: 'Letter', rows: 10, cols: 3, width: 66.675, height: 25.4, marginTop: 12.7, marginLeft: 4.76, gap: 0 },
+                'avery_8160': { name: 'Avery 8160 (Inkjet version of 5160)', paper: 'Letter', rows: 10, cols: 3, width: 66.675, height: 25.4, marginTop: 12.7, marginLeft: 4.76, gap: 0 },
+                'avery_5163': { name: 'Avery 5163', paper: 'Letter', rows: 5, cols: 2, width: 101.6, height: 50.8, marginTop: 12.7, marginLeft: 5.56, gap: 0 },
+                'avery_L7160': { name: 'Avery L7160 (A4)', paper: 'A4', rows: 7, cols: 3, width: 63.5, height: 38.1, marginTop: 15, marginLeft: 7.5, gap: 2.5 },
+                'avery_L7163': { name: 'Avery L7163 (A4)', paper: 'A4', rows: 7, cols: 2, width: 99.1, height: 38.1, marginTop: 14.9, marginLeft: 5.4, gap: 0 },
+            };
+
+            function populatePresets() {
+                for (const [key, value] of Object.entries(PRESETS)) {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = value.name;
+                    controls.presets.appendChild(option);
+                }
+            }
+            
+            function applyPreset(presetKey) {
+                if (presetKey === 'custom') return;
+                const p = PRESETS[presetKey];
+                controls.paperSize.value = p.paper;
+                controls.rows.value = p.rows;
+                controls.cols.value = p.cols;
+                controls.labelWidth.value = p.width;
+                controls.labelHeight.value = p.height;
+                controls.marginTop.value = p.marginTop;
+                controls.marginLeft.value = p.marginLeft;
+                controls.gridGap.value = p.gap;
+                
+                generateGrid();
+                updateAllStyles();
+            }
+
+            function generateGrid() {
+                labelGrid.innerHTML = '';
+                const rows = parseInt(controls.rows.value, 10);
+                const cols = parseInt(controls.cols.value, 10);
+                const totalLabels = rows * cols;
+
+                controls.startPosition.max = totalLabels;
+                
+                root.style.setProperty('--cols', cols);
+
+                for (let i = 0; i < totalLabels; i++) {
+                    const label = document.createElement('div');
+                    label.classList.add('label');
+                    label.dataset.index = i;
+                    label.dataset.labelNumber = i + 1;
+                    label.addEventListener('click', () => {
+                        label.classList.toggle('selected');
+                    });
+                    labelGrid.appendChild(label);
+                }
+            }
+            
+            function updateAllStyles() {
+                // Paper
+                const isLetter = controls.paperSize.value === 'Letter';
+                let paper = isLetter ? {w: '215.9mm', h: '279.4mm', w_val: 215.9, h_val: 279.4} : {w: '210mm', h: '297mm', w_val: 210, h_val: 297};
+
+                const isLandscape = controls.orientation.value === 'landscape';
+                if (isLandscape) {
+                    [paper.w, paper.h] = [paper.h, paper.w];
+                    [paper.w_val, paper.h_val] = [paper.h_val, paper.w_val];
+                }
+
+                root.style.setProperty('--paper-width', paper.w);
+                root.style.setProperty('--paper-height', paper.h);
+
+                // Auto-fit Width
+                if (controls.autoFitWidth.checked) {
+                    controls.labelWidth.disabled = true;
+                    const cols = parseInt(controls.cols.value, 10);
+                    const marginLeft = parseFloat(controls.marginLeft.value);
+                    const gridGap = parseFloat(controls.gridGap.value);
+                    
+                    const availableWidth = paper.w_val - (2 * marginLeft) - ((cols - 1) * gridGap);
+                    const newLabelWidth = availableWidth / cols;
+
+                    if (newLabelWidth > 0) {
+                        controls.labelWidth.value = newLabelWidth.toFixed(2);
+                        root.style.setProperty('--label-width', `${newLabelWidth}mm`);
+                    }
+                } else {
+                    controls.labelWidth.disabled = false;
+                    root.style.setProperty('--label-width', `${controls.labelWidth.value}mm`);
+                }
+
+                // Auto-fit Height
+                if (controls.autoFitHeight.checked) {
+                    controls.labelHeight.disabled = true;
+                    const rows = parseInt(controls.rows.value, 10);
+                    const marginTop = parseFloat(controls.marginTop.value);
+                    const gridGap = parseFloat(controls.gridGap.value);
+                    
+                    const availableHeight = paper.h_val - (2 * marginTop) - ((rows - 1) * gridGap);
+                    const newLabelHeight = availableHeight / rows;
+
+                    if (newLabelHeight > 0) {
+                        controls.labelHeight.value = newLabelHeight.toFixed(2);
+                        root.style.setProperty('--label-height', `${newLabelHeight}mm`);
+                    }
+                } else {
+                    controls.labelHeight.disabled = false;
+                    root.style.setProperty('--label-height', `${controls.labelHeight.value}mm`);
+                }
+
+                // Margins & Label
+                root.style.setProperty('--margin-top', `${controls.marginTop.value}mm`);
+                root.style.setProperty('--margin-left', `${controls.marginLeft.value}mm`);
+                root.style.setProperty('--grid-gap', `${controls.gridGap.value}mm`);
+                root.style.setProperty('--corner-radius', `${controls.cornerRadius.value}mm`);
+                
+                // Typography
+                root.style.setProperty('--font-family', controls.fontFamily.value);
+                root.style.setProperty('--font-size', `${controls.fontSize.value}pt`);
+                root.style.setProperty('--align-items', controls.vAlign.value);
+                root.style.setProperty('--justify-content', controls.hAlign.value);
+                
+                const isBold = controls.fontBold.dataset.active === 'true';
+                root.style.setProperty('--font-weight', isBold ? 'bold' : 'normal');
+
+                const isItalic = controls.fontItalic.dataset.active === 'true';
+                root.style.setProperty('--font-style', isItalic ? 'italic' : 'normal');
+            }
+
+            function updateSelectedLabelsContent() {
+                const text = controls.labelText.value;
+                document.querySelectorAll('.label.selected').forEach(label => {
+                    label.textContent = text;
+                });
+            }
+            
+            function handleCsvUpload(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const text = e.target.result;
+                    const rows = text.split('\n').filter(row => row.trim() !== '');
+                    const labels = document.querySelectorAll('.label');
+                    const startPosition = parseInt(controls.startPosition.value, 10);
+                    const startIndex = Math.max(0, startPosition - 1); // Ensure it's not negative
+
+                    rows.forEach((rowContent, csvIndex) => {
+                        const labelIndex = startIndex + csvIndex;
+                        if (labels[labelIndex]) {
+                            let content = rowContent.trim();
+                            if (content.startsWith('"') && content.endsWith('"')) {
+                                content = content.substring(1, content.length - 1);
+                            }
+                            labels[labelIndex].textContent = content;
+                            labels[labelIndex].classList.add('selected');
+                        }
+                    });
+                };
+                reader.readAsText(file);
+            }
+
+            // Event Listeners for controls
+            controls.presets.addEventListener('input', (e) => applyPreset(e.target.value));
+
+            Object.values(controls).forEach(control => {
+                 const nonStandardControls = ['presets', 'csvFile', 'labelText', 'fontBold', 'fontItalic'];
+                 if (nonStandardControls.includes(control.id)) return;
+                 
+                control.addEventListener('input', () => {
+                    controls.presets.value = 'custom';
+                    if (control.id === 'rows' || control.id === 'cols') {
+                        generateGrid();
+                    }
+                    updateAllStyles();
+                });
+            });
+            
+            controls.labelText.addEventListener('input', updateSelectedLabelsContent);
+            controls.fontBold.addEventListener('click', () => {
+                const current = controls.fontBold.dataset.active === 'true';
+                controls.fontBold.dataset.active = !current;
+                updateAllStyles();
+            });
+             controls.fontItalic.addEventListener('click', () => {
+                const current = controls.fontItalic.dataset.active === 'true';
+                controls.fontItalic.dataset.active = !current;
+                updateAllStyles();
+            });
+            
+            controls.csvFile.addEventListener('change', handleCsvUpload);
+
+            // Action listeners
+            actions.selectAll.addEventListener('click', () => {
+                document.querySelectorAll('.label').forEach(label => label.classList.add('selected'));
+            });
+
+            actions.deselectAll.addEventListener('click', () => {
+                document.querySelectorAll('.label').forEach(label => {
+                    label.classList.remove('selected');
+                    label.textContent = '';
+                });
+            });
+
+            actions.printButton.addEventListener('click', () => {
+                const printArea = document.getElementById('print-area');
+                const printGrid = labelGrid.cloneNode(true);
+                printGrid.id = 'print-grid'; // This ID is targeted by the new CSS rule
+                
+                printGrid.querySelectorAll('.label').forEach(label => {
+                    label.classList.add('print-label');
+                    if (!label.classList.contains('selected')) {
+                        label.classList.add('not-selected');
+                        label.textContent = '';
+                    }
+                    label.classList.remove('selected');
+                });
+
+                printArea.innerHTML = '';
+                printArea.appendChild(printGrid);
+                window.print();
+            });
+
+            // Initial setup
+            populatePresets();
+            generateGrid();
+            updateAllStyles();
+        });
+    </script>
+</body>
+</html>
+

@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v9.8.0-alpha",
+        date: "2025-09-12",
+        changes: [
+            "In the Hub: Added a new 'Label Generator' tool, accessible from the main hub.",
+            "In the Text/Merge Generator: Implemented auto-syncing to Firebase whenever a new template is created.",
+            "In the Text/Merge Generator: Fixed a bug that was preventing the navigation tabs from working correctly.",
+            "In the Text/Merge Generator: Removed the Google Drive sync option.",
+            "In the Text/Merge Generator: Added a 'Back to Hub' button and the current version number for consistency with other apps.",
+        ]
+    },
+    {
         version: "v9.7.4-alpha",
         date: "2025-09-10",
         changes: [
