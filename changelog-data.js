@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.9.2-alpha",
+    date: "2025-09-14",
+    changes: [
+        "In MediManagr: Fixed a significant layout issue on the 'Record Doses' page where the 'Scheduled Doses' calendar would overflow both horizontally and vertically on mobile devices, making it difficult to use. The calendar is now properly constrained to the screen.",
+    ]
+    },
+    {
         version: "v9.9.1-alpha",
         date: "2025-09-14",
         changes: [
