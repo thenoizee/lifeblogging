@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text/Merge Generator</title>
+    <title>Email Template Generator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="icon" href="/favicons/file-lines.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicons/pen-to-square.svg" type="image/svg+xml">
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -50,8 +50,8 @@
 
     <div class="container mx-auto p-4 sm:p-6 md:p-8 max-w-5xl">
         <header class="text-center mb-8">
-            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">Text/Merge Generator</h1>
-            <p class="text-gray-600 mt-2">Create, manage, and use your own comment templates with advanced features.</p>
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">Email Template Generator</h1>
+            <p class="text-gray-600 mt-2">Create, manage, and use your own email templates with advanced features.</p>
         </header>
         <div class="flex justify-between items-center mb-6">
             <span id="version-display" class="text-sm font-semibold text-gray-500 dark:text-gray-400"></span>
@@ -86,7 +86,7 @@
                             <select id="category-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select>
                         </div>
                         <div class="md:col-span-2">
-                            <label for="template-select" class="block text-sm font-medium text-gray-700 mb-1">Select a comment template</label>
+                            <label for="template-select" class="block text-sm font-medium text-gray-700 mb-1">Select an email template</label>
                             <select id="template-select" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select>
                         </div>
                     </div>
@@ -100,10 +100,10 @@
                 </div>
                 
                 <div class="bg-white p-6 rounded-lg shadow-md step-card">
-                    <h2 class="text-2xl font-semibold mb-4 border-b pb-3">Step 3: Generate & Copy Text</h2>
+                    <h2 class="text-2xl font-semibold mb-4 border-b pb-3">Step 3: Generate & Copy Email</h2>
                     <div class="text-center">
                          <button id="generate-button" class="w-full sm:w-auto bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out text-lg disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                            Generate Text
+                            Generate Email
                         </button>
                     </div>
                    
@@ -272,7 +272,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { changelogData } from '/changelog-data.js';
         
         // --- CONFIGURATION ---
@@ -319,6 +319,8 @@
         let syncState = 'unknown'; // States: unknown, synced, unsynced, syncing, error
         let firebaseApp, firebaseAuth, firestoreDb;
         let currentUser = null;
+        let templatesUnsubscribe = null;
+
 
         // DOM Elements
         const tabButtons = document.querySelectorAll('.tab-button');
@@ -421,6 +423,13 @@
                 onAuthStateChanged(firebaseAuth, user => {
                     currentUser = user;
                     updateFirebaseAuthStatus(!!user);
+                    if(user) {
+                        listenForTemplateChanges();
+                    } else if (templatesUnsubscribe) {
+                        templatesUnsubscribe();
+                        templatesUnsubscribe = null;
+                        loadTemplates();
+                    }
                 });
             } catch (e) {
                 console.error("Firebase initialization error: ", e);
@@ -531,11 +540,14 @@
             if (!template) return;
 
             const fieldData = {};
-            template.fields.forEach(fieldName => {
-                if (!fieldName) return;
-                const input = document.getElementById(`field-${fieldName}`);
-                fieldData[fieldName] = input ? input.value : '';
-            });
+            if(template.fields && Array.isArray(template.fields)){
+                template.fields.forEach(fieldName => {
+                    if (!fieldName) return;
+                    const input = document.getElementById(`field-${fieldName}`);
+                    fieldData[fieldName] = input ? input.value : '';
+                });
+            }
+
 
             const process = (str) => str ? Object.entries(fieldData).reduce((acc, [key, val]) => acc.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val), str) : "";
 
@@ -570,7 +582,10 @@
         
         function displayBatchResults(dataRows, template) {
             batchOutput.innerHTML = '';
-            const process = (str, data) => str ? Object.entries(data).reduce((acc, [key, val]) => acc.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val), str) : "";
+            const process = (str, data) => {
+                if(!str || typeof str !== 'string' || !data || typeof data !== 'object' ) return "";
+                return Object.entries(data).reduce((acc, [key, val]) => acc.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val), str);
+            }
 
             dataRows.forEach((row, i) => {
                 const subject = process(template.subject, row);
@@ -667,7 +682,7 @@
             }
         }
 
-        function handleSaveTemplate(event) {
+        async function handleSaveTemplate(event) {
             event.preventDefault();
             const name = templateNameInput.value.trim();
             const template = templateBodyTextarea.value;
@@ -698,7 +713,10 @@
                 showSaveStatus("Template saved successfully!");
             }
             localStorage.setItem('userTemplates', JSON.stringify(userTemplates));
-            setSyncState('unsynced');
+            if (currentUser) {
+                await saveToFirebase();
+            }
+            setSyncState('synced');
             cancelEdit(); 
             loadTemplates();
         }
@@ -841,7 +859,7 @@
             if (!currentUser) return alert("You must be signed in to save to Firebase.");
             firebaseStatus.textContent = "Saving...";
             const userTemplates = localStorage.getItem('userTemplates') || '[]';
-            const userDocRef = doc(firestoreDb, "userTemplates", currentUser.uid);
+            const userDocRef = doc(firestoreDb, `users/${currentUser.uid}/settings`, "text-merge-templates");
             try {
                 await setDoc(userDocRef, { templates: JSON.parse(userTemplates), updatedAt: new Date() });
                 firebaseStatus.textContent = `Saved to Firebase at ${new Date().toLocaleTimeString()}`;
@@ -850,11 +868,26 @@
                 console.error("Firebase save error:", error);
             }
         }
+        function listenForTemplateChanges() {
+            if (templatesUnsubscribe) templatesUnsubscribe();
 
+            const userDocRef = doc(firestoreDb, `users/${currentUser.uid}/settings`, "text-merge-templates");
+            templatesUnsubscribe = onSnapshot(userDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data && data.templates) {
+                        localStorage.setItem('userTemplates', JSON.stringify(data.templates));
+                        loadTemplates();
+                        setSyncState('synced');
+                    }
+                }
+                setSyncState('synced');
+            });
+        }
         async function loadFromFirebase() {
             if (!currentUser) return alert("You must be signed in to load from Firebase.");
             firebaseStatus.textContent = "Loading...";
-            const userDocRef = doc(firestoreDb, "userTemplates", currentUser.uid);
+            const userDocRef = doc(firestoreDb, `users/${currentUser.uid}/settings`, "text-merge-templates");
             try {
                 const docSnap = await getDoc(userDocRef);
                 if (docSnap.exists()) {

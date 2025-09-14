@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v9.9.1-alpha",
+        date: "2025-09-14",
+        changes: [
+            "In the Text/Merge Generator: Renamed the tool to 'Email Template Generator' to better reflect its purpose.",
+            "In the Email Template Generator: Implemented automatic syncing of templates with Firebase when a user is logged in.",
+            "In the Email Template Generator: Updated the Firebase data structure to be consistent with the Analyser app for better data integration.",
+            "In the Email Template Generator: Fixed a bug that was preventing templates from being loaded from Firebase.",
+        ]
+    },
+    {
         version: "v9.9.0-alpha",
         date: "2025-09-12",
         changes: [
