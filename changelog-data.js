@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+        version: "v9.11.0",
+        date: "2025-09-15",
+        changes: [
+            "In the Merge Generator: Saving an existing template now creates a new version instead of overwriting, preserving the template's history.",
+            "Added a version dropdown in the 'Use Templates' tab to select and load any version of a template.",
+            "Added the ability to edit the content of any past version in-place (with confirmation).",
+            "Added 'Duplicate as New Version' to branch from any past version.",
+            "Added 'Duplicate as New Template' to create an entirely new template from a single version.",
+            "Added a '+ Add Blank New Version' button to start a fresh revision within a template.",
+            "Added 'Duplicate Template' to clone an entire template and its full version history.",
+            "Overhauled the 'Manage Templates' view with an expandable version history and granular action buttons for each version.",
+            "Added a 'Use' button to quickly load any specific version directly from the management tab.",
+            "The application will now automatically migrate older, non-versioned templates to the new versioned format.",
+            "Fixed a critical bug in the template replacement engine, making it more robust. It can now correctly handle placeholders that include special characters (e.g., parentheses, brackets) in their names.",
+        ]
+    },
+    {
         version: "v9.10.0-alpha",
         date: "2025-09-15",
         changes: [
