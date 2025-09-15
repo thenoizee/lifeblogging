@@ -50,6 +50,10 @@
         summary::-webkit-details-marker {
             display: none;
         }
+        .field-row.dragging {
+            opacity: 0.5;
+            background: #eef2ff;
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -318,120 +322,29 @@
 
         const defaultTemplates = [
              {
-                id: "default-positive-review",
-                name: "Positive Progress Review",
-                folder: "Education",
-                isArchived: false,
-                isDefault: true,
-                versions: [{
-                    version: 1,
-                    createdAt: new Date('2023-01-01T10:00:00Z').toISOString(),
-                    subject: "An update on {{Name}}'s progress in {{Subject}}",
-                    description: "A standard positive review for a student making good progress.",
-                    target: "Parents/Guardians",
-                    purpose: "To inform and praise.",
-                    fields: ["Name", "Pronoun_HeShe", "Pronoun_hisher", "Subject", "Tutor"],
-                    template: "This is a review of {{Name}}'s progress in {{Subject}}.\n\nI am pleased to report that {{Name}} is making excellent progress. {{Pronoun_HeShe}} consistently demonstrates a strong understanding of the core concepts and actively participates in class discussions.\n\n{{Pronoun_hisher}} work is always completed to a high standard, and {{Pronoun_HeShe}} shows great enthusiasm for the subject. It is a pleasure to have {{Name}} in my class.\n\nRegards,\n{{Tutor}}"
-                }]
+                id: "default-positive-review", name: "Positive Progress Review", folder: "Education", isArchived: false, isDefault: true,
+                versions: [{ version: 1, createdAt: new Date('2023-01-01T10:00:00Z').toISOString(), subject: "An update on {{Name}}'s progress in {{Subject}}", description: "A standard positive review for a student making good progress.", target: "Parents/Guardians", purpose: "To inform and praise.", fields: [{name: "Name", desc: "Student's full name"}, {name: "Pronoun_HeShe", desc: "'He' or 'She'"}, {name: "Pronoun_hisher", desc: "'his' or 'her'"}, {name: "Subject", desc: "The academic subject"}, {name: "Tutor", desc: "Tutor's name"}], template: "This is a review of {{Name}}'s progress in {{Subject}}.\n\nI am pleased to report that {{Name}} is making excellent progress. {{Pronoun_HeShe}} consistently demonstrates a strong understanding of the core concepts and actively participates in class discussions.\n\n{{Pronoun_hisher}} work is always completed to a high standard, and {{Pronoun_HeShe}} shows great enthusiasm for the subject. It is a pleasure to have {{Name}} in my class.\n\nRegards,\n{{Tutor}}"}]
             },
             {
-                id: "default-needs-improvement",
-                name: "Needs Improvement Review",
-                folder: "Education",
-                isArchived: false,
-                isDefault: true,
-                versions: [{
-                    version: 1,
-                    createdAt: new Date('2023-01-01T10:00:00Z').toISOString(),
-                    subject: "Update regarding {{Name}} in {{Subject}}",
-                    description: "Highlights an area of concern and suggests next steps.",
-                    target: "Parents/Guardians",
-                    purpose: "To inform and seek support.",
-                    fields: ["Name", "Pronoun_HeShe", "Pronoun_hisher", "Subject", "Year_Group", "Tutor", "Specific_Area"],
-                    template: "This is an update regarding {{Name}} in Year {{Year_Group}} {{Subject}}.\n\nWhile {{Name}} has a foundational understanding of the subject, there are areas that require more focus. Specifically, {{Pronoun_HeShe}} is finding {{Specific_Area}} challenging and would benefit from additional practice.\n\nI encourage {{Name}} to ask more questions in class and attend support sessions to improve {{Pronoun_hisher}} confidence and skills in this area. We will continue to provide support in school.\n\nRegards,\n{{Tutor}}"
-                }]
+                id: "default-needs-improvement", name: "Needs Improvement Review", folder: "Education", isArchived: false, isDefault: true,
+                versions: [{ version: 1, createdAt: new Date('2023-01-01T10:00:00Z').toISOString(), subject: "Update regarding {{Name}} in {{Subject}}", description: "Highlights an area of concern and suggests next steps.", target: "Parents/Guardians", purpose: "To inform and seek support.", fields: [{name: "Name", desc: ""}, {name: "Pronoun_HeShe", desc: ""}, {name: "Pronoun_hisher", desc: ""}, {name: "Subject", desc: ""}, {name: "Year_Group", desc: ""}, {name: "Tutor", desc: ""}, {name: "Specific_Area", desc: "e.g., Algebra, Punctuation"}], template: "This is an update regarding {{Name}} in Year {{Year_Group}} {{Subject}}.\n\nWhile {{Name}} has a foundational understanding of the subject, there are areas that require more focus. Specifically, {{Pronoun_HeShe}} is finding {{Specific_Area}} challenging and would benefit from additional practice.\n\nI encourage {{Name}} to ask more questions in class and attend support sessions to improve {{Pronoun_hisher}} confidence and skills in this area. We will continue to provide support in school.\n\nRegards,\n{{Tutor}}"}]
             }
         ];
         
         let allTemplates = [];
-        let currentTemplateVersion = null; // Holds the currently selected version object
-        let syncState = 'unknown'; // States: unknown, synced, unsynced, syncing, error
+        let currentTemplateVersion = null;
+        let syncState = 'unknown'; 
         let firebaseApp, firebaseAuth, firestoreDb;
         let currentUser = null;
         let templatesUnsubscribe = null;
         let showArchived = false;
 
         const ui = {
-            tabs: {
-                buttons: document.querySelectorAll('.tab-button'),
-                contents: {
-                    'use-templates': document.getElementById('tab-content-use-templates'),
-                    'batch-generate': document.getElementById('tab-content-batch-generate'),
-                    'manage-templates': document.getElementById('tab-content-manage-templates'),
-                    'sync-settings': document.getElementById('tab-content-sync-settings')
-                }
-            },
-            use: {
-                templateSelect: document.getElementById('template-select'),
-                folderFilter: document.getElementById('folder-filter'),
-                versionSelectContainer: document.getElementById('version-select-container'),
-                versionSelect: document.getElementById('version-select'),
-                fieldsContainer: document.getElementById('fields-container'),
-                generateButton: document.getElementById('generate-button'),
-                generatedTextContainer: document.getElementById('generated-text-container'),
-                generatedSubjectWrapper: document.getElementById('generated-subject-wrapper'),
-                generatedSubjectInput: document.getElementById('generated-subject'),
-                generatedTextDiv: document.getElementById('generated-text'),
-                copySubjectButton: document.getElementById('copy-subject-button'),
-                copyBodyButton: document.getElementById('copy-body-button')
-            },
-            manage: {
-                form: document.getElementById('template-form'),
-                formTitle: document.getElementById('form-title'),
-                nameInput: document.getElementById('template-name'),
-                folderInput: document.getElementById('template-folder'),
-                folderSuggestions: document.getElementById('folder-suggestions'),
-                subjectInput: document.getElementById('template-subject'),
-                descriptionInput: document.getElementById('template-description'),
-                targetInput: document.getElementById('template-target'),
-                purposeInput: document.getElementById('template-purpose'),
-                fieldsContainer: document.getElementById('dynamic-fields-container'),
-                addFieldButton: document.getElementById('add-field-button'),
-                placeholdersWrapper: document.getElementById('interactive-placeholders-wrapper'),
-                placeholdersContainer: document.getElementById('interactive-placeholders-container'),
-                bodyTextarea: document.getElementById('template-body'),
-                editIdInput: document.getElementById('template-edit-id'),
-                editVersionInput: document.getElementById('template-edit-version'),
-                saveModeInput: document.getElementById('template-save-mode'),
-                userTemplatesList: document.getElementById('user-templates-list'),
-                cancelEditButton: document.getElementById('cancel-edit-button'),
-                saveStatus: document.getElementById('save-status'),
-                exportButton: document.getElementById('export-button'),
-                importButton: document.getElementById('import-button'),
-                importFileInput: document.getElementById('import-file-input'),
-                showArchivedToggle: document.getElementById('show-archived-toggle')
-            },
-            batch: {
-                templateSelect: document.getElementById('batch-template-select'),
-                csvFileInput: document.getElementById('csv-file-input'),
-                generateButton: document.getElementById('batch-generate-button'),
-                outputContainer: document.getElementById('batch-output-container'),
-                output: document.getElementById('batch-output')
-            },
-            sync: {
-                indicator: document.getElementById('sync-status-indicator'),
-                authContainer: document.getElementById('firebase-auth-container'),
-                controls: document.getElementById('firebase-sync-controls'),
-                emailInput: document.getElementById('firebase-email'),
-                passwordInput: document.getElementById('firebase-password'),
-                signinButton: document.getElementById('firebase-signin-button'),
-                signupButton: document.getElementById('firebase-signup-button'),
-                signoutButton: document.getElementById('firebase-signout-button'),
-                authStatus: document.getElementById('firebase-auth-status'),
-                saveButton: document.getElementById('firebase-save-button'),
-                loadButton: document.getElementById('firebase-load-button'),
-                status: document.getElementById('firebase-status')
-            },
+            tabs: { buttons: document.querySelectorAll('.tab-button'), contents: { 'use-templates': document.getElementById('tab-content-use-templates'), 'batch-generate': document.getElementById('tab-content-batch-generate'), 'manage-templates': document.getElementById('tab-content-manage-templates'), 'sync-settings': document.getElementById('tab-content-sync-settings') }},
+            use: { templateSelect: document.getElementById('template-select'), folderFilter: document.getElementById('folder-filter'), versionSelectContainer: document.getElementById('version-select-container'), versionSelect: document.getElementById('version-select'), fieldsContainer: document.getElementById('fields-container'), generateButton: document.getElementById('generate-button'), generatedTextContainer: document.getElementById('generated-text-container'), generatedSubjectWrapper: document.getElementById('generated-subject-wrapper'), generatedSubjectInput: document.getElementById('generated-subject'), generatedTextDiv: document.getElementById('generated-text'), copySubjectButton: document.getElementById('copy-subject-button'), copyBodyButton: document.getElementById('copy-body-button') },
+            manage: { form: document.getElementById('template-form'), formTitle: document.getElementById('form-title'), nameInput: document.getElementById('template-name'), folderInput: document.getElementById('template-folder'), folderSuggestions: document.getElementById('folder-suggestions'), subjectInput: document.getElementById('template-subject'), descriptionInput: document.getElementById('template-description'), targetInput: document.getElementById('template-target'), purposeInput: document.getElementById('template-purpose'), fieldsContainer: document.getElementById('dynamic-fields-container'), addFieldButton: document.getElementById('add-field-button'), placeholdersWrapper: document.getElementById('interactive-placeholders-wrapper'), placeholdersContainer: document.getElementById('interactive-placeholders-container'), bodyTextarea: document.getElementById('template-body'), editIdInput: document.getElementById('template-edit-id'), editVersionInput: document.getElementById('template-edit-version'), saveModeInput: document.getElementById('template-save-mode'), userTemplatesList: document.getElementById('user-templates-list'), cancelEditButton: document.getElementById('cancel-edit-button'), saveStatus: document.getElementById('save-status'), exportButton: document.getElementById('export-button'), importButton: document.getElementById('import-button'), importFileInput: document.getElementById('import-file-input'), showArchivedToggle: document.getElementById('show-archived-toggle') },
+            batch: { templateSelect: document.getElementById('batch-template-select'), csvFileInput: document.getElementById('csv-file-input'), generateButton: document.getElementById('batch-generate-button'), outputContainer: document.getElementById('batch-output-container'), output: document.getElementById('batch-output') },
+            sync: { indicator: document.getElementById('sync-status-indicator'), authContainer: document.getElementById('firebase-auth-container'), controls: document.getElementById('firebase-sync-controls'), emailInput: document.getElementById('firebase-email'), passwordInput: document.getElementById('firebase-password'), signinButton: document.getElementById('firebase-signin-button'), signupButton: document.getElementById('firebase-signup-button'), signoutButton: document.getElementById('firebase-signout-button'), authStatus: document.getElementById('firebase-auth-status'), saveButton: document.getElementById('firebase-save-button'), loadButton: document.getElementById('firebase-load-button'), status: document.getElementById('firebase-status') },
             versionDisplay: document.getElementById('version-display')
         };
         
@@ -447,13 +360,12 @@
             ui.use.copySubjectButton.addEventListener('click', () => copyToClipboard(ui.use.generatedSubjectInput, ui.use.copySubjectButton, "Copy Subject"));
             ui.manage.form.addEventListener('submit', handleSaveTemplate);
             ui.manage.cancelEditButton.addEventListener('click', cancelEdit);
-            ui.manage.addFieldButton.addEventListener('click', () => addFieldInputRow());
+            ui.manage.addFieldButton.addEventListener('click', () => addFieldInputRow({name: '', desc: ''}));
             ui.manage.exportButton.addEventListener('click', exportTemplates);
             ui.manage.importButton.addEventListener('click', () => ui.manage.importFileInput.click());
             ui.manage.importFileInput.addEventListener('change', handleImportFile);
             ui.manage.showArchivedToggle.addEventListener('change', (e) => {
-                showArchived = e.target.checked;
-                renderTemplateManager();
+                showArchived = e.target.checked; renderTemplateManager();
             });
             ui.batch.generateButton.addEventListener('click', handleBatchGenerate);
             
@@ -465,6 +377,8 @@
 
             ui.manage.bodyTextarea.addEventListener('dragover', e => e.preventDefault());
             ui.manage.bodyTextarea.addEventListener('drop', handleDrop);
+            
+            setupDragAndDrop();
 
             initializeFirebase();
             if (ui.versionDisplay) {
@@ -474,14 +388,11 @@
 
         function sanitizeForId(text) {
             if (typeof text !== 'string') return '';
-            // Replaces any character that is not a letter, number, hyphen, or underscore with an underscore.
             return text.replace(/[^a-zA-Z0-9\-_]/g, '_');
         }
         
         function setupTabs() {
-            ui.tabs.buttons.forEach(button => {
-                button.addEventListener('click', (e) => switchTab(e.currentTarget.dataset.tab));
-            });
+            ui.tabs.buttons.forEach(button => button.addEventListener('click', (e) => switchTab(e.currentTarget.dataset.tab)));
             switchTab('use-templates');
         }
 
@@ -494,12 +405,13 @@
         function migrateTemplates(templates) {
             if (!Array.isArray(templates)) return [];
             return templates.map(t => {
-                if (t.versions) return t;
+                if (t.versions && t.versions[0].fields && typeof t.versions[0].fields[0] === 'object') return t;
                 const { name, folder, subject, description, target, purpose, fields, template, createdAt, updatedAt, isDefault, isArchived } = t;
-                return {
-                    id: crypto.randomUUID(), name: name || "Untitled Template", folder: folder || "", isArchived: isArchived || false, isDefault: isDefault || false, createdAt: createdAt || new Date().toISOString(), updatedAt: updatedAt || new Date().toISOString(),
-                    versions: [{ version: 1, createdAt: createdAt || new Date().toISOString(), subject, description, target, purpose, fields, template }]
-                };
+                const newVersions = (t.versions || [{ subject, description, target, purpose, fields, template, createdAt }]).map(v => ({
+                    ...v,
+                    fields: Array.isArray(v.fields) ? v.fields.map(f => typeof f === 'string' ? { name: f, desc: '' } : f) : []
+                }));
+                return { id: t.id || crypto.randomUUID(), name: name || "Untitled Template", folder: folder || "", isArchived: isArchived || false, isDefault: isDefault || false, createdAt: createdAt || new Date().toISOString(), updatedAt: updatedAt || new Date().toISOString(), versions: newVersions };
             });
         }
         
@@ -511,7 +423,7 @@
                 localStorage.setItem('userTemplates', JSON.stringify(userTemplates));
             } catch (e) { console.error("Error parsing or migrating user templates:", e); }
             
-            allTemplates = [...defaultTemplates, ...userTemplates];
+            allTemplates = [...defaultTemplates.map(t => ({...t, versions: migrateTemplates([t])[0].versions })), ...userTemplates];
             populateFolderFilter();
             populateTemplateSelector();
             populateBatchTemplateSelector();
@@ -536,7 +448,6 @@
             ui.use.templateSelect.innerHTML = '<option value="">Select a template...</option>';
             const selectedFolder = ui.use.folderFilter.value;
             const filtered = allTemplates.filter(t => !t.isArchived && (!selectedFolder || (t.folder || 'Uncategorized') === selectedFolder));
-            
             filtered.forEach(template => {
                 const option = document.createElement('option');
                 option.value = template.id;
@@ -562,21 +473,16 @@
             ui.use.fieldsContainer.innerHTML = '<p class="text-gray-500 col-span-full">Please select a template first.</p>';
             ui.use.generateButton.disabled = true;
             currentTemplateVersion = null;
-
             if (!selectedId) return;
-
             const templateFamily = allTemplates.find(t => t.id === selectedId);
             if (!templateFamily || !templateFamily.versions || templateFamily.versions.length === 0) return;
-
             ui.use.versionSelect.innerHTML = '';
             [...templateFamily.versions].sort((a, b) => b.version - a.version).forEach((v, index) => {
                 const option = document.createElement('option');
                 option.value = v.version;
-                const date = new Date(v.createdAt).toLocaleString();
-                option.textContent = `Version ${v.version}${index === 0 ? ' (Latest)' : ''} - Created on ${date}`;
+                option.textContent = `Version ${v.version}${index === 0 ? ' (Latest)' : ''} - Created on ${new Date(v.createdAt).toLocaleString()}`;
                 ui.use.versionSelect.appendChild(option);
             });
-
             ui.use.versionSelectContainer.classList.remove('hidden');
             loadSelectedVersion();
         }
@@ -585,32 +491,36 @@
             const selectedId = ui.use.templateSelect.value;
             const selectedVersionNum = parseInt(ui.use.versionSelect.value, 10);
             if (!selectedId || isNaN(selectedVersionNum)) return;
-
             const templateFamily = allTemplates.find(t => t.id === selectedId);
             const version = templateFamily?.versions.find(v => v.version === selectedVersionNum);
-
             if (!version) return;
-
             currentTemplateVersion = version;
             ui.use.fieldsContainer.innerHTML = '';
             
             if (!version.fields || version.fields.length === 0) {
                 ui.use.fieldsContainer.innerHTML = '<p class="text-gray-500 col-span-full">This template version has no placeholders.</p>';
             } else {
-                version.fields.forEach(fieldName => {
-                    if (!fieldName) return;
-                    const sanitizedId = `field-${sanitizeForId(fieldName)}`;
+                version.fields.forEach(field => {
+                    if (!field.name) return;
+                    const sanitizedId = `field-${sanitizeForId(field.name)}`;
                     const fieldWrapper = document.createElement('div');
                     const label = document.createElement('label');
                     label.setAttribute('for', sanitizedId);
-                    label.className = "block text-sm font-medium text-gray-700 mb-1";
-                    label.textContent = fieldName;
+                    label.className = "block text-sm font-medium text-gray-700";
+                    label.textContent = field.name;
+                    fieldWrapper.appendChild(label);
+                    if (field.desc) {
+                        const descEl = document.createElement('p');
+                        descEl.className = "text-xs text-gray-500 mb-1";
+                        descEl.textContent = field.desc;
+                        fieldWrapper.appendChild(descEl);
+                    }
                     const input = document.createElement('input');
                     input.type = 'text'; input.id = sanitizedId;
                     input.className = "w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm dynamic-field";
-                    input.setAttribute('data-original-name', fieldName);
-                    input.placeholder = `Enter ${fieldName}...`;
-                    fieldWrapper.appendChild(label); fieldWrapper.appendChild(input);
+                    input.setAttribute('data-original-name', field.name);
+                    input.placeholder = `Enter ${field.name}...`;
+                    fieldWrapper.appendChild(input);
                     ui.use.fieldsContainer.appendChild(fieldWrapper);
                 });
             }
@@ -622,18 +532,11 @@
             const fieldData = {};
             document.querySelectorAll('#fields-container .dynamic-field').forEach(input => {
                 const originalName = input.getAttribute('data-original-name');
-                if (originalName) {
-                    fieldData[originalName] = input.value;
-                }
+                if (originalName) fieldData[originalName] = input.value;
             });
             const process = (text) => {
                 if (!text) return "";
-                return text.replace(/\{\{(.+?)\}\}/g, (match, placeholderName) => {
-                    if (Object.prototype.hasOwnProperty.call(fieldData, placeholderName)) {
-                        return fieldData[placeholderName];
-                    }
-                    return match;
-                });
+                return text.replace(/\{\{(.+?)\}\}/g, (match, placeholderName) => (Object.prototype.hasOwnProperty.call(fieldData, placeholderName) ? fieldData[placeholderName] : match));
             };
             ui.use.generatedSubjectInput.value = process(currentTemplateVersion.subject);
             ui.use.generatedTextDiv.innerText = process(currentTemplateVersion.template);
@@ -650,31 +553,22 @@
         function showCopyFeedback(button, originalText) {
             button.textContent = 'Copied!';
             button.classList.add('bg-green-500', 'text-white');
-            setTimeout(() => {
-                button.textContent = originalText;
-                button.classList.remove('bg-green-500', 'text-white');
-            }, 2000);
+            setTimeout(() => { button.textContent = originalText; button.classList.remove('bg-green-500', 'text-white'); }, 2000);
         }
         
         function handleBatchGenerate() {
             const templateId = ui.batch.templateSelect.value;
             const file = ui.batch.csvFileInput.files[0];
             if (!templateId || !file) return alert("Please select a template and a CSV file.");
-            
             const templateFamily = allTemplates.find(t => t.id === templateId);
             if (!templateFamily) return;
-            
             const latestVersion = [...templateFamily.versions].sort((a,b) => b.version - a.version)[0];
-
             const reader = new FileReader();
             reader.onload = (e) => {
                 const lines = e.target.result.split(/\r\n?|\n/).filter(Boolean);
                 if (lines.length < 2) return alert("CSV must have a header and at least one data row.");
                 const headers = lines[0].split(',').map(h => h.trim());
-                const dataRows = lines.slice(1).map(line => line.split(',').reduce((obj, val, i) => {
-                    obj[headers[i]] = val.trim();
-                    return obj;
-                }, {}));
+                const dataRows = lines.slice(1).map(line => line.split(',').reduce((obj, val, i) => { obj[headers[i]] = val.trim(); return obj; }, {}));
                 displayBatchResults(dataRows, latestVersion);
             };
             reader.readAsText(file);
@@ -684,12 +578,7 @@
             ui.batch.output.innerHTML = '';
             const process = (text, data) => {
                 if (!text || typeof text !== 'string' || !data || typeof data !== 'object') return "";
-                return text.replace(/\{\{(.+?)\}\}/g, (match, placeholderName) => {
-                    if (Object.prototype.hasOwnProperty.call(data, placeholderName)) {
-                        return data[placeholderName];
-                    }
-                    return match;
-                });
+                return text.replace(/\{\{(.+?)\}\}/g, (match, placeholderName) => (Object.prototype.hasOwnProperty.call(data, placeholderName) ? data[placeholderName] : match));
             };
             dataRows.forEach((row, i) => {
                 const subject = process(version.subject, row);
@@ -714,17 +603,18 @@
             const editVersionNum = parseInt(ui.manage.editVersionInput.value, 10);
             const saveMode = ui.manage.saveModeInput.value;
             
-            const fields = Array.from(ui.manage.fieldsContainer.querySelectorAll('input')).map(input => input.value.trim()).filter(Boolean);
+            const fields = Array.from(ui.manage.fieldsContainer.querySelectorAll('.field-row')).map(row => ({
+                name: row.querySelector('.field-name').value.trim(),
+                desc: row.querySelector('.field-desc').value.trim()
+            })).filter(f => f.name);
+            
             let userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]');
             const now = new Date().toISOString();
 
             const versionData = {
-                subject: ui.manage.subjectInput.value.trim(),
-                description: ui.manage.descriptionInput.value.trim(),
-                target: ui.manage.targetInput.value.trim(),
-                purpose: ui.manage.purposeInput.value.trim(),
-                fields,
-                template: templateText,
+                subject: ui.manage.subjectInput.value.trim(), description: ui.manage.descriptionInput.value.trim(),
+                target: ui.manage.targetInput.value.trim(), purpose: ui.manage.purposeInput.value.trim(),
+                fields, template: templateText,
             };
 
             if (!editId) { // Creating a brand new template
@@ -737,11 +627,9 @@
             } else { // Modifying an existing template family
                 const templateFamily = userTemplates.find(t => t.id === editId);
                 if (!templateFamily) return;
-
                 templateFamily.name = name;
                 templateFamily.folder = ui.manage.folderInput.value.trim();
                 templateFamily.updatedAt = now;
-
                 if (saveMode === 'overwrite_version' && editVersionNum) {
                     if (!confirm(`Are you sure you want to permanently overwrite Version ${editVersionNum}? This action cannot be undone.`)) return;
                     const versionIndex = templateFamily.versions.findIndex(v => v.version === editVersionNum);
@@ -764,32 +652,63 @@
             loadTemplates();
         }
 
-        function addFieldInputRow(value = '') {
+        function addFieldInputRow(field = { name: '', desc: '' }) {
             const fieldRow = document.createElement('div');
-            fieldRow.className = "flex items-center gap-2";
-            fieldRow.innerHTML = `<input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="e.g., Student Name" value="${value}">
+            fieldRow.className = "flex items-center gap-2 field-row";
+            fieldRow.draggable = true;
+            fieldRow.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 text-gray-400 cursor-grab drag-handle flex-shrink-0"><path fill-rule="evenodd" d="M10 3a.75.75 0 01.75.75v12.5a.75.75 0 01-1.5 0V3.75A.75.75 0 0110 3zM3.5 10a.75.75 0 01.75-.75h11.5a.75.75 0 010 1.5H4.25a.75.75 0 01-.75-.75z" clip-rule="evenodd" /></svg>
+                <div class="flex-grow grid grid-cols-2 gap-2">
+                    <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm field-name" placeholder="Placeholder Name" value="${field.name}">
+                    <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm field-desc" placeholder="Helpful Description (e.g., DD/MM/YYYY)" value="${field.desc}">
+                </div>
                 <button type="button" class="text-sm text-red-600 hover:underline flex-shrink-0 remove-field-btn">Remove</button>`;
-            fieldRow.querySelector('input').addEventListener('input', updateInteractivePlaceholders);
-            fieldRow.querySelector('.remove-field-btn').addEventListener('click', () => {
-                fieldRow.remove();
-                updateInteractivePlaceholders();
-            });
+            fieldRow.querySelector('.remove-field-btn').addEventListener('click', () => { fieldRow.remove(); updateInteractivePlaceholders(); });
             ui.manage.fieldsContainer.appendChild(fieldRow);
             updateInteractivePlaceholders();
         }
         
+        function setupDragAndDrop() {
+            const container = ui.manage.fieldsContainer;
+            let draggedItem = null;
+            container.addEventListener('dragstart', e => {
+                if (e.target.classList.contains('field-row')) {
+                    draggedItem = e.target;
+                    setTimeout(() => e.target.classList.add('dragging'), 0);
+                }
+            });
+            container.addEventListener('dragend', e => {
+                if (draggedItem) {
+                    draggedItem.classList.remove('dragging');
+                    draggedItem = null;
+                }
+            });
+            container.addEventListener('dragover', e => {
+                e.preventDefault();
+                const afterElement = [...container.querySelectorAll('.field-row:not(.dragging)')].reduce((closest, child) => {
+                    const box = child.getBoundingClientRect();
+                    const offset = e.clientY - box.top - box.height / 2;
+                    return (offset < 0 && offset > closest.offset) ? { offset: offset, element: child } : closest;
+                }, { offset: Number.NEGATIVE_INFINITY }).element;
+                if (afterElement == null) {
+                    container.appendChild(draggedItem);
+                } else {
+                    container.insertBefore(draggedItem, afterElement);
+                }
+            });
+        }
+        
         function updateInteractivePlaceholders() {
             ui.manage.placeholdersContainer.innerHTML = '';
-            const fields = Array.from(ui.manage.fieldsContainer.querySelectorAll('input')).map(input => input.value.trim()).filter(Boolean);
+            const fields = Array.from(ui.manage.fieldsContainer.querySelectorAll('.field-name')).map(input => input.value.trim()).filter(Boolean);
             if (fields.length > 0) {
                 fields.forEach(name => {
                     const tag = document.createElement('div');
                     tag.textContent = name;
                     tag.className = "placeholder-tag bg-blue-100 text-blue-800 text-sm font-semibold px-2.5 py-1 rounded-full";
                     tag.draggable = true;
-                    const placeholder = `{{${name}}}`;
-                    tag.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', placeholder));
-                    tag.addEventListener('dblclick', () => insertPlaceholder(placeholder));
+                    tag.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', `{{${name}}}`));
+                    tag.addEventListener('dblclick', () => insertPlaceholder(`{{${name}}}`));
                     ui.manage.placeholdersContainer.appendChild(tag);
                 });
                 ui.manage.placeholdersWrapper.classList.remove('hidden');
@@ -806,18 +725,8 @@
             textarea.focus();
         }
         
-        function handleDrop(e) {
-            e.preventDefault();
-            const textToInsert = e.dataTransfer.getData('text/plain');
-            if (/\{\{.+?\}\}/.test(textToInsert)) {
-                 insertPlaceholder(textToInsert);
-            }
-        }
-        
-        function showSaveStatus(message) {
-             ui.manage.saveStatus.textContent = message;
-             setTimeout(() => { ui.manage.saveStatus.textContent = ''; }, 3000);
-        }
+        function handleDrop(e) { e.preventDefault(); const textToInsert = e.dataTransfer.getData('text/plain'); if (/\{\{.+?\}\}/.test(textToInsert)) insertPlaceholder(textToInsert); }
+        function showSaveStatus(message) { ui.manage.saveStatus.textContent = message; setTimeout(() => { ui.manage.saveStatus.textContent = ''; }, 3000); }
         
         function loadTemplateIntoEditor(config) {
             const { family, version, title, saveMode } = config;
@@ -843,47 +752,29 @@
             const family = allTemplates.find(t => t.id === templateId);
             const version = family?.versions.find(v => v.version == versionNumber);
             if (!family || !version) return;
-            loadTemplateIntoEditor({
-                family, version,
-                title: `Editing Version ${version.version} of "${family.name}"`,
-                saveMode: 'overwrite_version'
-            });
+            loadTemplateIntoEditor({ family, version, title: `Editing Version ${version.version} of "${family.name}"`, saveMode: 'overwrite_version' });
         }
 
         function duplicateAsNewVersion(templateId, versionNumber) {
             const family = allTemplates.find(t => t.id === templateId);
             const version = family?.versions.find(v => v.version == versionNumber);
             if (!family || !version) return;
-            loadTemplateIntoEditor({
-                family, version,
-                title: `Creating New Version from v${version.version} of "${family.name}"`,
-                saveMode: 'new_version'
-            });
+            loadTemplateIntoEditor({ family, version, title: `Creating New Version from v${version.version} of "${family.name}"`, saveMode: 'new_version' });
         }
         
         function duplicateAsNewTemplate(templateId, versionNumber) {
             const family = allTemplates.find(t => t.id === templateId);
             const version = family?.versions.find(v => v.version == versionNumber);
             if (!family || !version) return;
-            // Clear IDs to signal creation of a new template family
             const newFamily = { ...family, id: '', name: `Copy of ${family.name}` };
             const newVersion = { ...version, version: '' };
-            loadTemplateIntoEditor({
-                family: newFamily, version: newVersion,
-                title: `Creating New Template from "${family.name}" v${version.version}`,
-                saveMode: 'new_template' // This will be handled by the empty ID
-            });
+            loadTemplateIntoEditor({ family: newFamily, version: newVersion, title: `Creating New Template from "${family.name}" v${version.version}`, saveMode: 'new_template' });
         }
 
         function addBlankVersion(templateId) {
             const family = allTemplates.find(t => t.id === templateId);
             if (!family) return;
-            const blankVersion = { fields: [], template: '' };
-            loadTemplateIntoEditor({
-                family, version: blankVersion,
-                title: `Adding Blank New Version to "${family.name}"`,
-                saveMode: 'new_version'
-            });
+            loadTemplateIntoEditor({ family, version: { fields: [] }, title: `Adding Blank New Version to "${family.name}"`, saveMode: 'new_version' });
         }
 
         function cancelEdit() {
@@ -929,60 +820,28 @@
             ui.manage.userTemplatesList.innerHTML = '';
             const userTemplates = allTemplates.filter(t => !t.isDefault);
             const visibleTemplates = userTemplates.filter(t => showArchived || !t.isArchived);
-
             if (visibleTemplates.length === 0) {
-                ui.manage.userTemplatesList.innerHTML = `<p class="text-gray-500">${showArchived ? 'No archived templates.' : 'You haven\'t created any templates yet.'}</p>`;
-                return;
+                ui.manage.userTemplatesList.innerHTML = `<p class="text-gray-500">${showArchived ? 'No archived templates.' : 'You haven\'t created any templates yet.'}</p>`; return;
             }
-
             visibleTemplates.forEach(template => {
                 const latestVersion = [...template.versions].sort((a,b) => b.version - a.version)[0];
                 const item = document.createElement('div');
                 item.className = `template-list-item block p-4 border rounded-lg ${template.isArchived ? 'opacity-60 bg-gray-100' : ''}`;
-                
                 let versionsHtml = [...template.versions].sort((a,b) => b.version - a.version).map(v => `
                     <li class="p-3 border-t">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <p class="font-semibold">Version ${v.version} <span class="font-normal text-gray-500">- Created: ${new Date(v.createdAt).toLocaleString()}</span></p>
-                                <p class="text-gray-600 italic mt-1 text-sm">"${v.description || 'No description'}"</p>
-                            </div>
-                        </div>
+                        <div class="flex justify-between items-start"><div><p class="font-semibold">Version ${v.version} <span class="font-normal text-gray-500">- Created: ${new Date(v.createdAt).toLocaleString()}</span></p><p class="text-gray-600 italic mt-1 text-sm">"${v.description || 'No description'}"</p></div></div>
                         <div class="mt-2 pt-2 border-t border-gray-200 space-x-4 text-sm">
                             <button class="font-semibold text-blue-600 hover:underline use-version-btn" data-id="${template.id}" data-version="${v.version}">Use</button>
                             <button class="font-semibold text-gray-700 hover:underline edit-version-btn" data-id="${template.id}" data-version="${v.version}">Edit</button>
                             <button class="font-semibold text-gray-700 hover:underline duplicate-new-version-btn" data-id="${template.id}" data-version="${v.version}">Duplicate as New Version</button>
                             <button class="font-semibold text-gray-700 hover:underline duplicate-new-template-btn" data-id="${template.id}" data-version="${v.version}">Duplicate as New Template</button>
                         </div>
-                    </li>
-                `).join('');
-
+                    </li>`).join('');
                 item.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h4 class="font-semibold text-lg text-gray-800">${template.name}</h4>
-                            <div class="flex items-center gap-2 mt-1">
-                                <span class="text-xs font-medium bg-gray-200 text-gray-800 px-2 py-0.5 rounded-full">Latest: v${latestVersion.version}</span>
-                                ${template.folder ? `<span class="text-xs font-medium bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">${template.folder}</span>` : ''}
-                                ${template.isArchived ? `<span class="text-xs font-medium bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">Archived</span>` : ''}
-                            </div>
-                        </div>
-                        <div class="space-x-3 flex-shrink-0 ml-4">
-                            <button class="text-sm text-green-600 hover:underline duplicate-template-btn" data-id="${template.id}">Duplicate Template</button>
-                            <button class="text-sm text-yellow-600 hover:underline archive-btn" data-id="${template.id}">${template.isArchived ? 'Unarchive' : 'Archive'}</button>
-                            <button class="text-sm text-red-600 hover:underline delete-btn" data-id="${template.id}">Delete</button>
-                        </div>
-                    </div>
-                    <details class="mt-4">
-                        <summary class="cursor-pointer text-sm font-semibold text-gray-600 hover:underline">View ${template.versions.length} Version(s)</summary>
-                        <div class="p-2 border-t mt-2">
-                             <button class="text-sm font-semibold text-green-700 hover:underline add-blank-version-btn" data-id="${template.id}">+ Add Blank New Version</button>
-                        </div>
-                        <ul class="bg-gray-50 rounded-md border">${versionsHtml}</ul>
-                    </details>`;
+                    <div class="flex justify-between items-start"><div><h4 class="font-semibold text-lg text-gray-800">${template.name}</h4><div class="flex items-center gap-2 mt-1"><span class="text-xs font-medium bg-gray-200 text-gray-800 px-2 py-0.5 rounded-full">Latest: v${latestVersion.version}</span>${template.folder ? `<span class="text-xs font-medium bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">${template.folder}</span>` : ''}${template.isArchived ? `<span class="text-xs font-medium bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">Archived</span>` : ''}</div></div><div class="space-x-3 flex-shrink-0 ml-4"><button class="text-sm text-green-600 hover:underline duplicate-template-btn" data-id="${template.id}">Duplicate Template</button><button class="text-sm text-yellow-600 hover:underline archive-btn" data-id="${template.id}">${template.isArchived ? 'Unarchive' : 'Archive'}</button><button class="text-sm text-red-600 hover:underline delete-btn" data-id="${template.id}">Delete</button></div></div>
+                    <details class="mt-4"><summary class="cursor-pointer text-sm font-semibold text-gray-600 hover:underline">View ${template.versions.length} Version(s)</summary><div class="p-2 border-t mt-2"><button class="text-sm font-semibold text-green-700 hover:underline add-blank-version-btn" data-id="${template.id}">+ Add Blank New Version</button></div><ul class="bg-gray-50 rounded-md border">${versionsHtml}</ul></details>`;
                 ui.manage.userTemplatesList.appendChild(item);
             });
-
             ui.manage.userTemplatesList.querySelectorAll('.archive-btn').forEach(btn => btn.addEventListener('click', (e) => toggleArchiveTemplate(e.target.dataset.id)));
             ui.manage.userTemplatesList.querySelectorAll('.delete-btn').forEach(btn => btn.addEventListener('click', (e) => deleteTemplate(e.target.dataset.id)));
             ui.manage.userTemplatesList.querySelectorAll('.duplicate-template-btn').forEach(btn => btn.addEventListener('click', (e) => duplicateTemplate(e.target.dataset.id)));
@@ -1001,8 +860,7 @@
             newTemplate.id = crypto.randomUUID();
             newTemplate.name = `Copy of ${originalTemplate.name}`;
             newTemplate.isDefault = false;
-            newTemplate.createdAt = new Date().toISOString();
-            newTemplate.updatedAt = new Date().toISOString();
+            newTemplate.createdAt = newTemplate.updatedAt = new Date().toISOString();
             userTemplates.push(newTemplate);
             localStorage.setItem('userTemplates', JSON.stringify(userTemplates));
             setSyncState('unsynced');
@@ -1048,8 +906,14 @@
                 onAuthStateChanged(firebaseAuth, user => {
                     currentUser = user;
                     updateFirebaseAuthStatus(!!user);
-                    if(user) listenForTemplateChanges();
-                    else if (templatesUnsubscribe) { templatesUnsubscribe(); templatesUnsubscribe = null; loadTemplates(); }
+                    if (user) {
+                        if (syncState === 'unsynced') { saveToFirebase(); }
+                        listenForTemplateChanges();
+                    } else if (templatesUnsubscribe) {
+                        templatesUnsubscribe();
+                        templatesUnsubscribe = null;
+                        loadTemplates();
+                    }
                 });
             } catch (e) {
                 console.error("Firebase initialization error: ", e);
@@ -1057,29 +921,10 @@
             }
         }
 
-        function handleFirebaseSignIn() {
-            const email = ui.sync.emailInput.value;
-            const password = ui.sync.passwordInput.value;
-            if (!email || !password) return alert("Please enter email and password.");
-            signInWithEmailAndPassword(firebaseAuth, email, password)
-                .catch(error => alert(`Sign in failed: ${error.message}`));
-        }
-        
-        function handleFirebaseSignUp() {
-            const email = ui.sync.emailInput.value;
-            const password = ui.sync.passwordInput.value;
-            if (!email || !password) return alert("Please enter email and password.");
-            createUserWithEmailAndPassword(firebaseAuth, email, password)
-                .catch(error => alert(`Sign up failed: ${error.message}`));
-        }
-        
+        function handleFirebaseSignIn() { const email = ui.sync.emailInput.value, password = ui.sync.passwordInput.value; if (!email || !password) return alert("Please enter email and password."); signInWithEmailAndPassword(firebaseAuth, email, password).catch(error => alert(`Sign in failed: ${error.message}`)); }
+        function handleFirebaseSignUp() { const email = ui.sync.emailInput.value, password = ui.sync.passwordInput.value; if (!email || !password) return alert("Please enter email and password."); createUserWithEmailAndPassword(firebaseAuth, email, password).catch(error => alert(`Sign up failed: ${error.message}`)); }
         function handleFirebaseSignOut() { signOut(firebaseAuth); }
-
-        function updateFirebaseAuthStatus(isSignedIn) {
-            ui.sync.authContainer.classList.toggle('hidden', isSignedIn);
-            ui.sync.controls.classList.toggle('hidden', !isSignedIn);
-            if (isSignedIn) ui.sync.authStatus.textContent = `Signed in as ${currentUser.email}`;
-        }
+        function updateFirebaseAuthStatus(isSignedIn) { ui.sync.authContainer.classList.toggle('hidden', isSignedIn); ui.sync.controls.classList.toggle('hidden', !isSignedIn); if (isSignedIn) ui.sync.authStatus.textContent = `Signed in as ${currentUser.email}`; }
 
         async function saveToFirebase() {
             if (!currentUser) return alert("You must be signed in to save to Firebase.");
@@ -1090,8 +935,7 @@
                 await setDoc(userDocRef, { templates: JSON.parse(userTemplates), updatedAt: new Date() });
                 setSyncState('synced');
             } catch (error) {
-                setSyncState('error');
-                console.error("Firebase save error:", error);
+                setSyncState('error'); console.error("Firebase save error:", error);
             }
         }
 
@@ -1108,7 +952,7 @@
                         setSyncState('synced');
                     }
                 } else {
-                    saveToFirebase(); // First time sync
+                    saveToFirebase();
                 }
             });
         }
@@ -1131,8 +975,7 @@
                     setSyncState('synced');
                 }
             } catch (error) {
-                setSyncState('error');
-                console.error("Firebase load error:", error);
+                setSyncState('error'); console.error("Firebase load error:", error);
             }
         }
 

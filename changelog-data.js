@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v9.11.1-alpha",
+        date: "2025-09-15",
+        changes: [
+            "In the Mergetool: Added ability to reorder placeholder descriptions.",
+            "In the Mergetool: Added placeholder descriptions.",
+        ]
+    },
+    {
         version: "v9.11.0",
         date: "2025-09-15",
         changes: [
