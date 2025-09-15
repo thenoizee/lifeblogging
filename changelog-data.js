@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v9.10.0-alpha",
+        date: "2025-09-15",
+        changes: [
+            "In the Hub: Added a new 'PDF Tools' suite, accessible from the main hub.",
+            "In PDF Tools: Added features to organize, merge, and extract pages from PDF files.",
+            "In PDF Tools: Added capabilities for signing, adding text, redacting, and watermarking PDFs.",
+            "In PDF Tools: Implemented tools to convert PDFs to images and vice-versa.",
+            "In PDF Tools: Added options for flattening, protecting, and unlocking PDF files.",
+        ]
+    },
+    {
     version: "v9.9.2-alpha",
     date: "2025-09-14",
     changes: [
