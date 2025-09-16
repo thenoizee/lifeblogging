@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v9.12.1-alpha",
+        date: "2025-09-16",
+        changes: [
+        "In the Unlock PDF tool: Improved the unlocking engine to successfully process files with non-standard or slightly corrupted structures.",
+        "In the Unlock PDF tool: Fixed a bug where incorrect 'wrong password' errors were shown for corrupted files.",
+        "In the Unlock PDF tool: Added a new alert with instructions on how to repair corrupted PDFs using the 'Print to PDF' method.",
+        ]
+    },
+    {
         version: "v9.12.0-alpha",
         date: "2025-09-16",
         changes: [
