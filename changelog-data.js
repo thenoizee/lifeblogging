@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v9.12.0-alpha",
+        date: "2025-09-16",
+        changes: [
+            "In the Email Template Generator: The notification for copying generated text is now clearer and more prominent.",
+            "In the Email Template Generator: Added smarter template saving logic to prevent accidental creation of duplicate templates with the same name.",
+            "In the Email Template Generator: Users can now define custom options for dropdown placeholders.",
+            "In the Email Template Generator: Fixed a bug that caused an error when saving templates that included dropdown placeholders.",
+        ]
+    },
+    {
         version: "v9.11.1-alpha",
         date: "2025-09-15",
         changes: [
