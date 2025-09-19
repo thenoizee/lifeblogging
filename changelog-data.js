@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v9.12.2-alpha",
+        date: "2025-09-19",
+        changes: [
+        "In the Email Template Generator: Added Conflict Resolution UI: When a sync conflict is found, a new modal now appears, allowing users to compare versions and choose whether to keep the local or cloud data.",
+        "In the Email Template Generator: Implemented Live Syncing: Changes to templates (creating, editing, archiving) are now automatically saved to the cloud in real-time while signed in.",
+        "In the Email Template Generator: Added Live Sync Status Indicator: The main UI now includes a status badge that provides instant feedback on the current sync state (e.g., 'Synced', 'Syncing...', 'Unsynced Changes').",
+        "In the Email Template Generator: Fixed Critical Sync Bug: Resolved a recurring issue where the conflict modal would reappear after being resolved. The fix ensures the comparison logic is deterministic by ignoring timestamps and unstable object property order, focusing purely on content.",
+        "In the Email Template Generator: Fixed Sync Race Condition: The 'Apply Resolutions' button now enters a disabled, loading state to prevent page reloads before the cloud save is complete, which previously caused conflicts to reappear.",
+    ]
+    },
+    {
         version: "v9.12.1-alpha",
         date: "2025-09-16",
         changes: [
