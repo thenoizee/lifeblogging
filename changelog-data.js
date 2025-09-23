@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v9.14.0-alpha",
+        date: "2025-09-23",
+        changes: [
+        "In MediManagr: Fixed a layout issue on the 'Record Doses' page where the schedule would overflow on mobile devices.",
+        "In MediManagr: Added clearer visual feedback when logging a dose from the schedule modal to confirm the action was successful.",
+        "In MediManagr: Corrected a bug where the reminder time for scheduled doses was not being saved, causing it to display as 'N/A' in the history table.",
+        "In MediManagr: Implemented a check to prevent users from logging more scheduled doses than required for a given day from the calendar view.",
+        "In MediManagr: Users can now edit the stock batch of a previously logged dose directly from the history tab's edit modal.",
+    ]
+    },
+    {
         version: "v9.13.0-alpha",
         date: "2025-09-23",
         changes: [
