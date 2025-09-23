@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v9.13.0-alpha",
+        date: "2025-09-23",
+        changes: [
+            "In the Hub: Introduced a new 'Color Palette Generator' tool.",
+            "In the Color Palette Generator: The color picker now displays detailed information about the selected color, including the closest Tailwind CSS class, HEX code, RGB values, and HSL values.",
+        ]
+    },
+    {
         version: "v9.12.2-alpha",
         date: "2025-09-19",
         changes: [
