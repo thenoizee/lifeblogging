@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.15.0-alpha",
+    date: "2025-09-25",
+    changes: [
+        "In Email Generator: Users can now generate drafts and load directly into Gmail once authorized.",
+        "In the Email Generator: Improved folder layout, dark mode toggle, and latest template updated time is now readily available.",
+        
+    ]
+    },
+    {
         version: "v9.14.0-alpha",
         date: "2025-09-23",
         changes: [
