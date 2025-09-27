@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v9.16.0-alpha",
+        date: "2025-09-28",
+        changes: [
+            "Whole App: Update links to apps and tools to be more accurate to their official title.",
+        ]
+    },
+    {
         version: "v9.15.2-alpha",
         date: "2025-09-28",
         changes: [
