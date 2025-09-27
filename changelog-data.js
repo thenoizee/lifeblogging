@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v9.15.2-alpha",
+        date: "2025-09-28",
+        changes: [
+            "In the MediManagr: Added basic contact lens tracking features.",
+            "Whole App: Updated favicons."
+        ]
+    },
+    {
         version: "v9.15.1-alpha",
         date: "2025-09-27",
         changes: [

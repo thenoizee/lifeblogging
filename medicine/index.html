@@ -320,6 +320,7 @@
             <button class="tab-button active" data-tab="dashboard">Dashboard</button>
             <button class="tab-button" data-tab="record-doses">Record Doses</button>
             <button class="tab-button" data-tab="meds">Medications</button>
+            <button class="tab-button" data-tab="lenses">Contact Lenses</button>
             <button class="tab-button" data-tab="history">History</button>
             <button class="tab-button" data-tab="settings">Settings</button>
         </nav>
@@ -477,6 +478,43 @@
                     </div>
                 </details>
                 <div id="stock-list-container"></div>
+            </fieldset>
+        </div>
+
+        <div id="tab-content-lenses" class="tab-content">
+            <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg">
+                <legend class="text-2xl font-semibold px-2 mb-4">Manage Contact Lenses</legend>
+                <details class="bg-[var(--input-bg-color)] p-4 rounded-lg mb-6">
+                    <summary class="font-bold cursor-pointer">Add New Lenses</summary>
+                    <div class="mt-4">
+                        <div class="input-group">
+                            <label for="new-lens-brand">Brand & Type</label>
+                            <input id="new-lens-brand" type="text" placeholder="e.g., Acuvue Oasys" />
+                        </div>
+                        <div class="input-group">
+                            <label for="new-lens-expiry">Expiry Date</label>
+                            <input id="new-lens-expiry" type="date" />
+                        </div>
+                        <div class="input-group">
+                            <label for="new-lens-quantity">Quantity (Pairs)</label>
+                            <input id="new-lens-quantity" type="number" min="1" placeholder="e.g., 30" />
+                        </div>
+                        <div class="button-group">
+                            <button id="add-lens-btn" class="main-button"><i class="fa-solid fa-plus"></i> Add Lenses</button>
+                        </div>
+                    </div>
+                </details>
+
+                <h3>Your Contact Lens Stock</h3>
+                <div id="lens-stock-list" class="mt-4"></div>
+            </fieldset>
+
+            <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg mt-4">
+                <legend class="text-2xl font-semibold px-2 mb-4">Log Daily Wear</legend>
+                <div class="flex gap-4">
+                    <button id="log-left-eye-btn" class="main-button flex-1"><i class="fa-solid fa-eye"></i> Log Left Eye</button>
+                    <button id="log-right-eye-btn" class="main-button flex-1"><i class="fa-solid fa-eye"></i> Log Right Eye</button>
+                </div>
             </fieldset>
         </div>
 
@@ -752,6 +790,7 @@
           user: null,
           medicines: [],
           doses: [],
+          lenses: [],
           allTags: new Set(),
           logDoseStatus: 'taken',
           doseTableSort: { column: 'date', direction: 'desc' },
@@ -774,6 +813,7 @@
               theme: null,
               meds: null,
               doses: null,
+              lenses: null,
           }
       };
 
@@ -859,6 +899,7 @@
           renderTagFilterButtons();
           renderHistoryCalendar();
           renderMedicineDistributionCharts();
+          renderLensStock();
       };
       
       const fetchAllTags = () => {
@@ -1034,7 +1075,6 @@
 
           if (activeMedicines.length === 0) {
              container.innerHTML = `<p class="text-center text-[var(--text-color-secondary)] md:col-span-2">No active medicines. Add one from the Medications tab.</p>`;
-             return;
           }
 
           activeMedicines.forEach(med => {
@@ -1090,6 +1130,26 @@
               `;
               container.appendChild(card);
           });
+          
+          // Contact Lens Dashboard
+            const { remainingPairs, daysUntilEmpty } = calculateLensStockSummary();
+            const lensCard = document.createElement('div');
+            lensCard.className = `stats-box p-4 rounded-lg text-left ${daysUntilEmpty <= 7 ? 'danger' : ''}`;
+            lensCard.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-sm font-semibold"><i class="fa-solid fa-eye" style="color:#3b82f6;"></i> Contact Lenses</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm font-semibold">Pairs Remaining</p>
+                        <p class="text-2xl font-bold">${remainingPairs}</p>
+                    </div>
+                </div>
+                <div class="flex justify-between items-end mt-2">
+                    <p class="text-sm">Supply for: <strong>${daysUntilEmpty} days</strong></p>
+                </div>
+            `;
+            container.appendChild(lensCard);
       };
       
       const renderCalendarView = () => {
@@ -1440,6 +1500,58 @@
         document.querySelectorAll('.undispose-stock-btn').forEach(btn => btn.addEventListener('click', handleUndisposeStock));
         document.querySelectorAll('.edit-stock-btn').forEach(btn => btn.addEventListener('click', handleEditStock));
         document.querySelectorAll('.delete-stock-btn').forEach(btn => btn.addEventListener('click', handleDeleteStock));
+      };
+      
+      const calculateLensStockSummary = () => {
+          const now = new Date();
+          let remainingPairs = 0;
+          
+          appState.lenses.forEach(lensBatch => {
+              const expiryDate = new Date(lensBatch.expiryDate);
+              if(expiryDate >= now) {
+                  remainingPairs += lensBatch.quantity;
+              }
+          });
+          
+          return {
+              remainingPairs,
+              daysUntilEmpty: remainingPairs // Since 1 pair is used per day
+          };
+      };
+
+      const renderLensStock = () => {
+        const lensStockList = document.getElementById('lens-stock-list');
+        lensStockList.innerHTML = '';
+
+        if (appState.lenses.length === 0) {
+            lensStockList.innerHTML = `<p class="text-sm text-[var(--text-color-secondary)]">No contact lens stock added yet.</p>`;
+            return;
+        }
+
+        const now = new Date();
+        const sortedLenses = [...appState.lenses].sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+
+        sortedLenses.forEach(lens => {
+            const expiryDate = new Date(lens.expiryDate);
+            const isExpired = expiryDate < now;
+            const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+
+            const lensItem = document.createElement('div');
+            lensItem.className = `stock-item ${isExpired ? 'expiry-expired' : (daysUntilExpiry <= 30 ? 'expiry-soon' : 'expiry-safe')}`;
+            lensItem.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="font-bold">${lens.brand}</p>
+                        <p class="text-sm">Quantity: ${lens.quantity} pairs</p>
+                        <p class="text-sm">Expires: ${expiryDate.toLocaleDateString()}</p>
+                    </div>
+                    <button class="destructive-button delete-lens-btn" data-id="${lens.id}"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            `;
+            lensStockList.appendChild(lensItem);
+        });
+
+        document.querySelectorAll('.delete-lens-btn').forEach(btn => btn.addEventListener('click', handleDeleteLens));
       };
 
       // --- Data Handling ---
@@ -2124,6 +2236,12 @@
               appState.doses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
               renderAll();
           }, (err) => { console.error("Doses listener error:", err); });
+
+          const lensesQuery = query(collection(db, `users/${userId}/lenses`), orderBy('expiryDate'));
+          appState.unsubscribe.lenses = onSnapshot(lensesQuery, (snapshot) => {
+              appState.lenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+              renderAll();
+          }, (err) => { console.error("Lenses listener error:", err); });
       };
 
       onAuthStateChanged(auth, (user) => {
@@ -2139,6 +2257,7 @@
           appState.user = null;
           appState.medicines = [];
           appState.doses = [];
+          appState.lenses = [];
           cleanupListeners();
           document.getElementById("auth-container").classList.remove("hidden");
           document.getElementById("main-app-container").classList.add("hidden");
@@ -2490,6 +2609,73 @@
             expiryInput.value = '';
         }
       });
+      
+      // Contact Lens Listeners
+      document.getElementById('add-lens-btn').addEventListener('click', async () => {
+        const brand = document.getElementById('new-lens-brand').value.trim();
+        const expiryDate = document.getElementById('new-lens-expiry').value;
+        const quantity = parseInt(document.getElementById('new-lens-quantity').value);
+
+        if (!brand || !expiryDate || !quantity || quantity <= 0) {
+            return showMessage("Please fill in all fields for the contact lenses.", "error");
+        }
+
+        try {
+            await addDoc(collection(db, `users/${appState.user.uid}/lenses`), {
+                brand,
+                expiryDate,
+                quantity,
+                createdAt: Timestamp.now()
+            });
+            showMessage("Contact lenses added to stock!", "success");
+            document.getElementById('new-lens-brand').value = '';
+            document.getElementById('new-lens-expiry').value = '';
+            document.getElementById('new-lens-quantity').value = '';
+        } catch (err) {
+            showMessage("Error adding contact lenses: " + err.message, "error");
+        }
+      });
+
+      const logLensUsage = async (eye) => {
+          const now = new Date();
+          const oldestValidBatch = appState.lenses
+              .filter(lens => new Date(lens.expiryDate) >= now)
+              .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate))[0];
+
+          if (!oldestValidBatch) {
+              return showMessage("No valid contact lens stock available.", "error");
+          }
+
+          try {
+              const lensDocRef = doc(db, `users/${appState.user.uid}/lenses`, oldestValidBatch.id);
+              const newQuantity = oldestValidBatch.quantity - 0.5;
+
+              if (newQuantity <= 0) {
+                  await deleteDoc(lensDocRef);
+                  showMessage(`Used the last lens for the ${eye} eye from the batch expiring on ${new Date(oldestValidBatch.expiryDate).toLocaleDateString()}. Batch removed.`, "success");
+              } else {
+                  await updateDoc(lensDocRef, { quantity: newQuantity });
+                  showMessage(`Logged ${eye} eye lens usage.`, "success");
+              }
+          } catch (err) {
+              showMessage("Error logging lens usage: " + err.message, "error");
+          }
+      };
+
+      document.getElementById('log-left-eye-btn').addEventListener('click', () => logLensUsage('left'));
+      document.getElementById('log-right-eye-btn').addEventListener('click', () => logLensUsage('right'));
+
+      const handleDeleteLens = async (e) => {
+        const lensId = e.target.closest("button").dataset.id;
+        if (confirm("Are you sure you want to delete this contact lens batch?")) {
+            try {
+                await deleteDoc(doc(db, `users/${appState.user.uid}/lenses`, lensId));
+                showMessage("Contact lens batch deleted.", "success");
+            } catch (err) {
+                showMessage("Error deleting lens batch: " + err.message, "error");
+            }
+        }
+      };
 
     </script>
 </body>
