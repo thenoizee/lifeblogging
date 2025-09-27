@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v9.15.1-alpha",
+        date: "2025-09-27",
+        changes: [
+            "Added the WarrantyTrackr app to manage product warranties, with RecipeManagr integration for importing appliances."
+        ]
+    },
+    {
     version: "v9.15.0-alpha",
     date: "2025-09-25",
     changes: [
