@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+        version: "v9.18.0-alpha",
+        date: "2025-09-28",
+        changes: [
+            "In the Email Template Generator: Enhanced Folder Management: The folder input field now suggests existing folders and allows for the creation of new ones seamlessly.",
+            "In the Email Template Generator: Improved Template Organization: The 'Manage Templates' view now groups templates by folder, making them much easier to navigate.",
+            "In the Email Template Generator: Quick 'Use Latest' Access: Added a 'Use Latest' button directly to each template in the management list, allowing for one-click use of the most recent version without needing to expand the version history.",
+            "In the Email Template Generator: Intuitive Collapse/Expand Icons: Replaced text links with rotating triangle icons for a clearer visual cue on expandable sections.",
+            "In the Email Template Generator: Consistent Dark Mode Toggle: Updated the dark mode switcher to match the style and functionality of other applications in the Lifeblogging hub.",
+            "In the Email Template Generator: Fixed Placeholder Saving: Resolved an issue where a newly added placeholder would not save correctly without a workaround.",
+            "In the Email Template Generator: Resolved Sync Loop: Corrected the Firebase synchronization logic to eliminate the infinite loop of 'checking for conflicts' messages that spammed the developer console.",
+        ]
+    },
+    {
     version: "v9.17.0-alpha",
     date: "2025-09-28",
     changes: [
