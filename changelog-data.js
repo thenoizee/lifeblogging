@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.17.0-alpha",
+    date: "2025-09-28",
+    changes: [
+        "In the Color Palette Generator: Added the ability to create and save custom palettes from individual colors.",
+        "In the Color Palette Generator: Users can now edit saved custom palettes, including adding, removing, or changing colors.",
+        "In the Color Palette Generator: Implemented a feature to add descriptive labels to saved palettes and a filter to search by those labels.",
+        "In the Color Palette Generator: Added a full range of default Tailwind CSS colors for more comprehensive palette generation.",
+    ]
+    },
+    {
         version: "v9.16.0-alpha",
         date: "2025-09-28",
         changes: [
