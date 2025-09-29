@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v9.18.2-alpha",
+        date: "2025-09-29",
+        changes: [
+            "In the Timestamp Converter: Added a function to convert Excel & Google Sheet serial numbers (e.g. 45956) into readable dates (26 October 2025).",
+        ]
+    },
+    {
         version: "v9.18.1-alpha",
         date: "2025-09-29",
         changes: [
