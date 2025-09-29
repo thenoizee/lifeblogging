@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v9.18.1-alpha",
+        date: "2025-09-29",
+        changes: [
+            "In the Label Generator: Added separate controls for vertical and horizontal gaps between labels for more precise layout adjustments.",
+            "In the Label Generator: The 'Auto-fit to page' options for label width and height are now enabled by default for a more intuitive user experience.",
+        ]
+    },
+    {
         version: "v9.18.0-alpha",
         date: "2025-09-28",
         changes: [
