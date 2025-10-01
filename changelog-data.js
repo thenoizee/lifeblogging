@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.18.3-alpha",
+    date: "2025-10-01",
+    changes: [
+        "In the Email Template Generator: Enhanced the Pronoun Presets to include a wider range of pronoun types (subjective, objective, possessive, and reflexive).",
+        "In the Email Template Generator: Moved the 'How to use Pronoun Presets' guide to the 'Manage Templates' tab for better contextual relevance.",
+        "In the Email Template Generator: Fixed a visibility issue where the pronoun guide was unreadable in light mode.",
+        "In the Email Template Generator: Improved the layout by relocating the Pronoun Presets to Step 1 for a more logical workflow.",
+    ]
+    },
+    {
         version: "v9.18.2-alpha",
         date: "2025-09-29",
         changes: [
