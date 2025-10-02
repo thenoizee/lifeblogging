@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v9.18.4-alpha",
+        date: "2025-10-02",
+        changes: [
+            "In the Hub: Re-ordered the apps to more accurately represent frequency of each app accessed.",
+        ]
+    },
+    {
     version: "v9.18.3-alpha",
     date: "2025-10-01",
     changes: [
