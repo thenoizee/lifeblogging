@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v9.18.5-alpha",
+        date: "2025-10-03",
+        changes: [
+            "In the Email Template Generator: Added quick-edit functionality; selecting a template now loads it in the editor.",
+            "In the Email Template Generator: Now displays the target audience in brackets within the template selection dropdown.",
+            "In the Email Template Generator: Enhanced template management with options to duplicate a template or add a new blank version.",
+            "In the Email Template Generator: Fixed a bug that incorrectly allowed placeholders to be dragged into the subject line.",
+        ]
+    },
+    {
         version: "v9.18.4-alpha",
         date: "2025-10-02",
         changes: [
