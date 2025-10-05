@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v9.18.6-alpha",
+        date: "2025-10-05",
+        changes: [
+            "In PDF Tools: Fixed the core functionality for the 'Organize PDF' tool. Users can now upload a PDF to see page thumbnails.",
+            "In PDF Tools: Fixed a critical 'detached ArrayBuffer' error that occurred when saving changes in the 'Organize PDF' tool, ensuring the file can be processed and saved correctly.",
+        ]
+    },
+    {
         version: "v9.18.5-alpha",
         date: "2025-10-03",
         changes: [

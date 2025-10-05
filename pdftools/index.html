@@ -638,8 +638,138 @@
             });
         };
         
-        const setupOrganizeTool = () => { /* ... Full implementation from previous step ... */ };
-        window.handleOrganize = async () => { /* ... Full implementation from previous step ... */ };
+        const setupOrganizeTool = () => {
+            const tool = document.getElementById('organize-tool');
+            if(!tool) return;
+            toolState.organize = { files: [], toolElement: tool, pageStates: [] };
+
+            const dropZone = tool.querySelector('.drop-zone');
+            const fileInput = tool.querySelector('.file-input');
+            const actionBtn = tool.querySelector('.action-btn');
+            const pagesGrid = tool.querySelector('#organize-pages-grid');
+
+            const handleFile = async (file) => {
+                if (!file) return;
+                resetTool(tool);
+                toolState.organize.files = [file];
+                dropZone.classList.add('hidden');
+                actionBtn.classList.remove('hidden');
+                actionBtn.disabled = false;
+                pagesGrid.classList.remove('hidden');
+                showStatus(tool, 'Loading PDF pages...');
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdfjsDoc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+                    toolState.organize.pdfJSDoc = pdfjsDoc;
+                    toolState.organize.pageStates = [];
+                    pagesGrid.innerHTML = '';
+
+                    for (let i = 1; i <= pdfjsDoc.numPages; i++) {
+                        toolState.organize.pageStates.push({ originalIndex: i - 1, rotation: 0, deleted: false });
+                        const page = await pdfjsDoc.getPage(i);
+                        const viewport = page.getViewport({ scale: 0.3 });
+                        const canvas = document.createElement('canvas');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+                        const context = canvas.getContext('2d');
+                        await page.render({ canvasContext: context, viewport }).promise;
+
+                        const pageEl = document.createElement('div');
+                        pageEl.className = 'page-thumbnail';
+                        pageEl.dataset.originalIndex = i - 1;
+                        pageEl.innerHTML = `
+                            <canvas width="${canvas.width}" height="${canvas.height}"></canvas>
+                            <div class="page-number">${i}</div>
+                            <div class="page-actions">
+                                <button class="rotate-btn text-white p-1" title="Rotate"><i class="fas fa-undo pointer-events-none"></i></button>
+                                <button class="delete-btn text-white p-1" title="Delete"><i class="fas fa-trash pointer-events-none"></i></button>
+                            </div>
+                        `;
+                        pageEl.querySelector('canvas').getContext('2d').drawImage(canvas, 0, 0);
+                        pagesGrid.appendChild(pageEl);
+                    }
+
+                    Sortable.create(pagesGrid, { animation: 150, ghostClass: 'ghost' });
+                    showStatus(tool, 'Ready to organize. Drag pages to reorder.');
+                } catch(e) {
+                    showStatus(tool, `Error loading PDF: ${e.message}`, true);
+                    resetTool(tool);
+                }
+            };
+
+            dropZone.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+
+            pagesGrid.addEventListener('click', (e) => {
+                const rotateBtn = e.target.closest('.rotate-btn');
+                const deleteBtn = e.target.closest('.delete-btn');
+                const pageEl = e.target.closest('.page-thumbnail');
+                if (!pageEl) return;
+
+                if (rotateBtn) {
+                    const originalIndex = parseInt(pageEl.dataset.originalIndex, 10);
+                    const state = toolState.organize.pageStates[originalIndex];
+                    state.rotation = (state.rotation + 90) % 360; // Corrected rotation direction
+                    pageEl.querySelector('canvas').style.transform = `rotate(${state.rotation}deg)`;
+                }
+                if (deleteBtn) {
+                    const originalIndex = parseInt(pageEl.dataset.originalIndex, 10);
+                    toolState.organize.pageStates[originalIndex].deleted = !toolState.organize.pageStates[originalIndex].deleted;
+                    pageEl.classList.toggle('deleted');
+                }
+            });
+        };
+        window.handleOrganize = async () => {
+            const tool = document.getElementById('organize-tool');
+            toggleButtonLoading(tool, true);
+            showStatus(tool, 'Processing PDF...');
+            try {
+                const { files, pageStates } = toolState.organize;
+                if (!files || files.length === 0) {
+                    throw new Error("No PDF file loaded.");
+                }
+                
+                // **THE FIX**: Read a fresh ArrayBuffer from the file to avoid detached buffer issue.
+                const pdfBytes = await files[0].arrayBuffer();
+                const pdfDoc = await PDFDocument.load(pdfBytes);
+                const newPdfDoc = await PDFDocument.create();
+
+                // Get the new visual order of the original page indices from the DOM
+                const newOrderIndices = Array.from(tool.querySelectorAll('.page-thumbnail')).map(el => parseInt(el.dataset.originalIndex, 10));
+
+                // Filter this list to get only the pages that are not marked for deletion
+                const finalIndicesInOrder = newOrderIndices.filter(originalIndex => !pageStates[originalIndex].deleted);
+                
+                if (finalIndicesInOrder.length === 0) {
+                    throw new Error("All pages were deleted. Cannot create an empty PDF.");
+                }
+
+                // **OPTIMIZATION**: Copy all necessary pages in one operation
+                const copiedPages = await newPdfDoc.copyPages(pdfDoc, finalIndicesInOrder);
+
+                // Add the copied pages to the new document and apply their respective rotations
+                copiedPages.forEach((page, i) => {
+                    const originalIndex = finalIndicesInOrder[i];
+                    const state = pageStates[originalIndex];
+                    
+                    page.setRotation(degrees(state.rotation));
+                    newPdfDoc.addPage(page);
+                });
+
+                const newPdfBytes = await newPdfDoc.save();
+                createDownloadLink(tool, newPdfBytes, `organized_${files[0].name}`);
+                showStatus(tool, 'PDF organized successfully!');
+            } catch (e) {
+                showStatus(tool, e.message, true);
+                console.error("Organize PDF Error:", e);
+            } finally {
+                toggleButtonLoading(tool, false);
+            }
+        };
         
         window.handleUnlock = async () => {
             const tool = document.getElementById('unlock-tool');
@@ -855,8 +985,8 @@
                  showStatus(tool, 'Page numbers added successfully!');
              } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
         };
-        window.handlePdfToImages = async () => { /* ... Full implementation from previous step ... */ };
-        window.handleFlatten = async () => { /* ... Full implementation from previous step ... */ };
+        window.handlePdfToImages = async () => { /* Placeholder */ };
+        window.handleFlatten = async () => { /* Placeholder */ };
         window.handleSign = async () => { /* Placeholder */ };
         const onAddSignature = () => { /* Placeholder */ };
         window.handleAddText = async () => { /* Placeholder */ };
