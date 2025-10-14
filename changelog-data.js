@@ -2,6 +2,26 @@
 
 export const changelogData = [
     {
+    version: "v9.19.0-alpha",
+    date: "2025-10-14",
+    changes: [
+    "In Label Generator: Added multi-page printing capability to handle large CSV imports across all templates.",
+    "In Label Generator: Introduced an 'Envelope' template for printing directly onto standard envelope sizes.",
+    "In Label Generator: Added a dedicated 'Suspension File Tab' template with presets for plain card and pre-punched sheets.",
+    "In Label Generator: Included a 'Print Cut Lines' option for the Suspension File Tab template.",
+    "In Label Generator: Added a 'First row is a header' checkbox to ignore header rows in CSV imports.",
+    "In Label Generator: The UI now dynamically shows/hides controls relevant to the selected template type.",
+    "In Label Generator: Reorganized presets into logical groups for easier navigation.",
+    "In Label Generator: In Envelope mode, the label is now selected by default to streamline workflow.",
+    "In Label Generator: Fixed a critical issue that prevented multi-page printing from CSV data.",
+    "In Label Generator: Ensured the print output is correctly centered, matching the on-screen preview.",
+    "In Label Generator: Resolved a bug causing incorrect margins on all pages after the first.",
+    "In Label Generator: Corrected print styles to ensure top and bottom margins are equal.",
+    "In Label Generator: Fixed a CSS issue to prevent the main UI from appearing on printed pages.",
+    "In Label Generator: Adjusted presets to prevent extra blank pages from being printed.",
+    ]
+    },
+    {
         version: "v9.18.6-alpha",
         date: "2025-10-05",
         changes: [
