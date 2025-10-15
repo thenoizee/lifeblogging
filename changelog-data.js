@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    "version": "v9.20.0-alpha",
+    "date": "2025-10-15",
+    "changes": [
+        "In the Label Generator: Added a 'Maximize layout from label size' option to automatically calculate the most efficient grid.",
+        "In the Label Generator: Added a 'Grid Alignment' control for positioning the entire block of labels on the page.",
+        "In the Label Generator: The Suspension File Tab template now defaults to 54x14mm with cut lines enabled for a faster workflow.",
+        "In the Label Generator: Fixed a visual bug to ensure the on-screen preview's label borders perfectly match the final print output for clean cutting.",
+    ]
+    },
+    {
     version: "v9.19.0-alpha",
     date: "2025-10-14",
     changes: [
