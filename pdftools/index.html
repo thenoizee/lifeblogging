@@ -16,11 +16,11 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
     <script>
-        if ('serviceWorker' in navigator) {
+        if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js')
                     .then(registration => console.log('Service Worker registered successfully:', registration))
-                    .catch(err => console.log('Service Worker registration failed:', err));
+                    .catch(err => console.log('Service Worker registration failed (this is expected in local development if sw.js is not configured):', err));
             });
         }
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.worker.min.js`;
@@ -65,7 +65,9 @@
         .file-item { cursor: grab; display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; background-color: var(--input-bg-color); border: 1px solid var(--border-color); border-radius: 0.375rem; }
         #signature-pad { border: 1px solid var(--border-color); cursor: crosshair; }
         .preview-container { position: relative; border: 1px solid var(--border-color); overflow: auto; max-height: 60vh; width: 100%; }
+        .preview-container.crop-active { cursor: crosshair; }
         .preview-container canvas { max-width: 100%; height: auto; display: block; }
+        .crop-box { position: absolute; border: 2px dashed #6366f1; background-color: rgba(99, 102, 241, 0.1); pointer-events: none; }
         .draggable { position: absolute; cursor: move; border: 1px dashed #6366f1; background-color: rgba(99, 102, 241, 0.1); }
         .draggable.text-element { border: 1px dashed #f59e0b; background-color: rgba(245, 158, 11, 0.1); }
         .draggable.redact-element { border: 1px solid black; background-color: black; }
@@ -84,7 +86,10 @@
 <body class="min-h-screen">
     <div class="container mx-auto p-4 sm:p-6 lg:p-8">
         <header class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold flex items-center"><i class="fas fa-file-pdf mr-3 text-red-500"></i>PDF Tools</h1>
+            <h1 class="text-3xl md:text-4xl font-bold flex items-center">
+                <i class="fas fa-file-pdf mr-3 text-red-500"></i>PDF Tools
+                <span id="version-display" class="text-sm font-mono bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-md px-2 py-1 ml-4"></span>
+            </h1>
             <div class="flex items-center gap-4">
                 <a href="/" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
                 <button id="theme-toggle" class="bg-[var(--card-bg-color)] border border-[var(--border-color)] rounded-full p-2" title="Toggle dark mode"><i class="fas fa-moon"></i></button>
@@ -104,6 +109,7 @@
                      <button data-panel="redact" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-user-secret w-6 mr-2"></i>Redact</button>
                      <button data-panel="watermark" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-copyright w-6 mr-2"></i>Watermark</button>
                      <button data-panel="pagenumbers" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-sort-numeric-down w-6 mr-2"></i>Page Numbers</button>
+                     <button data-panel="crop" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-crop-alt w-6 mr-2"></i>Crop PDF</button>
                     
                     <h3 class="text-xs uppercase text-[var(--text-color-secondary)] font-bold tracking-wider hidden md:block mt-4">Split & Extract</h3>
                      <button data-panel="extract" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-file-export w-6 mr-2"></i>Extract Pages</button>
@@ -175,9 +181,9 @@
                     </div>
                 </div>
                 <div id="panel-redact" class="tab-panel hidden">
-                     <h2 class="text-xl font-bold mb-2">Redact PDF</h2>
-                     <p class="text-[var(--text-color-secondary)] mb-4">Draw black boxes to permanently hide sensitive information.</p>
-                     <div id="redact-tool" class="tool-container">
+                      <h2 class="text-xl font-bold mb-2">Redact PDF</h2>
+                      <p class="text-[var(--text-color-secondary)] mb-4">Draw black boxes to permanently hide sensitive information.</p>
+                      <div id="redact-tool" class="tool-container">
                          <div class="drop-zone" data-tool="redact"><i class="fas fa-user-secret text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
                          <div class="editor-view hidden mt-4">
                              <div class="preview-container"><canvas id="redact-canvas-preview"></canvas></div>
@@ -188,7 +194,7 @@
                          </div>
                          <button class="action-btn w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg" disabled><span class="btn-text">Apply Redactions & Save</span><div class="loader hidden"></div></button>
                          <div class="status-text mt-4 text-center"></div><a class="download-link">Download Redacted PDF</a>
-                     </div>
+                      </div>
                 </div>
                 <div id="panel-watermark" class="tab-panel hidden">
                     <h2 class="text-xl font-bold mb-2">Add Watermark</h2>
@@ -211,9 +217,9 @@
                 <div id="panel-pagenumbers" class="tab-panel hidden">
                     <h2 class="text-xl font-bold mb-2">Add Page Numbers</h2>
                     <p class="text-[var(--text-color-secondary)] mb-4">Add page numbers to your document with various options.</p>
-                     <div id="pagenumbers-tool" class="tool-container">
+                      <div id="pagenumbers-tool" class="tool-container">
                         <div class="drop-zone" data-tool="pagenumbers"><i class="fas fa-sort-numeric-down text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
-                         <div class="file-info hidden mt-4 bg-[var(--input-bg-color)] p-4 rounded-lg">
+                          <div class="file-info hidden mt-4 bg-[var(--input-bg-color)] p-4 rounded-lg">
                            <p class="font-bold">File: <span class="file-name"></span></p>
                            <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
                                <div><label class="block font-medium">Position:</label><select class="pagenum-position w-full mt-1 p-2 border rounded-md bg-[var(--bg-color)] border-[var(--border-color)]"><option value="bottom-center">Bottom Center</option><option value="bottom-left">Bottom Left</option><option value="bottom-right">Bottom Right</option><option value="top-center">Top Center</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option></select></div>
@@ -223,6 +229,22 @@
                        </div>
                        <button class="action-btn w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg" disabled><span class="btn-text">Add Page Numbers</span><div class="loader hidden"></div></button>
                        <div class="status-text mt-4 text-center"></div><a class="download-link">Download Numbered PDF</a>
+                    </div>
+                </div>
+                 <div id="panel-crop" class="tab-panel hidden">
+                    <h2 class="text-xl font-bold mb-2">Crop PDF</h2>
+                    <p class="text-[var(--text-color-secondary)] mb-4">Draw a rectangle on a page to crop it. The crop area can be set individually for each page.</p>
+                    <div id="crop-tool" class="tool-container">
+                       <div class="drop-zone" data-tool="crop"><i class="fas fa-crop-alt text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
+                       <div class="editor-view hidden mt-4">
+                           <div class="preview-container"><canvas id="crop-canvas-preview"></canvas></div>
+                           <div class="mt-4 flex flex-wrap justify-between items-center gap-4">
+                               <div class="flex items-center gap-2"><button id="crop-prev-page" class="px-3 py-1 border rounded-md">&lt;</button><span id="crop-page-indicator">Page 1 / 1</span><button id="crop-next-page" class="px-3 py-1 border rounded-md">&gt;</button></div>
+                               <button id="crop-clear-btn" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600">Clear Crop on this Page</button>
+                           </div>
+                       </div>
+                       <button class="action-btn w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg" disabled><span class="btn-text">Apply Crop & Save</span><div class="loader hidden"></div></button>
+                       <div class="status-text mt-4 text-center"></div><a class="download-link">Download Cropped PDF</a>
                     </div>
                 </div>
                 <div id="panel-extract" class="tab-panel hidden">
@@ -251,8 +273,8 @@
                 <div id="panel-recreate" class="tab-panel hidden">
                     <h2 class="text-xl font-bold mb-2">Re-create Scanned Book</h2>
                     <p class="text-[var(--text-color-secondary)] mb-4">Fixes books scanned as double-page spreads by splitting and re-ordering them correctly.</p>
-                     <div class="text-sm bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-md mb-4 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-600">
-                        <p><strong>How it works:</strong> Assumes a booklet format. For a 20-page book, the first scan has page 20 (left) and page 1 (right), the second has page 2 (left) and 19 (right), etc.</p>
+                        <div class="text-sm bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-md mb-4 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-600">
+                         <p><strong>How it works:</strong> Assumes a booklet format. For a 20-page book, the first scan has page 20 (left) and page 1 (right), the second has page 2 (left) and 19 (right), etc.</p>
                     </div>
                     <div id="recreate-tool" class="tool-container">
                         <div class="drop-zone" data-tool="recreate"><i class="fas fa-book-open text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop scanned PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
@@ -263,7 +285,7 @@
                 </div>
                 <div id="panel-stitch" class="tab-panel hidden">
                     <h2 class="text-xl font-bold mb-2">Stitch Pages</h2>
-                    <p class="text-[var(--text-color-secondary)] mb-4">Click to add a red line (page break). Shift+Click to add blue lines (in pairs) to mark blank space for removal. Click any line to delete it.</p>
+                    <p class="text-[var(--text-color-secondary)] mb-4">All pages will be stitched into one long page by default. To create a page break, you can: 1) Click to add a red line. 2) Shift+Click twice to create a blue area to remove (this also adds a break). 3) Use the "Mark Page as End" button.</p>
                     <div id="stitch-tool" class="tool-container">
                          <div class="drop-zone" data-tool="stitch"><i class="fas fa-link text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
                          <div class="editor-view hidden mt-4">
@@ -277,8 +299,8 @@
                              </div>
                          </div>
                          <div id="stitch-full-preview" class="hidden mt-4">
-                            <h3 class="font-bold text-lg mb-2">Stitched Preview</h3>
-                            <div id="stitch-full-preview-container" class="space-y-4"></div>
+                             <h3 class="font-bold text-lg mb-2">Stitched Preview</h3>
+                             <div id="stitch-full-preview-container" class="space-y-4"></div>
                          </div>
                          <button class="action-btn w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg" disabled><span class="btn-text">Stitch PDF</span><div class="loader hidden"></div></button>
                          <div class="status-text mt-4 text-center"></div><a class="download-link">Download Stitched PDF</a>
@@ -287,7 +309,7 @@
                 <div id="panel-pdftoimages" class="tab-panel hidden">
                     <h2 class="text-xl font-bold mb-2">PDF to Images</h2>
                     <p class="text-[var(--text-color-secondary)] mb-4">Convert each page of a PDF to an image.</p>
-                     <div id="pdftoimages-tool" class="tool-container">
+                      <div id="pdftoimages-tool" class="tool-container">
                          <div class="drop-zone" data-tool="pdftoimages"><i class="fas fa-file-image text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
                          <div class="file-info hidden mt-4 bg-[var(--input-bg-color)] p-4 rounded-lg">
                            <p class="font-bold">File: <span class="file-name"></span></p>
@@ -303,7 +325,7 @@
                 <div id="panel-images" class="tab-panel hidden">
                     <h2 class="text-xl font-bold mb-2">Images to PDF</h2>
                     <p class="text-[var(--text-color-secondary)] mb-4">Convert JPG, PNG images to a single PDF. Drag to reorder.</p>
-                     <div id="images-tool" class="tool-container">
+                      <div id="images-tool" class="tool-container">
                         <div class="drop-zone" data-tool="images"><i class="fas fa-images text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop Images here</p><input type="file" class="file-input hidden" accept="image/jpeg, image/png" multiple></div>
                         <div id="images-file-list" class="mt-4 space-y-2"></div>
                         <button class="action-btn w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg" disabled><span class="btn-text">Convert to PDF</span><div class="loader hidden"></div></button>
@@ -311,14 +333,14 @@
                     </div>
                 </div>
                 <div id="panel-flatten" class="tab-panel hidden">
-                     <h2 class="text-xl font-bold mb-2">Flatten PDF</h2>
+                      <h2 class="text-xl font-bold mb-2">Flatten PDF</h2>
                     <p class="text-[var(--text-color-secondary)] mb-4">Merge all annotations, form fields, and layers into a single, non-editable layer.</p>
-                     <div id="flatten-tool" class="tool-container">
+                      <div id="flatten-tool" class="tool-container">
                          <div class="drop-zone" data-tool="flatten"><i class="fas fa-layer-group text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
                          <div class="file-info hidden mt-4 bg-[var(--input-bg-color)] p-4 rounded-lg"><p class="font-bold">File: <span class="file-name"></span></p></div>
                          <button class="action-btn w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg" disabled><span class="btn-text">Flatten PDF</span><div class="loader hidden"></div></button>
                          <div class="status-text mt-4 text-center"></div><a class="download-link">Download Flattened PDF</a>
-                     </div>
+                      </div>
                 </div>
                 <div id="panel-protect" class="tab-panel hidden">
                     <h2 class="text-xl font-bold mb-2">Protect PDF</h2>
@@ -337,9 +359,9 @@
                     </div>
                 </div>
                 <div id="panel-unlock" class="tab-panel">
-                     <h2 class="text-xl font-bold mb-2">Unlock PDF</h2>
+                      <h2 class="text-xl font-bold mb-2">Unlock PDF</h2>
                     <p class="text-[var(--text-color-secondary)] mb-4">Remove password restrictions from a PDF. Files are processed in your browser.</p>
-                     <div class="text-sm bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-md mb-4 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-600">
+                      <div class="text-sm bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-md mb-4 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-600">
                         <p class="font-bold"><i class="fas fa-info-circle mr-2"></i>Having Trouble Unlocking?</p>
                         <p class="mt-1">If you're sure the password is correct, the PDF file itself might be slightly corrupted. You can fix this by "refreshing" it: Open it in Chrome or another PDF viewer, choose <strong>Print</strong>, and then <strong>Save as PDF</strong> to create a clean, working copy.</p>
                     </div>
@@ -375,923 +397,984 @@
 
 
     <script type="module">
-        const { PDFDocument, rgb, degrees, StandardFonts, PageSizes } = PDFLib;
+    const { PDFDocument, rgb, degrees, StandardFonts, PageSizes } = PDFLib;
 
-        // --- THEME LOGIC ---
-        const themeToggle = document.getElementById('theme-toggle');
-        const applyTheme = (theme) => {
-            document.documentElement.classList.toggle('dark', theme === 'dark');
-            themeToggle.innerHTML = theme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
-        };
-        themeToggle.addEventListener('click', () => {
-            const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
-            applyTheme(newTheme);
-            localStorage.setItem('theme', newTheme);
-        });
-        applyTheme(localStorage.getItem('theme') || 'light');
+    const VERSION = '2.0.0';
 
-        // --- NAVIGATION LOGIC ---
-        const navButtons = document.querySelectorAll('.nav-btn');
-        const panels = document.querySelectorAll('.tab-panel');
-        let currentPanelId = 'unlock'; // Default panel
+    // --- THEME LOGIC ---
+    const themeToggle = document.getElementById('theme-toggle');
+    const applyTheme = (theme) => {
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+        themeToggle.innerHTML = theme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+    };
+    themeToggle.addEventListener('click', () => {
+        const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
+        applyTheme(newTheme);
+        localStorage.setItem('theme', newTheme);
+    });
+    applyTheme(localStorage.getItem('theme') || 'light');
 
-        const setActivePanel = (panelId) => {
-             // Reset the tool of the panel we are leaving
-            if (currentPanelId && toolState[currentPanelId] && toolState[currentPanelId].toolElement) {
-                 resetTool(toolState[currentPanelId].toolElement);
+    // --- NAVIGATION LOGIC ---
+    const navButtons = document.querySelectorAll('.nav-btn');
+    const panels = document.querySelectorAll('.tab-panel');
+    let currentPanelId = 'unlock'; // Default panel
+
+    const setActivePanel = (panelId) => {
+        if (currentPanelId && toolState[currentPanelId] && toolState[currentPanelId].toolElement) {
+            resetTool(toolState[currentPanelId].toolElement);
+        }
+        navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.panel === panelId));
+        panels.forEach(panel => panel.classList.toggle('hidden', panel.id !== `panel-${panelId}`));
+        currentPanelId = panelId;
+    };
+    navButtons.forEach(button => button.addEventListener('click', (e) => setActivePanel(e.currentTarget.dataset.panel)));
+    
+    // --- GLOBAL STATE & HELPERS ---
+    const toolState = {};
+    const showStatus = (tool, message, isError = false) => {
+        const el = tool.querySelector('.status-text');
+        if(!el) return;
+        el.textContent = message;
+        el.className = `status-text mt-4 text-center ${isError ? 'text-red-500' : 'text-green-600'}`;
+    };
+    const toggleButtonLoading = (tool, isLoading) => {
+        const btn = tool.querySelector('.action-btn');
+        if (!btn) return;
+        btn.disabled = isLoading;
+        btn.querySelector('.btn-text')?.classList.toggle('hidden', isLoading);
+        btn.querySelector('.loader')?.classList.toggle('hidden', !isLoading);
+    };
+    const createDownloadLink = (tool, bytes, fileName) => {
+        const link = tool.querySelector('.download-link');
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        link.classList.add('show');
+    };
+     const parsePageRanges = (rangeStr, maxPage) => {
+        const indices = new Set();
+        if (!rangeStr || rangeStr.trim() === '' || rangeStr.trim() === '*') {
+            for (let i = 0; i < maxPage; i++) indices.add(i);
+            return Array.from(indices);
+        }
+        const parts = rangeStr.split(',');
+        for (const part of parts) {
+            const trimmedPart = part.trim();
+            if (trimmedPart.includes('-')) {
+                let [start, end] = trimmedPart.split('-').map(p => parseInt(p.trim(), 10));
+                if (!isNaN(start) && !isNaN(end) && start <= end) {
+                    for (let i = start; i <= end; i++) {
+                         if (i > 0 && i <= maxPage) indices.add(i - 1);
+                    }
+                }
+            } else {
+                const pageNum = parseInt(trimmedPart, 10);
+                if (!isNaN(pageNum) && pageNum > 0 && pageNum <= maxPage) indices.add(pageNum - 1);
             }
-            
-            navButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.panel === panelId));
-            panels.forEach(panel => panel.classList.toggle('hidden', panel.id !== `panel-${panelId}`));
-            
-            currentPanelId = panelId;
-        };
-        navButtons.forEach(button => button.addEventListener('click', (e) => setActivePanel(e.currentTarget.dataset.panel)));
+        }
+        return Array.from(indices).sort((a, b) => a - b);
+    };
+    const resetTool = (tool) => {
+        if (!tool) return;
+        tool.querySelector('.drop-zone')?.classList.remove('hidden');
+        tool.querySelector('.editor-view')?.classList.add('hidden');
+        tool.querySelector('.file-info')?.classList.add('hidden');
+        tool.querySelector('.download-link')?.classList.remove('show');
+        if (tool.querySelector('.status-text')) tool.querySelector('.status-text').textContent = '';
+        const actionBtn = tool.querySelector('.action-btn');
+        if(actionBtn) actionBtn.disabled = true;
+
+        const toolId = tool.id.replace('-tool', '');
+        const state = toolState[toolId];
+        if (!state) return;
+
+        state.files = [];
+        if (state.hasOwnProperty('elements')) state.elements = [];
+        if (state.hasOwnProperty('currentPage')) state.currentPage = 1;
         
-        // --- GLOBAL STATE & HELPERS ---
-        const toolState = {};
-        const showStatus = (tool, message, isError = false) => {
-            const el = tool.querySelector('.status-text');
-            if(!el) return;
-            el.textContent = message;
-            el.className = `status-text mt-4 text-center ${isError ? 'text-red-500' : 'text-green-600'}`;
-        };
-        const toggleButtonLoading = (tool, isLoading) => {
-            const btn = tool.querySelector('.action-btn');
-            if (!btn) return;
-            btn.disabled = isLoading;
-            btn.querySelector('.btn-text')?.classList.toggle('hidden', isLoading);
-            btn.querySelector('.loader')?.classList.toggle('hidden', !isLoading);
-        };
-        const createDownloadLink = (tool, bytes, fileName) => {
-            const link = tool.querySelector('.download-link');
-            const blob = new Blob([bytes], { type: 'application/pdf' });
-            link.href = URL.createObjectURL(blob);
-            link.download = fileName;
-            link.classList.add('show');
-        };
-         const parsePageRanges = (rangeStr, maxPage) => {
-            const indices = new Set();
-            if (!rangeStr || rangeStr.trim() === '' || rangeStr.trim() === '*') {
-                for (let i = 0; i < maxPage; i++) indices.add(i);
-                return Array.from(indices);
-            }
-            const parts = rangeStr.split(',');
-            for (const part of parts) {
-                const trimmedPart = part.trim();
-                if (trimmedPart.includes('-')) {
-                    let [start, end] = trimmedPart.split('-').map(p => parseInt(p.trim(), 10));
-                    if (!isNaN(start) && !isNaN(end) && start <= end) {
-                        for (let i = start; i <= end; i++) {
-                             if (i > 0 && i <= maxPage) indices.add(i - 1);
-                        }
-                    }
-                } else {
-                    const pageNum = parseInt(trimmedPart, 10);
-                    if (!isNaN(pageNum) && pageNum > 0 && pageNum <= maxPage) indices.add(pageNum - 1);
-                }
-            }
-            return Array.from(indices).sort((a, b) => a - b);
-        };
-        const resetTool = (tool) => {
-            if (!tool) return;
-            // DOM Resets
-            tool.querySelector('.drop-zone')?.classList.remove('hidden');
-            tool.querySelector('.editor-view')?.classList.add('hidden');
-            tool.querySelector('.file-info')?.classList.add('hidden');
-            tool.querySelector('.download-link')?.classList.remove('show');
-            if (tool.querySelector('.status-text')) tool.querySelector('.status-text').textContent = '';
-            const actionBtn = tool.querySelector('.action-btn');
-            if(actionBtn) actionBtn.disabled = true;
-
-            const toolId = tool.id.replace('-tool', '');
-            const state = toolState[toolId];
-            if (!state) return;
-
-            // State Resets
-            state.files = [];
-            if (state.hasOwnProperty('elements')) state.elements = [];
-            if (state.hasOwnProperty('currentPage')) state.currentPage = 1;
-            
-            // Tool-specific resets
-            if (toolId === 'organize') {
-                const grid = tool.querySelector('#organize-pages-grid');
-                grid.innerHTML = '';
-                grid.classList.add('hidden');
-                actionBtn.classList.add('hidden');
-            }
-            if (toolId === 'stitch') {
-                state.splits = {};
-                state.cuts = {};
-                state.ends = new Set();
-                const fullPreview = tool.querySelector('#stitch-full-preview');
-                if (fullPreview) fullPreview.classList.add('hidden');
-                const previewContainer = tool.querySelector('#stitch-full-preview-container');
-                if (previewContainer) previewContainer.innerHTML = '';
-            }
-            if (toolId === 'merge' || toolId === 'images') {
-                const fileList = tool.querySelector(`#${toolId}-file-list`);
-                if (fileList) fileList.innerHTML = '';
-            }
-        };
-
-        // --- GENERIC TOOL SETUP ---
-        const setupSimpleTool = (toolId, options = {}) => {
-            const tool = document.getElementById(`${toolId}-tool`);
-            if(!tool) return;
-            toolState[toolId] = { files: [], toolElement: tool };
-
-            const dropZone = tool.querySelector('.drop-zone');
-            const fileInput = tool.querySelector('.file-input');
-            const actionBtn = tool.querySelector('.action-btn');
-
-            const handleFiles = async (files) => {
-                if (files.length === 0) return;
-                toolState[toolId].files = options.multiFile ? [...(toolState[toolId].files || []), ...Array.from(files)] : Array.from(files);
-                
-                if(actionBtn) actionBtn.disabled = false;
-                const fileInfo = tool.querySelector('.file-info');
-                if (fileInfo) {
-                    fileInfo.classList.remove('hidden');
-                    fileInfo.querySelector('.file-name').textContent = toolState[toolId].files.length > 1 ? `${toolState[toolId].files.length} files selected` : toolState[toolId].files[0].name;
-                    
-                    if (toolId !== 'unlock' && (fileInfo.querySelector('.page-count') || fileInfo.querySelector('.page-dims'))) {
-                         try {
-                            const arrayBuffer = await toolState[toolId].files[0].arrayBuffer();
-                            const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-                            if (fileInfo.querySelector('.page-count')) fileInfo.querySelector('.page-count').textContent = pdfDoc.getPageCount();
-                            if (fileInfo.querySelector('.page-dims')) {
-                                const {width, height} = pdfDoc.getPage(0).getSize();
-                                fileInfo.querySelector('.page-dims').textContent = `${width.toFixed(2)} x ${height.toFixed(2)} pts`;
-                            }
-                        } catch (e) {
-                             if (fileInfo.querySelector('.page-count')) fileInfo.querySelector('.page-count').textContent = 'N/A';
-                             if (fileInfo.querySelector('.page-dims')) fileInfo.querySelector('.page-dims').textContent = 'N/A';
-                             console.warn(`Could not read PDF metadata for ${toolId}: ${e.message}`);
-                        }
-                    }
-                }
-                
-                if (options.multiFile) {
-                    renderMultiFileList(toolId);
-                }
-            };
-            
-            const renderMultiFileList = (toolIdToList) => {
-                const listContainer = tool.querySelector(`#${toolIdToList}-file-list`);
-                if (!listContainer) return;
-                listContainer.innerHTML = '';
-                toolState[toolIdToList].files.forEach((file, index) => {
-                    const item = document.createElement('div');
-                    item.className = 'file-item';
-                    item.dataset.index = index;
-                    item.innerHTML = `<span><i class="fas fa-grip-vertical mr-2 text-gray-400"></i>${file.name}</span><button class="remove-file text-red-500 hover:text-red-700 font-bold text-xl">&times;</button>`;
-                    listContainer.appendChild(item);
-                });
-                if (listContainer && !listContainer.sortable) {
-                    listContainer.sortable = Sortable.create(listContainer, { handle: '.fa-grip-vertical', animation: 150, onEnd: onSortEnd });
-                }
-            };
-
-            const onSortEnd = (evt) => {
-                const { oldIndex, newIndex } = evt;
-                const files = toolState[toolId].files;
-                const [movedItem] = files.splice(oldIndex, 1);
-                files.splice(newIndex, 0, movedItem);
-            };
-
-            dropZone.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
-            
-            const listContainer = tool.querySelector(`#${toolId}-file-list`);
-            if (listContainer) {
-                listContainer.addEventListener('click', e => {
-                    if (e.target.closest('.remove-file')) {
-                        const item = e.target.closest('.file-item');
-                        const index = Array.from(item.parentNode.children).indexOf(item);
-                        toolState[toolId].files.splice(index, 1);
-                        item.remove();
-                        if (toolState[toolId].files.length === 0 && actionBtn) actionBtn.disabled = true;
-                    }
-                });
-            }
-        };
-
-        const setupEditorTool = (toolId, onAddElement) => {
-            const tool = document.getElementById(`${toolId}-tool`);
-            if(!tool) return;
-            toolState[toolId] = { files: [], toolElement: tool, currentPage: 1, elements: [] };
-             if (toolId === 'stitch') {
-                 toolState[toolId].splits = {};
-                 toolState[toolId].cuts = {};
-                 toolState[toolId].ends = new Set();
-            }
-            
-            const dropZone = tool.querySelector('.drop-zone');
-            const fileInput = tool.querySelector('.file-input');
-            const actionBtn = tool.querySelector('.action-btn');
-            const editorView = tool.querySelector('.editor-view');
+        if (toolId === 'organize') {
+            const grid = tool.querySelector('#organize-pages-grid');
+            grid.innerHTML = '';
+            grid.classList.add('hidden');
+            actionBtn.classList.add('hidden');
+        }
+        if (toolId === 'stitch') {
+            state.splits = {};
+            state.cuts = {};
+            state.ends = new Set();
+            const fullPreview = tool.querySelector('#stitch-full-preview');
+            if (fullPreview) fullPreview.classList.add('hidden');
+            const previewContainer = tool.querySelector('#stitch-full-preview-container');
+            if (previewContainer) previewContainer.innerHTML = '';
+        }
+        if (toolId === 'crop') {
+            state.boxes = {};
             const previewContainer = tool.querySelector('.preview-container');
-            const canvas = tool.querySelector('canvas');
-            if (!canvas) return; // Defensive check
-            const ctx = canvas.getContext('2d');
+            previewContainer.querySelector('.crop-box')?.remove();
+        }
+        if (toolId === 'merge' || toolId === 'images') {
+            const fileList = tool.querySelector(`#${toolId}-file-list`);
+            if (fileList) fileList.innerHTML = '';
+        }
+    };
 
-            const renderPage = async (pageNum) => {
-                const pdfJS = toolState[toolId].pdfJSDoc;
-                if (!pdfJS || pageNum < 1 || pageNum > pdfJS.numPages) return;
-                toolState[toolId].currentPage = pageNum;
-                tool.querySelector(`#${toolId}-page-indicator`).textContent = `Page ${pageNum} / ${pdfJS.numPages}`;
-                
-                const page = await pdfJS.getPage(pageNum);
-                const viewport = page.getViewport({ scale: 1.5 });
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-                await page.render({ canvasContext: ctx, viewport }).promise;
-                drawElementsForPage(pageNum);
-
-                if (toolId === 'stitch') {
-                    const markEndBtn = tool.querySelector('#mark-end-btn');
-                    markEndBtn.textContent = toolState.stitch.ends.has(pageNum) ? "Unmark as End" : "Mark Page as End";
-                    markEndBtn.classList.toggle('bg-green-600', toolState.stitch.ends.has(pageNum));
+    // --- GENERIC TOOL SETUP ---
+    const setupSimpleTool = (toolId, options = {}) => {
+        const tool = document.getElementById(`${toolId}-tool`);
+        if(!tool) return;
+        toolState[toolId] = { files: [], toolElement: tool };
+        const dropZone = tool.querySelector('.drop-zone');
+        const fileInput = tool.querySelector('.file-input');
+        const actionBtn = tool.querySelector('.action-btn');
+        const handleFiles = async (files) => {
+            if (files.length === 0) return;
+            toolState[toolId].files = options.multiFile ? [...(toolState[toolId].files || []), ...Array.from(files)] : Array.from(files);
+            if(actionBtn) actionBtn.disabled = false;
+            const fileInfo = tool.querySelector('.file-info');
+            if (fileInfo) {
+                fileInfo.classList.remove('hidden');
+                fileInfo.querySelector('.file-name').textContent = toolState[toolId].files.length > 1 ? `${toolState[toolId].files.length} files selected` : toolState[toolId].files[0].name;
+                if (toolId !== 'unlock' && (fileInfo.querySelector('.page-count') || fileInfo.querySelector('.page-dims'))) {
+                     try {
+                        const arrayBuffer = await toolState[toolId].files[0].arrayBuffer();
+                        const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+                        if (fileInfo.querySelector('.page-count')) fileInfo.querySelector('.page-count').textContent = pdfDoc.getPageCount();
+                        if (fileInfo.querySelector('.page-dims')) {
+                            const {width, height} = pdfDoc.getPage(0).getSize();
+                            fileInfo.querySelector('.page-dims').textContent = `${width.toFixed(2)} x ${height.toFixed(2)} pts`;
+                        }
+                    } catch (e) {
+                         if (fileInfo.querySelector('.page-count')) fileInfo.querySelector('.page-count').textContent = 'N/A';
+                         if (fileInfo.querySelector('.page-dims')) fileInfo.querySelector('.page-dims').textContent = 'N/A';
+                         console.warn(`Could not read PDF metadata for ${toolId}: ${e.message}`);
+                    }
                 }
-            };
-
-            const drawElementsForPage = (pageNum) => {
-                previewContainer.querySelectorAll('.draggable, .split-line, .cut-line').forEach(el => el.remove());
-                toolState[toolId].elements?.filter(el => el.page === pageNum).forEach(el => {
-                    previewContainer.appendChild(el.domElement);
-                });
-
-                if (toolId === 'stitch') {
-                    (toolState.stitch.splits[pageNum] || []).forEach((split) => {
-                        const line = document.createElement('div');
-                        line.className = 'split-line';
-                        line.style.top = `${split.y}px`;
-                        line.dataset.y = split.y;
-                        line.dataset.type = 'split';
-                        previewContainer.appendChild(line);
-                    });
-                    (toolState.stitch.cuts[pageNum] || []).forEach((cut) => {
-                        const line = document.createElement('div');
-                        line.className = 'cut-line';
-                        line.style.top = `${cut.y}px`;
-                        line.dataset.y = cut.y;
-                        line.dataset.type = 'cut';
-                        previewContainer.appendChild(line);
-                    });
+            }
+            if (options.multiFile) {
+                renderMultiFileList(toolId);
+            }
+        };
+        const renderMultiFileList = (toolIdToList) => {
+            const listContainer = tool.querySelector(`#${toolIdToList}-file-list`);
+            if (!listContainer) return;
+            listContainer.innerHTML = '';
+            toolState[toolIdToList].files.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.dataset.index = index;
+                item.innerHTML = `<span><i class="fas fa-grip-vertical mr-2 text-gray-400"></i>${file.name}</span><button class="remove-file text-red-500 hover:text-red-700 font-bold text-xl">&times;</button>`;
+                listContainer.appendChild(item);
+            });
+            if (listContainer && !listContainer.sortable) {
+                listContainer.sortable = Sortable.create(listContainer, { handle: '.fa-grip-vertical', animation: 150, onEnd: onSortEnd });
+            }
+        };
+        const onSortEnd = (evt) => {
+            const { oldIndex, newIndex } = evt;
+            const files = toolState[toolId].files;
+            const [movedItem] = files.splice(oldIndex, 1);
+            files.splice(newIndex, 0, movedItem);
+        };
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+        const listContainer = tool.querySelector(`#${toolId}-file-list`);
+        if (listContainer) {
+            listContainer.addEventListener('click', e => {
+                if (e.target.closest('.remove-file')) {
+                    const item = e.target.closest('.file-item');
+                    const index = Array.from(item.parentNode.children).indexOf(item);
+                    toolState[toolId].files.splice(index, 1);
+                    item.remove();
+                    if (toolState[toolId].files.length === 0 && actionBtn) actionBtn.disabled = true;
                 }
-            };
+            });
+        }
+    };
 
-            const handleFile = async (file) => {
-                if(!file) return;
-                toolState[toolId].files = [file];
-                toolState[toolId].elements = [];
-                if (toolId === 'stitch') {
-                    toolState[toolId].splits = {};
-                    toolState[toolId].cuts = {};
-                    toolState[toolId].ends = new Set();
+    const setupEditorTool = (toolId, onAddElement) => {
+        const tool = document.getElementById(`${toolId}-tool`);
+        if (!tool) return;
+        toolState[toolId] = { files: [], toolElement: tool, currentPage: 1, elements: [] };
+        // Tool specific state initialization
+        if (toolId === 'stitch') {
+            toolState[toolId].splits = {}; toolState[toolId].cuts = {}; toolState[toolId].ends = new Set();
+        }
+        if (toolId === 'crop') {
+            toolState[toolId].boxes = {};
+        }
+
+        const dropZone = tool.querySelector('.drop-zone');
+        const fileInput = tool.querySelector('.file-input');
+        const actionBtn = tool.querySelector('.action-btn');
+        const editorView = tool.querySelector('.editor-view');
+        const previewContainer = tool.querySelector('.preview-container');
+        const canvas = tool.querySelector('canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        const RENDER_SCALE = 1.5;
+        
+        const renderPage = async (pageNum) => {
+            const pdfJS = toolState[toolId].pdfJSDoc;
+            if (!pdfJS || pageNum < 1 || pageNum > pdfJS.numPages) return;
+            toolState[toolId].currentPage = pageNum;
+            tool.querySelector(`#${toolId}-page-indicator`).textContent = `Page ${pageNum} / ${pdfJS.numPages}`;
+            const page = await pdfJS.getPage(pageNum);
+            const viewport = page.getViewport({ scale: RENDER_SCALE });
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            
+            // Tool-specific rendering on top of the page
+            if (toolId === 'stitch') {
+                const cuts = toolState.stitch.cuts[pageNum] || [];
+                const splits = toolState.stitch.splits[pageNum] || [];
+                const sortedCuts = [...cuts].map(c => c.y).sort((a, b) => a - b);
+                ctx.fillStyle = 'rgba(0, 100, 255, 0.3)';
+                for (let i = 0; i < sortedCuts.length - 1; i += 2) {
+                    const startY = sortedCuts[i];
+                    const endY = sortedCuts[i + 1];
+                    if (endY > startY) ctx.fillRect(0, startY, canvas.width, endY - startY);
                 }
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+                splits.forEach(split => ctx.fillRect(0, split.y - 1.5, canvas.width, 3));
+                ctx.fillStyle = 'rgba(0, 100, 255, 0.7)';
+                cuts.forEach(cut => ctx.fillRect(0, cut.y - 1.5, canvas.width, 3));
 
-                dropZone.classList.add('hidden');
-                editorView.classList.remove('hidden');
-                if(actionBtn) actionBtn.disabled = false;
-                showStatus(tool, 'Loading PDF...');
+                const markEndBtn = tool.querySelector('#mark-end-btn');
+                markEndBtn.textContent = toolState.stitch.ends.has(pageNum) ? "Unmark as End" : "Mark Page as End";
+                markEndBtn.classList.toggle('bg-green-600', toolState.stitch.ends.has(pageNum));
+            }
+            if (toolId === 'crop') {
+                previewContainer.querySelector('.crop-box')?.remove();
+                if (toolState.crop.boxes[pageNum]) {
+                    const boxData = toolState.crop.boxes[pageNum];
+                    const cropBoxDiv = document.createElement('div');
+                    cropBoxDiv.className = 'crop-box';
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const containerRect = previewContainer.getBoundingClientRect();
+                    const scale = canvasRect.width / canvas.width;
+                    cropBoxDiv.style.left = `${(boxData.x * scale) + (canvasRect.left - containerRect.left)}px`;
+                    cropBoxDiv.style.top = `${(boxData.y * scale) + (canvasRect.top - containerRect.top)}px`;
+                    cropBoxDiv.style.width = `${boxData.width * scale}px`;
+                    cropBoxDiv.style.height = `${boxData.height * scale}px`;
+                    previewContainer.appendChild(cropBoxDiv);
+                }
+            }
+        };
+
+        const handleFile = async (file) => {
+            if (!file) return;
+            resetTool(tool); // Reset previous state before loading new file
+            toolState[toolId].files = [file];
+            dropZone.classList.add('hidden');
+            editorView.classList.remove('hidden');
+            if (actionBtn) actionBtn.disabled = false;
+            showStatus(tool, 'Loading PDF...');
+            try {
                 const arrayBuffer = await file.arrayBuffer();
+                // Store the original buffer for pdf-lib
                 toolState[toolId].pdfBytes = arrayBuffer;
-                const pdfJS = await pdfjsLib.getDocument({data: new Uint8Array(arrayBuffer)}).promise;
+                
+                // --- FIX: Give pdf.js a COPY of the buffer so the original isn't detached ---
+                const bufferCopy = arrayBuffer.slice(0);
+                const pdfJS = await pdfjsLib.getDocument({ data: new Uint8Array(bufferCopy) }).promise;
+
                 toolState[toolId].pdfJSDoc = pdfJS;
                 await renderPage(1);
                 showStatus(tool, 'PDF loaded.');
-            };
-
-            const prevPageBtn = tool.querySelector(`#${toolId}-prev-page`);
-            const nextPageBtn = tool.querySelector(`#${toolId}-next-page`);
-
-            if (prevPageBtn) prevPageBtn.addEventListener('click', () => renderPage(toolState[toolId].currentPage - 1));
-            if(nextPageBtn) nextPageBtn.addEventListener('click', () => renderPage(toolState[toolId].currentPage + 1));
-            
-            if (onAddElement) {
-                const addButton = tool.querySelector(`#add-${toolId.replace('add', '')}-btn`) || tool.querySelector(`#add-signature-btn`) || tool.querySelector(`#add-textbox-btn`) || tool.querySelector(`#add-redaction-btn`);
-                if(addButton) addButton.addEventListener('click', () => onAddElement(tool, previewContainer));
-            }
-
-            if(toolId === 'stitch') {
-                previewContainer.addEventListener('click', (e) => {
-                    const pageNum = toolState.stitch.currentPage;
-                    const target = e.target;
-                    
-                    if (target.classList.contains('split-line') || target.classList.contains('cut-line')) {
-                        const y = parseFloat(target.dataset.y);
-                        const type = target.dataset.type;
-                        const array = (type === 'split') ? toolState.stitch.splits[pageNum] : toolState.stitch.cuts[pageNum];
-                        if (array) {
-                            const index = array.findIndex(item => item.y === y);
-                            if (index > -1) {
-                                array.splice(index, 1);
-                                renderPage(pageNum);
-                            }
-                        }
-                        return;
-                    }
-                    
-                    if (target.tagName === 'CANVAS') {
-                        const rect = canvas.getBoundingClientRect();
-                        const y = e.clientY - rect.top;
-                        
-                        if (e.shiftKey) { // Add a CUT line
-                            if (!toolState.stitch.cuts[pageNum]) toolState.stitch.cuts[pageNum] = [];
-                            toolState.stitch.cuts[pageNum].push({ y });
-                        } else { // Add a SPLIT line
-                            if (!toolState.stitch.splits[pageNum]) toolState.stitch.splits[pageNum] = [];
-                            toolState.stitch.splits[pageNum].push({ y });
-                        }
-                        renderPage(pageNum);
-                    }
-                });
-                
-                tool.querySelector('#clear-splits-btn').addEventListener('click', () => {
-                    toolState.stitch.splits = {};
-                    toolState.stitch.cuts = {};
-                    toolState.stitch.ends.clear();
-                    renderPage(toolState.stitch.currentPage);
-                });
-
-                tool.querySelector('#mark-end-btn').addEventListener('click', () => {
-                     const pageNum = toolState.stitch.currentPage;
-                     if(toolState.stitch.ends.has(pageNum)){
-                         toolState.stitch.ends.delete(pageNum);
-                     } else {
-                         toolState.stitch.ends.add(pageNum);
-                     }
-                     renderPage(pageNum);
-                });
-            }
-
-            dropZone.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
-            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
-        };
-        
-        // --- TOOL-SPECIFIC LOGIC ---
-        const setupAllTools = () => {
-            setupOrganizeTool();
-            setupSimpleTool('unlock');
-            setupSimpleTool('protect');
-            setupSimpleTool('extract');
-            setupSimpleTool('splithalf');
-            setupSimpleTool('recreate');
-            setupSimpleTool('merge', { multiFile: true });
-            setupSimpleTool('images', { multiFile: true });
-            setupSimpleTool('watermark');
-            setupSimpleTool('pagenumbers');
-            setupSimpleTool('pdftoimages');
-            setupSimpleTool('flatten');
-            
-            setupEditorTool('sign', onAddSignature);
-            setupEditorTool('addtext', onAddTextBox);
-            setupEditorTool('redact', onAddRedactionBox);
-            setupEditorTool('stitch');
-
-
-            document.querySelectorAll('.action-btn').forEach(btn => {
-                const toolId = btn.closest('.tool-container').id.replace('-tool', '');
-                const handlerName = `handle${toolId.charAt(0).toUpperCase() + toolId.slice(1)}`;
-                const handler = window[handlerName];
-                if(handler) {
-                    btn.addEventListener('click', handler);
-                }
-            });
-        };
-        
-        const setupOrganizeTool = () => {
-            const tool = document.getElementById('organize-tool');
-            if(!tool) return;
-            toolState.organize = { files: [], toolElement: tool, pageStates: [] };
-
-            const dropZone = tool.querySelector('.drop-zone');
-            const fileInput = tool.querySelector('.file-input');
-            const actionBtn = tool.querySelector('.action-btn');
-            const pagesGrid = tool.querySelector('#organize-pages-grid');
-
-            const handleFile = async (file) => {
-                if (!file) return;
-                toolState.organize.files = [file];
-                dropZone.classList.add('hidden');
-                actionBtn.classList.remove('hidden');
-                actionBtn.disabled = false;
-                pagesGrid.classList.remove('hidden');
-                showStatus(tool, 'Loading PDF pages...');
-
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    const pdfjsDoc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
-                    toolState.organize.pdfJSDoc = pdfjsDoc;
-                    toolState.organize.pageStates = [];
-                    pagesGrid.innerHTML = '';
-
-                    for (let i = 1; i <= pdfjsDoc.numPages; i++) {
-                        toolState.organize.pageStates.push({ originalIndex: i - 1, rotation: 0, deleted: false });
-                        const page = await pdfjsDoc.getPage(i);
-                        const viewport = page.getViewport({ scale: 0.3 });
-                        const canvas = document.createElement('canvas');
-                        canvas.height = viewport.height;
-                        canvas.width = viewport.width;
-                        const context = canvas.getContext('2d');
-                        await page.render({ canvasContext: context, viewport }).promise;
-
-                        const pageEl = document.createElement('div');
-                        pageEl.className = 'page-thumbnail';
-                        pageEl.dataset.originalIndex = i - 1;
-                        pageEl.innerHTML = `
-                            <canvas width="${canvas.width}" height="${canvas.height}"></canvas>
-                            <div class="page-number">${i}</div>
-                            <div class="page-actions">
-                                <button class="rotate-btn text-white p-1" title="Rotate"><i class="fas fa-undo pointer-events-none"></i></button>
-                                <button class="delete-btn text-white p-1" title="Delete"><i class="fas fa-trash pointer-events-none"></i></button>
-                            </div>
-                        `;
-                        pageEl.querySelector('canvas').getContext('2d').drawImage(canvas, 0, 0);
-                        pagesGrid.appendChild(pageEl);
-                    }
-
-                    Sortable.create(pagesGrid, { animation: 150, ghostClass: 'ghost' });
-                    showStatus(tool, 'Ready to organize. Drag pages to reorder.');
-                } catch(e) {
-                    showStatus(tool, `Error loading PDF: ${e.message}`, true);
-                    resetTool(tool);
-                }
-            };
-
-            dropZone.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
-            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
-
-            pagesGrid.addEventListener('click', (e) => {
-                const rotateBtn = e.target.closest('.rotate-btn');
-                const deleteBtn = e.target.closest('.delete-btn');
-                const pageEl = e.target.closest('.page-thumbnail');
-                if (!pageEl) return;
-
-                if (rotateBtn) {
-                    const originalIndex = parseInt(pageEl.dataset.originalIndex, 10);
-                    const state = toolState.organize.pageStates[originalIndex];
-                    state.rotation = (state.rotation + 90) % 360;
-                    pageEl.querySelector('canvas').style.transform = `rotate(${state.rotation}deg)`;
-                }
-                if (deleteBtn) {
-                    const originalIndex = parseInt(pageEl.dataset.originalIndex, 10);
-                    toolState.organize.pageStates[originalIndex].deleted = !toolState.organize.pageStates[originalIndex].deleted;
-                    pageEl.classList.toggle('deleted');
-                }
-            });
-        };
-        window.handleOrganize = async () => {
-            const tool = document.getElementById('organize-tool');
-            toggleButtonLoading(tool, true);
-            showStatus(tool, 'Processing PDF...');
-            try {
-                const { files, pageStates } = toolState.organize;
-                if (!files || files.length === 0) {
-                    throw new Error("No PDF file loaded.");
-                }
-                
-                const pdfBytes = await files[0].arrayBuffer();
-                const pdfDoc = await PDFDocument.load(pdfBytes);
-                const newPdfDoc = await PDFDocument.create();
-
-                const newOrderIndices = Array.from(tool.querySelectorAll('.page-thumbnail')).map(el => parseInt(el.dataset.originalIndex, 10));
-                const finalIndicesInOrder = newOrderIndices.filter(originalIndex => !pageStates[originalIndex].deleted);
-                
-                if (finalIndicesInOrder.length === 0) {
-                    throw new Error("All pages were deleted. Cannot create an empty PDF.");
-                }
-
-                const copiedPages = await newPdfDoc.copyPages(pdfDoc, finalIndicesInOrder);
-
-                copiedPages.forEach((page, i) => {
-                    const originalIndex = finalIndicesInOrder[i];
-                    const state = pageStates[originalIndex];
-                    page.setRotation(degrees(state.rotation));
-                    newPdfDoc.addPage(page);
-                });
-
-                const newPdfBytes = await newPdfDoc.save();
-                createDownloadLink(tool, newPdfBytes, `organized_${files[0].name}`);
-                showStatus(tool, 'PDF organized successfully!');
-            } catch (e) {
-                showStatus(tool, e.message, true);
-                console.error("Organize PDF Error:", e);
-            } finally {
-                toggleButtonLoading(tool, false);
-            }
-        };
-        
-        window.handleUnlock = async () => {
-            const tool = document.getElementById('unlock-tool');
-            toggleButtonLoading(tool, true);
-            showStatus(tool, 'Unlocking PDF...');
-            try {
-                const file = toolState.unlock.files[0];
-                const password = tool.querySelector('.unlock-password').value;
-                const existingPdfBytes = await file.arrayBuffer();
-
-                const pdfDoc = await PDFDocument.load(existingPdfBytes, { password });
-
-                const newPdfDoc = await PDFDocument.create();
-                const copiedPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
-                copiedPages.forEach(page => newPdfDoc.addPage(page));
-
-                const bytes = await newPdfDoc.save();
-
-                createDownloadLink(tool, bytes, `unlocked_${file.name}`);
-                showStatus(tool, 'PDF unlocked successfully!');
-            } catch (e) {
-                const msg = e.message.toLowerCase();
-                if (msg.includes('password') || msg.includes('encrypted')) {
-                     showStatus(tool, 'Incorrect password. If you are sure it is correct, the file may be corrupted. See the tip above.', true);
-                } else if (msg.includes('parse')) {
-                     showStatus(tool, 'Could not read the PDF file. It might be corrupted. Try the "Save as PDF" trick mentioned in the tip above.', true);
-                } else {
-                    showStatus(tool, `An error occurred: ${e.message}`, true);
-                }
-            } finally {
-                toggleButtonLoading(tool, false);
+            } catch(e) {
+                showStatus(tool, `Error loading PDF: ${e.message}`, true);
+                resetTool(tool);
             }
         };
 
-        window.handleProtect = async () => {
-            const tool = document.getElementById('protect-tool');
-            const password = tool.querySelector('.protect-password').value;
-            const confirm = tool.querySelector('.protect-confirm-password').value;
-            if(password !== confirm || !password){
-                showStatus(tool, 'Passwords do not match or are empty.', true);
-                return;
-            }
-            toggleButtonLoading(tool, true); showStatus(tool, 'Protecting PDF...');
-            try {
-                const file = toolState.protect.files[0];
-                const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
-                const bytes = await pdfDoc.save({ userPassword: password });
-                createDownloadLink(tool, bytes, `protected_${file.name}`);
-                showStatus(tool, 'PDF protected successfully!');
-            } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
-        };
-        window.handleMerge = async () => {
-            const tool = document.getElementById('merge-tool');
-            toggleButtonLoading(tool, true); showStatus(tool, 'Merging PDFs...');
-            try {
-                const newPdfDoc = await PDFDocument.create();
-                for(const file of toolState.merge.files){
-                    const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
-                    const copiedPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
-                    copiedPages.forEach(page => newPdfDoc.addPage(page));
-                }
-                const bytes = await newPdfDoc.save();
-                createDownloadLink(tool, bytes, 'merged.pdf');
-                showStatus(tool, 'PDFs merged successfully!');
-            } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
-        };
-        window.handleImages = async () => {
-             const tool = document.getElementById('images-tool');
-            toggleButtonLoading(tool, true); showStatus(tool, 'Converting images to PDF...');
-            try {
-                const newPdfDoc = await PDFDocument.create();
-                for (const file of toolState.images.files) {
-                    const bytes = await file.arrayBuffer();
-                    const image = await (file.type === 'image/png' ? newPdfDoc.embedPng(bytes) : newPdfDoc.embedJpg(bytes));
-                    const page = newPdfDoc.addPage([image.width, image.height]);
-                    page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
-                }
-                const pdfBytes = await newPdfDoc.save();
-                createDownloadLink(tool, pdfBytes, 'converted_images.pdf');
-                showStatus(tool, 'Images converted successfully!');
-            } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
-        };
-        window.handleRecreate = async () => {
-            const tool = document.getElementById('recreate-tool');
-            toggleButtonLoading(tool, true); showStatus(tool, 'Re-creating book...');
-            try {
-                const file = toolState.recreate.files[0];
-                const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
-                const pageCount = pdfDoc.getPageCount();
+        // Standard event listeners
+        const prevPageBtn = tool.querySelector(`#${toolId}-prev-page`);
+        const nextPageBtn = tool.querySelector(`#${toolId}-next-page`);
+        if (prevPageBtn) prevPageBtn.addEventListener('click', () => renderPage(toolState[toolId].currentPage - 1));
+        if (nextPageBtn) nextPageBtn.addEventListener('click', () => renderPage(toolState[toolId].currentPage + 1));
+        if (onAddElement) {
+            const addButton = tool.querySelector(`#add-${toolId.replace('add', '')}-btn`) || tool.querySelector(`#add-signature-btn`) || tool.querySelector(`#add-textbox-btn`) || tool.querySelector(`#add-redaction-btn`);
+            if(addButton) addButton.addEventListener('click', () => onAddElement(tool, previewContainer));
+        }
 
-                const tempDoc = await PDFDocument.create();
-                const copiedPages = await tempDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+        // Tool-specific interaction setup
+        if (toolId === 'stitch') {
+            previewContainer.addEventListener('click', (e) => {
+                const pageNum = toolState.stitch.currentPage;
+                if (e.target.tagName !== 'CANVAS') return;
+                const rect = canvas.getBoundingClientRect();
+                const y_css = e.clientY - rect.top;
+                const effectiveScaleRatio = canvas.height / rect.height;
+                const clickedInternalY = y_css * effectiveScaleRatio;
+                const clickThreshold = 5 * effectiveScaleRatio;
+                let lineDeleted = false;
                 
-                const splitPages = [];
-                for(const copiedPage of copiedPages) {
-                    const { width, height } = copiedPage.getMediaBox();
-                    
-                    copiedPage.setCropBox(0, 0, width/2, height);
-                    splitPages.push(await tempDoc.embedPage(copiedPage));
-                    
-                    copiedPage.setCropBox(width/2, 0, width/2, height);
-                    splitPages.push(await tempDoc.embedPage(copiedPage));
-                }
-
-                const finalPdf = await PDFDocument.create();
-                const orderedPages = [];
-                for (let i = 0; i < pageCount; i++) {
-                    orderedPages.push(splitPages[i * 2 + 1]); // Right side of spread i
-                    orderedPages.push(splitPages[(pageCount - 1 - i) * 2]); // Left side of spread n-i
-                }
-                
-                const finalOrder = [];
-                for (let i = 0; i < pageCount; i++) {
-                    finalOrder.push(orderedPages[i]);
-                    finalOrder.push(orderedPages[orderedPages.length - 1 - i]);
-                }
-                
-                const uniqueFinalOrder = finalOrder.slice(0, pageCount * 2);
-
-                for (const embeddedPage of uniqueFinalOrder) {
-                    const { width, height } = embeddedPage;
-                    const page = finalPdf.addPage([width, height]);
-                    page.drawPage(embeddedPage, { x: 0, y: 0, width, height });
-                }
-
-                const bytes = await finalPdf.save();
-                createDownloadLink(tool, bytes, `recreated_${file.name}`);
-                showStatus(tool, 'Book re-created successfully!');
-            } catch (e) { showStatus(tool, e.message, true); console.error(e); } finally { toggleButtonLoading(tool, false); }
-        };
-        window.handleExtract = async () => {
-            const tool = document.getElementById('extract-tool');
-            toggleButtonLoading(tool, true); showStatus(tool, 'Extracting pages...');
-            try {
-                const file = toolState.extract.files[0];
-                const rangeStr = tool.querySelector('.extract-pages').value;
-                const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
-                const pageIndices = parsePageRanges(rangeStr, pdfDoc.getPageCount());
-                if (pageIndices.length === 0) throw new Error("No valid pages selected.");
-                const newPdfDoc = await PDFDocument.create();
-                const copiedPages = await newPdfDoc.copyPages(pdfDoc, pageIndices);
-                copiedPages.forEach(page => newPdfDoc.addPage(page));
-                const bytes = await newPdfDoc.save();
-                createDownloadLink(tool, bytes, `extracted_${file.name}`);
-                showStatus(tool, 'Pages extracted successfully!');
-            } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
-        };
-        window.handleSplithalf = async () => {
-            const tool = document.getElementById('splithalf-tool');
-            toggleButtonLoading(tool, true); showStatus(tool, 'Splitting pages...');
-            try {
-                const file = toolState.splithalf.files[0];
-                const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
-                const newPdfDoc = await PDFDocument.create();
-                const copiedPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
-
-                for (const copiedPage of copiedPages) {
-                    const { width, height } = copiedPage.getMediaBox();
-                    
-                    copiedPage.setCropBox(0, 0, width / 2, height);
-                    const leftEmbed = await newPdfDoc.embedPage(copiedPage);
-                    const leftPage = newPdfDoc.addPage([width / 2, height]);
-                    leftPage.drawPage(leftEmbed, { x: 0, y: 0, width: width / 2, height});
-
-                    copiedPage.setCropBox(width / 2, 0, width / 2, height);
-                    const rightEmbed = await newPdfDoc.embedPage(copiedPage);
-                    const rightPage = newPdfDoc.addPage([width / 2, height]);
-                    rightPage.drawPage(rightEmbed, { x: 0, y: 0, width: width / 2, height});
-                }
-                
-                const bytes = await newPdfDoc.save();
-                createDownloadLink(tool, bytes, `split_${file.name}`);
-                showStatus(tool, 'Pages split successfully!');
-            } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
-        };
-        window.handleWatermark = async () => {
-            const tool = document.getElementById('watermark-tool');
-            toggleButtonLoading(tool, true); showStatus(tool, 'Adding watermark...');
-            try {
-                const file = toolState.watermark.files[0];
-                const text = tool.querySelector('.watermark-text').value;
-                const size = parseInt(tool.querySelector('.watermark-size').value, 10);
-                const rotation = parseInt(tool.querySelector('.watermark-rotation').value, 10);
-                const opacity = parseFloat(tool.querySelector('.watermark-opacity').value);
-                
-                const pdfDoc = await PDFDocument.load(await file.arrayBuffer(), {ignoreEncryption: true});
-                const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-                pdfDoc.getPages().forEach(page => {
-                    const { width, height } = page.getSize();
-                    page.drawText(text, {
-                        x: width / 2 - (font.widthOfTextAtSize(text, size) / 2),
-                        y: height / 2 - size / 2,
-                        font, size,
-                        color: rgb(0, 0, 0),
-                        opacity,
-                        rotate: degrees(rotation),
-                    });
-                });
-                
-                const bytes = await pdfDoc.save();
-                createDownloadLink(tool, bytes, `watermarked_${file.name}`);
-                showStatus(tool, 'Watermark added successfully!');
-            } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
-        };
-        window.handlePageNumbers = async () => {
-             const tool = document.getElementById('pagenumbers-tool');
-             toggleButtonLoading(tool, true); showStatus(tool, 'Adding page numbers...');
-             try {
-                 const file = toolState.pagenumbers.files[0];
-                 const position = tool.querySelector('.pagenum-position').value;
-                 const size = parseInt(tool.querySelector('.pagenum-size').value, 10);
-                 const start = parseInt(tool.querySelector('.pagenum-start').value, 10);
-
-                 const pdfDoc = await PDFDocument.load(await file.arrayBuffer(), {ignoreEncryption: true});
-                 const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-                 const pages = pdfDoc.getPages();
-
-                 pages.forEach((page, i) => {
-                     const pageNum = i + start;
-                     const { width, height } = page.getSize();
-                     const text = `${pageNum}`;
-                     const textWidth = font.widthOfTextAtSize(text, size);
-                     
-                     let x, y;
-                     const margin = 30;
-
-                     if (position.includes('bottom')) y = margin;
-                     if (position.includes('top')) y = height - size - margin;
-                     if (position.includes('left')) x = margin;
-                     if (position.includes('right')) x = width - textWidth - margin;
-                     if (position.includes('center')) x = width / 2 - textWidth / 2;
-
-                     page.drawText(text, { x, y, font, size, color: rgb(0,0,0) });
-                 });
-                 
-                 const bytes = await pdfDoc.save();
-                 createDownloadLink(tool, bytes, `numbered_${file.name}`);
-                 showStatus(tool, 'Page numbers added successfully!');
-             } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
-        };
-        // FIX: Rewrote chunking logic to correctly handle cut zones and overlapping lines.
-        window.handleStitch = async () => {
-            const tool = document.getElementById('stitch-tool');
-            toggleButtonLoading(tool, true);
-            showStatus(tool, 'Stitching PDF...');
-            try {
-                const { files, splits, cuts, ends } = toolState.stitch;
-                if (!files || files.length === 0) throw new Error("No PDF file loaded.");
-                
-                const pdfBytes = await files[0].arrayBuffer();
-                const pdfDoc = await PDFDocument.load(pdfBytes);
-
-                // --- PASS 1: GATHER ALL CONTENT CHUNKS AND PAGE BREAKS ---
-                const allChunks = [];
-                for (let i = 0; i < pdfDoc.getPageCount(); i++) {
-                    const pageNum = i + 1;
-                    const page = pdfDoc.getPage(i);
-                    const { width: pdfWidth, height: pdfHeight } = page.getSize();
-                    const scale = 1.5;
-                    const canvasHeight = pdfHeight * scale;
-
-                    const splitPoints = (splits[pageNum] || []).map(s => s.y);
-                    const cutPoints = (cuts[pageNum] || []).map(c => c.y).sort((a,b) => a-b);
-                    
-                    const allYPoints = [0, canvasHeight, ...splitPoints, ...cutPoints]
-                        .sort((a, b) => a - b)
-                        .filter((val, index, self) => self.indexOf(val) === index);
-                    
-                    for (let j = 0; j < allYPoints.length - 1; j++) {
-                        const startY_canvas = allYPoints[j];
-                        const endY_canvas = allYPoints[j+1];
-                        
-                        if (endY_canvas - startY_canvas < 1) continue;
-                        
-                        const midY_canvas = (startY_canvas + endY_canvas) / 2;
-
-                        let isCut = false;
-                        for (let k = 0; k < cutPoints.length; k += 2) {
-                            if (cutPoints[k+1] && midY_canvas > cutPoints[k] && midY_canvas < cutPoints[k+1]) {
-                                isCut = true;
-                                break;
-                            }
-                        }
-                        if (isCut) continue;
-
-                        allChunks.push({
-                            pageIndex: i,
-                            crop: {
-                                x: 0,
-                                y: pdfHeight - (endY_canvas / scale),
-                                width: pdfWidth,
-                                height: (endY_canvas - startY_canvas) / scale
-                            }
-                        });
-
-                        if (splitPoints.includes(endY_canvas)) {
-                            allChunks.push({ isPageBreak: true });
-                        }
+                const cuts = toolState.stitch.cuts[pageNum] || [];
+                for (let i = cuts.length - 1; i >= 0; i--) {
+                    if (Math.abs(cuts[i].y - clickedInternalY) < clickThreshold) {
+                        cuts.splice(i, 1);
+                        lineDeleted = true;
+                        break;
                     }
-
-                    if (ends.has(pageNum)) {
-                        if (allChunks.length > 0 && !allChunks[allChunks.length - 1].isPageBreak) {
-                             allChunks.push({ isPageBreak: true });
+                }
+                if (!lineDeleted) {
+                    const splits = toolState.stitch.splits[pageNum] || [];
+                    for (let i = splits.length - 1; i >= 0; i--) {
+                        if (Math.abs(splits[i].y - clickedInternalY) < clickThreshold) {
+                            splits.splice(i, 1);
+                            lineDeleted = true;
+                            break;
                         }
                     }
                 }
-
-                // --- PASS 2: BUILD THE NEW PDF FROM THE CHUNKS ---
-                const newPdfDoc = await PDFDocument.create();
-                const copiedPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
-                let piecesForCurrentPage = [];
-
-                const createPageFromPieces = async (pieces) => {
-                    if (pieces.length === 0) return;
-
-                    const firstPiecePageIndex = pieces[0].pageIndex;
-                    const page_width = copiedPages[firstPiecePageIndex].getMediaBox().width;
-                    const totalHeight = pieces.reduce((sum, piece) => sum + piece.crop.height, 0);
-
-                    if (totalHeight < 1) return;
-
-                    const newPage = newPdfDoc.addPage([page_width, totalHeight]);
-                    let currentY = totalHeight;
-
-                    for (const piece of pieces) {
-                        const pageToCrop = copiedPages[piece.pageIndex];
-                        
-                        pageToCrop.setCropBox(piece.crop.x, piece.crop.y, piece.crop.width, piece.crop.height);
-                        
-                        const embeddedPiece = await newPdfDoc.embedPage(pageToCrop);
-                        currentY -= embeddedPiece.height;
-                        
-                        newPage.drawPage(embeddedPiece, {
-                            x: 0,
-                            y: currentY,
-                            width: embeddedPiece.width,
-                            height: embeddedPiece.height
-                        });
-                    }
-                };
-
-                for (const chunk of allChunks) {
-                    if (chunk.isPageBreak) {
-                        await createPageFromPieces(piecesForCurrentPage);
-                        piecesForCurrentPage = [];
+                if (!lineDeleted) {
+                    if (e.shiftKey) {
+                        if (!toolState.stitch.cuts[pageNum]) toolState.stitch.cuts[pageNum] = [];
+                        toolState.stitch.cuts[pageNum].push({ y: clickedInternalY });
                     } else {
-                        piecesForCurrentPage.push(chunk);
+                        if (!toolState.stitch.splits[pageNum]) toolState.stitch.splits[pageNum] = [];
+                        toolState.stitch.splits[pageNum].push({ y: clickedInternalY });
                     }
                 }
-                await createPageFromPieces(piecesForCurrentPage);
+                renderPage(pageNum);
+            });
+            
+            tool.querySelector('#clear-splits-btn').addEventListener('click', () => {
+                toolState.stitch.splits = {}; toolState.stitch.cuts = {}; toolState.stitch.ends.clear();
+                renderPage(toolState.stitch.currentPage);
+            });
+            tool.querySelector('#mark-end-btn').addEventListener('click', () => {
+                 const pageNum = toolState.stitch.currentPage;
+                 if(toolState.stitch.ends.has(pageNum)) toolState.stitch.ends.delete(pageNum);
+                 else toolState.stitch.ends.add(pageNum);
+                 renderPage(pageNum);
+            });
+        }
 
-                const newPdfBytes = await newPdfDoc.save();
+        if (toolId === 'crop') {
+            previewContainer.classList.add('crop-active');
+            let cropBoxDiv = null, startCoords = null;
+
+            const getCanvasCoords = (e) => {
+                const canvasRect = canvas.getBoundingClientRect();
+                const scale = canvas.width / canvasRect.width;
+                return {
+                    x: (e.clientX - canvasRect.left) * scale,
+                    y: (e.clientY - canvasRect.top) * scale
+                };
+            };
+            
+            previewContainer.addEventListener('mousedown', e => {
+                if (e.target !== canvas) return;
+                startCoords = getCanvasCoords(e);
+                previewContainer.querySelector('.crop-box')?.remove();
+                cropBoxDiv = document.createElement('div');
+                cropBoxDiv.className = 'crop-box';
+                previewContainer.appendChild(cropBoxDiv);
                 
-                // --- Display Preview ---
-                const fullPreviewContainer = document.getElementById('stitch-full-preview-container');
-                fullPreviewContainer.innerHTML = '';
-                document.getElementById('stitch-full-preview').classList.remove('hidden');
+                const canvasRect = canvas.getBoundingClientRect();
+                const containerRect = previewContainer.getBoundingClientRect();
+                cropBoxDiv.style.left = `${e.clientX - containerRect.left}px`;
+                cropBoxDiv.style.top = `${e.clientY - containerRect.top}px`;
+                cropBoxDiv.style.width = '0px';
+                cropBoxDiv.style.height = '0px';
+            });
+            previewContainer.addEventListener('mousemove', e => {
+                if (!startCoords || !cropBoxDiv) return;
+                const currentCoords = getCanvasCoords(e);
+                const canvasRect = canvas.getBoundingClientRect();
+                const containerRect = previewContainer.getBoundingClientRect();
+                const scale = canvasRect.width / canvas.width;
+                
+                const x = Math.min(startCoords.x, currentCoords.x);
+                const y = Math.min(startCoords.y, currentCoords.y);
+                const width = Math.abs(currentCoords.x - startCoords.x);
+                const height = Math.abs(currentCoords.y - startCoords.y);
+                
+                cropBoxDiv.style.left = `${(x * scale) + (canvasRect.left - containerRect.left)}px`;
+                cropBoxDiv.style.top = `${(y * scale) + (canvasRect.top - containerRect.top)}px`;
+                cropBoxDiv.style.width = `${width * scale}px`;
+                cropBoxDiv.style.height = `${height * scale}px`;
+            });
+            const endCrop = (e) => {
+                if (!startCoords || !cropBoxDiv) return;
+                const currentCoords = getCanvasCoords(e);
+                const x = Math.min(startCoords.x, currentCoords.x);
+                const y = Math.min(startCoords.y, currentCoords.y);
+                const width = Math.abs(currentCoords.x - startCoords.x);
+                const height = Math.abs(currentCoords.y - startCoords.y);
 
-                const previewPdfJS = await pdfjsLib.getDocument({ data: newPdfBytes }).promise;
-                for (let i = 1; i <= previewPdfJS.numPages; i++) {
-                    const page = await previewPdfJS.getPage(i);
-                    const viewport = page.getViewport({ scale: 1 });
+                if (width > 5 && height > 5) { // Minimum crop size
+                    toolState.crop.boxes[toolState.crop.currentPage] = { x, y, width, height };
+                } else {
+                    delete toolState.crop.boxes[toolState.crop.currentPage];
+                    cropBoxDiv.remove();
+                }
+                startCoords = null;
+                cropBoxDiv = null;
+            };
+            previewContainer.addEventListener('mouseup', endCrop);
+            previewContainer.addEventListener('mouseleave', endCrop);
+            tool.querySelector('#crop-clear-btn').addEventListener('click', () => {
+                delete toolState.crop.boxes[toolState.crop.currentPage];
+                renderPage(toolState.crop.currentPage);
+            });
+        }
+        
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+    };
+    
+    // --- TOOL-SPECIFIC LOGIC ---
+    const setupAllTools = () => {
+        setupOrganizeTool();
+        setupSimpleTool('unlock');
+        setupSimpleTool('protect');
+        setupSimpleTool('extract');
+        setupSimpleTool('splithalf');
+        setupSimpleTool('recreate');
+        setupSimpleTool('merge', { multiFile: true });
+        setupSimpleTool('images', { multiFile: true });
+        setupSimpleTool('watermark');
+        setupSimpleTool('pagenumbers');
+        setupSimpleTool('pdftoimages');
+        setupSimpleTool('flatten');
+        setupEditorTool('sign', onAddSignature);
+        setupEditorTool('addtext', onAddTextBox);
+        setupEditorTool('redact', onAddRedactionBox);
+        setupEditorTool('stitch');
+        setupEditorTool('crop');
+        document.querySelectorAll('.action-btn').forEach(btn => {
+            const toolId = btn.closest('.tool-container').id.replace('-tool', '');
+            const handlerName = `handle${toolId.charAt(0).toUpperCase() + toolId.slice(1)}`;
+            const handler = window[handlerName];
+            if(handler) {
+                btn.addEventListener('click', handler);
+            }
+        });
+    };
+    
+    const setupOrganizeTool = () => {
+        const tool = document.getElementById('organize-tool');
+        if(!tool) return;
+        toolState.organize = { files: [], toolElement: tool, pageStates: [] };
+        const dropZone = tool.querySelector('.drop-zone');
+        const fileInput = tool.querySelector('.file-input');
+        const actionBtn = tool.querySelector('.action-btn');
+        const pagesGrid = tool.querySelector('#organize-pages-grid');
+        const handleFile = async (file) => {
+            if (!file) return;
+            toolState.organize.files = [file];
+            dropZone.classList.add('hidden');
+            actionBtn.classList.remove('hidden');
+            actionBtn.disabled = false;
+            pagesGrid.classList.remove('hidden');
+            showStatus(tool, 'Loading PDF pages...');
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdfjsDoc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+                toolState.organize.pdfJSDoc = pdfjsDoc;
+                toolState.organize.pageStates = [];
+                pagesGrid.innerHTML = '';
+                for (let i = 1; i <= pdfjsDoc.numPages; i++) {
+                    toolState.organize.pageStates.push({ originalIndex: i - 1, rotation: 0, deleted: false });
+                    const page = await pdfjsDoc.getPage(i);
+                    const viewport = page.getViewport({ scale: 0.3 });
                     const canvas = document.createElement('canvas');
                     canvas.height = viewport.height;
                     canvas.width = viewport.width;
-                    canvas.style.maxWidth = '100%';
-                    canvas.style.height = 'auto';
-                    canvas.style.border = '1px solid #ccc';
                     const context = canvas.getContext('2d');
                     await page.render({ canvasContext: context, viewport }).promise;
-                    fullPreviewContainer.appendChild(canvas);
+                    const pageEl = document.createElement('div');
+                    pageEl.className = 'page-thumbnail';
+                    pageEl.dataset.originalIndex = i - 1;
+                    pageEl.innerHTML = `
+                        <canvas width="${canvas.width}" height="${canvas.height}"></canvas>
+                        <div class="page-number">${i}</div>
+                        <div class="page-actions">
+                            <button class="rotate-btn text-white p-1" title="Rotate"><i class="fas fa-undo pointer-events-none"></i></button>
+                            <button class="delete-btn text-white p-1" title="Delete"><i class="fas fa-trash pointer-events-none"></i></button>
+                        </div>
+                    `;
+                    pageEl.querySelector('canvas').getContext('2d').drawImage(canvas, 0, 0);
+                    pagesGrid.appendChild(pageEl);
                 }
-                
-                createDownloadLink(tool, newPdfBytes, `stitched_${files[0].name}`);
-                showStatus(tool, 'Stitching complete. Review the preview below.');
-
-            } catch (e) {
-                showStatus(tool, e.message, true);
-                console.error("Stitch PDF Error:", e);
-            } finally {
-                toggleButtonLoading(tool, false);
+                Sortable.create(pagesGrid, { animation: 150, ghostClass: 'ghost' });
+                showStatus(tool, 'Ready to organize. Drag pages to reorder.');
+            } catch(e) {
+                showStatus(tool, `Error loading PDF: ${e.message}`, true);
+                resetTool(tool);
             }
         };
-        window.handlePdfToImages = async () => { /* Placeholder */ };
-        window.handleFlatten = async () => { /* Placeholder */ };
-        window.handleSign = async () => { /* Placeholder */ };
-        const onAddSignature = () => { /* Placeholder */ };
-        window.handleAddtext = async () => { /* Placeholder */ };
-        const onAddTextBox = () => { /* Placeholder */ };
-        window.handleRedact = async () => { /* Placeholder */ };
-        const onAddRedactionBox = () => { /* Placeholder */ };
-
-
-        // --- INITIALIZATION ---
-        document.addEventListener('DOMContentLoaded', () => {
-            setupAllTools();
-            setActivePanel('unlock');
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+        pagesGrid.addEventListener('click', (e) => {
+            const rotateBtn = e.target.closest('.rotate-btn');
+            const deleteBtn = e.target.closest('.delete-btn');
+            const pageEl = e.target.closest('.page-thumbnail');
+            if (!pageEl) return;
+            if (rotateBtn) {
+                const originalIndex = parseInt(pageEl.dataset.originalIndex, 10);
+                const state = toolState.organize.pageStates[originalIndex];
+                state.rotation = (state.rotation + 90) % 360;
+                pageEl.querySelector('canvas').style.transform = `rotate(${state.rotation}deg)`;
+            }
+            if (deleteBtn) {
+                const originalIndex = parseInt(pageEl.dataset.originalIndex, 10);
+                toolState.organize.pageStates[originalIndex].deleted = !toolState.organize.pageStates[originalIndex].deleted;
+                pageEl.classList.toggle('deleted');
+            }
         });
+    };
+    window.handleOrganize = async () => {
+        const tool = document.getElementById('organize-tool');
+        toggleButtonLoading(tool, true);
+        showStatus(tool, 'Processing PDF...');
+        try {
+            const { files, pageStates } = toolState.organize;
+            if (!files || files.length === 0) throw new Error("No PDF file loaded.");
+            const pdfBytes = await files[0].arrayBuffer();
+            const pdfDoc = await PDFDocument.load(pdfBytes);
+            const newPdfDoc = await PDFDocument.create();
+            const newOrderIndices = Array.from(tool.querySelectorAll('.page-thumbnail')).map(el => parseInt(el.dataset.originalIndex, 10));
+            const finalIndicesInOrder = newOrderIndices.filter(originalIndex => !pageStates[originalIndex].deleted);
+            if (finalIndicesInOrder.length === 0) throw new Error("All pages were deleted. Cannot create an empty PDF.");
+            const copiedPages = await newPdfDoc.copyPages(pdfDoc, finalIndicesInOrder);
+            copiedPages.forEach((page, i) => {
+                const originalIndex = finalIndicesInOrder[i];
+                const state = pageStates[originalIndex];
+                page.setRotation(degrees(state.rotation));
+                newPdfDoc.addPage(page);
+            });
+            const newPdfBytes = await newPdfDoc.save();
+            createDownloadLink(tool, newPdfBytes, `organized_${files[0].name}`);
+            showStatus(tool, 'PDF organized successfully!');
+        } catch (e) {
+            showStatus(tool, e.message, true);
+            console.error("Organize PDF Error:", e);
+        } finally {
+            toggleButtonLoading(tool, false);
+        }
+    };
+    window.handleUnlock = async () => {
+        const tool = document.getElementById('unlock-tool');
+        toggleButtonLoading(tool, true);
+        showStatus(tool, 'Unlocking PDF...');
+        try {
+            const file = toolState.unlock.files[0];
+            const password = tool.querySelector('.unlock-password').value;
+            const existingPdfBytes = await file.arrayBuffer();
+            const pdfDoc = await PDFDocument.load(existingPdfBytes, { password });
+            const newPdfDoc = await PDFDocument.create();
+            const copiedPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+            copiedPages.forEach(page => newPdfDoc.addPage(page));
+            const bytes = await newPdfDoc.save();
+            createDownloadLink(tool, bytes, `unlocked_${file.name}`);
+            showStatus(tool, 'PDF unlocked successfully!');
+        } catch (e) {
+            const msg = e.message.toLowerCase();
+            if (msg.includes('password') || msg.includes('encrypted')) {
+                 showStatus(tool, 'Incorrect password. If you are sure it is correct, the file may be corrupted. See the tip above.', true);
+            } else if (msg.includes('parse')) {
+                 showStatus(tool, 'Could not read the PDF file. It might be corrupted. Try the "Save as PDF" trick mentioned in the tip above.', true);
+            } else {
+                showStatus(tool, `An error occurred: ${e.message}`, true);
+            }
+        } finally {
+            toggleButtonLoading(tool, false);
+        }
+    };
+    window.handleProtect = async () => {
+        const tool = document.getElementById('protect-tool');
+        const password = tool.querySelector('.protect-password').value;
+        const confirm = tool.querySelector('.protect-confirm-password').value;
+        if(password !== confirm || !password){
+            showStatus(tool, 'Passwords do not match or are empty.', true);
+            return;
+        }
+        toggleButtonLoading(tool, true); showStatus(tool, 'Protecting PDF...');
+        try {
+            const file = toolState.protect.files[0];
+            const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
+            const bytes = await pdfDoc.save({ userPassword: password });
+            createDownloadLink(tool, bytes, `protected_${file.name}`);
+            showStatus(tool, 'PDF protected successfully!');
+        } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
+    };
+    window.handleMerge = async () => {
+        const tool = document.getElementById('merge-tool');
+        toggleButtonLoading(tool, true); showStatus(tool, 'Merging PDFs...');
+        try {
+            const newPdfDoc = await PDFDocument.create();
+            for(const file of toolState.merge.files){
+                const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
+                const copiedPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+                copiedPages.forEach(page => newPdfDoc.addPage(page));
+            }
+            const bytes = await newPdfDoc.save();
+            createDownloadLink(tool, bytes, 'merged.pdf');
+            showStatus(tool, 'PDFs merged successfully!');
+        } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
+    };
+    window.handleImages = async () => {
+        const tool = document.getElementById('images-tool');
+        toggleButtonLoading(tool, true); showStatus(tool, 'Converting images to PDF...');
+        try {
+            const newPdfDoc = await PDFDocument.create();
+            for (const file of toolState.images.files) {
+                const bytes = await file.arrayBuffer();
+                const image = await (file.type === 'image/png' ? newPdfDoc.embedPng(bytes) : newPdfDoc.embedJpg(bytes));
+                const page = newPdfDoc.addPage([image.width, image.height]);
+                page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+            }
+            const pdfBytes = await newPdfDoc.save();
+            createDownloadLink(tool, pdfBytes, 'converted_images.pdf');
+            showStatus(tool, 'Images converted successfully!');
+        } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
+    };
+    window.handleRecreate = async () => {
+        const tool = document.getElementById('recreate-tool');
+        toggleButtonLoading(tool, true); showStatus(tool, 'Re-creating book...');
+        try {
+            const file = toolState.recreate.files[0];
+            const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
+            const pageCount = pdfDoc.getPageCount();
+            const tempDoc = await PDFDocument.create();
+            const copiedPages = await tempDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+            const splitPages = [];
+            for(const copiedPage of copiedPages) {
+                const { width, height } = copiedPage.getMediaBox();
+                copiedPage.setCropBox(0, 0, width/2, height);
+                splitPages.push(await tempDoc.embedPage(copiedPage));
+                copiedPage.setCropBox(width/2, 0, width/2, height);
+                splitPages.push(await tempDoc.embedPage(copiedPage));
+            }
+            const finalPdf = await PDFDocument.create();
+            const orderedPages = [];
+            for (let i = 0; i < pageCount; i++) {
+                orderedPages.push(splitPages[i * 2 + 1]);
+                orderedPages.push(splitPages[(pageCount - 1 - i) * 2]);
+            }
+            const finalOrder = [];
+            for (let i = 0; i < pageCount; i++) {
+                finalOrder.push(orderedPages[i]);
+                finalOrder.push(orderedPages[orderedPages.length - 1 - i]);
+            }
+            const uniqueFinalOrder = finalOrder.slice(0, pageCount * 2);
+            for (const embeddedPage of uniqueFinalOrder) {
+                const { width, height } = embeddedPage;
+                const page = finalPdf.addPage([width, height]);
+                page.drawPage(embeddedPage, { x: 0, y: 0, width, height });
+            }
+            const bytes = await finalPdf.save();
+            createDownloadLink(tool, bytes, `recreated_${file.name}`);
+            showStatus(tool, 'Book re-created successfully!');
+        } catch (e) { showStatus(tool, e.message, true); console.error(e); } finally { toggleButtonLoading(tool, false); }
+    };
+    window.handleExtract = async () => {
+        const tool = document.getElementById('extract-tool');
+        toggleButtonLoading(tool, true); showStatus(tool, 'Extracting pages...');
+        try {
+            const file = toolState.extract.files[0];
+            const rangeStr = tool.querySelector('.extract-pages').value;
+            const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
+            const pageIndices = parsePageRanges(rangeStr, pdfDoc.getPageCount());
+            if (pageIndices.length === 0) throw new Error("No valid pages selected.");
+            const newPdfDoc = await PDFDocument.create();
+            const copiedPages = await newPdfDoc.copyPages(pdfDoc, pageIndices);
+            copiedPages.forEach(page => newPdfDoc.addPage(page));
+            const bytes = await newPdfDoc.save();
+            createDownloadLink(tool, bytes, `extracted_${file.name}`);
+            showStatus(tool, 'Pages extracted successfully!');
+        } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
+    };
+    window.handleSplithalf = async () => {
+        const tool = document.getElementById('splithalf-tool');
+        toggleButtonLoading(tool, true); showStatus(tool, 'Splitting pages...');
+        try {
+            const file = toolState.splithalf.files[0];
+            const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
+            const newPdfDoc = await PDFDocument.create();
+            const copiedPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
+            for (const copiedPage of copiedPages) {
+                const { width, height } = copiedPage.getMediaBox();
+                copiedPage.setCropBox(0, 0, width / 2, height);
+                const leftEmbed = await newPdfDoc.embedPage(copiedPage);
+                const leftPage = newPdfDoc.addPage([width / 2, height]);
+                leftPage.drawPage(leftEmbed, { x: 0, y: 0, width: width / 2, height});
+                copiedPage.setCropBox(width / 2, 0, width / 2, height);
+                const rightEmbed = await newPdfDoc.embedPage(copiedPage);
+                const rightPage = newPdfDoc.addPage([width / 2, height]);
+                rightPage.drawPage(rightEmbed, { x: 0, y: 0, width: width / 2, height});
+            }
+            const bytes = await newPdfDoc.save();
+            createDownloadLink(tool, bytes, `split_${file.name}`);
+            showStatus(tool, 'Pages split successfully!');
+        } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
+    };
+    window.handleWatermark = async () => {
+        const tool = document.getElementById('watermark-tool');
+        toggleButtonLoading(tool, true); showStatus(tool, 'Adding watermark...');
+        try {
+            const file = toolState.watermark.files[0];
+            const text = tool.querySelector('.watermark-text').value;
+            const size = parseInt(tool.querySelector('.watermark-size').value, 10);
+            const rotation = parseInt(tool.querySelector('.watermark-rotation').value, 10);
+            const opacity = parseFloat(tool.querySelector('.watermark-opacity').value);
+            const pdfDoc = await PDFDocument.load(await file.arrayBuffer(), {ignoreEncryption: true});
+            const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+            pdfDoc.getPages().forEach(page => {
+                const { width, height } = page.getSize();
+                page.drawText(text, {
+                    x: width / 2 - (font.widthOfTextAtSize(text, size) / 2),
+                    y: height / 2 - size / 2,
+                    font, size,
+                    color: rgb(0, 0, 0),
+                    opacity,
+                    rotate: degrees(rotation),
+                });
+            });
+            const bytes = await pdfDoc.save();
+            createDownloadLink(tool, bytes, `watermarked_${file.name}`);
+            showStatus(tool, 'Watermark added successfully!');
+        } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
+    };
+    window.handlePagenumbers = async () => {
+         const tool = document.getElementById('pagenumbers-tool');
+         toggleButtonLoading(tool, true); showStatus(tool, 'Adding page numbers...');
+         try {
+             const file = toolState.pagenumbers.files[0];
+             const position = tool.querySelector('.pagenum-position').value;
+             const size = parseInt(tool.querySelector('.pagenum-size').value, 10);
+             const start = parseInt(tool.querySelector('.pagenum-start').value, 10);
+             const pdfDoc = await PDFDocument.load(await file.arrayBuffer(), {ignoreEncryption: true});
+             const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+             const pages = pdfDoc.getPages();
+             pages.forEach((page, i) => {
+                 const pageNum = i + start;
+                 const { width, height } = page.getSize();
+                 const text = `${pageNum}`;
+                 const textWidth = font.widthOfTextAtSize(text, size);
+                 let x, y;
+                 const margin = 30;
+                 if (position.includes('bottom')) y = margin;
+                 if (position.includes('top')) y = height - size - margin;
+                 if (position.includes('left')) x = margin;
+                 if (position.includes('right')) x = width - textWidth - margin;
+                 if (position.includes('center')) x = width / 2 - textWidth / 2;
+                 page.drawText(text, { x, y, font, size, color: rgb(0,0,0) });
+             });
+             const bytes = await pdfDoc.save();
+             createDownloadLink(tool, bytes, `numbered_${file.name}`);
+             showStatus(tool, 'Page numbers added successfully!');
+         } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
+    };
+    
+    window.handleStitch = async () => {
+        const tool = document.getElementById('stitch-tool');
+        toggleButtonLoading(tool, true);
+        showStatus(tool, 'Stitching PDF...');
+        try {
+            const { files, splits, cuts, ends, pdfBytes } = toolState.stitch;
+            if (!files || files.length === 0) throw new Error("No PDF file loaded.");
+            
+            const pdfDoc = await PDFDocument.load(pdfBytes);
+            const RENDER_SCALE = 1.5;
+            const allChunks = [];
 
-    </script>
+            for (let i = 0; i < pdfDoc.getPageCount(); i++) {
+                const pageNum = i + 1;
+                const page = pdfDoc.getPage(i);
+                const { width: pdfWidth, height: pdfHeight } = page.getSize();
+                const canvasHeight = pdfHeight * RENDER_SCALE;
+
+                const splitPoints = (splits[pageNum] || []).map(s => s.y);
+                const cutPoints = (cuts[pageNum] || []).map(c => c.y);
+                
+                const allYPoints = [...new Set([0, canvasHeight, ...splitPoints, ...cutPoints])].sort((a, b) => a - b);
+                
+                for (let j = 0; j < allYPoints.length - 1; j++) {
+                    const startY_internal = allYPoints[j];
+                    const endY_internal = allYPoints[j + 1];
+
+                    if (endY_internal - startY_internal < 0.1) continue;
+                    
+                    const midPointY = (startY_internal + endY_internal) / 2;
+                    const cutLineCrossings = cutPoints.filter(cutY => cutY < midPointY).length;
+                    const isCut = (cutLineCrossings % 2 === 1);
+
+                    if (isCut) {
+                        if (allChunks.length > 0 && !allChunks[allChunks.length - 1].isPageBreak) {
+                            allChunks.push({ isPageBreak: true });
+                        }
+                        continue;
+                    }
+                    
+                    const cropY = pdfHeight - (endY_internal / RENDER_SCALE);
+                    const cropHeight = (endY_internal - startY_internal) / RENDER_SCALE;
+
+                    allChunks.push({
+                        pageIndex: i,
+                        crop: { x: 0, y: cropY, width: pdfWidth, height: cropHeight }
+                    });
+                    
+                    if (splitPoints.includes(endY_internal)) {
+                        allChunks.push({ isPageBreak: true });
+                    }
+                }
+                if (ends.has(pageNum)) {
+                    if (allChunks.length > 0 && !allChunks[allChunks.length - 1].isPageBreak) {
+                        allChunks.push({ isPageBreak: true });
+                    }
+                }
+            }
+
+            const newPdfDoc = await PDFDocument.create();
+            let piecesForCurrentPage = [];
+
+            const createPageFromPieces = async (pieces) => {
+                if (pieces.length === 0) return;
+                
+                // Use the original pdfDoc to get page properties to avoid state issues
+                const firstPiecePageIndex = pieces[0].pageIndex;
+                const page_width = pdfDoc.getPage(firstPiecePageIndex).getSize().width;
+
+                const totalHeight = pieces.reduce((sum, piece) => sum + piece.crop.height, 0);
+                if (totalHeight < 1) return;
+                const newPage = newPdfDoc.addPage([page_width, totalHeight]);
+                let currentY = totalHeight;
+
+                for (const piece of pieces) {
+                    // --- FIX: For each piece, create a fresh copy from the original to prevent state pollution ---
+                    const tempDoc = await PDFDocument.load(pdfBytes);
+                    const [pageToCrop] = await newPdfDoc.copyPages(tempDoc, [piece.pageIndex]);
+
+                    pageToCrop.setCropBox(piece.crop.x, piece.crop.y, piece.crop.width, piece.crop.height);
+                    const embeddedPiece = await newPdfDoc.embedPage(pageToCrop);
+                    
+                    currentY -= embeddedPiece.height;
+                    newPage.drawPage(embeddedPiece, { x: 0, y: currentY, width: embeddedPiece.width, height: embeddedPiece.height });
+                }
+            };
+
+            for (const chunk of allChunks) {
+                if (chunk.isPageBreak) {
+                    await createPageFromPieces(piecesForCurrentPage);
+                    piecesForCurrentPage = [];
+                } else {
+                    piecesForCurrentPage.push(chunk);
+                }
+            }
+            await createPageFromPieces(piecesForCurrentPage);
+
+            if (newPdfDoc.getPageCount() === 0) throw new Error("Stitching resulted in an empty document. Check your split/cut lines.");
+            
+            const newPdfBytes = await newPdfDoc.save();
+            const previewBytes = new Uint8Array(newPdfBytes);
+            const fullPreviewContainer = document.getElementById('stitch-full-preview-container');
+            fullPreviewContainer.innerHTML = '';
+            document.getElementById('stitch-full-preview').classList.remove('hidden');
+            const previewPdfJS = await pdfjsLib.getDocument({ data: previewBytes }).promise;
+            for (let i = 1; i <= previewPdfJS.numPages; i++) {
+                const page = await previewPdfJS.getPage(i);
+                const viewport = page.getViewport({ scale: 1 });
+                const canvas = document.createElement('canvas');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                canvas.style.maxWidth = '100%';
+                canvas.style.height = 'auto';
+                canvas.style.border = '1px solid #ccc';
+                const context = canvas.getContext('2d');
+                await page.render({ canvasContext: context, viewport }).promise;
+                fullPreviewContainer.appendChild(canvas);
+            }
+            createDownloadLink(tool, newPdfBytes, `stitched_${files[0].name}`);
+            showStatus(tool, 'Stitching complete. Review the preview below.');
+        } catch (e) {
+            showStatus(tool, e.message, true);
+            console.error("Stitch PDF Error:", e);
+        } finally {
+            toggleButtonLoading(tool, false);
+        }
+    };
+    
+    window.handleCrop = async () => {
+        const tool = document.getElementById('crop-tool');
+        toggleButtonLoading(tool, true);
+        showStatus(tool, 'Applying crop to PDF...');
+        try {
+            const { pdfBytes, boxes, pdfJSDoc } = toolState.crop;
+            if (!pdfBytes) throw new Error("No PDF file loaded.");
+            if (Object.keys(boxes).length === 0) throw new Error("No crop areas have been defined.");
+
+            const pdfDoc = await PDFDocument.load(pdfBytes);
+            const pages = pdfDoc.getPages();
+            const RENDER_SCALE = 1.5;
+
+            for (let i = 0; i < pages.length; i++) {
+                const pageNum = i + 1;
+                const page = pages[i];
+                const box = boxes[pageNum];
+
+                if (!box) continue; // Skip pages without a crop box
+
+                const { width: pdfWidth, height: pdfHeight } = page.getSize();
+                const pdfjsPage = await pdfJSDoc.getPage(pageNum);
+                const viewport = pdfjsPage.getViewport({ scale: RENDER_SCALE });
+                const canvasWidth = viewport.width;
+                const canvasHeight = viewport.height;
+
+                const scaleX = pdfWidth / canvasWidth;
+                const scaleY = pdfHeight / canvasHeight;
+
+                const cropWidth = box.width * scaleX;
+                const cropHeight = box.height * scaleY;
+                const cropX = box.x * scaleX;
+                const cropY = pdfHeight - ((box.y + box.height) * scaleY); // Y-axis is inverted in PDF-Lib
+
+                page.setCropBox(cropX, cropY, cropWidth, cropHeight);
+            }
+            
+            const newPdfBytes = await pdfDoc.save();
+            createDownloadLink(tool, newPdfBytes, `cropped_${toolState.crop.files[0].name}`);
+            showStatus(tool, 'PDF cropped successfully!');
+
+        } catch (e) {
+            showStatus(tool, e.message, true);
+            console.error("Crop PDF Error:", e);
+        } finally {
+            toggleButtonLoading(tool, false);
+        }
+    };
+
+    // --- Placeholder Handlers ---
+    window.handlePdfToImages = async () => { alert('This feature is not yet implemented.'); };
+    window.handleFlatten = async () => { alert('This feature is not yet implemented.'); };
+    window.handleSign = async () => { alert('This feature is not yet implemented.'); };
+    const onAddSignature = () => { alert('This feature is not yet implemented.'); };
+    window.handleAddtext = async () => { alert('This feature is not yet implemented.'); };
+    const onAddTextBox = () => { alert('This feature is not yet implemented.'); };
+    window.handleRedact = async () => { alert('This feature is not yet implemented.'); };
+    const onAddRedactionBox = () => { alert('This feature is not yet implemented.'); };
+
+    // --- INITIALIZATION ---
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('version-display').textContent = `v${VERSION}`;
+        setupAllTools();
+        setActivePanel('unlock');
+    });
+</script>
 </body>
 </html>

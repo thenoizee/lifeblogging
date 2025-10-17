@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    "version": "v9.21.0-alpha",
+    "date": "2025-10-17",
+    "changes": [
+        "In the Template Generator: Added latest updated time to Conflict Sync Modal. ",
+        "In the Template Generator: Bug fix to Pronoun presets auto-fill detection feature.",
+        "In the PDF Tool: Added a crop PDF feature.",
+        "In the PDF Tool: Added a stitch/cut PDF page tool.",
+    ]
+    },
+    {
     "version": "v9.20.0-alpha",
     "date": "2025-10-15",
     "changes": [
