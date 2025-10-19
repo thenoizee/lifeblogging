@@ -2,6 +2,22 @@
 
 export const changelogData = [
     {
+    "version": "v9.22.0-alpha",
+    "date": "2025-10-19",
+    "changes": [
+        "In FoodTrackr: Initial release of the FoodTrackr application for comprehensive food and macronutrient logging.",
+        "In FoodTrackr: Added dashboard with daily nutritional summary and macro chart.",
+        "In FoodTrackr: Implemented Open Food Facts API for barcode and product name search.",
+        "In FoodTrackr: Enabled manual entry for custom foods and nutritional information.",
+        "In FoodTrackr: Added ability to create, save, and edit custom meals and favorite foods.",
+        "In FoodTrackr: Implemented 'Frequently Logged' section for quick-adding common foods.",
+        "In FoodTrackr: Created a detailed product info popup with a full image scrollwheel, expanded nutritional data (Nutri-Score, Eco-Score, NOVA), and ingredient/allergen information.",
+        "In FoodTrackr: Added 'Quick Quantity' buttons (e.g., Serving, Half, Whole) to the info popup for faster logging.",
+        "In FoodTrackr: Favorites are now starred and prioritized at the top of API search results.",
+        "In FoodTrackr: Fixed critical bugs related to package quantity calculations, service worker registration, and various JavaScript errors."
+    ]
+},
+    {
     "version": "v9.21.0-alpha",
     "date": "2025-10-17",
     "changes": [
