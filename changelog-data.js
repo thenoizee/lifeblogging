@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    "version": "v9.23.0-alpha",
+    "date": "2025-10-20",
+    "changes": [
+        "In PDF Tools: Introduced the 'ADF Scan Fixer' tool to automatically correct PDFs where every second page is scanned upside down, a common issue with duplex scanning.",
+    ]
+    },
+    {
     "version": "v9.22.0-alpha",
     "date": "2025-10-19",
     "changes": [

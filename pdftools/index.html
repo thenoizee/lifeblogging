@@ -116,6 +116,7 @@
                     <button data-panel="splithalf" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-columns w-6 mr-2"></i>Split Page in Half</button>
                     <button data-panel="recreate" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-book-open w-6 mr-2"></i>Re-create Book</button>
                     <button data-panel="stitch" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-link w-6 mr-2"></i>Stitch Pages</button>
+                    <button data-panel="adfscanfixer" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-exchange-alt w-6 mr-2"></i>ADF Scan Fixer</button>
 
                     <h3 class="text-xs uppercase text-[var(--text-color-secondary)] font-bold tracking-wider hidden md:block mt-4">Convert & Finalize</h3>
                     <button data-panel="pdftoimages" class="nav-btn w-full text-left p-3 rounded-lg font-medium flex-shrink-0"><i class="fas fa-file-image w-6 mr-2"></i>PDF to Images</button>
@@ -375,6 +376,18 @@
                         <div class="status-text mt-4 text-center"></div><a class="download-link">Download Unlocked PDF</a>
                     </div>
                 </div>
+
+                <div id="panel-adfscanfixer" class="tab-panel hidden">
+                    <h2 class="text-xl font-bold mb-2">ADF Scan Fixer</h2>
+                    <p class="text-[var(--text-color-secondary)] mb-4">Corrects PDFs where every second page is scanned upside down (a common ADF scanning issue).</p>
+                    <div id="adfscanfixer-tool" class="tool-container">
+                        <div class="drop-zone" data-tool="adfscanfixer"><i class="fas fa-exchange-alt text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
+                        <div class="file-info hidden mt-4 bg-[var(--input-bg-color)] p-4 rounded-lg"><p class="font-bold">File: <span class="file-name"></span></p></div>
+                        <button class="action-btn w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg" disabled><span class="btn-text">Fix PDF</span><div class="loader hidden"></div></button>
+                        <div class="status-text mt-4 text-center"></div><a class="download-link">Download Fixed PDF</a>
+                    </div>
+                </div>
+                
             </main>
         </div>
     </div>
@@ -399,7 +412,7 @@
     <script type="module">
     const { PDFDocument, rgb, degrees, StandardFonts, PageSizes } = PDFLib;
 
-    const VERSION = '2.0.0';
+    const VERSION = '9.22.0-alpha';
 
     // --- THEME LOGIC ---
     const themeToggle = document.getElementById('theme-toggle');
@@ -848,6 +861,7 @@
         setupSimpleTool('pagenumbers');
         setupSimpleTool('pdftoimages');
         setupSimpleTool('flatten');
+        setupSimpleTool('adfscanfixer');
         setupEditorTool('sign', onAddSignature);
         setupEditorTool('addtext', onAddTextBox);
         setupEditorTool('redact', onAddRedactionBox);
@@ -1359,8 +1373,40 @@
         }
     };
 
+    window.handleAdfscanfixer = async () => {
+        const tool = document.getElementById('adfscanfixer-tool');
+        toggleButtonLoading(tool, true);
+        showStatus(tool, 'Fixing scanned PDF...');
+        try {
+            const file = toolState.adfscanfixer.files[0];
+            if (!file) throw new Error("No file selected.");
+
+            const pdfBytes = await file.arrayBuffer();
+            const pdfDoc = await PDFDocument.load(pdfBytes);
+            const pages = pdfDoc.getPages();
+
+            for (let i = 0; i < pages.length; i++) {
+                if (i % 2 !== 0) { 
+                    const page = pages[i];
+                    const currentRotation = page.getRotation().angle;
+                    page.setRotation(degrees(currentRotation + 180));
+                }
+            }
+
+            const fixedBytes = await pdfDoc.save();
+            createDownloadLink(tool, fixedBytes, `fixed_${file.name}`);
+            showStatus(tool, 'Successfully fixed PDF!');
+        } catch (e) {
+            showStatus(tool, e.message, true);
+            console.error("ADF Scan Fixer Error:", e);
+        } finally {
+            toggleButtonLoading(tool, false);
+        }
+    };
+
+
     // --- Placeholder Handlers ---
-    window.handlePdfToImages = async () => { alert('This feature is not yet implemented.'); };
+    window.handlePdftoimages = async () => { alert('This feature is not yet implemented.'); };
     window.handleFlatten = async () => { alert('This feature is not yet implemented.'); };
     window.handleSign = async () => { alert('This feature is not yet implemented.'); };
     const onAddSignature = () => { alert('This feature is not yet implemented.'); };
