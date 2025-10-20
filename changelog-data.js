@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    "version": "v9.24.0-alpha",
+    "date": "2025-10-20",
+    "changes": [
+        "Dark mode preference now syncs with your Firebase account settings across the LifeBlogging hub.",
+        "Added a 'Scheduled Time' input in the 'Use Templates' tab. This automatically populates the `{{Greeting}}` placeholder based on the time you enter, making it easy to prepare emails in advance.",
+    ]
+    },
+    {
     "version": "v9.23.0-alpha",
     "date": "2025-10-20",
     "changes": [
