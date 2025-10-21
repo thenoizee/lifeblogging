@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+        "version": "v9.24.1-alpha",
+        "date": "2025-10-21",
+        "changes": [
+            "Complete visual overhaul of Dark Mode for the Email Template Generator, focusing on readability and a professional aesthetic.",
+            "Live, real-time theme syncing added. Dark and light mode settings now sync instantly across all open tabs and devices without needing a page refresh.",
+            "Theme toggle button has been updated with new SVG icons to match the design standard used across other LifeBlogging applications.",
+            "Fixed major issues where headings and primary text were nearly invisible in dark mode.",
+            "Addressed problems with both excessively high and low contrast areas in dark mode.",
+            "When a pronoun or time preset is selected, the corresponding form fields are now correctly made read-only to prevent accidental edits.",
+        ]
+    },
+    {
     "version": "v9.24.0-alpha",
     "date": "2025-10-20",
     "changes": [
