@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    "version": "v9.25.0-beta",
+    "date": "2025-10-22",
+    "changes": [
+        "In the Template Generator: Redesigned the template selection on the 'Use Templates' page with a two-panel layout, featuring a folder list on the left and a template list on the right for easier navigation.",
+        "In the Template Generator: Added a search bar to quickly filter templates by name.",
+        "In the Template Generator: The three main steps on the 'Use Templates' page are now collapsible sections to improve focus and reduce clutter.",
+        "In the Template Generator: Template list items now display the version description and target audience more clearly, aiding in faster template identification.",
+        "In the Template Generator: Corrected low-contrast text elements across the application to ensure readability in dark mode.",
+        "In the Template Generator: Improved the color contrast of the 'target audience' label to make it easily readable in light mode."
+    ]
+},
+    {
         "version": "v9.24.1-alpha",
         "date": "2025-10-21",
         "changes": [
