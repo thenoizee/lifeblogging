@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    "version": "v9.25.1-alpha",
+    "date": "2025-10-22",
+    "changes": [
+        "In the PDF Tool: Added option to edit another PDF on each mode.",
+        "In the PDF Tool: Fixed dark/might mode toggle sync."
+    ]
+    },
+    {
     "version": "v9.25.0-beta",
     "date": "2025-10-22",
     "changes": [
