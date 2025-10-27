@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    "version": "v9.26.0-alpha",
+    "date": "2025-10-27",
+    "changes": [
+        "In FoodTrackr: Re-categorized log sections into 'Breakfast', 'Lunch', 'Dinner', 'Brunch', 'Afternoon Tea', 'Puddings', and 'Drinks'.",
+        "In FoodTrackr: Enabled drag-and-drop re-categorization of items between the new daily log sections.",
+        "In FoodTrackr: Relocated the 'Today's Log' sections from 'History' to the 'Log Food' tab for a more intuitive logging workflow.",
+        "In FoodTrackr: The 'History' tab is now dedicated to the full, filterable history table.",
+        "In FoodTrackr: Added the application's SVG favicon.",
+        "In FoodTrackr: Fixed a bug where a developer comment was visible on the page."
+    ]
+    },
+    {
     "version": "v9.25.1-alpha",
     "date": "2025-10-22",
     "changes": [
