@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    "version": "v9.26.1-alpha", 
+    "date": "2025-10-27",
+    "changes": [
+        "In the Logger: Added a distinct visual indicator when editing a log entry for better clarity.",
+        "In the Logger: Changed 'Frequent Activity Combos' to dynamically display the top 5 most logged 'Activity @ Location' combinations based on user data.",
+        "In the Logger: Clicking a 'Frequent Activity Combo' button now immediately logs the entry instead of just pre-filling the form."
+    ]
+    },
+    {
     "version": "v9.26.0-alpha",
     "date": "2025-10-27",
     "changes": [

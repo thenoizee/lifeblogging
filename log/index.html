@@ -88,7 +88,7 @@
         max-width: 450px;
         text-align: center;
         transition: background-color 0.3s ease, box-shadow 0.3s ease;
-        max-height: 90vh; 
+        max-height: 90vh;
         overflow-y: auto;
       }
 
@@ -308,7 +308,7 @@
       #log-screen-time-btn:hover {
         background-color: var(--button-hover);
       }
-      
+
       .tasks-input {
           flex: 1;
           padding: 10px;
@@ -410,7 +410,7 @@
         color: #fff;
         border-color: #4fc3f7;
       }
-      
+
       @media (max-width: 600px) {
         body {
           padding: 0;
@@ -503,11 +503,11 @@
         }
 
         .calendar-day, .year-month {
-            background-color: var(--input-bg-color); 
-            border: 2px solid transparent; 
-            border-radius: 8px; 
-            padding: 10px; 
-            transition: all 0.2s ease; 
+            background-color: var(--input-bg-color);
+            border: 2px solid transparent;
+            border-radius: 8px;
+            padding: 10px;
+            transition: all 0.2s ease;
             cursor: pointer;
         }
         .calendar-day:hover, .year-month:hover {
@@ -526,7 +526,7 @@
         .task-item .status-icon.completed { color: #48bb78; }
         .task-item .status-icon.incomplete { color: #e53e3e; }
         .view-btn.active { background-color: #4c51bf; color: white; }
-        
+
         /* Tooltip */
         #tooltip {
             position: absolute;
@@ -547,6 +547,31 @@
             right: 5px;
             color: var(--text-color-secondary);
         }
+
+        /* Styling for edit mode */
+        .editing-mode-active #log-btn {
+            background-color: #f59e0b; /* Orange color */
+        }
+        .editing-mode-active #log-btn:hover {
+            background-color: #d97706; /* Darker orange */
+        }
+        /* Style for combo buttons */
+        .combo-button {
+          background-color: #60a5fa; /* Blue color */
+          color: white;
+          border: none;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+          margin: 4px;
+        }
+        .combo-button:hover {
+          background-color: #3b82f6; /* Darker blue */
+        }
+
     </style>
   </head>
   <body>
@@ -589,6 +614,8 @@
           </span>
         </p>
 
+        <div id="edit-mode-indicator" class="hidden text-center p-3 mb-4 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded-lg dark:bg-yellow-900/50 dark:text-yellow-300 dark:border-yellow-600"></div>
+
         <div class="input-group">
             <label for="collection-select">Collection</label>
             <select id="collection-select"></select>
@@ -628,6 +655,7 @@
 
         <div class="button-group">
           <button id="log-btn"><i class="fa-solid fa-cloud-arrow-up"></i> Log Data</button>
+          <button id="cancel-edit-btn" class="hidden bg-gray-500 text-white"><i class="fa-solid fa-times"></i> Cancel Edit</button>
         </div>
 
         <div class="quick-log-section">
@@ -699,7 +727,7 @@
             </div>
           </div>
           <hr class="border-[var(--border-color)] my-5">
-          
+
           <div class="log-group">
             <p>Activity @ Location</p>
             <div class="quick-log-inputs">
@@ -719,6 +747,13 @@
               <button class="color-4" data-value="4"><i class="fa-solid fa-battery-three-quarters"></i></button>
               <button class="color-5" data-value="5"><i class="fa-solid fa-battery-full"></i></button>
             </div>
+          </div>
+          <hr class="border-[var(--border-color)] my-5">
+
+          <div class="log-group">
+            <p>Frequent Activity Combos</p>
+            <div id="frequent-combos-container" class="flex flex-wrap gap-2">
+              </div>
           </div>
         </div>
 
@@ -854,7 +889,7 @@
         where,
         writeBatch,
       } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-      
+
       const firebaseConfig = {
         apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
         authDomain: "sammy-7298f.firebaseapp.com",
@@ -900,6 +935,9 @@
       const versionDisplay = document.getElementById('version-display');
       const existingTagsList = document.getElementById('existing-tags-list');
       const manualTagsInput = document.getElementById('tags');
+      const logBtn = document.getElementById('log-btn'); // Get log button
+      const cancelEditBtn = document.getElementById('cancel-edit-btn'); // Get cancel edit button
+      const editModeIndicator = document.getElementById('edit-mode-indicator');
 
       versionDisplay.textContent = changelogData[0].version;
 
@@ -919,7 +957,7 @@
             applyTheme(newTheme === 'dark' ? 'light' : 'dark');
         }
       };
-      
+
       themeToggle.addEventListener('click', toggleTheme);
 
       const showMessage = (message, type = "success") => {
@@ -939,6 +977,12 @@
         document.getElementById("log-datetime").value = now
           .toISOString()
           .slice(0, 16);
+      };
+      
+      const getNowLogString = () => {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        return now.toISOString().slice(0, 16);
       };
 
       const ensureCollectionExists = async (uid, collectionName) => {
@@ -977,28 +1021,39 @@
             collectionNames.push(doc.id);
           });
 
+          // Ensure 'manual' and 'dailies' are options, add if missing
           if (!collectionNames.includes('manual')) {
-              collectionNames.unshift('manual');
+              collectionNames.push('manual');
+          }
+           if (!collectionNames.includes('dailies')) {
+              collectionNames.push('dailies');
           }
 
-          collectionNames.forEach(name => {
+          collectionNames.sort().forEach(name => {
               const option = document.createElement("option");
               option.value = name;
               option.textContent = name;
               selectElement.appendChild(option);
           });
 
-          if (currentValue) {
+          if (currentValue && collectionNames.includes(currentValue)) {
             selectElement.value = currentValue;
+          } else {
+             selectElement.value = 'manual'; // Default to manual if current value not found or invalid
           }
 
         } catch (error) {
           console.error("Error fetching collections:", error);
           showMessage("Could not fetch your collections.", "error");
-          const option = document.createElement("option");
-          option.value = "manual";
-          option.textContent = "manual";
-          selectElement.appendChild(option);
+          const manualOption = document.createElement("option");
+          manualOption.value = "manual";
+          manualOption.textContent = "manual";
+          selectElement.appendChild(manualOption);
+           const dailiesOption = document.createElement("option");
+          dailiesOption.value = "dailies";
+          dailiesOption.textContent = "dailies";
+          selectElement.appendChild(dailiesOption);
+          selectElement.value = "manual"; // Default to manual on error
         }
       };
 
@@ -1163,21 +1218,49 @@
         });
       };
 
+      // --- EDIT MODE ---
+      const enterEditMode = (logEntry) => {
+        document.getElementById("log-datetime").value = logEntry.date.replace(" ", "T");
+        document.getElementById("attributeName").value = logEntry.attributeName;
+        document.getElementById("attributeValue").value = logEntry.attributeValue;
+        document.getElementById("tags").value = logEntry.tags.join(", ");
+        document.getElementById("collection-select").value = logEntry.collectionName;
+
+        editingLog = logEntry;
+
+        logBtn.innerHTML = '<i class="fa-solid fa-save"></i> Save Edit';
+        document.body.classList.add('editing-mode-active');
+        cancelEditBtn.classList.remove('hidden');
+        
+        // Show clear edit mode indicator
+        editModeIndicator.innerHTML = `<i class="fa-solid fa-pencil mr-2"></i><strong>Edit Mode:</strong> Updating log from ${logEntry.date}`;
+        editModeIndicator.classList.remove('hidden');
+
+        showMessage(`Editing: ${logEntry.attributeName} = ${logEntry.attributeValue}`, "info");
+      };
+
+      const exitEditMode = () => {
+        editingLog = null;
+        logBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Log Data';
+        document.body.classList.remove('editing-mode-active');
+        cancelEditBtn.classList.add('hidden');
+        editModeIndicator.classList.add('hidden'); // Hide indicator
+        document.getElementById("attributeName").value = "";
+        document.getElementById("attributeValue").value = "";
+        document.getElementById("tags").value = "";
+        setDefaultDateTime(); // Reset datetime as well
+      };
+
       const handleEdit = (event) => {
           const index = event.target.dataset.index;
           const logEntry = sessionLogs[index];
           if (logEntry) {
-              document.getElementById("log-datetime").value = logEntry.date.replace(" ", "T");
-              document.getElementById("attributeName").value = logEntry.attributeName;
-              document.getElementById("attributeValue").value = logEntry.attributeValue;
-              document.getElementById("tags").value = logEntry.tags.join(", ");
-              document.getElementById("collection-select").value = logEntry.collectionName;
-              
-              editingLog = logEntry;
-
-              showMessage("Editing mode enabled.", "info");
+              enterEditMode(logEntry);
           }
       };
+
+      cancelEditBtn.addEventListener('click', exitEditMode);
+      // --- END EDIT MODE ---
 
       const handleUndo = async (event) => {
           const index = event.target.dataset.index;
@@ -1189,7 +1272,7 @@
                   sessionLogs.splice(index, 1);
                   renderSessionLogs();
                   showMessage("Log successfully undone.", "success");
-                  fetchLogsForDateRange(); 
+                  fetchLogsForDateRange(); // This will also trigger updateFrequentCombos
               } catch (err) {
                   showMessage("Error undoing log: " + err.message, "error");
               }
@@ -1236,7 +1319,7 @@
           renderSessionLogs();
           fetchAndPopulateTags(userId);
           setDefaultDateTime();
-          fetchLogsForDateRange();
+          fetchLogsForDateRange(); // This will also trigger updateFrequentCombos
           fetchAllAttributeNames();
 
         } catch (err) {
@@ -1251,7 +1334,7 @@
                 nanoseconds: logEntry.createdAt.nanoseconds
               }
             };
-            
+
             pendingLogs.push(offlineLogEntry);
             localStorage.setItem("pendingLogs", JSON.stringify(pendingLogs));
             renderUnsyncedLogs();
@@ -1286,12 +1369,17 @@
 
           const updatedIndex = sessionLogs.findIndex(log => log.docId === docId);
           if (updatedIndex !== -1) {
-            sessionLogs[updatedIndex] = { ...sessionLogs[updatedIndex], ...logEntryUpdate };
+            // Update the entry in sessionLogs *in place*
+             sessionLogs[updatedIndex] = { ...sessionLogs[updatedIndex], ...logEntryUpdate };
           }
-          renderSessionLogs();
-          editingLog = null;
+          renderSessionLogs(); // Re-render the session logs
+          exitEditMode(); // Exit edit mode after saving
           fetchAndPopulateTags(userId);
-          setDefaultDateTime();
+          
+          // Manually update combos if this was a MainActivity log
+          if (attributeName === 'MainActivity' || (editingLog && editingLog.attributeName === 'MainActivity')) {
+                updateFrequentCombos();
+          }
 
         } catch (err) {
           showMessage("Error updating data: " + err.message, "error");
@@ -1300,7 +1388,7 @@
 
       function setInputsDisabled(disabled) {
         document.querySelectorAll('input, select, button').forEach(el => {
-            if (el.id !== 'logout-btn') {
+            if (el.id !== 'logout-btn' && el.id !== 'theme-toggle') { // Keep logout and theme toggle enabled
                 el.disabled = disabled;
             }
         });
@@ -1349,7 +1437,7 @@
             const [year, month, day] = str.split('-').map(Number);
             return new Date(year, month - 1, day);
         };
-        
+
         // --- Scheduling & Status Logic ---
         const getWeekRangeForDate = (date) => {
             const start = new Date(date);
@@ -1371,7 +1459,7 @@
 
             if (startDate && d < startDate) return false;
             if (endDate && d > endDate) return false;
-            
+
             const schedule = task.schedule || { type: 'daily' };
             if (schedule.type === 'weekly_days') {
                 const dayOfWeek = d.getDay();
@@ -1379,7 +1467,7 @@
             }
             return true;
         };
-        
+
         const getTaskStatusForDate = (task, date) => {
             const dateStr = toYYYYMMDD(date);
             const logsForDay = (appState.logs.get(dateStr) || []).concat(appState.dailyAssignments.get(dateStr) || []);
@@ -1439,18 +1527,18 @@
             appState.dailyPlan.forEach((task, index) => {
                 const taskElement = document.createElement('div');
                 taskElement.className = 'flex justify-between items-center p-3 bg-[var(--input-bg-color)] rounded-lg';
-                
+
                 let scheduleInfo = 'Daily';
                 const schedule = task.schedule || { type: 'daily' };
                 if (schedule.type === 'weekly_days') scheduleInfo = `On ${schedule.days.map(d => WEEKDAYS[d].slice(0,3)).join(', ')}`;
                 if (schedule.type === 'weekly_count') scheduleInfo = `${schedule.times}x per week`;
-                
+
                 const firstEntry = appState.firstEntryDates.get(task.attributeName);
                 const firstEntryHTML = firstEntry ? `<div class="text-xs text-gray-500">First log: ${firstEntry.toLocaleDateString()}</div>` : '';
                 const dateRangeHTML = (task.startDate || task.endDate) ? `<div class="text-xs text-gray-500">Active: ${task.startDate || '...'} to ${task.endDate || '...'}</div>` : '';
-                
+
                 const color = appState.attributeColors[task.attributeName] || '#64748b';
-                
+
                 taskElement.innerHTML = `
                     <div class="flex items-center">
                          <span class="w-3 h-3 rounded-full mr-3" style="background-color: ${color};"></span>
@@ -1471,7 +1559,7 @@
             document.querySelectorAll('.delete-task-btn').forEach(btn => btn.addEventListener('click', handleDeleteTask));
             document.querySelectorAll('.edit-task-btn').forEach(btn => btn.addEventListener('click', handleEditTask));
         };
-        
+
         const renderCalendar = () => {
             switch (appState.currentView) {
                 case 'year': renderYearView(); break;
@@ -1480,7 +1568,7 @@
             }
             updateDateDisplay();
         };
-        
+
         const renderMonthView = () => {
             uiDailies.calendarView.innerHTML = '';
             uiDailies.calendarView.className = 'grid grid-cols-7 gap-2 month-view';
@@ -1499,16 +1587,28 @@
                 const date = new Date(year, month, day);
                 const status = getDayStatus(date);
                 const dayEl = document.createElement('div');
-                dayEl.className = `calendar-day ${getHeatmapClass(status.percentage)}`;
-                
+                dayEl.className = `calendar-day relative ${getHeatmapClass(status.percentage)}`; // Added relative
+
                 const dayNumber = `<span class="day-number">${day}</span>`;
                 const dayWeekday = `<span class="day-weekday md:hidden">${WEEKDAYS[date.getDay()].slice(0,3)}</span>`;
                 dayEl.innerHTML = `<div>${dayNumber} ${dayWeekday}</div>`;
-                
+
+                // Add checkmark if reviewed
+                if (appState.reviewedDays.has(toYYYYMMDD(date))) {
+                    const checkmark = document.createElement('span');
+                    checkmark.className = 'reviewed-day-indicator';
+                    checkmark.innerHTML = '<i class="fa-solid fa-check"></i>';
+                    dayEl.appendChild(checkmark);
+                }
+
                 if (toYYYYMMDD(date) === toYYYYMMDD(new Date())) dayEl.classList.add('today-text');
 
                 dayEl.addEventListener('mouseenter', (e) => showTooltip(e, date));
                 dayEl.addEventListener('mouseleave', hideTooltip);
+                dayEl.addEventListener('click', () => { // Add click listener
+                    appState.reviewDate = new Date(date);
+                    renderDailyDataReview();
+                });
                 uiDailies.calendarView.appendChild(dayEl);
             }
         };
@@ -1524,16 +1624,27 @@
                 date.setDate(startOfWeek.getDate() + i);
                 const status = getDayStatus(date);
                 const dayEl = document.createElement('div');
-                dayEl.className = `calendar-day ${getHeatmapClass(status.percentage)}`;
+                dayEl.className = `calendar-day relative ${getHeatmapClass(status.percentage)}`; // Added relative
 
                 const dayNumber = `<span class="day-number">${date.getDate()}</span>`;
                 const dayWeekday = `<span class="day-weekday md:hidden">${WEEKDAYS[date.getDay()].slice(0,3)}</span>`;
                 dayEl.innerHTML = `<div>${dayNumber} ${dayWeekday}</div>`;
 
+                if (appState.reviewedDays.has(toYYYYMMDD(date))) {
+                    const checkmark = document.createElement('span');
+                    checkmark.className = 'reviewed-day-indicator';
+                    checkmark.innerHTML = '<i class="fa-solid fa-check"></i>';
+                    dayEl.appendChild(checkmark);
+                }
+
                 if (toYYYYMMDD(date) === toYYYYMMDD(new Date())) dayEl.classList.add('today-text');
 
                 dayEl.addEventListener('mouseenter', (e) => showTooltip(e, date));
                 dayEl.addEventListener('mouseleave', hideTooltip);
+                dayEl.addEventListener('click', () => { // Add click listener
+                    appState.reviewDate = new Date(date);
+                    renderDailyDataReview();
+                });
                 uiDailies.calendarView.appendChild(dayEl);
             }
         };
@@ -1571,13 +1682,13 @@
                     break;
             }
         };
-        
+
         const renderDailyDataReview = () => {
             if (!appState.user) return;
             const reviewDate = appState.reviewDate;
             const reviewDateStr = toYYYYMMDD(reviewDate);
             uiDailies.reviewDateDisplay.textContent = reviewDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-        
+
             uiDailies.reviewActionsContainer.innerHTML = '';
             const isReviewed = appState.reviewedDays.has(reviewDateStr);
             if (isReviewed) {
@@ -1606,11 +1717,11 @@
             const nextDate = new Date(reviewDate);
             nextDate.setDate(reviewDate.getDate() + 1);
             const nextDateStr = toYYYYMMDD(nextDate);
-        
+
             const originalLogsForDay = appState.logs.get(reviewDateStr) || [];
             const unassignedLogsForDay = originalLogsForDay.filter(log => !appState.assignedLogIds.has(log.id));
             const assignmentsForDay = appState.dailyAssignments.get(reviewDateStr) || [];
-            
+
             const allEntriesForDay = unassignedLogsForDay
                 .concat(assignmentsForDay)
                 .sort((a,b) => new Date(a.date || a.originalLogDate) - new Date(b.date || b.originalLogDate));
@@ -1627,20 +1738,20 @@
                     entryElement.style.backgroundColor = `color-mix(in srgb, ${color} 15%, var(--card-bg-color))`;
 
                     const logDate = new Date(entry.date || entry.originalLogDate);
-                    
+
                     let createdAtDate;
                     if (entry.createdAt) {
                         if (typeof entry.createdAt.toDate === 'function') {
                             createdAtDate = entry.createdAt.toDate();
-                        } else if (entry.createdAt.seconds) { 
+                        } else if (entry.createdAt.seconds) {
                             createdAtDate = new Timestamp(entry.createdAt.seconds, entry.createdAt.nanoseconds).toDate();
                         }
                     }
                     const createdAt = createdAtDate ? createdAtDate.toLocaleString() : 'N/A';
-                    
+
                     let actionButtons = '';
-                    if (!isReviewed) {
-                        if (entry.originalLogId) { 
+                     if (!isReviewed) { // Only show move/unassign if day is not reviewed
+                        if (entry.originalLogId) {
                             actionButtons = `<button class="unassign-btn bg-red-500 text-white px-2 py-1 rounded-md text-xs" data-assignment-id='${entry.id}'>Unassign</button>`;
                         } else if (logDate.getHours() < 6) {
                             actionButtons = `
@@ -1650,7 +1761,7 @@
                                 </div>
                             `;
                         } else {
-                            actionButtons = `
+                             actionButtons = `
                                 <div class="flex flex-col gap-1 text-right">
                                     <button class="move-btn bg-blue-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${prevDateStr}'>Move to Yesterday</button>
                                     <button class="move-btn bg-green-500 text-white px-2 py-1 rounded-md text-xs" data-log-id='${JSON.stringify(entry)}' data-target-date='${nextDateStr}'>Move to Tomorrow</button>
@@ -1663,7 +1774,7 @@
                     if (entry.originalLogId) {
                         const originalDate = new Date(entry.originalLogDate);
                         const formattedOrigDate = originalDate.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
-                        statusBadge = `<span class="text-xs font-semibold px-2 py-1 rounded-md bg-blue-100 text-blue-800 dark-mode:bg-blue-900/50 dark-mode:text-blue-300">Original Log on ${formattedOrigDate}</span>`;
+                         statusBadge = `<span class="text-xs font-semibold px-2 py-1 rounded-md bg-blue-100 text-blue-800 dark-mode:bg-blue-900/50 dark-mode:text-blue-300">Original log on ${formattedOrigDate}</span>`;
                     } else {
                         statusBadge = `<span class="text-xs font-semibold px-2 py-1 rounded-md bg-gray-100 text-gray-800 dark-mode:bg-gray-700 dark-mode:text-gray-300">Original Log</span>`;
                     }
@@ -1685,7 +1796,7 @@
                     uiDailies.triageEntriesList.appendChild(entryElement);
                 });
             }
-            
+
             document.querySelectorAll('.move-btn').forEach(btn => btn.addEventListener('click', handleAssignEntry));
             document.querySelectorAll('.unassign-btn').forEach(btn => btn.addEventListener('click', handleUnassignEntry));
         };
@@ -1699,10 +1810,11 @@
             try {
                 const reviewedDocRef = doc(db, `users/${appState.user.uid}/reviewed_days`, dateStr);
                 await setDoc(reviewedDocRef, { reviewedAt: Timestamp.now() });
+                // onSnapshot will handle UI update
             } catch (error) {
                 console.error("Error marking day as reviewed:", error);
                 alert("Could not save review status. Please try again.");
-                button.disabled = false;
+                button.disabled = false; // Re-enable on error
                 button.innerHTML = '<i class="fa-solid fa-check"></i> Mark as Reviewed';
             }
         };
@@ -1712,6 +1824,7 @@
             try {
                 const reviewedDocRef = doc(db, `users/${appState.user.uid}/reviewed_days`, dateStr);
                 await deleteDoc(reviewedDocRef);
+                // onSnapshot will handle UI update
             } catch (error) {
                 console.error("Error un-reviewing day:", error);
                 alert("Could not un-review the day. Please try again.");
@@ -1726,7 +1839,7 @@
 
             const log = JSON.parse(button.dataset.logId);
             const assignedDateStr = button.dataset.targetDate;
-        
+
             let createdAtTimestamp = log.createdAt;
             if (log.createdAt && typeof log.createdAt.toDate !== 'function' && log.createdAt.seconds) {
                 createdAtTimestamp = new Timestamp(log.createdAt.seconds, log.createdAt.nanoseconds);
@@ -1743,13 +1856,14 @@
                 uploadedApp: log.uploadedApp || 'Unknown',
                 createdAt: createdAtTimestamp
             };
-        
+
             try {
                 await addDoc(collection(db, `users/${appState.user.uid}/daily_log_assignments`), assignment);
+                // onSnapshot will handle UI update
             } catch (error) {
                 console.error("Error creating assignment:", error);
                 alert("Could not move the entry. Please try again.");
-                renderDailyDataReview();
+                renderDailyDataReview(); // Force re-render if save fails to reset button state
             }
         };
 
@@ -1761,13 +1875,14 @@
             const assignmentId = button.dataset.assignmentId;
             try {
                 await deleteDoc(doc(db, `users/${appState.user.uid}/daily_log_assignments`, assignmentId));
+                // onSnapshot will handle UI update
             } catch(error) {
                 console.error("Error removing assignment:", error);
                 alert("Could not unassign the entry. Please try again.");
-                renderDailyDataReview();
+                renderDailyDataReview(); // Force re-render if delete fails to reset button state
             }
         };
-        
+
 
         // --- Data Fetching ---
         const fetchLogsForDateRange = async () => {
@@ -1781,10 +1896,23 @@
                     const dataSnapshot = await getDocs(dataRef);
                     dataSnapshot.forEach(doc => {
                         const log = {id: doc.id, ...doc.data()};
-                        const logDate = new Date(log.date);
-                        const logDateStr = toYYYYMMDD(logDate);
-                        if (!appState.logs.has(logDateStr)) appState.logs.set(logDateStr, []);
-                        appState.logs.get(logDateStr).push(log);
+                        // Add basic validation for date
+                        if (log.date) {
+                            try {
+                                const logDate = new Date(log.date);
+                                if (!isNaN(logDate)) { // Check if date is valid
+                                    const logDateStr = toYYYYMMDD(logDate);
+                                    if (!appState.logs.has(logDateStr)) appState.logs.set(logDateStr, []);
+                                    appState.logs.get(logDateStr).push(log);
+                                } else {
+                                     console.warn("Invalid date format found in log:", log.id, log.date);
+                                }
+                            } catch (e) {
+                                console.warn("Error parsing date for log:", log.id, log.date, e);
+                            }
+                        } else {
+                            console.warn("Log missing date field:", log.id);
+                        }
                     });
                 }
             } catch (error) {
@@ -1792,6 +1920,7 @@
             } finally {
                 renderCalendar();
                 renderDailyDataReview();
+                updateFrequentCombos(); // Update combos after all logs are fetched
             }
         };
 
@@ -1828,7 +1957,7 @@
                 appState.reviewedDays.clear();
                 snapshot.forEach(doc => appState.reviewedDays.add(doc.id));
                 renderDailyDataReview();
-                renderCalendar();
+                renderCalendar(); // Re-render calendar to show/hide checkmarks
             }, (error) => console.error("Error listening to reviewed days:", error));
         };
 
@@ -1848,9 +1977,17 @@
                         const name = log.attributeName;
                         if (name) {
                             appState.attributeNames.add(name);
-                            const logDate = new Date(log.date);
-                            if (!appState.firstEntryDates.has(name) || logDate < appState.firstEntryDates.get(name)) {
-                                appState.firstEntryDates.set(name, logDate);
+                            if (log.date) { // Check if date exists
+                                try {
+                                    const logDate = new Date(log.date);
+                                    if (!isNaN(logDate)) { // Check if date is valid
+                                        if (!appState.firstEntryDates.has(name) || logDate < appState.firstEntryDates.get(name)) {
+                                            appState.firstEntryDates.set(name, logDate);
+                                        }
+                                    }
+                                } catch (e) {
+                                     console.warn("Error parsing date during attribute name fetch:", log.id, log.date, e);
+                                }
                             }
                         }
                     });
@@ -1871,6 +2008,63 @@
                 uiDailies.taskNameSelect.appendChild(option);
             });
         };
+        
+        // --- Frequent Combos Logic ---
+        const updateFrequentCombos = () => {
+            const comboContainer = document.getElementById('frequent-combos-container');
+            if (!comboContainer) return;
+
+            const comboCounts = new Map();
+
+            // Iterate over all logs in appState.logs
+            appState.logs.forEach(logsOnDate => {
+                logsOnDate.forEach(log => {
+                    if (log.attributeName === 'MainActivity' && log.attributeValue && log.attributeValue.includes(' @ ')) {
+                        const comboValue = log.attributeValue;
+                        comboCounts.set(comboValue, (comboCounts.get(comboValue) || 0) + 1);
+                    }
+                });
+            });
+
+            // Also check sessionLogs for recently added ones not yet in appState.logs
+            sessionLogs.forEach(log => {
+                 if (log.attributeName === 'MainActivity' && log.attributeValue && log.attributeValue.includes(' @ ')) {
+                    const comboValue = log.attributeValue;
+                    // This might double-count if fetchLogsForDateRange isn't instant, but it's better to be responsive.
+                    // A more robust way would be to only count sessionLogs *not* in appState.logs, but this is simpler.
+                    comboCounts.set(comboValue, (comboCounts.get(comboValue) || 0) + 1);
+                 }
+            });
+
+            // Sort combos by frequency
+            const sortedCombos = [...comboCounts.entries()].sort((a, b) => b[1] - a[1]);
+
+            // Clear existing buttons
+            comboContainer.innerHTML = '';
+
+            // Add top 5 combos (or less)
+            const topCombos = sortedCombos.slice(0, 5);
+            if (topCombos.length === 0) {
+                comboContainer.innerHTML = `<p class="text-sm text-[var(--text-color-secondary)]">No 'Activity @ Location' combos logged yet. Log some to see them here.</p>`;
+                return;
+            }
+
+            topCombos.forEach(([comboValue, count]) => {
+                const parts = comboValue.split(' @ ');
+                if (parts.length >= 2) { // Handle values like "A @ B @ C"
+                    const activity = parts[0];
+                    const location = parts.slice(1).join(' @ '); // Re-join if location had " @ "
+                    
+                    const button = document.createElement('button');
+                    button.className = 'combo-button';
+                    button.dataset.activity = activity;
+                    button.dataset.location = location;
+                    button.textContent = `${activity} @ ${location}`;
+                    button.title = `Logged ${count} times`; // Add a tooltip for frequency
+                    comboContainer.appendChild(button);
+                }
+            });
+        };
 
         // --- Event Handlers & UI Logic ---
         const handleDeleteTask = (e) => {
@@ -1883,7 +2077,7 @@
             const index = e.currentTarget.dataset.index;
             const task = appState.dailyPlan[index];
             appState.editingTask = { ...task, index };
-            
+
             uiDailies.taskModalTitle.textContent = 'Edit Task';
             uiDailies.taskNameSelect.value = task.attributeName;
             uiDailies.taskCountInput.value = task.count;
@@ -1907,7 +2101,7 @@
         const saveDailyPlan = async () => {
             if (dailyPlanRef) await setDoc(dailyPlanRef, { dailyLogs: appState.dailyPlan });
         };
-        
+
         const showTooltip = (event, date) => {
             const status = getDayStatus(date);
             let content = `<div class="font-bold mb-1">${date.toLocaleDateString(undefined, {weekday: 'long', day: 'numeric'})}</div>`;
@@ -1934,7 +2128,7 @@
             uiDailies.weeklyDaysOptions.classList.toggle('hidden', type !== 'weekly_days');
             uiDailies.weeklyCountOptions.classList.toggle('hidden', type !== 'weekly_count');
         };
-        
+
         const setView = (view) => {
             appState.currentView = view;
             document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
@@ -1942,9 +2136,115 @@
             renderCalendar();
         };
 
-      onAuthStateChanged(auth, async (user) => {
+        const addEventListeners = () => {
+            uiDailies.addTaskBtn.addEventListener('click', () => {
+                appState.editingTask = null;
+                uiDailies.taskModalTitle.textContent = 'Add New Task';
+                uiDailies.taskNameSelect.value = "";
+                uiDailies.taskCountInput.value = 1;
+                uiDailies.taskStartDateInput.value = '';
+                uiDailies.taskEndDateInput.value = '';
+                uiDailies.taskScheduleType.value = 'daily';
+                updateScheduleUI();
+                uiDailies.taskModal.classList.remove('hidden');
+            });
+
+            uiDailies.cancelTaskBtn.addEventListener('click', () => uiDailies.taskModal.classList.add('hidden'));
+            uiDailies.taskScheduleType.addEventListener('change', updateScheduleUI);
+
+            uiDailies.saveTaskBtn.addEventListener('click', () => {
+                const attributeName = uiDailies.taskNameSelect.value;
+                if (!attributeName) {
+                    alert('Please select an attribute.');
+                    return;
+                }
+
+                const scheduleType = uiDailies.taskScheduleType.value;
+                let scheduleData = { type: scheduleType };
+                if (scheduleType === 'weekly_days') {
+                    scheduleData.days = Array.from(document.querySelectorAll('input[name="weekday"]:checked')).map(cb => parseInt(cb.value));
+                    if(scheduleData.days.length === 0) { alert('Please select at least one day.'); return; }
+                }
+                if (scheduleType === 'weekly_count') {
+                    scheduleData.times = parseInt(uiDailies.taskWeeklyCount.value);
+                }
+
+                const newTask = {
+                    attributeName: attributeName,
+                    count: parseInt(uiDailies.taskCountInput.value),
+                    startDate: uiDailies.taskStartDateInput.value || null,
+                    endDate: uiDailies.taskEndDateInput.value || null,
+                    schedule: scheduleData
+                };
+
+                if (appState.editingTask) {
+                    appState.dailyPlan[appState.editingTask.index] = newTask;
+                } else {
+                    appState.dailyPlan.push(newTask);
+                }
+                saveDailyPlan();
+                uiDailies.taskModal.classList.add('hidden');
+            });
+
+            uiDailies.prevBtn.addEventListener('click', () => {
+                switch(appState.currentView) {
+                    case 'year': appState.currentDate.setFullYear(appState.currentDate.getFullYear() - 1); break;
+                    case 'month': appState.currentDate.setMonth(appState.currentDate.getMonth() - 1); break;
+                    case 'week': appState.currentDate.setDate(appState.currentDate.getDate() - 7); break;
+                }
+                renderCalendar();
+            });
+
+            uiDailies.nextBtn.addEventListener('click', () => {
+                switch(appState.currentView) {
+                    case 'year': appState.currentDate.setFullYear(appState.currentDate.getFullYear() + 1); break;
+                    case 'month': appState.currentDate.setMonth(appState.currentDate.getMonth() + 1); break;
+                    case 'week': appState.currentDate.setDate(appState.currentDate.getDate() + 7); break;
+                }
+                renderCalendar();
+            });
+
+            uiDailies.jumpTodayBtn.addEventListener('click', () => {
+                appState.currentDate = new Date();
+                renderCalendar();
+            });
+
+            uiDailies.viewYearBtn.addEventListener('click', () => setView('year'));
+            uiDailies.viewMonthBtn.addEventListener('click', () => setView('month'));
+            uiDailies.viewWeekBtn.addEventListener('click', () => setView('week'));
+            themeToggle.addEventListener('click', toggleTheme);
+
+            uiDailies.prevDayReviewBtn.addEventListener('click', () => {
+                appState.reviewDate.setDate(appState.reviewDate.getDate() - 1);
+                renderDailyDataReview();
+            });
+             uiDailies.nextDayReviewBtn.addEventListener('click', () => {
+                appState.reviewDate.setDate(appState.reviewDate.getDate() + 1);
+                renderDailyDataReview();
+            });
+             
+            // Add event listeners for frequent combo buttons
+            document.getElementById('frequent-combos-container').addEventListener('click', (e) => {
+                const button = e.target.closest('.combo-button');
+                if (button) {
+                    const activity = button.dataset.activity;
+                    const location = button.dataset.location;
+                    const attributeName = 'MainActivity';
+                    const attributeValue = `${activity} @ ${location}`;
+                    const collectionName = 'dailies';
+                    const logDatetime = getNowLogString(); // Use the helper function
+                    const tags = ["quick_log", "location_activity", "combo"]; // Add a "combo" tag
+
+                    // Call addLogData directly instead of just filling fields
+                    addLogData(collectionName, attributeName, attributeValue, tags, logDatetime, "Entered via Quick Log Combo.");
+                }
+            });
+        };
+
+        // --- Initialization ---
+        onAuthStateChanged(auth, async (user) => {
         if (user) {
-          setInputsDisabled(true);
+          setInputsDisabled(true); // Disable inputs while loading
           userId = user.uid;
           userEmail = user.email;
           document.getElementById("user-email-display").textContent = user.email;
@@ -1953,18 +2253,18 @@
           appState.user = user;
           dailyPlanRef = doc(db, 'users', user.uid, 'settings', 'dailyPlan');
           attributeColorsDocRef = doc(db, 'users', user.uid, 'settings', 'attributeColors');
-          
-          await fetchAndPopulateCollections(userId);
-          await fetchAndPopulateTags(userId);
+
+          await fetchAndPopulateCollections(userId); // Fetch collections first
+          await fetchAndPopulateTags(userId);       // Then fetch tags
 
           setDefaultDateTime();
           renderUnsyncedLogs();
           syncPendingLogs();
-          
+
           themeDocRef = doc(db, 'users', userId, 'settings', 'theme');
           themeToggle.disabled = false;
           if (themeUnsubscribe) themeUnsubscribe();
-          
+
           themeUnsubscribe = onSnapshot(themeDocRef, (doc) => {
               const theme = doc.data()?.theme || 'light';
               applyTheme(theme);
@@ -1975,17 +2275,18 @@
                 attributeColorsUnsubscribe = onSnapshot(attributeColorsDocRef, (doc) => {
                     appState.attributeColors = doc.data() || {};
                     renderDailyPlan();
+                    renderDailyDataReview(); // Re-render review section if colors change
                 });
 
                 onSnapshot(dailyPlanRef, (doc) => {
                     appState.dailyPlan = doc.data()?.dailyLogs || [];
                     renderDailyPlan();
-                    fetchLogsForDateRange();
+                    fetchLogsForDateRange(); // Fetch logs after plan is loaded
                 });
                 fetchAllAttributeNames();
-                setupAssignmentsListener(); 
+                setupAssignmentsListener();
                 setupReviewedDaysListener();
-          setInputsDisabled(false);
+          setInputsDisabled(false); // Enable inputs after loading
           appState.isReady = true;
 
         } else {
@@ -1993,11 +2294,25 @@
           userEmail = null;
           document.getElementById("auth-container").style.display = "block";
           document.getElementById("main-app-container").style.display = "none";
-          
+
           if (themeUnsubscribe) themeUnsubscribe();
           themeDocRef = null;
           themeToggle.disabled = true;
           appState.isReady = false;
+          applyTheme('light'); // Default to light mode if logged out
+           // Clear Dailies related state
+            appState.dailyPlan = [];
+            appState.logs.clear();
+            appState.dailyAssignments.clear();
+            appState.attributeNames.clear();
+            appState.firstEntryDates.clear();
+            appState.reviewedDays.clear();
+            if (appState.assignmentsUnsubscribe) appState.assignmentsUnsubscribe();
+            if (appState.reviewedDaysUnsubscribe) appState.reviewedDaysUnsubscribe();
+            renderDailyPlan();
+            renderCalendar();
+            renderDailyDataReview();
+            updateFrequentCombos(); // Clear combos on logout
         }
       });
 
@@ -2054,16 +2369,19 @@
           showMessage("Missing user, data fields, or collection.", "error");
           return;
         }
-        
+
         if (editingLog) {
             await updateLogData(editingLog.docId, collectionName, attributeName, attributeValue, tags, logDatetime);
         } else {
             await addLogData(collectionName, attributeName, attributeValue, tags, logDatetime, "Entered manually.");
         }
 
-        document.getElementById("attributeName").value = "";
-        document.getElementById("attributeValue").value = "";
-        document.getElementById("tags").value = "";
+        // Only clear fields if it wasn't an edit
+        if (!editingLog) {
+             document.getElementById("attributeName").value = "";
+             document.getElementById("attributeValue").value = "";
+             document.getElementById("tags").value = "";
+        }
       });
 
       document.querySelectorAll(".screen-time-type-btn").forEach(button => {
@@ -2090,11 +2408,14 @@
         const attributeValue = `${hours}h ${minutes}m`;
         const tags = ["quick_log", "screen_time"];
         const logDatetime = document.getElementById("log-datetime").value;
-        
+
         addLogData("dailies", selectedScreenTimeType, attributeValue, tags, logDatetime, "Entered via Quick Log.");
 
         document.getElementById("screen-time-hours").value = "";
         document.getElementById("screen-time-minutes").value = "";
+        // Deselect buttons after logging
+        document.querySelectorAll(".screen-time-type-btn").forEach(btn => btn.classList.remove("selected"));
+        selectedScreenTimeType = null;
       });
 
       document.getElementById("quick-log-location-activity-btn").addEventListener("click", () => {
@@ -2110,7 +2431,7 @@
         const attributeValue = `${activityY} @ ${locationX}`;
         const tags = ["quick_log", "location_activity"];
         const logDatetime = document.getElementById("log-datetime").value;
-        
+
         addLogData("dailies", attributeName, attributeValue, tags, logDatetime, "Entered via Quick Log.");
 
         document.getElementById("quick-log-location").value = "";
@@ -2121,7 +2442,7 @@
         button.addEventListener("click", () => {
           const attributeValue = button.dataset.value;
           const tags = ["quick_log", "sleep_quality"];
-          const logDatetime = document.getElementById("log-datetime").value;
+          const logDatetime = getNowLogString(); // Use current time
           addLogData("dailies", "sleep_quality", attributeValue, tags, logDatetime, "Entered via Quick Log.");
         });
       });
@@ -2132,7 +2453,7 @@
           button.addEventListener("click", () => {
             const attributeValue = button.dataset.value;
             const tags = ["quick_log", "productivity"];
-            const logDatetime = document.getElementById("log-datetime").value;
+            const logDatetime = getNowLogString(); // Use current time
             addLogData("dailies", "productivity", attributeValue, tags, logDatetime, "Entered via Quick Log.");
           });
         });
@@ -2143,28 +2464,28 @@
           button.addEventListener("click", () => {
             const attributeValue = button.dataset.value;
             const tags = ["quick_log", "mood"];
-            const logDatetime = document.getElementById("log-datetime").value;
+            const logDatetime = getNowLogString(); // Use current time
             addLogData("dailies", "mood", attributeValue, tags, logDatetime, "Entered via Quick Log.");
           });
         });
-        
+
       document
         .querySelectorAll("#energy-buttons button")
         .forEach((button) => {
           button.addEventListener("click", () => {
             const attributeValue = button.dataset.value;
             const tags = ["quick_log", "energy"];
-            const logDatetime = document.getElementById("log-datetime").value;
+            const logDatetime = getNowLogString(); // Use current time
             addLogData("dailies", "energy", attributeValue, tags, logDatetime, "Entered via Quick Log.");
           });
         });
-      
+
       // New event listener for Retainers Worn buttons
       document.querySelectorAll("#retainers-buttons button").forEach((button) => {
         button.addEventListener("click", () => {
           const attributeValue = button.dataset.value;
           const tags = ["quick_log", "retainers"];
-          const logDatetime = document.getElementById("log-datetime").value;
+          const logDatetime = getNowLogString(); // Use current time
           addLogData("dailies", "retainers_worn", attributeValue, tags, logDatetime, "Entered via Quick Log.");
         });
       });
@@ -2177,96 +2498,18 @@
             return;
         }
         const tags = ["quick_log", "tasks_remaining"];
-        const logDatetime = document.getElementById("log-datetime").value;
+        const logDatetime = getNowLogString(); // Use current time
         addLogData("dailies", "TTR", parseInt(attributeValue), tags, logDatetime, "Entered via Quick Log.");
+        document.getElementById("total-tasks-remaining-value").value = ""; // Clear after log
       });
 
-        uiDailies.addTaskBtn.addEventListener('click', () => {
-            appState.editingTask = null;
-            uiDailies.taskModalTitle.textContent = 'Add New Task';
-            uiDailies.taskNameSelect.value = "";
-            uiDailies.taskCountInput.value = 1;
-            uiDailies.taskStartDateInput.value = '';
-            uiDailies.taskEndDateInput.value = '';
-            uiDailies.taskScheduleType.value = 'daily';
-            updateScheduleUI();
-            uiDailies.taskModal.classList.remove('hidden');
+        document.addEventListener('DOMContentLoaded', () => {
+            // ui.versionDisplay.textContent = changelogData[0].version; // This is already set outside
+            addEventListeners()
         });
 
-        uiDailies.cancelTaskBtn.addEventListener('click', () => uiDailies.taskModal.classList.add('hidden'));
-        uiDailies.taskScheduleType.addEventListener('change', updateScheduleUI);
-
-        uiDailies.saveTaskBtn.addEventListener('click', () => {
-            const attributeName = uiDailies.taskNameSelect.value;
-            if (!attributeName) {
-                alert('Please select an attribute.');
-                return;
-            }
-
-            const scheduleType = uiDailies.taskScheduleType.value;
-            let scheduleData = { type: scheduleType };
-            if (scheduleType === 'weekly_days') {
-                scheduleData.days = Array.from(document.querySelectorAll('input[name="weekday"]:checked')).map(cb => parseInt(cb.value));
-                if(scheduleData.days.length === 0) { alert('Please select at least one day.'); return; }
-            }
-            if (scheduleType === 'weekly_count') {
-                scheduleData.times = parseInt(uiDailies.taskWeeklyCount.value);
-            }
-
-            const newTask = {
-                attributeName: attributeName,
-                count: parseInt(uiDailies.taskCountInput.value),
-                startDate: uiDailies.taskStartDateInput.value || null,
-                endDate: uiDailies.taskEndDateInput.value || null,
-                schedule: scheduleData
-            };
-
-            if (appState.editingTask) {
-                appState.dailyPlan[appState.editingTask.index] = newTask;
-            } else {
-                appState.dailyPlan.push(newTask);
-            }
-            saveDailyPlan();
-            uiDailies.taskModal.classList.add('hidden');
-        });
-        
-        uiDailies.prevBtn.addEventListener('click', () => {
-            switch(appState.currentView) {
-                case 'year': appState.currentDate.setFullYear(appState.currentDate.getFullYear() - 1); break;
-                case 'month': appState.currentDate.setMonth(appState.currentDate.getMonth() - 1); break;
-                case 'week': appState.currentDate.setDate(appState.currentDate.getDate() - 7); break;
-            }
-            renderCalendar();
-        });
-
-        uiDailies.nextBtn.addEventListener('click', () => {
-            switch(appState.currentView) {
-                case 'year': appState.currentDate.setFullYear(appState.currentDate.getFullYear() + 1); break;
-                case 'month': appState.currentDate.setMonth(appState.currentDate.getMonth() + 1); break;
-                case 'week': appState.currentDate.setDate(appState.currentDate.getDate() + 7); break;
-            }
-            renderCalendar();
-        });
-
-        uiDailies.jumpTodayBtn.addEventListener('click', () => {
-            appState.currentDate = new Date();
-            renderCalendar();
-        });
-
-        uiDailies.viewYearBtn.addEventListener('click', () => setView('year'));
-        uiDailies.viewMonthBtn.addEventListener('click', () => setView('month'));
-        uiDailies.viewWeekBtn.addEventListener('click', () => setView('week'));
-        
-        uiDailies.prevDayReviewBtn.addEventListener('click', () => {
-            appState.reviewDate.setDate(appState.reviewDate.getDate() - 1);
-            renderDailyDataReview();
-        });
-            uiDailies.nextDayReviewBtn.addEventListener('click', () => {
-            appState.reviewDate.setDate(appState.reviewDate.getDate() + 1);
-            renderDailyDataReview();
-        });
     </script>
-    
+
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
