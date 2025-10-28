@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    "version": "v9.27.0-alpha", 
+    "date": "2025-10-28",
+    "changes": [
+        "In FoodTrackr: Implemented a new 'Copy/Move' feature, allowing log items from 'Today's Log' or 'History' to be duplicated or moved to a new date, time, and section via a modal.",
+        "In FoodTrackr: Added product photos to all relevant locations, including 'Today's Log', the 'History' table, 'Frequently Logged' list, and 'Foods & Meals' management tab for a richer visual experience.",
+        "In FoodTrackr: Overhauled the 'Log Food' tab layout, re-introducing the multi-column grid (Breakfast, Brunch, Lunch, etc.) and a centered 'Drinks' section.",
+        "In FoodTrackr: Added a dedicated 'Add Food' section with quick-access buttons for Search, Frequent, Meals, Foods, and Manual Entry.",
+        "In FoodTrackr: Streamlined meal creation by removing the manual 'Create a Meal' builder. Users can now save all items in a daily log section (e.g., 'Lunch') directly as a new meal using a 'Save' icon.",
+        "In FoodTrackr: Added a 'Today's Nutrients' summary table to the Dashboard tab for an at-a-glance view of daily totals.",
+        "In FoodTrackr: Renamed the 'My Foods' tab to 'Foods & Meals' to clarify its purpose as a management area for saved favorites and meals.",
+    ]
+    },
+    {
     "version": "v9.26.1-alpha", 
     "date": "2025-10-27",
     "changes": [
