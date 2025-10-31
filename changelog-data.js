@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    "version": "v9.28.0-alpha", 
+    "date": "2025-10-31",
+    "changes": [
+        "In FoodTrackr: Added day navigation to the Dashboard, allowing users to view summaries for previous days or return to 'Today' using new 'Previous'/'Next' buttons.",
+        "In FoodTrackr: Upgraded the Dashboard's 'Nutrients' table. It now sums all available data from `baseNutrients` (e.g., Fiber, Sugar, Sodium, Saturated Fat) for items logged via search, providing a much more detailed breakdown beyond the four main macros.",
+        "In FoodTrackr: The Dashboard now maintains its state, remembering which day you were viewing when switching between tabs.",
+        "In FoodTrackr: Re-organized the Dashboard layout to place the macro chart alongside the new detailed nutrients table for a better comparison.",
+        "In FoodTrackr: Streamlined the 'Log Food' workflow; the entry form is now hidden by default and appears only when an item is selected for logging or editing.",
+        "In FoodTrackr: Made the main app layout wider (1200px) for a more spacious, 'flush' feel on larger screens.",
+        "In FoodTrackr: Fixed a bug where the product details modal would fail to load an image, even if one was visible in the search results. The modal now correctly gathers all available images.",
+        "In FoodTrackr: Improved image rendering logic to robustly handle old log items with invalid `imageUrl` data (e.g., a 'null' string), defaulting to a placeholder to prevent broken image icons."
+    ]
+    },
+    {
     "version": "v9.27.0-alpha", 
     "date": "2025-10-28",
     "changes": [
