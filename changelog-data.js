@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+  "version": "v9.29.0-alpha",
+  "date": "2025-10-31",
+  "changes": [
+    "In Converter: Major refactor of the page from a simple converter to a comprehensive 'Data Tools' hub.",
+    "In Converter: Added a new 'CSV Viewer & Editor' tool to load, edit, and save CSV data in a table.",
+    "In Converter: Added a 'Transpose CSV' tool to swap the rows and columns of CSV data.",
+    "In Converter: Added a 'Pivot CSV' tool to summarize data with field selection and aggregation functions (COUNT, SUM, AVG, etc.).",
+    "In Converter: Implemented a new tabbed interface to organize the original converter and the new CSV tools.",
+    "In Converter: Replaced the generic download button with specific 'Download CSV' and 'Download JSON' buttons.",
+  ]
+},
+    {
     "version": "v9.28.0-alpha", 
     "date": "2025-10-31",
     "changes": [
