@@ -6,6 +6,7 @@
     <title>Printing Label Generator</title>
     <link rel="icon" href="/favicons/print.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono&family=Lora&family=Merriweather&family=Playfair+Display&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -32,6 +33,7 @@
         #print-area { position: fixed; top: -9999px; left: -9999px; }
         body { font-family: 'Inter', sans-serif; }
         
+        /* FIX: This applies the missing right and bottom lines */
         #label-grid-container {
             border-right: 1px solid #ddd;
             border-bottom: 1px solid #ddd;
@@ -63,13 +65,14 @@
 
         .label {
             height: var(--label-height);
-            border-top: 1px solid #ddd;
-            border-left: 1px solid #ddd;
+            border-top: 1px solid #ddd; /* This MUST be present */
+            border-left: 1px solid #ddd; /* This MUST be present */
             border-radius: var(--corner-radius);
             overflow: hidden;
             cursor: pointer;
             transition: all 0.2s ease-in-out;
             display: flex;
+            flex-direction: column; /* Allows content and barcode/serial to stack */
             align-items: var(--align-items);
             justify-content: var(--justify-content);
             padding: 2mm;
@@ -81,6 +84,7 @@
             white-space: pre-wrap;
             word-wrap: break-word;
             position: relative;
+            text-align: var(--justify-content); /* text alignment inside label */
         }
         
         .label::before {
@@ -91,6 +95,11 @@
             font-size: 8pt;
             color: #aaa;
             font-family: 'Roboto Mono', monospace;
+        }
+        
+        /* Hide label number when using content template for cleaner look */
+        .label.has-template::before {
+            display: none;
         }
 
         .label.selected {
@@ -147,7 +156,10 @@
                     </div>
                     <div>
                         <label for="presets" class="block text-sm font-medium text-gray-700">Presets</label>
-                        <select id="presets" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500"></select>
+                        <div class="flex space-x-2">
+                            <select id="presets" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500"></select>
+                            <button id="savePresetButton" class="mt-1 px-3 py-1 text-sm bg-sky-500 text-white rounded-md shadow-sm hover:bg-sky-600 transition duration-150">Save</button>
+                        </div>
                     </div>
                     <div id="envelopeControls" class="hidden space-y-3">
                          <div class="grid grid-cols-2 gap-4">
@@ -207,7 +219,7 @@
                             </select>
                         </div>
                          <div><label for="startPosition" class="block text-sm font-medium text-gray-700">Start filling at Label #</label><input type="number" id="startPosition" value="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500"></div>
-                         <p class="text-xs text-gray-500">Used for CSV import on partial sheets.</p>
+                         <p class="text-xs text-gray-500">Used for CSV/Serial import on partial sheets.</p>
                     </div>
                 </details>
                 <details class="p-4 border rounded-lg bg-gray-50 group">
@@ -248,19 +260,34 @@
                     </div>
                 </div>
             </details>
-            <details class="p-4 border rounded-lg bg-gray-50 group">
-                 <summary class="text-lg font-semibold cursor-pointer flex justify-between items-center"><span>Content</span><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg></summary>
+            <details class="p-4 border rounded-lg bg-gray-50 group" open>
+                 <summary class="text-lg font-semibold cursor-pointer flex justify-between items-center"><span>Content & Data (Field Mapping)</span><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg></summary>
                  <div class="mt-4 pt-4 border-t space-y-3">
                      <div>
-                        <label for="csvFile" class="block text-sm font-medium text-gray-700">Import from CSV</label>
-                        <p class="text-xs text-gray-500 mb-1">Each row in the CSV will populate one label.</p>
+                        <label for="csvFile" class="block text-sm font-medium text-gray-700">Import Data (CSV)</label>
+                        <p class="text-xs text-gray-500 mb-1">Each row populates one label.</p>
                         <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100"/>
                         <div class="flex items-center mt-2">
-                            <input id="csvHasHeader" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500">
-                            <label for="csvHasHeader" class="ml-2 block text-sm font-medium text-gray-700">First row is a header</label>
+                            <input id="csvHasHeader" type="checkbox" checked class="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500">
+                            <label for="csvHasHeader" class="ml-2 block text-sm font-medium text-gray-700">First row is a header (Field Names)</label>
                         </div>
                      </div>
-                     <div><label for="labelText" class="block text-sm font-medium text-gray-700">Manual Text</label><p class="text-xs text-gray-500 mb-1">Applies to all currently selected labels.</p><textarea id="labelText" rows="4" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500" placeholder="Enter common text here..."></textarea></div>
+                      <details id="serializationGroup" class="pt-2 border-t mt-4">
+                        <summary class="text-sm font-medium text-gray-700 cursor-pointer">Auto-Increment / Serial ({{SERIAL}})</summary>
+                        <div class="grid grid-cols-3 gap-2 pt-2">
+                            <div><label for="serialStart" class="block text-xs font-medium text-gray-500">Start</label><input type="number" id="serialStart" value="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm"></div>
+                            <div><label for="serialEnd" class="block text-xs font-medium text-gray-500">End (Max)</label><input type="number" id="serialEnd" value="20" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm"></div>
+                            <div><label for="serialIncrement" class="block text-xs font-medium text-gray-500">Increment</label><input type="number" id="serialIncrement" value="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-sm"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">Overrides CSV data if serial range is larger.</p>
+                     </details>
+                     
+                     <div class="pt-2 border-t mt-4">
+                        <label for="contentTemplate" class="block text-sm font-medium text-gray-700">Content Template (Manual Text & Fields)</label>
+                        <p class="text-xs text-gray-500 mb-1">Use <code>{{FIELD_NAME}}</code>, <code>{{COL1}}</code>, or <code>{{SERIAL}}</code>. Use <code>&lt;br&gt;</code> for new lines. **Manual text only applies to selected squares.**</p>
+                        <textarea id="contentTemplate" rows="4" class="block w-full rounded-md border-gray-300 shadow-sm font-mono text-sm focus:border-sky-500 focus:ring-sky-500" placeholder="Example: My Product Label&#10;Date: 2024-01-01&#10;Serial: {{SERIAL}}&#10;{{BARCODE:COL1}}"></textarea>
+                        <p class="text-xs text-gray-500 mt-1">For a Barcode, use <code>{{BARCODE:FIELD_NAME}}</code>.</p>
+                     </div>
                  </div>
             </details>
             <div class="space-y-4 pt-4 border-t">
@@ -275,10 +302,34 @@
     </div>
     <div id="print-area"></div>
 
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
     <script>
+        // --- FIREBASE CONFIGURATION (NOW POPULATED) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
+            authDomain: "sammy-7298f.firebaseapp.com",
+            projectId: "sammy-7298f",
+            storageBucket: "sammy-7298f.firebasestorage.app",
+            messagingSenderId: "963185683535",
+            appId: "1:963185683535:web:807df8941feba46c208e3a",
+            measurementId: "G-JT1YF2ELN3"
+        };
+
+        // Initialize Firebase
+        if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = typeof firebase !== 'undefined' ? firebase.firestore() : null;
+        let currentUserId = null; 
+        // --- END FIREBASE CONFIGURATION ---
+
         document.addEventListener('DOMContentLoaded', () => {
             const controls = {
                 templateType: document.getElementById('templateType'), presets: document.getElementById('presets'),
+                savePresetButton: document.getElementById('savePresetButton'),
                 labelSheetControls: document.getElementById('labelSheetControls'), envelopeControls: document.getElementById('envelopeControls'),
                 suspensionTabControls: document.getElementById('suspensionTabControls'), printCutLines: document.getElementById('printCutLines'),
                 paperSize: document.getElementById('paperSize'), orientation: document.getElementById('orientation'),
@@ -293,31 +344,37 @@
                 fontFamily: document.getElementById('fontFamily'), fontSize: document.getElementById('fontSize'),
                 fontBold: document.getElementById('fontBold'), fontItalic: document.getElementById('fontItalic'),
                 vAlign: document.getElementById('vAlign'), hAlign: document.getElementById('hAlign'),
-                labelText: document.getElementById('labelText'), csvFile: document.getElementById('csvFile'),
+                contentTemplate: document.getElementById('contentTemplate'),
+                csvFile: document.getElementById('csvFile'),
                 csvHasHeader: document.getElementById('csvHasHeader'),
+                serialStart: document.getElementById('serialStart'),
+                serialEnd: document.getElementById('serialEnd'),
+                serialIncrement: document.getElementById('serialIncrement'),
             };
             const actions = { selectAll: document.getElementById('selectAll'), deselectAll: document.getElementById('deselectAll'), printButton: document.getElementById('printButton') };
             const labelGrid = document.getElementById('label-grid');
             const root = document.documentElement;
             
-            let labelData = [];
+            let labelData = []; 
+            let csvHeader = []; 
+            
             const PRESETS = {
                 labelSheet: {
                     'Avery (A4)': {
-                         'avery_L7160': { name: 'L7160 (63.5x38.1mm)', paper: 'A4', rows: 7, cols: 3, width: 63.5, height: 38.1, marginTop: 15, marginLeft: 7.5, rowGap: 0, colGap: 2.5 },
-                         'avery_L7163': { name: 'L7163 (99.1x38.1mm)', paper: 'A4', rows: 7, cols: 2, width: 99.1, height: 38.1, marginTop: 14.9, marginLeft: 5.4, rowGap: 0, colGap: 0 },
+                         'avery_L7160': { name: 'L7160 (63.5x38.1mm)', paper: 'A4', rows: 7, cols: 3, width: 63.5, height: 38.1, marginTop: 15, marginLeft: 7.5, rowGap: 0, colGap: 2.5, cornerRadius: 0 },
+                         'avery_L7163': { name: 'L7163 (99.1x38.1mm)', paper: 'A4', rows: 7, cols: 2, width: 99.1, height: 38.1, marginTop: 14.9, marginLeft: 5.4, rowGap: 0, colGap: 0, cornerRadius: 0 },
                     },
                     'Avery (US Letter)': {
-                        'avery_5160': { name: '5160 (2.625"x1")', paper: 'Letter', rows: 10, cols: 3, width: 66.675, height: 25.4, marginTop: 12.7, marginLeft: 4.76, rowGap: 0, colGap: 3.175 },
-                        'avery_5163': { name: '5163 (4"x2")', paper: 'Letter', rows: 5, cols: 2, width: 101.6, height: 50.8, marginTop: 12.7, marginLeft: 5.56, rowGap: 0, colGap: 0 },
+                        'avery_5160': { name: '5160 (2.625"x1")', paper: 'Letter', rows: 10, cols: 3, width: 66.675, height: 25.4, marginTop: 12.7, marginLeft: 4.76, rowGap: 0, colGap: 3.175, cornerRadius: 0 },
+                        'avery_5163': { name: '5163 (4"x2")', paper: 'Letter', rows: 5, cols: 2, width: 101.6, height: 50.8, marginTop: 12.7, marginLeft: 5.56, rowGap: 0, colGap: 0, cornerRadius: 0 },
                     },
                     'Custom...': { 'custom': { name: 'Custom...' } },
                 },
                 suspensionTab: {
                     'Print on...': {
                         'custom': { name: 'Custom...' },
-                        'grid_a4_card': { name: 'Grid on A4 Card', paper: 'A4', orientation: 'portrait', rows: 17, cols: 3, width: 50, height: 15, marginTop: 4.5, marginLeft: 5, rowGap: 2, colGap: 2 },
-                        'prepunched_a4_sheet': { name: 'Pre-punched A4 Sheet (Example)', paper: 'A4', orientation: 'portrait', rows: 10, cols: 1, width: 50, height: 15, marginTop: 23.5, marginLeft: 80, rowGap: 14.7, colGap: 0 }
+                        'grid_a4_card': { name: 'Grid on A4 Card', paper: 'A4', orientation: 'portrait', rows: 17, cols: 3, width: 50, height: 15, marginTop: 4.5, marginLeft: 5, rowGap: 2, colGap: 2, cornerRadius: 0 },
+                        'prepunched_a4_sheet': { name: 'Pre-punched A4 Sheet (Example)', paper: 'A4', orientation: 'portrait', rows: 10, cols: 1, width: 50, height: 15, marginTop: 23.5, marginLeft: 80, rowGap: 14.7, colGap: 0, cornerRadius: 0 }
                     }
                 },
                 envelope: {
@@ -330,6 +387,92 @@
                 }
             };
             
+            // --- FIREBASE AUTH LISTENER ---
+            if (typeof firebase !== 'undefined' && firebase.auth) {
+                firebase.auth().onAuthStateChanged((user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                        populatePresets(); 
+                    } else {
+                        currentUserId = null;
+                        populatePresets(); 
+                    }
+                });
+            } else {
+                 populatePresets(); 
+            }
+            // --- END FIREBASE AUTH LISTENER ---
+
+            const generateLabelContent = (data, index) => {
+                const template = controls.contentTemplate.value || '';
+                if (!template) return '';
+
+                let content = template.replace(/\r/g, '').replace(/\n/g, '<br>');
+                const serialNum = data && data.SERIAL !== undefined ? data.SERIAL : '';
+
+                if (data && data.MANUAL_CONTENT !== undefined) {
+                    return data.MANUAL_CONTENT.replace(/\r/g, '').replace(/\n/g, '<br>');
+                }
+
+                if (data) {
+                    for (const key in data) {
+                        const value = data[key];
+                        if (key === 'SERIAL') continue;
+
+                        content = content.replace(new RegExp(`{{${key}}}`, 'g'), value);
+                        
+                        const barcodeMatch = content.match(new RegExp(`{{BARCODE:${key}}}`, 'i'));
+                        if (barcodeMatch) {
+                             content = content.replace(new RegExp(`{{BARCODE:${key}}}`, 'i'), `<svg class="barcode" data-value="${value}" style="width: 100%; height: auto;"></svg>`);
+                        }
+                    }
+                }
+                
+                content = content.replace(new RegExp(`{{SERIAL}}`, 'g'), serialNum);
+
+                content = content.replace(/{{[^{}]*}}/g, '');
+
+                return content;
+            };
+
+            const generateDataArray = () => {
+                const start = parseInt(controls.serialStart.value, 10);
+                const end = parseInt(controls.serialEnd.value, 10);
+                const increment = parseInt(controls.serialIncrement.value, 10);
+                const templateUsesSerial = controls.contentTemplate.value.includes('{{SERIAL}}');
+                
+                let serialData = [];
+                if (templateUsesSerial) {
+                    for (let i = start; i <= end; i += increment) {
+                        serialData.push({ SERIAL: i.toString() });
+                    }
+                }
+
+                if (labelData.length > 0) {
+                    const mergedData = serialData.map((sData, index) => {
+                        if (labelData[index]) {
+                            return { ...sData, ...labelData[index] };
+                        }
+                        return sData;
+                    });
+                    
+                    if (labelData.length > mergedData.length) {
+                        return mergedData.concat(labelData.slice(mergedData.length));
+                    }
+                    
+                    return mergedData;
+
+                } else if (templateUsesSerial) {
+                    return serialData;
+                }
+                
+                if (controls.contentTemplate.value) {
+                     return [ { MANUAL_CONTENT: controls.contentTemplate.value } ];
+                }
+
+                return [];
+            };
+
             const getLabelsPerPage = () => {
                 if (controls.templateType.value === 'envelope') return 1;
                 const rows = parseInt(controls.rows.value, 10) || 1;
@@ -338,23 +481,107 @@
             };
 
             const renderPreview = () => {
-                labelGrid.innerHTML = '';
                 const labelsPerPage = getLabelsPerPage();
-                const totalLabels = labelData.length > 0 ? labelData.length : labelsPerPage;
+                
+                const currentSelection = Array.from(document.querySelectorAll('.label.selected')).map(l => parseInt(l.dataset.index, 10));
+                
+                labelGrid.innerHTML = '';
+
+                const dataToRender = generateDataArray();
+                const startPos = Math.max(0, parseInt(controls.startPosition.value, 10) - 1);
+                const isPureManualMode = dataToRender.length === 1 && dataToRender[0].MANUAL_CONTENT !== undefined;
+                const totalLabels = isPureManualMode ? labelsPerPage : (dataToRender.length > 0 ? dataToRender.length : labelsPerPage);
                 const labelsToShow = Math.min(totalLabels, labelsPerPage);
                 
+                const padding = Array(startPos).fill(null);
+                const finalData = padding.concat(dataToRender);
+
+
                 for (let i = 0; i < labelsToShow; i++) {
                     const label = document.createElement('div');
                     label.classList.add('label');
                     label.dataset.index = i;
                     label.dataset.labelNumber = i + 1;
-                    label.textContent = labelData[i] || '';
-                    if (label.textContent || controls.templateType.value === 'envelope') {
+                    
+                    let content = '';
+                    const dataItem = isPureManualMode ? dataToRender[0] : finalData[i];
+
+                    if (dataItem) {
+                        content = generateLabelContent(dataItem, i + 1);
+                    }
+
+                    if (isPureManualMode) {
+                        const isSelected = currentSelection.includes(i) || (i === 0 && currentSelection.length === 0);
+
+                        if (isSelected && content.trim() !== '') {
+                            label.innerHTML = content;
+                            label.classList.add('selected'); 
+                            label.classList.add('has-template');
+                        } else if (currentSelection.includes(i)) {
+                            label.classList.add('selected');
+                        }
+                    }
+                    else if (!isPureManualMode && finalData[i]) {
+                         if (content.trim() !== '') {
+                            label.innerHTML = content;
+                            label.classList.add('selected');
+                            label.classList.add('has-template');
+                         }
+                    } 
+                    else if (controls.templateType.value === 'envelope') {
                         label.classList.add('selected');
                     }
-                    label.addEventListener('click', () => label.classList.toggle('selected'));
+
+                    if (label.querySelector('.barcode')) {
+                        const svg = label.querySelector('.barcode');
+                        JsBarcode(svg, svg.dataset.value, { displayValue: true, margin: 5, fontSize: 10, height: 30 });
+                    }
+
+                    label.addEventListener('click', () => {
+                         if (isPureManualMode || finalData.filter(d => d !== null).length === 0) {
+                            label.classList.toggle('selected');
+                            if (isPureManualMode) updateAllStyles(); 
+                         }
+                    });
                     labelGrid.appendChild(label);
                 }
+            };
+
+            const saveCurrentSettings = (name) => {
+                if (!currentUserId || !db) {
+                    alert("Preset saving requires Firebase configuration and a logged-in user.");
+                    return;
+                }
+                const type = controls.templateType.value;
+                const newPreset = {
+                    name: name,
+                    type: type, 
+                    paper: controls.paperSize.value,
+                    orientation: controls.orientation.value,
+                    rows: controls.rows.value,
+                    cols: controls.cols.value,
+                    width: controls.labelWidth.value,
+                    height: controls.labelHeight.value,
+                    marginTop: controls.marginTop.value,
+                    marginLeft: controls.marginLeft.value,
+                    rowGap: controls.gridRowGap.value,
+                    colGap: controls.gridColumnGap.value,
+                    cornerRadius: controls.cornerRadius.value,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                const key = name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                
+                db.collection(`users/${currentUserId}/labelPresets`).doc(key).set(newPreset)
+                    .then(() => {
+                        alert(`Preset "${name}" saved to your Firebase account!`);
+                        populatePresets();
+                        controls.presets.value = key;
+                    })
+                    .catch((error) => {
+                        console.error("Error saving preset:", error);
+                        alert("Error saving preset to cloud. Check console.");
+                    });
             };
 
             const updateAllStyles = () => {
@@ -424,25 +651,55 @@
 
                 root.style.setProperty('--cols', controls.cols.value);
                 root.style.setProperty('--font-family', controls.fontFamily.value); root.style.setProperty('--font-size', `${controls.fontSize.value}pt`);
-                root.style.setProperty('--align-items', controls.vAlign.value); root.style.setProperty('--justify-content', controls.hAlign.value);
+                root.style.setProperty('--align-items', controls.vAlign.value); 
+                root.style.setProperty('--justify-content', controls.hAlign.value);
                 root.style.setProperty('--font-weight', controls.fontBold.dataset.active === 'true' ? 'bold' : 'normal');
                 root.style.setProperty('--font-style', controls.fontItalic.dataset.active === 'true' ? 'italic' : 'normal');
                 renderPreview();
             };
 
-            const applyPreset = (key) => {
+            const applyPreset = async (key) => {
                 const type = controls.templateType.value; if (!key || key === 'custom') { if (type === 'envelope') { controls.envelopeWidth.disabled = false; controls.envelopeHeight.disabled = false; } return; }
+                
+                let p;
+                
                 if (type === 'labelSheet' || type === 'suspensionTab') {
-                    let p; for (const group in PRESETS[type]) { if (PRESETS[type][group][key]) { p = PRESETS[type][group][key]; break; } } if (!p) return;
-                    controls.paperSize.value = p.paper; controls.orientation.value = p.orientation || 'portrait';
-                    controls.rows.value = p.rows; controls.cols.value = p.cols;
-                    controls.labelWidth.value = p.width; controls.labelHeight.value = p.height;
-                    controls.marginTop.value = p.marginTop; controls.marginLeft.value = p.marginLeft;
-                    controls.gridRowGap.value = p.rowGap; controls.gridColumnGap.value = p.colGap;
+                    for (const group in PRESETS[type]) { if (PRESETS[type][group][key]) { p = PRESETS[type][group][key]; break; } }
                 } else if (type === 'envelope') {
-                    const p = PRESETS.envelope['Common Sizes'][key]; if (!p) return;
-                    controls.envelopeWidth.value = p.width; controls.envelopeHeight.value = p.height;
-                    controls.envelopeWidth.disabled = true; controls.envelopeHeight.disabled = true;
+                    p = PRESETS.envelope['Common Sizes'][key];
+                }
+                
+                if (!p && currentUserId && db) {
+                    try {
+                        const doc = await db.collection(`users/${currentUserId}/labelPresets`).doc(key).get();
+                        if (doc.exists) {
+                            p = doc.data();
+                            if (p.type !== type) return; 
+                        }
+                    } catch (error) {
+                        console.error("Error fetching custom preset:", error);
+                        return;
+                    }
+                }
+                if (!p) return;
+
+                if (type === 'labelSheet' || type === 'suspensionTab') {
+                    controls.paperSize.value = p.paper; 
+                    controls.orientation.value = p.orientation || 'portrait';
+                    controls.rows.value = p.rows; 
+                    controls.cols.value = p.cols;
+                    controls.labelWidth.value = p.width; 
+                    controls.labelHeight.value = p.height;
+                    controls.marginTop.value = p.marginTop; 
+                    controls.marginLeft.value = p.marginLeft;
+                    controls.gridRowGap.value = p.rowGap; 
+                    controls.gridColumnGap.value = p.colGap;
+                    controls.cornerRadius.value = p.cornerRadius || 0;
+                } else if (type === 'envelope') {
+                    controls.envelopeWidth.value = p.width; 
+                    controls.envelopeHeight.value = p.height;
+                    controls.envelopeWidth.disabled = true; 
+                    controls.envelopeHeight.disabled = true;
                 }
                 updateAllStyles();
             };
@@ -451,13 +708,34 @@
                 const file = e.target.files[0]; if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (event) => {
-                    let csvRows = event.target.result.split('\n').filter(row => row.trim() !== '').map(r => r.trim().replace(/^"|"$/g, ''));
+                    const text = event.target.result;
+                    const rows = text.split('\n').filter(row => row.trim() !== '');
+                    
+                    if (rows.length === 0) return;
+
+                    let dataRows = rows;
+                    let header = [];
+                    
                     if (controls.csvHasHeader.checked) {
-                        csvRows.shift();
+                        header = rows[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+                        dataRows = rows.slice(1);
                     }
-                    const startIndex = Math.max(0, parseInt(controls.startPosition.value, 10) - 1);
-                    const padding = Array(startIndex).fill('');
-                    labelData = padding.concat(csvRows);
+
+                    if (header.length === 0) {
+                        header = dataRows[0].split(',').map((_, i) => `COL${i + 1}`);
+                    }
+                    csvHeader = header;
+                    
+                    labelData = dataRows.map(row => {
+                        const values = row.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+                        const obj = {};
+                        header.forEach((key, i) => {
+                            obj[key] = values[i] || ''; 
+                            obj[`COL${i + 1}`] = values[i] || ''; 
+                        });
+                        return obj;
+                    });
+                    
                     updateAllStyles();
                 };
                 reader.readAsText(file);
@@ -493,14 +771,22 @@
                 }
             });
 
+            controls.savePresetButton.addEventListener('click', () => {
+                const presetName = prompt("Enter a name for your custom preset (e.g., 'My Favourite 5160'):");
+                if (presetName) {
+                    saveCurrentSettings(presetName);
+                }
+            });
+
             controls.presets.addEventListener('input', (e) => { labelData = []; applyPreset(e.target.value); });
             Object.values(controls).forEach(c => {
-                const nonStandard = ['templateType','presets','csvFile','csvHasHeader','labelText','fontBold','fontItalic','labelSheetControls','envelopeControls','suspensionTabControls','printCutLines', 'maximizeLayout'];
+                const nonStandard = ['templateType','presets','csvFile','csvHasHeader','contentTemplate','fontBold','fontItalic','labelSheetControls','envelopeControls','suspensionTabControls','printCutLines', 'maximizeLayout','serialStart','serialEnd','serialIncrement','savePresetButton'];
                 if (!c.id || nonStandard.includes(c.id)) return;
                 c.addEventListener('input', () => { controls.presets.value = 'custom'; if (controls.templateType.value === 'envelope') { controls.envelopeWidth.disabled = false; controls.envelopeHeight.disabled = false; } labelData = []; updateAllStyles(); });
             });
+            [controls.contentTemplate, controls.serialStart, controls.serialEnd, controls.serialIncrement].forEach(c => c.addEventListener('input', updateAllStyles));
+
             controls.maximizeLayout.addEventListener('input', updateAllStyles);
-            controls.labelText.addEventListener('input', () => document.querySelectorAll('.label.selected').forEach(l => { const idx = parseInt(l.dataset.index, 10); if(labelData[idx] !== undefined) labelData[idx] = controls.labelText.value; l.textContent = controls.labelText.value; }));
             controls.fontBold.addEventListener('click', () => { controls.fontBold.dataset.active = !(controls.fontBold.dataset.active === 'true'); updateAllStyles(); });
             controls.fontItalic.addEventListener('click', () => { controls.fontItalic.dataset.active = !(controls.fontItalic.dataset.active === 'true'); updateAllStyles(); });
             controls.csvFile.addEventListener('change', handleCsvUpload);
@@ -512,32 +798,70 @@
                 printArea.innerHTML = '';
                 printArea.className = (controls.templateType.value === 'suspensionTab' && controls.printCutLines.checked) ? 'print-borders-on' : '';
                 
-                let dataToPrint = labelData.length > 0 ? labelData : Array.from(document.querySelectorAll('.label.selected')).map(l => l.textContent);
+                const dataToPrint = generateDataArray();
+                const startPos = Math.max(0, parseInt(controls.startPosition.value, 10) - 1);
+                const padding = Array(startPos).fill(null);
+                const finalData = padding.concat(dataToPrint);
 
-                if (dataToPrint.length === 0) {
-                     alert("There is no data to print. Import a CSV or enter text into a selected label.");
+                if (finalData.length === 0) {
+                     alert("There is no data to print. Please enter text in the Content Template, import a CSV, or use the Auto-Increment feature.");
                      return;
                 }
-
+                
                 const labelsPerPage = getLabelsPerPage();
-                const totalPages = Math.ceil(dataToPrint.length / labelsPerPage);
+                const isPureManualMode = dataToPrint.length === 1 && dataToPrint[0].MANUAL_CONTENT !== undefined;
+                const totalLabelsWithData = finalData.filter(d => d !== null).length;
+                const totalPages = isPureManualMode ? Math.ceil(labelsPerPage / labelsPerPage) : Math.ceil(totalLabelsWithData / labelsPerPage);
+
+                const selectedIndexes = Array.from(document.querySelectorAll('.label.selected')).map(l => parseInt(l.dataset.index, 10));
 
                 for (let i = 0; i < totalPages; i++) {
                     const page = document.createElement('div');
                     page.className = 'print-page';
                     
-                    const pageData = dataToPrint.slice(i * labelsPerPage, (i + 1) * labelsPerPage);
-                    
                     for (let j = 0; j < labelsPerPage; j++) {
-                        const content = pageData[j];
+                        const globalIndex = (i * labelsPerPage) + j;
                         const printLabel = document.createElement('div');
                         printLabel.className = 'label print-label';
-                        if (content !== undefined && content.trim() !== '') {
-                            printLabel.textContent = content;
-                            printLabel.classList.add('has-content');
+                        
+                        printLabel.style.fontSize = root.style.getPropertyValue('--font-size');
+                        printLabel.style.fontFamily = root.style.getPropertyValue('--font-family');
+                        printLabel.style.fontWeight = root.style.getPropertyValue('--font-weight');
+                        printLabel.style.fontStyle = root.style.getPropertyValue('--font-style');
+                        printLabel.style.alignItems = root.style.getPropertyValue('--align-items'); 
+                        printLabel.style.justifyContent = root.style.getPropertyValue('--justify-content'); 
+                        printLabel.style.textAlign = root.style.getPropertyValue('--justify-content'); 
+
+                        let content = '';
+                        let hasContent = false;
+                        
+                        if (isPureManualMode) {
+                            if (selectedIndexes.includes(globalIndex)) {
+                                content = generateLabelContent(dataToPrint[0], globalIndex + 1); 
+                                hasContent = true;
+                            }
                         } else {
-                            printLabel.classList.add('not-selected');
+                            const dataItem = finalData[globalIndex];
+                            if (dataItem) {
+                                content = generateLabelContent(dataItem, globalIndex + 1);
+                                if (content.trim() !== '') {
+                                    hasContent = true;
+                                }
+                            }
                         }
+
+                        if (hasContent) {
+                            printLabel.innerHTML = content;
+                            printLabel.classList.add('has-content');
+
+                            if (printLabel.querySelector('.barcode')) {
+                                const svg = printLabel.querySelector('.barcode');
+                                JsBarcode(svg, svg.dataset.value, { displayValue: true, margin: 2, fontSize: 8, height: 25, width: 1.5, textMargin: 0, background: 'transparent' });
+                            }
+                        } else {
+                             printLabel.classList.add('not-selected');
+                        }
+                        
                         page.appendChild(printLabel);
                     }
                     printArea.appendChild(page);
@@ -545,17 +869,50 @@
                 window.print();
             });
 
-            function populatePresets() {
-                const type = controls.templateType.value; const presetList = PRESETS[type]; controls.presets.innerHTML = '';
+            async function populatePresets() {
+                const type = controls.templateType.value; 
+                const presetList = PRESETS[type]; 
+                
+                controls.presets.innerHTML = '';
+                
                 for (const group in presetList) {
-                    const optgroup = document.createElement('optgroup'); optgroup.label = group;
-                    for (const [key, value] of Object.entries(presetList[group])) { const o = document.createElement('option'); o.value = key; o.textContent = value.name; optgroup.appendChild(o); }
+                    const optgroup = document.createElement('optgroup'); 
+                    optgroup.label = group;
+                    for (const [key, value] of Object.entries(presetList[group])) { 
+                        const o = document.createElement('option'); 
+                        o.value = key; 
+                        o.textContent = value.name; 
+                        optgroup.appendChild(o); 
+                    }
                     controls.presets.appendChild(optgroup);
                 }
+                
+                if (currentUserId && db) {
+                    try {
+                        const snapshot = await db.collection(`users/${currentUserId}/labelPresets`)
+                                                .where('type', '==', type) 
+                                                .get();
+                        
+                        if (!snapshot.empty) {
+                            const customGroup = document.createElement('optgroup'); 
+                            customGroup.label = 'Custom Saved Presets (Cloud)';
+                            snapshot.forEach(doc => {
+                                const preset = doc.data();
+                                const o = document.createElement('option');
+                                o.value = doc.id;
+                                o.textContent = preset.name;
+                                customGroup.appendChild(o);
+                            });
+                            controls.presets.appendChild(customGroup);
+                        }
+                    } catch (error) {
+                        console.error("Error loading custom presets:", error);
+                    }
+                }
             }
+
             toggleModeControls(); populatePresets(); applyPreset('avery_L7163');
         });
     </script>
 </body>
 </html>
-}

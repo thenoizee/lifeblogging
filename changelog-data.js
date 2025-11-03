@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    "version": "v9.30.0-alpha",
+    "date": "2025-11-04",
+    "changes": [
+      "In Label Generator: Custom preset saving upgraded to use your Firebase account for cloud storage.",
+      "In Label Generator: Fixed printing alignment issue; labels now correctly honor vertical/horizontal alignment.",
+      "In Label Generator: Fixed manual data input bug; manual text now only fills selected labels in the grid.",
+      "In Label Generator: Fixed visual bug for the right and bottom borders of the preview grid, restoring the complete grid.",
+      "In Label Generator: Advanced content features added, including Field Mapping for CSV columns, Barcode/QR Code generation, and Serial Number Auto-Increment.",
+    ]
+  },
+    {
   "version": "v9.29.0-alpha",
   "date": "2025-10-31",
   "changes": [
