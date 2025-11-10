@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+  "version": "v9.31.0-alpha",
+  "date": "2025-11-10",
+  "changes": [
+    "In Template Generator: Implemented live preview; the generated subject and body now update instantly as you type in the fields, without needing to press the 'Generate' button.",
+    "In Template Generator: Reworked template versioning. The 'Edit' button on old versions is now 'View/Restore'. Saving a restored version always creates a new version, preserving template history and preventing accidental overwrites.",
+    "In Template Generator: The template list is now grouped into collapsible folder sections, making it easier to navigate large libraries.",
+    "In Template Generator: Significantly refined the Dark Mode theme for better consistency and fixed visual bugs in the template list. Added `color-scheme` support for native browser dark mode elements (e.g., scrollbars).",
+    "In Template Generator: Fixed a visual bug where generated email bodies lacked padding and did not respect line breaks.",
+    "In Template Generator: The folder list in Step 1 now has a border and a scrollbar if the list is long, improving layout.",
+  ]
+},
+    {
     "version": "v9.30.0-alpha",
     "date": "2025-11-04",
     "changes": [
