@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+  "version": "v9.32.0-alpha",
+  "date": "2025-11-12",
+  "changes": [
+    "In FoodTrackr: Overhauled quantity logging. Replaced the single 'grams' input with a dynamic 'Amount' and 'Unit' system (e.g., '2', 'slices').",
+    "In FoodTrackr: Implemented 'Serving Units' for Favorite Foods. The app now learns custom units (like '1 slice' = 35g) when you save a new favorite, making future logging much faster.",
+    "In FoodTrackr: Streamlined the logging GUI. Clicking a search result or favorite food now shows an inline logging form directly on the page, removing the extra modal step.",
+    "In FoodTrackr: Search result cards now have a 'View Details' button to open the full product modal, separating the 'viewing' and 'logging' actions.",
+    "In FoodTrackr: Added a barcode scanner. Users can now tap the barcode icon to use their camera, scan a product, and instantly search for it.",
+    "In FoodTrackr: Enhanced Manual Entry. The form now includes a collapsible section for detailed nutrients (Fiber, Sugar, Sodium, Saturated Fat, Salt) for more accurate manual logging.",
+    "In FoodTrackr: The Dashboard's 'Detailed Nutrients' table has been updated to correctly calculate and display all new nutrients (Fiber, Sugar, etc.).",
+    "In FoodTrackr: Updated the 'Edit' flow for logs and favorites to correctly populate all new quantity, unit, and detailed nutrient fields.",
+  ]
+},
+    {
   "version": "v9.31.0-alpha",
   "date": "2025-11-10",
   "changes": [

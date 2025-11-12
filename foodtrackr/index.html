@@ -8,6 +8,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -423,8 +426,13 @@
                      <label for="food-search">Search Food or Scan Barcode</label>
                      <div class="flex gap-2">
                          <input id="food-search" type="text" placeholder="e.g., Apple or 3017620422003">
+                         <button id="scan-barcode-btn" class="secondary-button px-4" title="Scan Barcode"><i class="fa-solid fa-barcode"></i></button>
                          <button id="search-btn" class="main-button px-4"><i class="fa-solid fa-search"></i></button>
                      </div>
+                 </div>
+                 <div id="barcode-scanner-container" class="hidden mt-4 border rounded-lg overflow-hidden">
+                    <div id="barcode-scanner-reader" style="width: 100%;"></div>
+                    <button id="stop-barcode-scanner-btn" class="destructive-button w-full rounded-t-none">Stop Scanning</button>
                  </div>
                  <div id="search-results" class="mb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
                  <div id="search-controls" class="text-center mt-4 mb-4"></div>
@@ -462,11 +470,24 @@
                         <label for="food-name">Food Name</label>
                         <input id="food-name" type="text" placeholder="e.g., Chicken Breast">
                     </div>
-                     <div class="input-group">
-                        <label for="quantity">Quantity (g or ml)</label>
-                        <input id="quantity" type="number" value="100">
+                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:col-span-2">
+                        <div class="input-group">
+                            <label for="quantity-amount">Amount</label>
+                            <input id="quantity-amount" type="number" value="100" class="w-full">
+                        </div>
+                        <div class="input-group">
+                            <label for="quantity-unit">Unit</label>
+                            <select id="quantity-unit" class="w-full">
+                                <option value="g" data-grams="1">g</option>
+                                <option value="ml" data-grams="1">ml</option>
+                                </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="quantity">Total Grams</label>
+                            <input id="quantity" type="number" value="100" readonly class="opacity-70 cursor-not-allowed">
+                        </div>
                     </div>
-                     <div class="input-group">
+                     <div class="input-group md:col-span-2">
                         <label for="log-section">Log To</label>
                         <select id="log-section">
                             <option value="breakfast">Breakfast</option>
@@ -500,6 +521,39 @@
                         <input id="fat" type="number" class="nutrient-input" placeholder="e.g., 3.6">
                         <i class="fas fa-lock lock-icon hidden"></i>
                     </div>
+
+                    <div class="col-span-2 md:col-span-4 text-left">
+                        <button id="toggle-detailed-nutrients-btn" type="button" class="text-sm text-[var(--button-bg)] font-medium hover:underline">Show Detailed Nutrients</button>
+                    </div>
+
+                    <div id="detailed-nutrients-container" class="hidden col-span-2 md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="input-group nutrient-input-group">
+                            <label for="fiber">Fiber (g)</label>
+                            <input id="fiber" type="number" class="nutrient-input" placeholder="e.g., 3">
+                            <i class="fas fa-lock lock-icon hidden"></i>
+                        </div>
+                        <div class="input-group nutrient-input-group">
+                            <label for="sugar">Sugar (g)</label>
+                            <input id="sugar" type="number" class="nutrient-input" placeholder="e.g., 10">
+                            <i class="fas fa-lock lock-icon hidden"></i>
+                        </div>
+                        <div class="input-group nutrient-input-group">
+                            <label for="sodium">Sodium (g)</label>
+                            <input id="sodium" type="number" class="nutrient-input" placeholder="e.g., 0.1">
+                            <i class="fas fa-lock lock-icon hidden"></i>
+                        </div>
+                        <div class="input-group nutrient-input-group">
+                            <label for="saturated-fat">Saturated Fat (g)</label>
+                            <input id="saturated-fat" type="number" class="nutrient-input" placeholder="e.g., 1.2">
+                            <i class="fas fa-lock lock-icon hidden"></i>
+                        </div>
+                        <div class="input-group nutrient-input-group">
+                            <label for="salt">Salt (g)</label>
+                            <input id="salt" type="number" class="nutrient-input" placeholder="e.g., 0.3">
+                            <i class="fas fa-lock lock-icon hidden"></i>
+                        </div>
+                    </div>
+
                      <div class="input-group col-span-2 md:col-span-4">
                         <label for="log-datetime">Date & Time</label>
                         <input id="log-datetime" type="datetime-local">
@@ -660,7 +714,6 @@
             </div>
         </div>
     </div>
-
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
       import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -700,7 +753,10 @@
       let itemToMoveCopy = null; 
       
       let sortableInstances = [];
-      let currentDashboardDate = new Date(); // NEW: For dashboard navigation
+      let currentDashboardDate = new Date(); 
+      
+      // NEW: Barcode scanner state
+      let html5QrcodeScanner = null;
 
       // --- Constants ---
        const ALL_SECTIONS = ['breakfast', 'brunch', 'lunch', 'afternoon_tea', 'dinner', 'puddings', 'drinks'];
@@ -717,7 +773,6 @@
        };
        const PLACEHOLDER_IMG = 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png';
        
-       // NEW: Nutrients to track from Open Food Facts `baseNutrients`
        const DETAILED_NUTRIENTS_MAP = {
            'fiber_100g': 'Fiber (g)',
            'sugars_100g': 'Sugar (g)',
@@ -725,6 +780,19 @@
            'saturated-fat_100g': 'Saturated Fat (g)',
            'salt_100g': 'Salt (g)',
        };
+       
+       // NEW: Map for form IDs to 100g keys
+       const NUTRIENT_ID_TO_100G_KEY = {
+            'calories': 'calories',
+            'protein': 'protein',
+            'carbs': 'carbs',
+            'fat': 'fat',
+            'fiber': 'fiber_100g',
+            'sugar': 'sugars_100g',
+            'sodium': 'sodium_100g',
+            'saturated-fat': 'saturated-fat_100g',
+            'salt': 'salt_100g'
+        };
 
 
       // --- Helper Functions ---
@@ -742,13 +810,26 @@
           document.getElementById("log-datetime").value = toLocalISOString(today);
       };
 
+      // MODIFIED: clearLogForm
       const clearLogForm = () => {
           document.getElementById('food-name').value = '';
           document.getElementById('calories').value = '';
           document.getElementById('protein').value = '';
           document.getElementById('carbs').value = '';
           document.getElementById('fat').value = '';
-          document.getElementById('quantity').value = '100';
+          
+          // NEW: Clear detailed fields
+          document.getElementById('fiber').value = '';
+          document.getElementById('sugar').value = '';
+          document.getElementById('sodium').value = '';
+          document.getElementById('saturated-fat').value = '';
+          document.getElementById('salt').value = '';
+          
+          // NEW: Reset quantity fields
+          document.getElementById('quantity-amount').value = '100';
+          document.getElementById('quantity-unit').value = 'g';
+          document.getElementById('quantity').value = '100'; // This is the readonly grams field
+          
           document.getElementById('log-section').value = 'breakfast';
           currentFoodItem = { baseNutrients: null, source: 'Manual Entry', brands: null, imageUrl: null };
           setNutrientFieldsReadOnly(false);
@@ -757,15 +838,21 @@
           editingItemType = null;
           document.getElementById('log-food-btn').textContent = 'Log Food';
           document.getElementById('save-favorite-btn').textContent = 'Save as Favorite';
+          
+          // NEW: Hide detailed container
+          document.getElementById('detailed-nutrients-container').classList.add('hidden');
+          document.getElementById('toggle-detailed-nutrients-btn').textContent = 'Show Detailed Nutrients';
+          
+          // NEW: Clear custom units
+          const unitSelect = document.getElementById('quantity-unit');
+          unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
       };
       
-      // NEW: Helper to set dashboard date and ensure time is at midnight
       const setDashboardDate = (date) => {
           date.setHours(0, 0, 0, 0);
           currentDashboardDate = new Date(date);
       };
 
-      // NEW: Helper to check if two dates are the same day
       const isSameDay = (date1, date2) => {
           return date1.getFullYear() === date2.getFullYear() &&
                  date1.getMonth() === date2.getMonth() &&
@@ -774,7 +861,6 @@
 
       // --- Rendering Functions ---
 
-      // NEW: Master dashboard render function
       const renderDashboard = () => {
           const today = new Date();
           today.setHours(0, 0, 0, 0);
@@ -782,7 +868,6 @@
           const yesterday = new Date(today);
           yesterday.setDate(yesterday.getDate() - 1);
 
-          // Update header
           const header = document.getElementById('dashboard-date-header');
           if (isSameDay(currentDashboardDate, today)) {
               header.textContent = "Today's Summary";
@@ -794,10 +879,8 @@
               });
           }
           
-          // Update button state
           document.getElementById('next-day-btn').disabled = isSameDay(currentDashboardDate, today);
 
-          // Filter log for the selected day
           const tomorrow = new Date(currentDashboardDate);
           tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -806,12 +889,10 @@
               return itemDate >= currentDashboardDate && itemDate < tomorrow;
           });
 
-          // Call sub-renderers
           renderDashboardSummaryAndChart(selectedDayLog);
           renderDashboardNutrients(selectedDayLog);
       };
       
-      // REFACTORED: Renamed from renderDashboard
       const renderDashboardSummaryAndChart = (selectedDayLog) => {
           const totals = selectedDayLog.reduce((acc, item) => {
               acc.calories += Number(item.calories) || 0;
@@ -829,51 +910,41 @@
           renderMacrosChart(totals.protein, totals.carbs, totals.fat);
       };
       
-      // NEW: Renders the detailed nutrient table
+      // MODIFIED: renderDashboardNutrients to include all tracked nutrients
       const renderDashboardNutrients = (selectedDayLog) => {
           const tableBody = document.getElementById('todays-nutrients-table-body');
           if (!tableBody) return;
           
-          // Initialize totals
           const totals = {
-              calories: 0, protein: 0, carbs: 0, fat: 0
+              calories: 0, protein: 0, carbs: 0, fat: 0,
+              fiber: 0, sugar: 0, sodium: 0, 'saturated-fat': 0, salt: 0
           };
-          for (const key in DETAILED_NUTRIENTS_MAP) {
-              totals[key] = 0;
-          }
 
-          // Calculate totals
           selectedDayLog.forEach(item => {
               totals.calories += Number(item.calories) || 0;
               totals.protein += Number(item.protein) || 0;
               totals.carbs += Number(item.carbs) || 0;
               totals.fat += Number(item.fat) || 0;
               
-              if (item.baseNutrients) {
-                  const multiplier = (Number(item.quantity) || 0) / 100;
-                  for (const key in DETAILED_NUTRIENTS_MAP) {
-                      const nutrientVal = item.baseNutrients[key] || 0;
-                      totals[key] += (Number(nutrientVal) * multiplier);
-                  }
-              }
+              // NEW: Add detailed nutrients from log item
+              totals.fiber += Number(item.fiber) || 0;
+              totals.sugar += Number(item.sugar) || 0;
+              totals.sodium += Number(item.sodium) || 0;
+              totals['saturated-fat'] += Number(item['saturated-fat']) || 0;
+              totals.salt += Number(item.salt) || 0;
           });
 
-          // Render table
           tableBody.innerHTML = `
               <tr><td class="font-medium">Calories</td><td>${totals.calories.toFixed(0)} kcal</td></tr>
               <tr><td class="font-medium">Protein</td><td>${totals.protein.toFixed(1)} g</td></tr>
               <tr><td class="font-medium">Carbs</td><td>${totals.carbs.toFixed(1)} g</td></tr>
               <tr><td class="font-medium">Fat</td><td>${totals.fat.toFixed(1)} g</td></tr>
+              <tr><td class="font-medium">Saturated Fat</td><td>${totals['saturated-fat'].toFixed(1)} g</td></tr>
+              <tr><td class="font-medium">Fiber</td><td>${totals.fiber.toFixed(1)} g</td></tr>
+              <tr><td class="font-medium">Sugar</td><td>${totals.sugar.toFixed(1)} g</td></tr>
+              <tr><td class="font-medium">Sodium</td><td>${totals.sodium.toFixed(1)} g</td></tr>
+              <tr><td class="font-medium">Salt</td><td>${totals.salt.toFixed(1)} g</td></tr>
           `;
-          
-          for (const key in DETAILED_NUTRIENTS_MAP) {
-              const tr = document.createElement('tr');
-              tr.innerHTML = `
-                  <td class="font-medium">${DETAILED_NUTRIENTS_MAP[key]}</td>
-                  <td>${totals[key].toFixed(1)} g</td>
-              `;
-              tableBody.appendChild(tr);
-          }
       };
 
 
@@ -943,7 +1014,6 @@
           });
           initSortable();
       };
-
       const renderHistoryTable = (selectedDateStr = null) => {
           const tableBody = document.getElementById('food-log-table-body');
           tableBody.innerHTML = '';
@@ -1042,17 +1112,33 @@
             }
         };
 
+        // MODIFIED: handleEditLogItem to populate new fields
         const handleEditLogItem = (itemId) => {
             if (!itemId) return;
             const itemToEdit = foodLog.find(item => item.id === itemId);
             if (itemToEdit) {
                 document.getElementById('food-name').value = itemToEdit.name;
-                document.getElementById('quantity').value = itemToEdit.quantity || 100;
+                
+                // NEW: Reset/Populate quantity fields
+                const unitSelect = document.getElementById('quantity-unit');
+                unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
+                // Default to grams for a log item edit, as we don't know the original 'serving'
+                document.getElementById('quantity-amount').value = itemToEdit.quantity || 100;
+                unitSelect.value = 'g';
+                document.getElementById('quantity').value = itemToEdit.quantity || 100; // This is the total grams
+                
                 document.getElementById('calories').value = (itemToEdit.calories || 0).toFixed(0);
                 document.getElementById('protein').value = (itemToEdit.protein || 0).toFixed(1);
                 document.getElementById('carbs').value = (itemToEdit.carbs || 0).toFixed(1);
                 document.getElementById('fat').value = (itemToEdit.fat || 0).toFixed(1);
                 
+                // NEW: Populate detailed fields
+                document.getElementById('fiber').value = (itemToEdit.fiber || 0).toFixed(1);
+                document.getElementById('sugar').value = (itemToEdit.sugar || 0).toFixed(1);
+                document.getElementById('sodium').value = (itemToEdit.sodium || 0).toFixed(1);
+                document.getElementById('saturated-fat').value = (itemToEdit['saturated-fat'] || 0).toFixed(1);
+                document.getElementById('salt').value = (itemToEdit.salt || 0).toFixed(1);
+
                 let section = itemToEdit.section || 'breakfast';
                 if (section === 'meals') section = 'breakfast';
                 if (section === 'snacks') section = 'brunch';
@@ -1066,6 +1152,12 @@
                     brands: itemToEdit.brands, imageUrl: itemToEdit.imageUrl
                 };
                 setNutrientFieldsReadOnly(!!itemToEdit.baseNutrients);
+                
+                // NEW: Show detailed fields if they have values
+                if (itemToEdit.fiber > 0 || itemToEdit.sugar > 0) {
+                     document.getElementById('detailed-nutrients-container').classList.remove('hidden');
+                     document.getElementById('toggle-detailed-nutrients-btn').textContent = 'Hide Detailed Nutrients';
+                }
 
                 editingItemId = itemId;
                 editingItemType = 'log';
@@ -1213,29 +1305,77 @@
                 listEl.appendChild(card);
              });
         };
-
+        // MODIFIED: selectFoodItem to handle new quantity/serving fields
         const selectFoodItem = (item, quantity) => {
             document.getElementById('food-name').value = item.name;
-            document.getElementById('quantity').value = quantity;
+
+            const unitSelect = document.getElementById('quantity-unit');
+            // Clear old custom units
+            unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
+
+            // Add custom units from the item (e.g., a Favorite Food)
+            if (item.servingUnits) {
+                item.servingUnits.forEach(unit => {
+                    const option = document.createElement('option');
+                    option.value = unit.name;
+                    option.textContent = unit.name;
+                    option.dataset.grams = unit.grams;
+                    option.dataset.custom = 'true';
+                    unitSelect.appendChild(option);
+                });
+            }
+
+            // Set default quantity
+            // Try to match 'quantity' to a serving unit, else default to grams
+            let foundUnit = false;
+            if (item.servingUnits) {
+                // Find best unit match
+                const bestUnit = item.servingUnits.find(u => u.grams == quantity);
+                if (bestUnit) {
+                    document.getElementById('quantity-amount').value = 1;
+                    unitSelect.value = bestUnit.name;
+                    foundUnit = true;
+                }
+            }
+            if (!foundUnit) {
+                document.getElementById('quantity-amount').value = quantity;
+                unitSelect.value = 'g';
+            }
+            
+            // Trigger calculation of total grams and update macros
+            updateQuantityInGrams(); // This will call updateNutrientFieldsFromBase
 
             if (item.baseNutrients) {
                 currentFoodItem = { 
                     baseNutrients: item.baseNutrients, source: item.source || 'Favorite', 
-                    brands: item.brands, imageUrl: item.imageUrl 
+                    brands: item.brands, imageUrl: item.imageUrl,
+                    servingUnits: item.servingUnits // NEW: carry over serving units
                 };
-                updateNutrientFieldsFromBase();
+                // updateNutrientFieldsFromBase is already called by updateQuantityInGrams
                 setNutrientFieldsReadOnly(true);
             } else {
                 currentFoodItem = { 
-                    baseNutrients: null, source: 'Manual Entry', brands: null, imageUrl: null 
+                    baseNutrients: null, source: 'Manual Entry', brands: null, imageUrl: null, servingUnits: null
                 };
+                
+                // This logic is now handled by updateQuantityInGrams
+                // We just need to manually set the nutrient fields if no baseNutrients
                 const multiplier = quantity / (item.quantity || 100);
                 document.getElementById('calories').value = (item.calories * multiplier).toFixed(0);
                 document.getElementById('protein').value = (item.protein * multiplier).toFixed(1);
                 document.getElementById('carbs').value = (item.carbs * multiplier).toFixed(1);
                 document.getElementById('fat').value = (item.fat * multiplier).toFixed(1);
+                
+                // NEW: Populate detailed fields
+                document.getElementById('fiber').value = (item.fiber * multiplier || 0).toFixed(1);
+                document.getElementById('sugar').value = (item.sugar * multiplier || 0).toFixed(1);
+                document.getElementById('sodium').value = (item.sodium * multiplier || 0).toFixed(1);
+                document.getElementById('saturated-fat').value = (item['saturated-fat'] * multiplier || 0).toFixed(1);
+                document.getElementById('salt').value = (item.salt * multiplier || 0).toFixed(1);
+                
                 setNutrientFieldsReadOnly(false);
             }
+            
             editingItemId = null;
             editingItemType = null;
             document.getElementById('log-food-btn').textContent = 'Log Food';
@@ -1349,6 +1489,7 @@
           }
       };
 
+        // MODIFIED: renderSearchResults to change click flow and add "View Details"
         const renderSearchResults = () => {
             const searchResultsDiv = document.getElementById('search-results');
             const searchControlsDiv = document.getElementById('search-controls');
@@ -1371,7 +1512,7 @@
                 const name = product.product_name || 'Unknown Food';
                 const brands = product.brands || '';
                 const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
-                const imageUrl = product.image_front_thumb_url || PLACEHOLDER_IMG; // Use placeholder
+                const imageUrl = product.image_front_thumb_url || PLACEHOLDER_IMG; 
 
                 card.innerHTML = `
                     <img src="${imageUrl}" alt="${name}" class="w-full h-24 object-contain mb-2 rounded" style="background-color: white;">
@@ -1380,10 +1521,23 @@
                             <h3 class="font-bold truncate">${name}</h3>
                             <p class="text-sm text-[var(--text-color-secondary)] truncate">${brands}</p>
                         </div>
-                        ${isFavorite ? '<i class="fas fa-star text-yellow-500 flex-shrink-0"></i>' : ''}
+                        <div class="flex-shrink-0 flex items-center gap-2">
+                            ${isFavorite ? '<i class="fas fa-star text-yellow-500"></i>' : ''}
+                            <button class="secondary-button text-xs p-1 view-details-btn" title="View Details"><i class="fa-solid fa-eye pointer-events-none"></i></button>
+                        </div>
                     </div>
                 `;
-                card.addEventListener('click', () => showProductDetailsModal(product));
+                
+                // NEW: Modified click handler
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('.view-details-btn')) {
+                        e.stopPropagation(); // Don't trigger the card click
+                        showProductDetailsModal(product);
+                    } else {
+                        // This is the new "inline form" flow
+                        selectProductFromSearch(product, 100);
+                    }
+                });
                 searchResultsDiv.appendChild(card);
             });
 
@@ -1397,7 +1551,51 @@
                 searchControlsDiv.appendChild(loadMoreBtn);
             }
         };
+        
+        // NEW: Function to handle selecting a product from search (inline flow)
+        const selectProductFromSearch = (product, qty = 100) => {
+            const name = product.product_name || 'Unknown';
+            const brands = product.brands || '';
+            
+            const nutriments = product.nutriments || {};
+            const baseNutrients = {
+                calories: parseFloat(nutriments['energy-kcal_100g'] || nutriments['energy-kcal_100ml'] || 0),
+                protein: parseFloat(nutriments.proteins_100g || nutriments.proteins_100ml || 0),
+                carbs: parseFloat(nutriments.carbohydrates_100g || nutriments.carbohydrates_100ml || 0),
+                fat: parseFloat(nutriments.fat_100g || nutriments.fat_100ml || 0),
+            };
+            for (const key in DETAILED_NUTRIENTS_MAP) {
+                baseNutrients[key] = parseFloat(nutriments[key] || 0);
+            }
+            
+            const imageUrl = product.image_front_thumb_url || product.image_front_small_url || PLACEHOLDER_IMG;
 
+            document.getElementById('food-name').value = name;
+            
+            // NEW: Reset quantity fields and set to 'qty' in grams
+            document.getElementById('quantity-amount').value = qty;
+            const unitSelect = document.getElementById('quantity-unit');
+            unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
+            unitSelect.value = 'g';
+            document.getElementById('quantity').value = qty; // Set total grams
+
+            currentFoodItem = { baseNutrients, source: 'Open Food Facts', brands, imageUrl, servingUnits: null };
+            
+            updateNutrientFieldsFromBase(); // This will now populate all fields
+            setNutrientFieldsReadOnly(true);
+            
+            document.getElementById('search-results').innerHTML = '';
+            document.getElementById('search-controls').innerHTML = '';
+            
+            editingItemId = null;
+            editingItemType = null;
+            document.getElementById('log-food-btn').textContent = 'Log Food';
+            
+            const formSection = document.getElementById('entry-form-section');
+            formSection.classList.remove('hidden');
+            formSection.scrollIntoView({ behavior: 'smooth' });
+        };
+        // MODIFIED: showProductDetailsModal now uses selectProductFromSearch
         const showProductDetailsModal = (product) => {
             const modal = document.getElementById('product-modal');
             const name = product.product_name || 'Unknown';
@@ -1421,7 +1619,6 @@
 
             const nutriments = product.nutriments || {};
             
-            // NEW: Define baseNutrients by including keys from our detailed map
             const baseNutrients = {
                 calories: parseFloat(nutriments['energy-kcal_100g'] || nutriments['energy-kcal_100ml'] || 0),
                 protein: parseFloat(nutriments.proteins_100g || nutriments.proteins_100ml || 0),
@@ -1429,7 +1626,6 @@
                 fat: parseFloat(nutriments.fat_100g || nutriments.fat_100ml || 0),
             };
             
-            // Add detailed nutrients to baseNutrients
             for (const key in DETAILED_NUTRIENTS_MAP) {
                 baseNutrients[key] = parseFloat(nutriments[key] || 0);
             }
@@ -1449,12 +1645,8 @@
                 allImagesSet.add(mainImageUrl);
             }
             otherImages.forEach(url => allImagesSet.add(url));
-
             let allImages = Array.from(allImagesSet);
-
-            if (allImages.length === 0) {
-                allImages.push(PLACEHOLDER_IMG);
-            }
+            if (allImages.length === 0) allImages.push(PLACEHOLDER_IMG);
 
             const categories = product.categories || 'N/A';
             const labels = product.labels || 'N/A';
@@ -1536,22 +1728,10 @@
 
             document.getElementById('close-modal-btn').addEventListener('click', () => modal.classList.add('hidden'));
 
+            // MODIFIED: This now uses the new selection function
             const selectAndClose = (qty) => {
-                document.getElementById('food-name').value = name;
-                document.getElementById('quantity').value = qty;
-                currentFoodItem = { baseNutrients, source: 'Open Food Facts', brands, imageUrl: allImages[0] }; // Use the first (best) image
-                updateNutrientFieldsFromBase();
-                setNutrientFieldsReadOnly(true);
-                document.getElementById('search-results').innerHTML = '';
-                document.getElementById('search-controls').innerHTML = '';
+                selectProductFromSearch(product, qty);
                 modal.classList.add('hidden');
-                editingItemId = null;
-                editingItemType = null;
-                document.getElementById('log-food-btn').textContent = 'Log Food';
-                
-                const formSection = document.getElementById('entry-form-section');
-                formSection.classList.remove('hidden'); // Show form
-                formSection.scrollIntoView({ behavior: 'smooth' });
             };
 
             document.getElementById('select-product-btn').addEventListener('click', () => selectAndClose(100));
@@ -1581,14 +1761,51 @@
             }
         };
 
+        // NEW: Function to calculate total grams from Amount/Unit fields
+        const updateQuantityInGrams = () => {
+            const amount = parseFloat(document.getElementById('quantity-amount').value) || 0;
+            const unitSelect = document.getElementById('quantity-unit');
+            const selectedOption = unitSelect.options[unitSelect.selectedIndex];
+            const gramsPerUnit = parseFloat(selectedOption.dataset.grams) || 1;
+            
+            const totalGrams = amount * gramsPerUnit;
+            document.getElementById('quantity').value = totalGrams.toFixed(1); // Use 1 decimal for grams
+            
+            // Now, trigger the macro updates
+            updateNutrientFieldsFromBase();
+        };
+
+        // MODIFIED: updateNutrientFieldsFromBase to populate all fields
         const updateNutrientFieldsFromBase = () => {
             if (!currentFoodItem.baseNutrients) return;
+            
+            // This is now the *total grams* field, which is correct
             const quantity = parseFloat(document.getElementById('quantity').value) || 0;
             const multiplier = quantity / 100;
-            document.getElementById('calories').value = (currentFoodItem.baseNutrients.calories * multiplier).toFixed(0);
-            document.getElementById('protein').value = (currentFoodItem.baseNutrients.protein * multiplier).toFixed(1);
-            document.getElementById('carbs').value = (currentFoodItem.baseNutrients.carbs * multiplier).toFixed(1);
-            document.getElementById('fat').value = (currentFoodItem.baseNutrients.fat * multiplier).toFixed(1);
+
+            let hasDetailedData = false;
+            for (const id in NUTRIENT_ID_TO_100G_KEY) {
+                const key = NUTRIENT_ID_TO_100G_KEY[id];
+                const value = currentFoodItem.baseNutrients[key];
+                
+                if (value !== undefined) {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        const decimalPlaces = (id === 'calories') ? 0 : 1;
+                        el.value = (value * multiplier).toFixed(decimalPlaces);
+                        
+                        if (id === 'fiber' || id === 'sugar' || id === 'sodium' || id === 'saturated-fat' || id === 'salt') {
+                           if (value > 0) hasDetailedData = true;
+                        }
+                    }
+                }
+            }
+            
+            // Show/Hide detailed container
+            if (hasDetailedData && currentFoodItem.source !== 'Manual Entry') {
+                document.getElementById('detailed-nutrients-container').classList.remove('hidden');
+                document.getElementById('toggle-detailed-nutrients-btn').textContent = 'Hide Detailed Nutrients';
+            }
         };
 
         const setNutrientFieldsReadOnly = (isReadOnly) => {
@@ -1660,7 +1877,11 @@
             const mealItems = itemsToSave.map(item => ({
                 name: item.name, calories: item.calories, protein: item.protein,
                 carbs: item.carbs, fat: item.fat, quantity: item.quantity,
-                brands: item.brands, baseNutrients: item.baseNutrients, imageUrl: item.imageUrl
+                brands: item.brands, baseNutrients: item.baseNutrients, imageUrl: item.imageUrl,
+                // NEW: Carry over all nutrients
+                fiber: item.fiber, sugar: item.sugar, sodium: item.sodium,
+                'saturated-fat': item['saturated-fat'], salt: item.salt,
+                servingUnits: item.servingUnits
             }));
             
             const mealData = {
@@ -1685,7 +1906,7 @@
               document.getElementById("auth-container").classList.add("hidden");
               document.getElementById("main-app-container").classList.remove("hidden");
               setDefaultDateTime();
-              setDashboardDate(new Date()); // NEW: Set initial dashboard date
+              setDashboardDate(new Date()); 
 
               themeDocRef = doc(db, 'users', user.uid, 'settings', 'theme');
               document.getElementById('theme-toggle').disabled = false;
@@ -1699,8 +1920,8 @@
               const qFoodLog = query(collection(db, `users/${user.uid}/foodLog`), orderBy("eatenAt", "desc"));
               onSnapshot(qFoodLog, (snapshot) => {
                   foodLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                  renderDashboard(); // NEW: Call master render function
-                  renderDailyLog(); // This still renders "Today's Log" on the Log Food tab
+                  renderDashboard(); 
+                  renderDailyLog(); 
                   renderHistoryTable();
                   renderFrequentFoods();
               });
@@ -1744,7 +1965,21 @@
 
       document.getElementById("logout-btn").addEventListener("click", () => signOut(auth));
       document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+      
+      // MODIFIED: This listener is now on the *grams* field, which is correct
       document.getElementById('quantity').addEventListener('input', updateNutrientFieldsFromBase);
+      
+      // NEW: Listeners for new quantity fields
+      document.getElementById('quantity-amount').addEventListener('input', updateQuantityInGrams);
+      document.getElementById('quantity-unit').addEventListener('change', updateQuantityInGrams);
+      
+      // NEW: Listener for detailed nutrients toggle
+      document.getElementById('toggle-detailed-nutrients-btn').addEventListener('click', (e) => {
+            const container = document.getElementById('detailed-nutrients-container');
+            const isHidden = container.classList.toggle('hidden');
+            e.target.textContent = isHidden ? 'Show Detailed Nutrients' : 'Hide Detailed Nutrients';
+      });
+      
       
       document.getElementById('manual-entry-btn').addEventListener('click', () => {
           const formSection = document.getElementById('entry-form-section');
@@ -1759,9 +1994,15 @@
           setNutrientFieldsReadOnly(false); 
           currentFoodItem = { baseNutrients: null, source: 'Manual Entry', brands: null, imageUrl: null }; 
           formSection.classList.remove('hidden'); 
+          
+          // NEW: Show detailed fields for manual entry
+          document.getElementById('detailed-nutrients-container').classList.remove('hidden');
+          document.getElementById('toggle-detailed-nutrients-btn').textContent = 'Hide Detailed Nutrients';
+          
           formSection.scrollIntoView({ behavior: 'smooth' });
       });
 
+      // MODIFIED: log-food-btn handler to save all fields
       document.getElementById('log-food-btn').addEventListener('click', async () => {
           const now = new Date();
           const logTime = document.getElementById('log-datetime').value ? new Date(document.getElementById('log-datetime').value) : now;
@@ -1772,7 +2013,15 @@
               protein: parseFloat(document.getElementById('protein').value) || 0,
               carbs: parseFloat(document.getElementById('carbs').value) || 0,
               fat: parseFloat(document.getElementById('fat').value) || 0,
-              quantity: parseFloat(document.getElementById('quantity').value) || 100,
+              quantity: parseFloat(document.getElementById('quantity').value) || 100, // This is total grams
+              
+              // NEW: Save detailed fields
+              fiber: parseFloat(document.getElementById('fiber').value) || 0,
+              sugar: parseFloat(document.getElementById('sugar').value) || 0,
+              sodium: parseFloat(document.getElementById('sodium').value) || 0,
+              'saturated-fat': parseFloat(document.getElementById('saturated-fat').value) || 0,
+              salt: parseFloat(document.getElementById('salt').value) || 0,
+
               section: document.getElementById('log-section').value,
               eatenAt: Timestamp.fromDate(logTime),
               updatedAt: Timestamp.fromDate(now),
@@ -1780,7 +2029,8 @@
               source: currentFoodItem.source,
               brands: currentFoodItem.brands,
               baseNutrients: currentFoodItem.baseNutrients,
-              imageUrl: currentFoodItem.imageUrl
+              imageUrl: currentFoodItem.imageUrl,
+              servingUnits: currentFoodItem.servingUnits || null // NEW: Save serving units
           };
 
           if (!foodData.name || isNaN(foodData.calories)) {
@@ -1807,8 +2057,9 @@
           }
       });
 
+      // MODIFIED: save-favorite-btn handler to save all fields and serving units
       document.getElementById('save-favorite-btn').addEventListener('click', async () => {
-            const currentQuantity = parseFloat(document.getElementById('quantity').value) || 100;
+            const currentQuantity = parseFloat(document.getElementById('quantity').value) || 100; // This is total grams
             if (currentQuantity === 0) {
                 alert('Cannot save a favorite with a quantity of 0.'); return;
             }
@@ -1823,15 +2074,53 @@
                  if (!promptedName) return;
                  customName = promptedName;
             }
+            
+            // NEW: Logic to save servingUnits
+            let servingUnits = (editingItemId && favoriteFoods.find(f => f.id === editingItemId)?.servingUnits) || [];
+            // If we're inheriting from another favorite, keep its units
+            if (!servingUnits && currentFoodItem.servingUnits) {
+                servingUnits = [...currentFoodItem.servingUnits];
+            }
+            
+            const currentAmount = parseFloat(document.getElementById('quantity-amount').value) || 0;
+            const currentUnitName = document.getElementById('quantity-unit').value;
+            
+            // Check if we're adding a new, non-gram unit
+            if (currentAmount > 0 && currentUnitName !== 'g' && currentUnitName !== 'ml' && !servingUnits.some(u => u.name === currentUnitName)) {
+                 if (confirm(`Do you want to add "${currentUnitName}" as a new serving size for this favorite? (${currentQuantity / currentAmount}g)`)) {
+                     servingUnits.push({ name: currentUnitName, grams: currentQuantity / currentAmount });
+                 }
+            } else if (currentFoodItem.source === 'Manual Entry' && !servingUnits.length) {
+                // If it's a new manual entry, prompt to save the *first* serving unit
+                if (confirm(`Do you want to save the current quantity (${currentQuantity}g) as a default serving? (e.g., '1 slice')`)) {
+                     const servingName = prompt('What is this serving called?', '1 serving');
+                     if (servingName) {
+                         servingUnits.push({ name: servingName, grams: currentQuantity });
+                     }
+                }
+            }
+
 
             const foodData = {
                 name: customName, originalName: currentName, brands: currentFoodItem.brands,
+                // Normalize all nutrients to 100g
                 calories: (parseFloat(document.getElementById('calories').value) || 0) / currentQuantity * 100,
                 protein: (parseFloat(document.getElementById('protein').value) || 0) / currentQuantity * 100,
                 carbs: (parseFloat(document.getElementById('carbs').value) || 0) / currentQuantity * 100,
                 fat: (parseFloat(document.getElementById('fat').value) || 0) / currentQuantity * 100,
+                
+                // NEW: Normalize detailed nutrients
+                fiber: (parseFloat(document.getElementById('fiber').value) || 0) / currentQuantity * 100,
+                sugar: (parseFloat(document.getElementById('sugar').value) || 0) / currentQuantity * 100,
+                sodium: (parseFloat(document.getElementById('sodium').value) || 0) / currentQuantity * 100,
+                'saturated-fat': (parseFloat(document.getElementById('saturated-fat').value) || 0) / currentQuantity * 100,
+                salt: (parseFloat(document.getElementById('salt').value) || 0) / currentQuantity * 100,
+
                 imageUrl: currentFoodItem.imageUrl,
-                baseNutrients: currentFoodItem.baseNutrients
+                baseNutrients: currentFoodItem.baseNutrients,
+                
+                // NEW: Add serving units
+                servingUnits: servingUnits
             };
 
             try {
@@ -1874,6 +2163,7 @@
           else if (action === 'move-copy') handleOpenMoveCopyModal(id);
       });
       
+      // MODIFIED: 'edit-favorite' to populate new fields
       document.getElementById('my-foods-list').addEventListener('click', async (e) => {
             const button = e.target.closest('button');
             if (!button) return;
@@ -1895,20 +2185,52 @@
                 const food = favoriteFoods.find(f => f.id === id);
                 if (food) {
                     document.getElementById('food-name').value = food.name;
-                    document.getElementById('quantity').value = 100;
+                    
                     document.getElementById('calories').value = (food.calories || 0).toFixed(0);
                     document.getElementById('protein').value = (food.protein || 0).toFixed(1);
                     document.getElementById('carbs').value = (food.carbs || 0).toFixed(1);
                     document.getElementById('fat').value = (food.fat || 0).toFixed(1);
-                    setNutrientFieldsReadOnly(false);
+                    
+                    // NEW: Populate detailed fields (from 100g base)
+                    document.getElementById('fiber').value = (food.fiber || 0).toFixed(1);
+                    document.getElementById('sugar').value = (food.sugar || 0).toFixed(1);
+                    document.getElementById('sodium').value = (food.sodium || 0).toFixed(1);
+                    document.getElementById('saturated-fat').value = (food['saturated-fat'] || 0).toFixed(1);
+                    document.getElementById('salt').value = (food.salt || 0).toFixed(1);
+                    
+                    // NEW: Populate quantity fields
+                    document.getElementById('quantity-amount').value = 100;
+                    const unitSelect = document.getElementById('quantity-unit');
+                    unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
+                    if (food.servingUnits) {
+                        food.servingUnits.forEach(unit => {
+                            const option = document.createElement('option');
+                            option.value = unit.name;
+                            option.textContent = unit.name;
+                            option.dataset.grams = unit.grams;
+                            option.dataset.custom = 'true';
+                            unitSelect.appendChild(option);
+                        });
+                    }
+                    unitSelect.value = 'g';
+                    document.getElementById('quantity').value = 100; // Set grams to 100
+                    
+                    setNutrientFieldsReadOnly(false); // Can always edit a favorite
+                    
                     currentFoodItem = { 
                         baseNutrients: food.baseNutrients, source: 'Favorite (Editing)', 
-                        brands: food.brands, imageUrl: food.imageUrl 
+                        brands: food.brands, imageUrl: food.imageUrl,
+                        servingUnits: food.servingUnits // NEW: Pass serving units
                     };
+                    
                     editingItemId = id;
                     editingItemType = 'favorite';
                     document.getElementById('save-favorite-btn').textContent = 'Update Favorite';
                     document.querySelector('[data-tab="log-food"]').click();
+                    
+                    // NEW: Show detailed fields
+                    document.getElementById('detailed-nutrients-container').classList.remove('hidden');
+                    document.getElementById('toggle-detailed-nutrients-btn').textContent = 'Hide Detailed Nutrients';
                     
                     const formSection = document.getElementById('entry-form-section');
                     formSection.classList.remove('hidden'); 
@@ -1947,14 +2269,13 @@
               const tabContent = document.getElementById(`tab-content-${tabId}`);
               if (tabContent) tabContent.classList.add('active');
               
-              // Re-render dashboard if it's the active tab
               if (tabId === 'dashboard') renderDashboard(); 
               if (tabId === 'foods-meals') renderMyFoods(); 
               if (tabId === 'history') renderHistoryTable();
           }
       });
       
-      // --- NEW: Dashboard Day Navigation Listeners ---
+      // --- Dashboard Day Navigation Listeners ---
       document.getElementById('prev-day-btn').addEventListener('click', () => {
           currentDashboardDate.setDate(currentDashboardDate.getDate() - 1);
           renderDashboard();
@@ -2028,6 +2349,42 @@
               alert('Failed to move item.');
           }
       });
+
+      // --- NEW: Barcode Scanner Listeners ---
+      document.getElementById('scan-barcode-btn').addEventListener('click', () => {
+            document.getElementById('barcode-scanner-container').classList.remove('hidden');
+            if (!html5QrcodeScanner) {
+                html5QrcodeScanner = new Html5QrcodeScanner(
+                    "barcode-scanner-reader", 
+                    { fps: 10, qrbox: { width: 250, height: 250 } }, 
+                    false // verbose
+                );
+            }
+            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+        });
+
+        document.getElementById('stop-barcode-scanner-btn').addEventListener('click', () => {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    document.getElementById('barcode-scanner-container').classList.add('hidden');
+                }).catch(err => console.warn('Scanner stop failed', err));
+            }
+        });
+        
+        const onScanSuccess = (decodedText, decodedResult) => {
+            document.getElementById('food-search').value = decodedText;
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    document.getElementById('barcode-scanner-container').classList.add('hidden');
+                }).catch(err => console.warn('Scanner stop failed', err));
+            }
+            searchFood();
+        };
+
+        const onScanFailure = (error) => {
+            // This can be noisy; keep it quiet unless debugging
+            // console.warn(`Scan failure: ${error}`);
+        };
 
       // --- Other Listeners ---
       document.getElementById('search-btn').addEventListener('click', searchFood);
