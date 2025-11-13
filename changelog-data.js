@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    "version": "v9.34.0-alpha",
+    "date": "2025-11-13",
+    "changes": [
+        "In MediManagr: Re-architected the 'Contact Lenses' tab to support separate stock management for the left and right eye, including new UI and database collections.",
+        "In MediManagr: Implemented a visual icon picker modal for adding or editing medicines, replacing the previous manual text input for Font Awesome classes.",
+        "In MediManagr: Added data export functionality to the 'Settings' tab, allowing users to download all their data as a JSON file or their dose history as a CSV file.",
+    ]
+},
+    {
   "version": "v9.33.0-alpha",
   "date": "2025-11-13",
   "changes": [
