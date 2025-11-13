@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+  "version": "v9.33.0-alpha",
+  "date": "2025-11-13",
+  "changes": [
+    "In LabelGenerator: Overhauled the UI, replacing the long list of settings with a clear 4-step 'wizard' interface (Template, Layout, Content, Print).",
+    "In LabelGenerator: Clarified layout controls by replacing the 'Maximize' checkbox with 'Define by Grid' and 'Define by Label Size' radio buttons.",
+    "In LabelGenerator: Replaced the grid alignment dropdown with a 3x3 visual icon grid for more intuitive control.",
+    "In LabelGenerator: Added direct label editing. Users can now type directly into the first label in the preview grid, with content syncing to the main template box.",
+    "In LabelGenerator: Improved selection logic. Users can now select or deselect any label, and the print function will print *only* the selected labels.",
+    "In LabelGenerator: Fixed a bug where the first label in the grid could not be deselected.",
+  ]
+},
+    {
   "version": "v9.32.0-alpha",
   "date": "2025-11-12",
   "changes": [
