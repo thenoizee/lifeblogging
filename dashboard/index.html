@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Dashboard - Lifeblogging Hub</title>
+    <link rel="icon" href="/favicons/house.svg" type="image/svg+xml">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="manifest" href="/manifest.json" />
+    <style>
+        :root {
+            --bg-color: #f3f4f6;
+            --card-bg: white;
+            --text-primary: #1f2937;
+            --text-secondary: #4b5563;
+            --border-color: #e5e7eb;
+        }
+        .dark {
+            --bg-color: #111827;
+            --card-bg: #1f2937;
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --border-color: #374151;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .dashboard-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .card-header {
+            font-size: 0.875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stat-value {
+            font-size: 2.25rem;
+            font-weight: 800;
+        }
+        .mood-face { font-size: 3rem; }
+        
+        /* Custom Scrollbar for lists */
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 20px; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl md:text-4xl font-bold flex items-center gap-3">
+                    <span id="greeting-text">Dashboard</span>
+                </h1>
+                <p class="text-sm text-[var(--text-secondary)]" id="current-date">Loading...</p>
+            </div>
+            <div class="flex gap-3">
+                <button id="refresh-btn" class="p-2 rounded-full bg-[var(--card-bg)] border border-[var(--border-color)] hover:bg-gray-100 dark:hover:bg-gray-800 transition"><i class="fas fa-sync-alt"></i></button>
+                <button id="theme-toggle" class="p-2 rounded-full bg-[var(--card-bg)] border border-[var(--border-color)] hover:bg-gray-100 dark:hover:bg-gray-800 transition"><i class="fas fa-moon"></i></button>
+                <div id="auth-container" class="hidden">
+                    <a href="/account" class="p-2 px-4 rounded-lg bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 transition">Account</a>
+                </div>
+            </div>
+        </div>
+
+        <div id="login-prompt" class="hidden text-center py-20">
+            <h2 class="text-2xl font-bold mb-4">Welcome Back</h2>
+            <p class="mb-6 text-[var(--text-secondary)]">Please log in to view your personal dashboard.</p>
+            <a href="/index.html" class="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-indigo-700 transition">Go to Login</a>
+        </div>
+
+        <div id="dashboard-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span>Daily Mood</span>
+                    <a href="/log" class="text-xs text-indigo-500 hover:underline">Log</a>
+                </div>
+                <div class="flex-grow flex flex-col items-center justify-center text-center">
+                    <div id="mood-display" class="mood-face mb-2 text-gray-300"><i class="fas fa-meh"></i></div>
+                    <p id="mood-text" class="font-medium text-lg text-[var(--text-secondary)]">No data</p>
+                    <p id="mood-time" class="text-xs text-[var(--text-secondary)] mt-1 opacity-0">...</p>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span>Water Drank</span>
+                    <a href="/hydrationtrackr" class="text-xs text-blue-500 hover:underline">Track</a>
+                </div>
+                <div class="flex-grow flex flex-col items-center justify-center">
+                    <div class="relative w-32 h-32">
+                        <canvas id="water-chart"></canvas>
+                        <div class="absolute inset-0 flex items-center justify-center flex-col">
+                            <span id="water-value" class="text-2xl font-bold">0</span>
+                            <span class="text-xs text-[var(--text-secondary)]">ml</span>
+                        </div>
+                    </div>
+                    <p id="water-goal-text" class="text-xs text-[var(--text-secondary)] mt-2">Goal: 2000ml</p>
+                </div>
+            </div>
+
+            <div class="dashboard-card md:col-span-2">
+                <div class="card-header">
+                    <span>Last Listened To</span>
+                    <a href="/podtrackr" class="text-xs text-purple-500 hover:underline">PodTrackr</a>
+                </div>
+                <div id="podcast-container" class="flex items-center gap-4 h-full">
+                    <div class="w-20 h-20 bg-gray-200 dark:bg-gray-700 rounded-md flex-shrink-0 animate-pulse"></div>
+                    <div class="flex-grow">
+                        <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2 animate-pulse"></div>
+                        <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2 animate-pulse"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-card md:col-span-2 lg:col-span-1">
+                <div class="card-header">
+                    <span>Calories Today</span>
+                    <a href="/foodtrackr" class="text-xs text-orange-500 hover:underline">Log Food</a>
+                </div>
+                <div class="flex flex-col h-full justify-between">
+                    <div class="text-center mb-4">
+                        <span id="calories-val" class="stat-value text-orange-500">0</span>
+                        <span class="text-sm text-[var(--text-secondary)]">kcal</span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between border-b border-[var(--border-color)] pb-1">
+                            <span>Breakfast</span><span id="cal-breakfast" class="font-mono">0</span>
+                        </div>
+                        <div class="flex justify-between border-b border-[var(--border-color)] pb-1">
+                            <span>Lunch</span><span id="cal-lunch" class="font-mono">0</span>
+                        </div>
+                        <div class="flex justify-between border-b border-[var(--border-color)] pb-1">
+                            <span>Dinner</span><span id="cal-dinner" class="font-mono">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Snacks/Other</span><span id="cal-snacks" class="font-mono">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-card md:col-span-2 lg:col-span-1">
+                <div class="card-header">
+                    <span>Medicines Taken?</span>
+                    <a href="/medimanagr" class="text-xs text-pink-500 hover:underline">Manage</a>
+                </div>
+                <div id="meds-list" class="flex-grow custom-scroll overflow-y-auto space-y-2 pr-1">
+                    <p class="text-sm text-[var(--text-secondary)] italic text-center mt-4">No scheduled meds found.</p>
+                </div>
+            </div>
+
+            <div class="dashboard-card md:col-span-2 lg:col-span-2">
+                <div class="card-header">
+                    <span>Last Logged Activity</span>
+                    <a href="/log" class="text-xs text-green-500 hover:underline">Logger</a>
+                </div>
+                <div id="last-log-container" class="h-full flex flex-col gap-1 custom-scroll overflow-y-auto max-h-[200px] pr-1">
+                    <p class="text-sm text-[var(--text-secondary)] italic text-center mt-4">Loading logs...</p>
+                </div>
+            </div>
+
+            <div class="dashboard-card col-span-1 md:col-span-2 lg:col-span-4">
+                <div class="card-header">
+                    <span>Dailies & Progress</span>
+                    <span id="dailies-progress-text" class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full dark:bg-green-900 dark:text-green-200">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mb-4">
+                    <div id="dailies-progress-bar" class="bg-green-600 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <div id="dailies-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    </div>
+            </div>
+
+        </div>
+    </div>
+
+
+<script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, onSnapshot, Timestamp, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
+            authDomain: "sammy-7298f.firebaseapp.com",
+            projectId: "sammy-7298f",
+            storageBucket: "sammy-7298f.appspot.com",
+            messagingSenderId: "963185683535",
+            appId: "1:963185683535:web:807df8941feba46c208e3a",
+            measurementId: "G-JT1YF2ELN3"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        let currentUser = null;
+        let unsubscribers = []; // Track active listeners to detach on logout
+
+        // --- UI References ---
+        const ui = {
+            grid: document.getElementById('dashboard-grid'),
+            loginPrompt: document.getElementById('login-prompt'),
+            authContainer: document.getElementById('auth-container'),
+            date: document.getElementById('current-date'),
+            greeting: document.getElementById('greeting-text'),
+            moodDisplay: document.getElementById('mood-display'),
+            moodText: document.getElementById('mood-text'),
+            moodTime: document.getElementById('mood-time'),
+            podcastContainer: document.getElementById('podcast-container'),
+            calVal: document.getElementById('calories-val'),
+            calBreakdown: {
+                breakfast: document.getElementById('cal-breakfast'),
+                lunch: document.getElementById('cal-lunch'),
+                dinner: document.getElementById('cal-dinner'),
+                snacks: document.getElementById('cal-snacks')
+            },
+            medsList: document.getElementById('meds-list'),
+            lastLogContainer: document.getElementById('last-log-container'),
+            dailiesGrid: document.getElementById('dailies-grid'),
+            dailiesProgText: document.getElementById('dailies-progress-text'),
+            dailiesProgBar: document.getElementById('dailies-progress-bar'),
+            waterVal: document.getElementById('water-value'),
+            waterGoalText: document.getElementById('water-goal-text')
+        };
+
+        // --- Shared Data State ---
+        // Since we listen to multiple collections for single UI elements, we store data here.
+        let state = {
+            dailyLogs: [],
+            manualLogs: [],
+            dailyPlan: [],
+            takenDoses: new Set(),
+            medsSchedule: []
+        };
+
+        // --- Theme Logic ---
+        const themeToggle = document.getElementById('theme-toggle');
+        const applyTheme = (theme) => {
+            document.documentElement.classList.toggle('dark', theme === 'dark');
+            themeToggle.innerHTML = theme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+        };
+        themeToggle.addEventListener('click', async () => {
+            const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
+            applyTheme(newTheme);
+            if (currentUser) {
+                await setDoc(doc(db, 'users', currentUser.uid, 'settings', 'theme'), { theme: newTheme }, { merge: true });
+            } else {
+                localStorage.setItem('theme', newTheme);
+            }
+        });
+
+        // --- Render Functions (Update UI) ---
+
+        // 1. Render Logs & Mood (Merges 'dailies' and 'manual' streams)
+        const renderLogsAndMood = () => {
+            // Merge and Sort
+            const allLogs = [...state.dailyLogs, ...state.manualLogs];
+            allLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            // A. Update List (Top 5)
+            const top5 = allLogs.slice(0, 10);
+            ui.lastLogContainer.innerHTML = '';
+            
+            if (top5.length === 0) {
+                ui.lastLogContainer.innerHTML = '<div class="h-full flex items-center justify-center"><p class="text-[var(--text-secondary)] italic">Nothing logged yet.</p></div>';
+            } else {
+                top5.forEach(log => {
+                    const timeStr = new Date(log.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    
+                    // Icon Mapper
+                    let iconClass = 'fa-circle-dot'; 
+                    const name = log.attributeName.toLowerCase();
+                    const val = (log.attributeValue || '').toLowerCase();
+                    
+                    if (name.includes('mood')) iconClass = 'fa-face-smile';
+                    else if (name.includes('water')) iconClass = 'fa-glass-water';
+                    else if (name.includes('run') || name.includes('walk') || name.includes('steps')) iconClass = 'fa-person-running';
+                    else if (name.includes('code') || name.includes('dev')) iconClass = 'fa-code';
+                    else if (name.includes('read') || name.includes('book')) iconClass = 'fa-book-open';
+                    else if (name.includes('sleep')) iconClass = 'fa-bed';
+                    else if (name.includes('food') || name.includes('meal')) iconClass = 'fa-utensils';
+                    
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 transition border-b border-[var(--border-color)] last:border-0';
+                    div.innerHTML = `
+                        <div class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center mr-3 text-indigo-500 flex-shrink-0">
+                            <i class="fas ${iconClass}"></i>
+                        </div>
+                        <div class="min-w-0 flex-1 mr-2">
+                            <p class="font-medium text-sm truncate" title="${log.attributeName}">${log.attributeName}</p>
+                            <p class="text-xs text-[var(--text-secondary)] truncate" title="${log.attributeValue}">${log.attributeValue}</p>
+                        </div>
+                        <div class="text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                            ${timeStr}
+                        </div>
+                    `;
+                    ui.lastLogContainer.appendChild(div);
+                });
+            }
+
+            // B. Update Mood (Find latest mood from today)
+            const todayStr = new Date().toISOString().split('T')[0];
+            // Look specifically in dailyLogs for mood, or manual logs if you log mood there
+            const todaysMoodLog = allLogs.find(d => d.attributeName.toLowerCase() === 'mood' && d.date.startsWith(todayStr));
+
+            if (todaysMoodLog) {
+                const val = parseInt(todaysMoodLog.attributeValue);
+                const moods = {1: ['fa-angry', 'text-red-500', 'Awful'], 2: ['fa-frown', 'text-orange-500', 'Bad'], 3: ['fa-meh', 'text-yellow-500', 'Okay'], 4: ['fa-smile', 'text-green-500', 'Good'], 5: ['fa-laugh-beam', 'text-green-600', 'Great']};
+                const m = moods[val] || ['fa-question', 'text-gray-400', 'Unknown'];
+                ui.moodDisplay.innerHTML = `<i class="fas ${m[0]} ${m[1]}"></i>`;
+                ui.moodText.textContent = m[2];
+                ui.moodTime.textContent = new Date(todaysMoodLog.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                ui.moodTime.classList.remove('opacity-0');
+            } else {
+                 ui.moodDisplay.innerHTML = `<i class="fas fa-meh text-gray-300"></i>`;
+                 ui.moodText.textContent = "No data";
+                 ui.moodTime.classList.add('opacity-0');
+            }
+        };
+
+        // 2. Render Dailies Progress
+        const renderDailies = () => {
+            // Count occurences in today's logs
+            const todayStr = new Date().toISOString().split('T')[0];
+            const counts = {};
+            
+            // Count from daily logs
+            state.dailyLogs.forEach(d => {
+                if(d.date.startsWith(todayStr)) {
+                    counts[d.attributeName] = (counts[d.attributeName] || 0) + 1;
+                }
+            });
+
+            ui.dailiesGrid.innerHTML = '';
+            let totalTasks = 0;
+            let completedTasks = 0;
+
+            state.dailyPlan.forEach(task => {
+                totalTasks++;
+                const current = counts[task.attributeName] || 0;
+                const target = parseInt(task.count) || 1;
+                const isDone = current >= target;
+                if (isDone) completedTasks++;
+
+                const div = document.createElement('div');
+                div.className = `p-3 rounded-lg border ${isDone ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-[var(--bg-color)] border-transparent'}`;
+                div.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-semibold text-sm truncate" title="${task.attributeName}">${task.attributeName}</span>
+                        <i class="fas ${isDone ? 'fa-check-circle text-green-500' : 'fa-circle text-gray-300'}"></i>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                        <div class="bg-indigo-500 h-1.5 rounded-full transition-all duration-500" style="width: ${(Math.min(current, target)/target)*100}%"></div>
+                    </div>
+                    <div class="text-xs text-right mt-1 text-[var(--text-secondary)]">${current}/${target}</div>
+                `;
+                ui.dailiesGrid.appendChild(div);
+            });
+
+            const prog = totalTasks > 0 ? Math.round((completedTasks/totalTasks)*100) : 0;
+            ui.dailiesProgText.textContent = `${prog}%`;
+            ui.dailiesProgBar.style.width = `${prog}%`;
+        };
+
+        // 3. Render Meds (Combines Schedule + Taken Doses)
+        const renderMeds = () => {
+            const dayName = new Date().toLocaleDateString('en-US', {weekday: 'long'});
+            ui.medsList.innerHTML = '';
+            let medCount = 0;
+
+            state.medsSchedule.forEach(med => {
+                if (med.isArchived) return;
+                if (med.schedule && med.schedule.days.includes(dayName)) {
+                    medCount++;
+                    const isTaken = state.takenDoses.has(med.id);
+                    const div = document.createElement('div');
+                    div.className = `flex justify-between items-center p-2 rounded-lg ${isTaken ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-800'}`;
+                    div.innerHTML = `
+                        <div class="flex items-center gap-2">
+                            <i class="${med.icon || 'fas fa-pills'}" style="color: ${med.color || '#666'}"></i>
+                            <span class="${isTaken ? 'line-through opacity-60' : 'font-medium'}">${med.name}</span>
+                        </div>
+                        <span class="text-xs font-bold ${isTaken ? 'text-green-600' : 'text-gray-400'}">${isTaken ? 'TAKEN' : 'PENDING'}</span>
+                    `;
+                    ui.medsList.appendChild(div);
+                }
+            });
+
+            if (medCount === 0) ui.medsList.innerHTML = `<p class="text-sm text-[var(--text-secondary)] italic text-center mt-4">No meds scheduled for today.</p>`;
+        };
+
+        // --- Real-time Listeners ---
+
+        const setupListeners = (uid) => {
+            const start = new Date(); start.setHours(0, 0, 0, 0);
+            const end = new Date(); end.setHours(23, 59, 59, 999);
+            const startTs = Timestamp.fromDate(start);
+            const endTs = Timestamp.fromDate(end);
+            const todayStr = start.toISOString().split('T')[0];
+
+            // 1. Logs: Dailies (Last 10 to be safe for "Last 5" list)
+            const dailiesQ = query(collection(db, `users/${uid}/sources/dailies/data`), orderBy('date', 'desc'), limit(15));
+            unsubscribers.push(onSnapshot(dailiesQ, (snap) => {
+                state.dailyLogs = snap.docs.map(d => d.data());
+                renderLogsAndMood();
+                renderDailies(); // Dailies progress depends on daily logs
+            }));
+
+            // 2. Logs: Manual
+            const manualQ = query(collection(db, `users/${uid}/sources/manual/data`), orderBy('date', 'desc'), limit(15));
+            unsubscribers.push(onSnapshot(manualQ, (snap) => {
+                state.manualLogs = snap.docs.map(d => d.data());
+                renderLogsAndMood();
+            }));
+
+            // 3. Hydration
+            const hydroQ = query(collection(db, `users/${uid}/hydrationtrackr`), where('date', '>=', startTs), where('date', '<=', endTs));
+            unsubscribers.push(onSnapshot(hydroQ, async (snap) => {
+                let waterTotal = 0;
+                snap.forEach(doc => waterTotal += parseInt(doc.data().attributeValue || doc.data().amount || 0));
+                
+                // Fetch goal (once is fine, or listen to settings)
+                let waterGoal = 2000;
+                const s = await getDoc(doc(db, `users/${uid}/settings/water`));
+                if(s.exists()) waterGoal = s.data().dailyGoal || 2000;
+
+                ui.waterVal.textContent = waterTotal;
+                ui.waterGoalText.textContent = `Goal: ${waterGoal}ml`;
+                updateWaterChart(waterTotal, waterGoal);
+            }));
+
+            // 4. Podcast
+            const podQ = query(collection(db, `users/${uid}/history`), orderBy('listenedAt', 'desc'), limit(1));
+            unsubscribers.push(onSnapshot(podQ, (snap) => {
+                if (!snap.empty) {
+                    const pod = snap.docs[0].data();
+                    ui.podcastContainer.innerHTML = `
+                        <img src="${pod.podcastArtwork}" class="w-20 h-20 rounded-md object-cover shadow-sm">
+                        <div class="min-w-0">
+                            <p class="font-bold truncate text-lg">${pod.episodeTitle}</p>
+                            <p class="text-sm text-[var(--text-secondary)] truncate">${pod.podcastTitle}</p>
+                            <p class="text-xs text-[var(--text-secondary)] mt-1"><i class="fas fa-check text-green-500"></i> ${new Date(pod.listenedAt.toDate()).toLocaleDateString()}</p>
+                        </div>
+                    `;
+                }
+            }));
+
+            // 5. Food
+            const foodQ = query(collection(db, `users/${uid}/foodLog`), orderBy('eatenAt', 'desc'));
+            unsubscribers.push(onSnapshot(foodQ, (snap) => {
+                let cals = { total: 0, breakfast: 0, lunch: 0, dinner: 0, other: 0 };
+                snap.forEach(d => {
+                    const data = d.data();
+                    const date = data.eatenAt.toDate();
+                    if (date >= start && date <= end) {
+                        const val = data.calories || 0;
+                        cals.total += val;
+                        const sec = (data.section || '').toLowerCase();
+                        if (sec.includes('breakfast') || sec.includes('brunch')) cals.breakfast += val;
+                        else if (sec.includes('lunch')) cals.lunch += val;
+                        else if (sec.includes('dinner')) cals.dinner += val;
+                        else cals.other += val;
+                    }
+                });
+                ui.calVal.textContent = Math.round(cals.total);
+                ui.calBreakdown.breakfast.textContent = Math.round(cals.breakfast);
+                ui.calBreakdown.lunch.textContent = Math.round(cals.lunch);
+                ui.calBreakdown.dinner.textContent = Math.round(cals.dinner);
+                ui.calBreakdown.snacks.textContent = Math.round(cals.other);
+            }));
+
+            // 6. Dailies (Plan)
+            unsubscribers.push(onSnapshot(doc(db, `users/${uid}/settings/dailyPlan`), (snap) => {
+                state.dailyPlan = snap.exists() ? (snap.data().dailyLogs || []) : [];
+                renderDailies();
+            }));
+
+            // 7. Meds (Schedule & Doses)
+            unsubscribers.push(onSnapshot(collection(db, `users/${uid}/medications`), (snap) => {
+                state.medsSchedule = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                renderMeds();
+            }));
+
+            // Doses (Filter by today approx string)
+            // Note: Ideally use a where clause on date string if your DB format allows, 
+            // otherwise we fetch all doses and filter client side (bad for scale, okay for personal app)
+            // Assuming doses have a 'date' string field YYYY-MM-DD...
+            const dosesQ = query(collection(db, `users/${uid}/doses`), where('date', '>=', todayStr));
+            unsubscribers.push(onSnapshot(dosesQ, (snap) => {
+                state.takenDoses.clear();
+                snap.forEach(d => {
+                    const data = d.data();
+                    if (data.date.startsWith(todayStr) && data.status === 'taken') {
+                        state.takenDoses.add(data.medId);
+                    }
+                });
+                renderMeds();
+            }));
+        };
+
+        const cleanupListeners = () => {
+            unsubscribers.forEach(unsub => unsub());
+            unsubscribers = [];
+        };
+
+        // --- Charts ---
+        let waterChartInstance = null;
+        function updateWaterChart(current, goal) {
+            const ctx = document.getElementById('water-chart').getContext('2d');
+            if (waterChartInstance) waterChartInstance.destroy();
+            
+            waterChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Drank', 'Remaining'],
+                    datasets: [{
+                        data: [current, Math.max(0, goal - current)],
+                        backgroundColor: ['#3b82f6', '#e5e7eb'],
+                        borderWidth: 0,
+                        cutout: '80%'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    animation: { animateScale: true, animateRotate: true }
+                }
+            });
+        }
+
+        // --- Init ---
+        // Remove the old refresh button listener as it's no longer needed with realtime updates
+        const refreshBtn = document.getElementById('refresh-btn');
+        if(refreshBtn) refreshBtn.style.display = 'none'; 
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                ui.loginPrompt.classList.add('hidden');
+                ui.grid.classList.remove('hidden');
+                ui.authContainer.classList.remove('hidden');
+                ui.greeting.textContent = `Hello, ${user.email.split('@')[0]}!`;
+                ui.date.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+                getDoc(doc(db, 'users', user.uid, 'settings', 'theme')).then(snap => {
+                    applyTheme(snap.exists() ? snap.data().theme : 'light');
+                });
+
+                setupListeners(user.uid);
+            } else {
+                currentUser = null;
+                cleanupListeners();
+                ui.loginPrompt.classList.remove('hidden');
+                ui.grid.classList.add('hidden');
+                ui.authContainer.classList.add('hidden');
+            }
+        });
+    </script>
+
+</body>
+</html>

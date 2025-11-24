@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.35.0-dashboard",
+    date: "2025-11-24",
+    changes: [
+        "Introduced a central Dashboard page to provide a unified overview of existing standalone apps (HydrationTrackr, PodTrackr, FoodTrackr, MediManagr).",
+        "Created widgets to display real-time summaries of daily stats (Mood, Water, Calories, Meds) in a single grid view, pulling data from the existing app sources.",
+    ]
+},
+    {
     "version": "v9.34.0-alpha",
     "date": "2025-11-13",
     "changes": [
