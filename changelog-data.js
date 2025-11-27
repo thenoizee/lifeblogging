@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v9.36.1-alpha",
+        date: "2025-11-27",
+        changes: [
+            "In VidTrackr: Bug fix.",
+            ]
+    },
+    {
         version: "v9.36.0-alpha",
         date: "2025-11-27",
         changes: [
