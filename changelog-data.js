@@ -2,13 +2,23 @@
 
 export const changelogData = [
     {
-    version: "v9.35.0-dashboard",
+        version: "v9.36.0-alpha",
+        date: "2025-11-27",
+        changes: [
+            "Launched VidTrackr: A comprehensive new movie and TV show tracking application integrated into the Hub, powered by the Trakt.tv API.",
+            "In VidTrackr: Users can now manage their viewing habits with a dashboard featuring 'Up Next' queues, 'Recently Watched' history, and a 7-day airing calendar.",
+            "In VidTrackr: Implemented a full scrobbling system allowing users to log content, assign ratings (1-10), and save private notes to specific watch history entries.",
+            "In VidTrackr: Added a 'Progress' section with visual charts for weekly activity and percentage-based completion tracking for TV shows.",
+        ]
+    },
+    {
+    version: "v9.35.0-alpha",
     date: "2025-11-24",
     changes: [
         "Introduced a central Dashboard page to provide a unified overview of existing standalone apps (HydrationTrackr, PodTrackr, FoodTrackr, MediManagr).",
         "Created widgets to display real-time summaries of daily stats (Mood, Water, Calories, Meds) in a single grid view, pulling data from the existing app sources.",
     ]
-},
+    },
     {
     "version": "v9.34.0-alpha",
     "date": "2025-11-13",
