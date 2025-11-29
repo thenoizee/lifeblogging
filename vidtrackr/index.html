@@ -463,21 +463,26 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                             <p class="opacity-90 text-lg">Your personal media tracking hub.</p>
                         </div>
                         <div id="quick-stats" class="hidden md:flex gap-6 text-center bg-black/20 p-4 rounded-xl backdrop-blur-md">
-                            </div>
+                        </div>
                     </div>
                     <i class="fa-solid fa-chart-line absolute -bottom-6 -right-6 text-[10rem] opacity-10 rotate-12"></i>
                 </div>
                 
-                <div id="last-watched-container" class="mb-12 hidden animate-fade"></div>
-                <div id="calendar-container" class="mb-12 hidden animate-fade"></div>
                 <div id="up-next-container" class="mb-12 hidden animate-fade"></div>
+
+                <div id="last-watched-container" class="mb-12 hidden animate-fade"></div>
+
+                <div id="calendar-container" class="mb-12 hidden animate-fade"></div>
+
                 <div id="trending-container"></div>
             `;
             
-            loadLastWatched();
+            // Load data (order of execution doesn't strictly matter for display, but good to fire all)
             loadUpNext();
+            loadLastWatched();
             loadCalendar();
             
+            // Fetch Trending
             fetchSmart('/movies/trending?extended=images', (movies) => {
                 fetchSmart('/shows/trending?extended=images', (shows) => {
                     const combined = [...movies.map(m=>({...m, type:'movie'})), ...shows.map(s=>({...s, type:'show'}))].sort(()=>0.5-Math.random());
@@ -485,6 +490,7 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 }, 'cache_shows_trending');
             }, 'cache_movies_trending');
 
+            // Quick Stats
             try {
                 const stats = await fetchDirect('/users/me/stats');
                 document.getElementById('quick-stats').innerHTML = `
@@ -558,32 +564,58 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
             } catch(e) { showToast('Action failed', 'error'); } 
             hideLoader();
         }
+        
         async function loadUpNext() {
             const container = document.getElementById('up-next-container');
             try {
-                const history = await fetchDirect('/sync/history/episodes?limit=10');
-                if (!history.length) return;
-                const uniqueShowIds = [...new Set(history.map(h => h.show.ids.trakt))].slice(0, 3);
+                // CHANGED: Use 'watched/shows' instead of 'history'. 
+                // This guarantees unique shows sorted by recency, solving the "binge" issue.
+                const watchedShows = await fetchDirect('/sync/watched/shows?limit=10&extended=noseasons');
+                
+                if (!watchedShows.length) return;
+
+                // Extract just the IDs from the top 3 shows
+                const uniqueShowIds = watchedShows.slice(0, 3).map(s => s.show.ids.trakt);
+                
                 const nextEpisodes = [];
+                
+                // Fetch progress for these 3 shows
                 await Promise.all(uniqueShowIds.map(async (id) => {
                     try {
                         const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=false&count_specials=false&extended=full`);
                         if (progress.next_episode) {
-                            nextEpisodes.push({ type: 'episode', show: { title: history.find(h => h.show.ids.trakt == id).show.title, ids: { trakt: id } }, episode: progress.next_episode, ids: progress.next_episode.ids, title: `${progress.next_episode.season}x${progress.next_episode.number}: ${progress.next_episode.title}`, images: progress.next_episode.images });
+                            // Find title from the watchedShows array
+                            const showTitle = watchedShows.find(s => s.show.ids.trakt == id).show.title;
+                            
+                            nextEpisodes.push({ 
+                                type: 'episode', 
+                                show: { title: showTitle, ids: { trakt: id } }, 
+                                episode: progress.next_episode, 
+                                ids: progress.next_episode.ids, 
+                                title: `${progress.next_episode.season}x${progress.next_episode.number}: ${progress.next_episode.title}`, 
+                                images: progress.next_episode.images 
+                            });
                         }
                     } catch (err) {}
                 }));
+
+                // Sort by last watched (maintain order)
+                // We map the order based on the original uniqueShowIds array to keep recency
+                nextEpisodes.sort((a, b) => uniqueShowIds.indexOf(a.show.ids.trakt) - uniqueShowIds.indexOf(b.show.ids.trakt));
+
                 if (nextEpisodes.length > 0) {
                     container.innerHTML = `
                     <h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     ${nextEpisodes.map(ep => {
                         const rateBtns = Array.from({length: 10}, (_, i) => 10 - i).map(n => 
-                            `<button onclick="rateDirect(${ep.ids.trakt}, 'episode', ${n})" class="block w-full text-left px-3 py-1 hover:bg-[var(--primary)] text-xs font-bold text-gray-300 hover:text-white transition flex justify-between"><span>${n}</span> <i class="fa-solid fa-star text-[8px] mt-1 text-yellow-500"></i></button>`
+                            `<button onclick="rateDirect(${ep.ids.trakt}, 'episode', ${n})" class="block w-full text-left px-4 py-2 hover:bg-[var(--primary)] text-sm font-bold text-gray-300 hover:text-white transition flex justify-between items-center border-b border-gray-700 last:border-0">
+                                <span>${n}</span> <i class="fa-solid fa-star text-[10px] text-yellow-500"></i>
+                             </button>`
                         ).join('');
 
                         return `
-                        <div class="card p-0 rounded-xl flex overflow-visible border border-gray-700 hover:border-blue-500 transition cursor-pointer shadow-lg group relative" onclick="location.hash='#detail/show/${ep.show.ids.trakt}'">
+                        <div class="card p-0 rounded-xl flex overflow-visible border border-gray-700 hover:border-blue-500 transition cursor-pointer shadow-lg group relative" onclick="location.hash='#detail/episode/${ep.ids.trakt}'">
                             <div class="w-1/3 relative overflow-hidden rounded-l-xl">
                                 <img src="${getImage(ep, 'episode')}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">
                                 <div class="absolute inset-0 bg-black/30 group-hover:bg-transparent transition"></div>
@@ -591,12 +623,13 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                             <div class="w-2/3 p-4 flex flex-col justify-center bg-[var(--card)] rounded-r-xl">
                                 <h4 class="text-xs text-blue-400 font-bold uppercase tracking-wider mb-1">Up Next</h4>
                                 <h3 class="font-bold text-lg leading-tight mb-1 line-clamp-1 text-white">${ep.show.title}</h3>
-                                <p class="text-gray-400 text-sm mb-3">S${ep.episode.season} E${ep.episode.number} - ${ep.episode.title}</p>
-                                <div class="mt-auto flex items-center gap-2">
-                                    <button class="scrobble-btn text-xs bg-[var(--primary)] text-white px-3 py-1 rounded border border-red-600 hover:bg-white hover:text-red-600 transition font-bold z-10 shadow-lg" data-json='${JSON.stringify({ids: ep.ids, title: ep.title, type: 'episode'}).replace(/'/g, "&apos;")}' data-type="show" onclick="event.stopPropagation()"><i class="fa-solid fa-check"></i> Check In</button>
-                                    <div class="relative group/rate" onclick="event.stopPropagation()">
-                                        <button class="text-xs bg-gray-800 hover:text-yellow-500 px-2 py-1 rounded border border-gray-600 transition h-full"><i class="fa-solid fa-star"></i></button>
-                                        <div class="absolute bottom-full right-0 mb-2 hidden group-hover/rate:flex flex-col bg-gray-900 border border-gray-700 rounded shadow-xl z-50 w-20 max-h-48 overflow-y-auto hide-scroll py-1">
+                                <p class="text-gray-400 text-sm mb-4">S${ep.episode.season} E${ep.episode.number} - ${ep.episode.title}</p>
+                                <div class="mt-auto">
+                                    <div class="relative group/rate w-full" onclick="event.stopPropagation()">
+                                        <button class="w-full bg-[var(--primary)] hover:bg-red-700 text-white font-bold py-2 rounded-lg transition shadow-md flex items-center justify-center gap-2">
+                                            <i class="fa-solid fa-star text-yellow-300"></i> Rate & Watch
+                                        </button>
+                                        <div class="absolute bottom-full left-0 right-0 mb-2 hidden group-hover/rate:flex flex-col bg-gray-900 border border-gray-700 rounded-lg shadow-2xl z-50 max-h-64 overflow-y-auto hide-scroll">
                                             ${rateBtns}
                                         </div>
                                     </div>
@@ -796,6 +829,7 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                             <div class="flex flex-wrap items-center gap-3 text-sm font-medium">
                                 <span class="bg-gray-800/80 backdrop-blur text-white px-3 py-1 rounded border border-gray-600">S${item.season} E${item.number}</span>
                                 ${watchedBadge} ${myRatingHtml}
+                                <span class="text-gray-300"><i class="fa-solid fa-calendar mr-1"></i> ${item.first_aired ? new Date(item.first_aired).toLocaleDateString() : 'N/A'}</span>
                                 <span class="text-gray-300"><i class="fa-solid fa-clock mr-1"></i> ${item.runtime} min</span>
                                 <span class="text-gray-300"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${item.rating ? item.rating.toFixed(1) : '-'}</span>
                             </div>

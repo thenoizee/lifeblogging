@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v9.37.0-alpha",
+        date: "2025-11-29",
+        changes: [
+            "In VidTrackr: Completely refactored the 'Up Next' logic. It now pulls from the 'watched shows' endpoint instead of raw history, ensuring a diverse list of shows and preventing a single binged show from displacing others.",
+            "In VidTrackr: Updated the 'Up Next' card UI on the dashboard. Replaced the standard 'Check In' button with a 'Rate & Watch' dropdown, allowing for quicker 1-click rating and logging.",
+            "In VidTrackr: Added the 'First Aired' date to the metadata header on the Episode Detail page.",
+        ]
+    },
+    {
         version: "v9.36.2-alpha",
         date: "2025-11-28",
         changes: [
