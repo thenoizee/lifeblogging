@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.38.0-alpha",
+    date: "2025-11-30",
+    changes: [
+        "In VidTrackr: Implemented a comprehensive mobile UI overhaul, introducing a fixed bottom navigation bar and a dedicated mobile search input for better small-screen accessibility.",
+        "In VidTrackr: Enhanced routing capabilities to support deep linking directly to specific seasons (e.g., `#detail/show/:id/season/:num`) and added 'View Season' navigation buttons to episode detail pages.",
+        "In VidTrackr: Improved image handling in detail views by switching to an `object-contain` layout, preventing cropping and ensuring full posters/backdrops are visible on all device aspect ratios.",
+        "In VidTrackr: Increased touch target sizes for 'Up Next' actions and renamed the primary button to 'Rate & Mark Watched Now' for clearer interaction.",
+        "In VidTrackr: Updated viewport settings to disable user scaling (`user-scalable=no`), giving the interface a more native, app-like feel on mobile devices."
+    ]
+},
+    {
         version: "v9.37.0-alpha",
         date: "2025-11-29",
         changes: [
