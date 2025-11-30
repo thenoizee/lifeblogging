@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v9.39.0-alpha",
+        date: "2025-11-30",
+        changes: [
+            "In VidTrackr: Fixed the Cast images in the Detail view. The API call now includes `extended=images`, and the renderer uses actual headshots instead of generic icons.",
+            "In VidTrackr: Resolved a bug where Genres displayed as 'undefined'. The logic now correctly handles the plain string array returned by the API.",
+            "In VidTrackr: Expanded the Movie/Show Detail metadata to include a 'Production Info' box, displaying Director/Creator, Studio, Language, and Revenue data.",
+            "In VidTrackr: Updated title icon to match the one used in the header ribbon.",
+            "General: Updated service worker."
+        ]
+    },
+    {
     version: "v9.38.0-alpha",
     date: "2025-11-30",
     changes: [

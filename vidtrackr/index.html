@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>VidTrackr</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ed2224'%3E%3Cpath d='M20 3H4C2.9 3 2 3.9 2 5v14c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 16H5c-.6 0-1-.4-1-1V6c0-.6.4-1 1-1h14c.6 0 1 .4 1 1v12c0 .6-.4 1-1 1z'/%3E%3C/svg%3E">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512' fill='%23ed2224'%3E%3Cpath d='M0 128C0 92.7 28.7 64 64 64H512c35.3 0 64 28.7 64 64v96h-8c-26.5 0-48 21.5-48 48s21.5 48 48 48h8v96c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V320h8c26.5 0 48-21.5 48-48s-21.5-48-48-48H0V128z'/%3E%3C/svg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -593,15 +593,17 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 document.getElementById('progress-list').innerHTML = cards.join('');
             } catch(e) { console.error(e); } hideLoader();
         }
+
         async function renderDetail(type, id, initialSeason = null) {
             showLoader(); els.content.innerHTML = '';
             try {
                 const noteKey = `${type}_${id}`;
                 const isEpisode = type === 'episode';
                 
-                let item, notes, history = [], related = [], showInfo = null;
+                let item, notes, history = [], related = [], showInfo = null, people = null;
                 let showProgress = null; 
                 
+                // --- FETCHING DATA ---
                 if (isEpisode) {
                     const searchResults = await fetchDirect(`/search/trakt/${id}?type=episode&extended=full,images`);
                     if(searchResults && searchResults[0]) {
@@ -613,20 +615,44 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     item.user_data = userData.user_data;
                     history = await fetchDirect(`/users/me/history/episodes/${id}?limit=20`);
                 } else {
-                    [item, notes, history, related] = await Promise.all([
+                    [item, notes, history, related, people] = await Promise.all([
                         fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
                         (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=20`) : []),
-                        fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`)
+                        fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`),
+                        // FIX: Added extended=images to fetch headshots
+                        fetchDirect(`/${type}s/${id}/people?extended=images`) 
                     ]);
                 }
                 if(isEpisode) notes = await getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey));
 
+                // --- DATA PROCESSING ---
                 const userNote = notes.exists() ? notes.data().text : '';
                 const myRating = item.user_rating;
                 const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                 const titleText = isEpisode ? `${item.season}x${item.number}: ${item.title}` : item.title;
                 const fullTitle = isEpisode ? `${showInfo.title}: ${item.title}` : item.title;
+
+                const runtimeStr = item.runtime ? `${Math.floor(item.runtime/60)}h ${item.runtime%60}m` : 'N/A';
+                
+                // FIX: Genres logic changed to handle strings directly
+                const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+                const genresHtml = item.genres ? item.genres.map(g => {
+                    const val = typeof g === 'string' ? g : g.name; 
+                    return `<span class="bg-gray-800 border border-gray-700 text-xs px-2 py-1 rounded-md text-gray-300">${capitalize(val)}</span>`;
+                }).join(' ') : '';
+
+                const cert = item.certification || 'NR';
+                const network = item.network || (item.production_countries ? item.production_countries[0]?.name : 'N/A');
+                const trailerUrl = item.trailer ? (item.trailer.includes('youtube') ? item.trailer : null) : null;
+                const language = item.language ? item.language.toUpperCase() : 'EN';
+                
+                // NEW: Studios & Crew logic
+                const studios = item.production_companies ? item.production_companies.slice(0,2).map(c => c.name).join(', ') : 'N/A';
+                let director = 'N/A';
+                if(people && people.crew && people.crew.directing) {
+                    director = people.crew.directing[0]?.person?.name || 'N/A';
+                }
 
                 const watchedBadge = isWatched 
                     ? `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> Watched</span>`
@@ -636,17 +662,41 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     ? `<span class="bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(234,179,8,0.2)]"><i class="fa-solid fa-star mr-2"></i> ${myRating}</span>`
                     : `<button class="bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" onclick="document.querySelector('.scrobble-btn').click()"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
 
+                // --- HISTORY HTML ---
                 let historyHtml = '';
                 if (history.length > 0) {
-                     historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Watch History</h3><div class="space-y-2">${history.map(h => `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}</span><span class="text-gray-500 font-mono text-xs">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex gap-2"><button class="text-xs bg-blue-900/30 text-blue-400 p-2 rounded hover:bg-blue-500 hover:text-white transition" onclick="window.editHistoryItem('${id}', '${fullTitle.replace(/'/g, "&apos;")}', '${type}', '${h.watched_at}')" title="Edit Date"><i class="fa-solid fa-pen"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${id}', '${type}', '${h.watched_at}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`).join('')}</div></div>`;
+                      historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Watch History</h3><div class="space-y-2">${history.map(h => `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}</span><span class="text-gray-500 font-mono text-xs">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex gap-2"><button class="text-xs bg-blue-900/30 text-blue-400 p-2 rounded hover:bg-blue-500 hover:text-white transition" onclick="window.editHistoryItem('${id}', '${fullTitle.replace(/'/g, "&apos;")}', '${type}', '${h.watched_at}')" title="Edit Date"><i class="fa-solid fa-pen"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${id}', '${type}', '${h.watched_at}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`).join('')}</div></div>`;
                 }
 
+                // --- CAST HTML (FIXED) ---
+                let castHtml = '';
+                if (people && people.cast && people.cast.length > 0) {
+                    castHtml = `
+                    <h3 class="text-xs font-bold text-[var(--primary)] mb-4 uppercase tracking-widest mt-8">Top Cast</h3>
+                    <div class="flex gap-4 overflow-x-auto pb-6 hide-scroll">
+                        ${people.cast.slice(0, 10).map(person => {
+                             // FIX: Use the actual image function
+                             const pImg = getImage(person.person, 'person'); 
+                             return `
+                             <div class="flex-shrink-0 w-28 group relative">
+                                <div class="w-24 h-24 mx-auto rounded-full bg-gray-800 border-2 border-gray-700 overflow-hidden mb-3 shadow-lg group-hover:border-[var(--primary)] transition">
+                                     <img src="${pImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                </div>
+                                <div class="text-center">
+                                    <p class="font-bold text-xs truncate text-white group-hover:text-[var(--primary)] transition">${person.person.name}</p>
+                                    <p class="text-[10px] text-gray-500 truncate">${person.characters[0]}</p>
+                                </div>
+                             </div>`
+                        }).join('')}
+                    </div>`;
+                }
+
+                // --- MAIN RENDER START ---
                 let html = `<div class="animate-fade max-w-6xl mx-auto">`;
 
                 if (isEpisode) {
+                    // ... (Keeping Episode logic mostly same, just ensuring style consistency) ...
                     const bgImg = getImage(item, 'episode', true); 
-                    
-                    // CHANGED: Removed Aspect Ratio forcing. Added max-height and object-contain for full image.
                     html += `
                     <button onclick="history.back()" class="absolute top-24 left-4 z-20 text-sm bg-black/50 hover:bg-black/80 text-white px-4 py-2 rounded-full backdrop-blur-md transition"><i class="fa-solid fa-arrow-left"></i></button>
                     <div class="relative w-full min-h-[200px] h-auto rounded-3xl overflow-hidden shadow-2xl border border-gray-800 group mb-8 bg-black">
@@ -667,6 +717,11 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                         <div class="md:col-span-2">
+                             <div class="flex flex-wrap gap-4 mb-6 text-sm text-gray-400 border-b border-gray-800 pb-4">
+                                <span class="flex items-center"><i class="fa-regular fa-clock mr-2"></i> ${runtimeStr}</span>
+                                <span class="flex items-center"><i class="fa-regular fa-calendar mr-2"></i> ${new Date(item.first_aired).toLocaleDateString()}</span>
+                            </div>
+
                             <h3 class="text-xs font-bold text-[var(--primary)] mb-2 uppercase tracking-widest">Overview</h3>
                             <p class="text-lg text-gray-300 leading-relaxed mb-8">${item.overview || 'No overview available.'}</p>
                             ${historyHtml}
@@ -675,7 +730,7 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                                 <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center gap-2"><i class="fa-solid fa-layer-group"></i> View Season ${item.season}</button>
                                 <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}'" class="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold border border-gray-700 transition">View Show</button>
                             </div>
-                            <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8">
+                             <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8">
                                 <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
                                 <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-3 text-sm outline-none resize-none" rows="2" placeholder="Private note...">${userNote}</textarea>
                                 <div class="flex justify-end mt-3"><button id="save-note" class="text-xs bg-gray-700 hover:bg-[var(--primary)] text-white px-5 py-2 rounded-md transition font-bold shadow">Save</button></div>
@@ -685,7 +740,7 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     </div>`;
 
                 } else {
-                    // Movie/Show Detail (mostly same, just rendering logic)
+                    // --- MOVIE / SHOW DETAIL ---
                     const img = getImage(item, null, true);
                     html += `
                     <button onclick="history.back()" class="mb-6 text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition w-fit"><i class="fa-solid fa-arrow-left"></i> Back</button>
@@ -695,20 +750,59 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                                 <img src="${img}" class="w-full object-cover">
                                 ${type === 'movie' ? `<div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm"><button class="scrobble-btn ${getBgColor(type)} text-white px-8 py-3 rounded-full font-bold transform scale-90 group-hover:scale-100 transition shadow-xl" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-check mr-2"></i> Log Movie</button></div>` : ''}
                             </div>
+                            
+                            <div class="mt-6 flex flex-col gap-3">
+                                ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition border border-gray-700">Official Website <i class="fa-solid fa-up-right-from-square ml-1"></i></a>` : ''}
+                                ${trailerUrl ? `<a href="${trailerUrl}" target="_blank" class="w-full text-center bg-red-900/20 hover:bg-red-900/40 text-red-500 py-2 rounded-lg font-bold text-xs transition border border-red-900/30"><i class="fa-brands fa-youtube mr-1"></i> Watch Trailer</a>` : ''}
+                            </div>
+
+                            <div class="mt-6 bg-[var(--card)] p-4 rounded-xl border border-gray-800 text-sm space-y-3">
+                                <h4 class="font-bold text-gray-400 text-xs uppercase mb-2">Production Info</h4>
+                                <div class="flex justify-between border-b border-gray-800 pb-2">
+                                    <span class="text-gray-500">Director/Creator</span>
+                                    <span class="text-gray-200 font-medium">${director}</span>
+                                </div>
+                                <div class="flex justify-between border-b border-gray-800 pb-2">
+                                    <span class="text-gray-500">Studio</span>
+                                    <span class="text-gray-200 font-medium truncate max-w-[120px]" title="${studios}">${studios}</span>
+                                </div>
+                                <div class="flex justify-between border-b border-gray-800 pb-2">
+                                    <span class="text-gray-500">Language</span>
+                                    <span class="text-gray-200 font-medium">${language}</span>
+                                </div>
+                                ${item.revenue ? `<div class="flex justify-between"><span class="text-gray-500">Revenue</span><span class="text-green-400 font-medium">$${(item.revenue/1000000).toFixed(1)}M</span></div>` : ''}
+                            </div>
                         </div>
                         <div class="md:w-2/3 lg:w-3/4">
                             <h1 class="text-4xl md:text-6xl font-bold mb-2 leading-tight tracking-tight">${item.title}</h1>
                             ${item.tagline ? `<p class="text-xl text-gray-400 italic mb-4">"${item.tagline}"</p>` : ''}
+                            
                             ${type === 'show' ? await (async () => { try { showProgress = await fetchDirect(`/shows/${id}/progress/watched`); const percent = showProgress.aired > 0 ? Math.round((showProgress.completed / showProgress.aired) * 100) : 0; return `<div class="mb-6 bg-gray-800 rounded-full h-4 w-full overflow-hidden border border-gray-700 relative group"><div class="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-1000" style="width: ${percent}%"></div><div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">${percent}% WATCHED</div></div>`; } catch(e){ return ''; } })() : ''}
-                            <div class="flex flex-wrap items-center gap-4 text-gray-300 mb-8 text-sm md:text-base font-medium">
+                            
+                            <div class="flex flex-wrap items-center gap-4 text-gray-300 mb-6 text-sm md:text-base font-medium">
                                 <span class="bg-gray-800 px-3 py-1 rounded-md border border-gray-700 text-white">${item.year || 'N/A'}</span>
+                                <span class="border border-gray-600 px-2 py-0.5 rounded text-xs uppercase text-gray-400">${cert}</span>
                                 ${watchedBadge} ${myRatingHtml}
-                                ${item.status ? `<span class="uppercase tracking-wider font-bold ${getTypeColor(type)} px-2 py-1 bg-gray-800 rounded">${item.status}</span>` : ''}
+                                ${item.status ? `<span class="uppercase tracking-wider font-bold ${getTypeColor(type)} px-2 py-1 bg-gray-800 rounded text-xs">${item.status}</span>` : ''}
                             </div>
+                            
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 bg-gray-900/30 p-4 rounded-xl border border-gray-800/50 backdrop-blur-sm">
+                                <div><p class="text-xs text-gray-500 uppercase font-bold">Typical Runtime</p><p class="font-medium text-gray-300">${runtimeStr}</p></div>
+                                <div><p class="text-xs text-gray-500 uppercase font-bold">Network</p><p class="font-medium text-gray-300 truncate" title="${network}">${network}</p></div>
+                                <div><p class="text-xs text-gray-500 uppercase font-bold">Avg. Trakt Rating</p><p class="font-medium text-[var(--primary)]">${item.rating ? item.rating.toFixed(1) : '-'}/10</p></div>
+                                <div><p class="text-xs text-gray-500 uppercase font-bold">Total Trakt Votes</p><p class="font-medium text-gray-300">${item.votes || 0}</p></div>
+                                <div class="col-span-2 md:col-span-4 border-t border-gray-800 mt-2 pt-2 flex flex-wrap gap-2 items-center">
+                                    <span class="text-xs text-gray-500 uppercase font-bold mr-2">Genres:</span> ${genresHtml}
+                                </div>
+                            </div>
+
                             <h3 class="text-xs font-bold ${getTypeColor(type)} mb-2 uppercase tracking-widest">Overview</h3>
                             <p class="text-gray-300 text-lg leading-relaxed mb-6 max-w-3xl">${item.overview || 'No overview available.'}</p>
+                            
+                            ${castHtml}
                             ${historyHtml}
-                             <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8">
+                            
+                             <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8 mt-8">
                                 <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
                                 <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-3 text-sm outline-none resize-none" rows="2" placeholder="Your thoughts...">${userNote}</textarea>
                                 <div class="flex justify-end mt-3"><button id="save-note" class="text-xs bg-gray-700 hover:bg-[var(--primary)] text-white px-5 py-2 rounded-md transition font-bold shadow">Save</button></div>
@@ -722,6 +816,7 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 html += `</div>`;
                 els.content.innerHTML = html;
 
+                // --- EVENT LISTENERS ---
                 const saveBtn = document.getElementById('save-note');
                 if(saveBtn) saveBtn.onclick = async () => { 
                     saveBtn.innerText = 'Saving...';
@@ -729,6 +824,7 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     saveBtn.innerText = 'Saved!'; setTimeout(()=>saveBtn.innerText='Save', 2000); showToast('Note saved'); 
                 };
 
+                // --- SHOW SEASONS LOGIC (Standard - no changes needed here but included for closure) ---
                 if (type === 'show') {
                     const mount = document.getElementById('seasons-mount');
                     mount.innerHTML = `<div class="flex items-center gap-3 mb-6"><div class="animate-spin rounded-full h-6 w-6 border-2 border-yellow-500 border-t-transparent"></div> <span class="text-gray-400">Loading seasons...</span></div>`;
@@ -757,15 +853,9 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                                 const epRating = ep.user_rating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded">You: ${ep.user_rating}</span>` : '';
                                 return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='#detail/episode/${ep.ids.trakt}'"><img src="${getImage(ep, 'episode')}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><h4 class="font-bold text-lg text-gray-100 truncate hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='#detail/episode/${ep.ids.trakt}'">${ep.title || 'Episode ' + ep.number}</h4><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p></div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}</div><button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, type: 'episode'}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check mr-2"></i> Log</button></div></div></div>`;
                             }).join('')}</div>`;
-                            // Auto scroll to mount point
                             mount.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         };
-
-                        // If initial season requested, load it
-                        if(initialSeason) {
-                            await window.loadEpisodes(id, initialSeason);
-                        }
-
+                        if(initialSeason) { await window.loadEpisodes(id, initialSeason); }
                     } catch(e) { mount.innerHTML = `<p class="text-red-500">Failed to load seasons.</p>`; }
                 }
 
@@ -774,14 +864,16 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
         }
 
         // --- Other Render Functions & Routing (Standard) ---
-        function renderHistory(page = 1) { /* Same as before, just ensured layout */
+       function renderHistory(page = 1) {
             if (page === 1) { els.content.innerHTML = ''; historyPage = 1; }
             isFetchingHistory = true; showLoader();
+            
             fetchSmart(`/sync/history?limit=20&page=${page}&extended=images`, (data, fromCache) => {
                  if (page === 1) {
                     if (data.length === 0) els.content.innerHTML = `<div class="text-center p-10">No history found.</div>`;
                     else els.content.innerHTML = `<h2 class="text-2xl font-bold mb-6 mt-4">History</h2><div id="history-list-container" class="space-y-4 max-w-4xl mx-auto"></div><div id="load-more-container" class="text-center mt-8 pb-8"></div>`;
                 }
+                
                 const listHtml = data.map(item => {
                     const type = item.type;
                     const navType = type === 'episode' ? 'episode' : 'movie';
@@ -791,17 +883,28 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     const img = getImage(displayImageObj, type, true); 
                     const myRating = userRatings.get(parseInt(navId));
                     const rateDisplay = myRating ? `<span class="text-green-400 font-bold ml-auto"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
-                    return `<div class="card p-3 rounded-xl flex items-center gap-4 hover:bg-[var(--card)] border border-transparent hover:border-gray-600 transition group relative animate-fade shadow-sm bg-[var(--card)]/50" onclick="location.hash='#detail/${navType}/${navId}'"><div class="relative w-32 h-20 flex-shrink-0 overflow-hidden rounded-lg shadow-md"><img src="${img}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">${type}</div></div><div class="flex-grow min-w-0 flex flex-col justify-center"><div class="flex items-start"><h3 class="font-bold text-base leading-tight cursor-pointer hover:text-[var(--primary)] transition mr-2">${titleText}</h3>${rateDisplay}</div><div class="flex items-center gap-3 text-xs text-gray-500 mt-2"><span><i class="fa-solid fa-clock opacity-50 mr-1"></i> ${new Date(item.watched_at).toLocaleDateString()} at ${new Date(item.watched_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span></div></div></div>`;
+                    
+                    // --- CHANGED SECTION: DATE FORMATTING ---
+                    const wDate = new Date(item.watched_at);
+                    const dateStr = wDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                    const timeStr = wDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    // ----------------------------------------
+
+                    return `<div class="card p-3 rounded-xl flex items-center gap-4 hover:bg-[var(--card)] border border-transparent hover:border-gray-600 transition group relative animate-fade shadow-sm bg-[var(--card)]/50" onclick="location.hash='#detail/${navType}/${navId}'"><div class="relative w-32 h-20 flex-shrink-0 overflow-hidden rounded-lg shadow-md"><img src="${img}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">${type}</div></div><div class="flex-grow min-w-0 flex flex-col justify-center"><div class="flex items-start"><h3 class="font-bold text-base leading-tight cursor-pointer hover:text-[var(--primary)] transition mr-2">${titleText}</h3>${rateDisplay}</div><div class="flex items-center gap-3 text-xs text-gray-500 mt-2"><span><i class="fa-solid fa-calendar-days opacity-50 mr-1 text-[var(--primary)]"></i> ${dateStr} <span class="opacity-50 mx-1">|</span> <i class="fa-solid fa-clock opacity-50 mr-1"></i> ${timeStr}</span></div></div></div>`;
                 }).join('');
+                
                 document.getElementById('history-list-container').insertAdjacentHTML('beforeend', listHtml);
+                
                 const loadMoreContainer = document.getElementById('load-more-container');
                 if (data.length === 20) {
                     loadMoreContainer.innerHTML = `<button id="btn-load-more" class="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-full font-bold transition shadow-lg border border-gray-600 hover:border-white">Load More History</button>`;
                     document.getElementById('btn-load-more').onclick = () => { historyPage++; renderHistory(historyPage); };
                 } else loadMoreContainer.innerHTML = `<p class="text-gray-600 text-sm italic">End of history</p>`;
+                
                 isFetchingHistory = false; hideLoader();
             });
         }
+
         function renderSettings() { els.content.innerHTML = `<h1 class="text-3xl font-bold mb-6">Settings</h1><div class="grid gap-6 animate-fade"><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-file-export mr-3 text-[var(--primary)]"></i> Data Export</h2><p class="text-gray-400 mb-6">Download your entire listening/watching history as a CSV file for backup or analysis.</p><button id="export-btn" class="btn-primary px-6 py-3 rounded-lg font-bold shadow-lg hover:shadow-[var(--primary)]/30 transition">Export History to CSV</button></div><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-database mr-3 text-blue-500"></i> Storage</h2><p class="text-gray-400 mb-6">If images look broken or data is stale, try clearing the local cache.</p><button id="clear-cache-btn" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-bold shadow-lg transition">Clear Local Cache</button></div></div>`; setTimeout(() => { const exportBtn = document.getElementById('export-btn'); const clearBtn = document.getElementById('clear-cache-btn'); if(exportBtn) exportBtn.onclick = async () => { showLoader(); try { const data = await fetchDirect('/sync/history?limit=10000'); if(!data.length) return showToast('No history', 'error'); const csv = "Title,Type,Year,TraktID,WatchedAt\n" + data.map(i => `${(i.type==='episode'?`${i.show.title}: ${i.episode.title}`:i.movie.title).replace(/,/g,'')},${i.type},${i.type==='episode'?i.show.year:i.movie.year},${i.type==='episode'?i.episode.ids.trakt:i.movie.ids.trakt},${i.watched_at}`).join("\n"); const link = document.createElement("a"); link.href = encodeURI("data:text/csv;charset=utf-8,"+csv); link.download = "history.csv"; document.body.appendChild(link); link.click(); link.remove(); showToast('Exported'); } catch(e) { showToast('Export failed', 'error'); } hideLoader(); }; if(clearBtn) clearBtn.onclick = () => { localStorage.clear(); showToast('Cache Cleared! Refreshing...'); setTimeout(() => location.reload(), 1500); }; }, 100); }
         function renderWatchlist(sort = 'added') { els.content.innerHTML = `<div class="flex justify-between items-center mb-6 mt-4"><h2 class="text-2xl font-bold border-l-4 border-[var(--primary)] px-2">Your Watchlist</h2><select id="wl-sort" class="bg-gray-800 border border-gray-700 text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]"><option value="added" ${sort==='added'?'selected':''}>Recently Added</option><option value="rank" ${sort==='rank'?'selected':''}>Rank</option><option value="title" ${sort==='title'?'selected':''}>Title</option><option value="released" ${sort==='released'?'selected':''}>Release Date</option><option value="runtime" ${sort==='runtime'?'selected':''}>Runtime</option></select></div><div id="wl-grid"></div>`; showLoader(); document.getElementById('wl-sort').onchange = (e) => renderWatchlist(e.target.value); fetchSmart(`/sync/watchlist/movies?extended=images&sort=${sort},asc`, (movies) => { fetchSmart(`/sync/watchlist/shows?extended=images&sort=${sort},asc`, (shows) => { let data = [...movies.map(m=>({...m, type:'movie'})), ...shows.map(s=>({...s, type:'show'}))]; if (sort === 'added' || sort === 'released') data.sort((a, b) => new Date(b[sort==='added'?'listed_at':'released']) - new Date(a[sort==='added'?'listed_at':'released'])); else if (sort === 'title') data.sort((a, b) => (a.movie||a.show).title.localeCompare((b.movie||b.show).title)); if(data.length === 0) document.getElementById('wl-grid').innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-inbox text-6xl mb-4 opacity-50"></i><p>Your watchlist is empty.</p></div>`; else renderGrid('', data, false, 'wl-grid'); hideLoader(); }, `cache_wl_shows_${sort}`); }, `cache_wl_movies_${sort}`); }
         async function handleAction(shouldRate) { els.modal.classList.add('hidden'); showLoader(); const dateStr = document.getElementById('custom-date').value; const date = dateStr ? new Date(dateStr).toISOString() : selectedDate; const rating = parseInt(els.ratingSlider.value); try { const ids = { ids: { trakt: currentModalItem.item.ids.trakt } }; const rootKey = currentModalItem.type === 'episode' ? 'episodes' : 'movies'; const payloadLog = { [rootKey]: [{ ...ids, watched_at: date }] }; await fetch(`${TRAKT_API_URL}/sync/history`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadLog) }); if (shouldRate) { const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); showToast(`Logged & Rated ${rating}/10`); } else showToast(`Logged successfully`); } catch(e) { showToast('Action failed', 'error'); } hideLoader(); }

@@ -40,13 +40,23 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+
+  // NETWORK FIRST: For index.html, root /, and changelog data
+  // This ensures you always get the latest version if you are online.
+  if (url.pathname.endsWith('index.html') || url.pathname.endsWith('/') || url.pathname.includes('changelog-data')) {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => caches.match(event.request)) // Fallback to cache if offline
+    );
+    return;
+  }
+
+  // CACHE FIRST: For everything else (CSS, Images, JS libs)
   event.respondWith(
     caches.match(event.request)
       .then(response => {
-        if (response) {
-          return response; // Serve from cache
-        }
-        return fetch(event.request); // Fetch from network
+        return response || fetch(event.request);
       })
   );
 });
