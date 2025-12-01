@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+        version: "v9.39.1-alpha",
+        date: "2025-12-01",
+        changes: [
+            "In VidTrackr: Added date watched next to time watched on recently watched media (Dashboard page).",
+            ]
+    },
+    {
         version: "v9.39.0-alpha",
         date: "2025-11-30",
         changes: [
