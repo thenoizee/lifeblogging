@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.40.0-alpha",
+    date: "2025-12-02",
+    changes: [
+        "Fixed critical authentication loop by switching to Implicit Grant flow, eliminating '401 Unauthorized' errors.",
+        "Added a 'Stream Now' button to details pages, linking directly to Trakt's 'Watch Now' service to find available streaming platforms.",
+        "Merged separate Watchlist and Custom Lists pages into a single, unified 'Library' tab with sub-navigation.",
+        "Implemented local token persistence to ensure users remain logged in across sessions even if database connectivity lags.",
+        "Updated mobile navigation bar to point to the new Library section."
+    ]
+    },
+    {
         version: "v9.39.1-alpha",
         date: "2025-12-01",
         changes: [

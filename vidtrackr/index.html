@@ -86,9 +86,8 @@
                     </a>
                     <nav id="main-nav" class="hidden md:flex space-x-6 text-sm font-medium">
                         <a href="#dashboard" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">Dashboard</a>
-                        <a href="#watchlist" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">Watchlist</a>
+                        <a href="#library" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">Library</a>
                         <a href="#progress" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">Progress</a>
-                        <a href="#lists" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">Lists</a>
                         <a href="#history" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">History</a>
                         <a href="#settings" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">Settings</a>
                     </nav>
@@ -126,7 +125,7 @@
 
     <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--card)] border-t border-gray-800 z-50 flex justify-around py-3 pb-safe">
         <a href="#dashboard" class="mobile-nav-link active"><i class="fa-solid fa-house"></i><span>Home</span></a>
-        <a href="#watchlist" class="mobile-nav-link"><i class="fa-solid fa-bookmark"></i><span>Watchlist</span></a>
+        <a href="#library" class="mobile-nav-link"><i class="fa-solid fa-layer-group"></i><span>Library</span></a>
         <a href="#progress" class="mobile-nav-link"><i class="fa-solid fa-chart-pie"></i><span>Progress</span></a>
         <a href="#history" class="mobile-nav-link"><i class="fa-solid fa-clock-rotate-left"></i><span>History</span></a>
         <a href="#settings" class="mobile-nav-link"><i class="fa-solid fa-user"></i><span>Profile</span></a>
@@ -194,15 +193,28 @@
         const TRAKT_API_URL = 'https://api.trakt.tv';
         const PLACEHOLDER_IMG = 'https://placehold.co/400x600/1f2937/FFF?text=No+Image';
 
+        // --- AUTH & TOKEN HANDLING ---
+        const REDIRECT_URI = window.location.href.split('#')[0].split('?')[0];
+
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        if (hashParams.has('access_token')) {
+            const newToken = hashParams.get('access_token');
+            console.log("New Token Received:", newToken);
+            localStorage.setItem('trakt_token', newToken); 
+            window.history.replaceState({}, document.title, REDIRECT_URI);
+            window.location.reload(); 
+        }
+
         // --- State ---
         let currentUser = null;
-        let traktAccessToken = null;
+        let traktAccessToken = localStorage.getItem('trakt_token');
         let currentModalItem = null;
         let selectedDate = new Date().toISOString();
         let userRatings = new Map();
         let historyPage = 1;
         let isFetchingHistory = false;
         let progressChartInstance = null;
+        let isAuthErrorHandling = false;
 
         // --- DOM ---
         const els = {
@@ -215,6 +227,7 @@
             ratingValue: document.getElementById('rating-value'),
             toastContainer: document.getElementById('toast-container')
         };
+
         // --- Helpers ---
         const showLoader = () => els.loader.classList.remove('hidden');
         const hideLoader = () => els.loader.classList.add('hidden');
@@ -233,7 +246,6 @@
 
         const showToast = (msg, type = 'success') => {
             const toast = document.createElement('div');
-            // CHANGED: Improved styling for better visibility
             const colors = type === 'success' 
                 ? 'bg-green-900/90 border-green-500 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]' 
                 : 'bg-red-900/90 border-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.3)]';
@@ -249,11 +261,11 @@
             `;
             
             toast.onclick = () => toast.remove();
-            document.body.appendChild(toast); // Append to body to ensure it's on top of everything
+            document.body.appendChild(toast);
             setTimeout(() => { 
                 toast.style.transition = 'all 0.5s ease';
                 toast.style.opacity = '0'; 
-                toast.style.transform = 'translate(-50%, 20px)'; // Drop down effect
+                toast.style.transform = 'translate(-50%, 20px)'; 
                 setTimeout(()=>toast.remove(), 500); 
             }, 3000);
         };
@@ -261,7 +273,6 @@
         function getImage(item, typeOverride = null, preferLandscape = false) {
             const type = typeOverride || item.type;
             const data = (type && item[type]) ? item[type] : item;
-            
             const extract = (val) => {
                 if (!val) return null;
                 if (Array.isArray(val)) return extract(val[0]);
@@ -299,47 +310,6 @@
             return url;
         }
 
-// 1. Navigation Helper
-window.navigateEpisode = async (showId, season, number) => {
-    if(number < 1) return showToast('Start of season reached', 'error');
-    showLoader();
-    try {
-        const res = await fetch(`${TRAKT_API_URL}/shows/${showId}/seasons/${season}/episodes/${number}`, { 
-            headers: { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': TRAKT_CLIENT_ID }
-        });
-        if(!res.ok) throw new Error();
-        const eps = await res.json();
-        location.hash = `#detail/episode/${eps.ids.trakt}`;
-    } catch(e) { showToast('No episode found in that direction', 'error'); hideLoader(); }
-};
-
-// 2. Delete/Edit Helpers
-window.deleteHistoryItem = async (id, type, watchedAt, btnElement) => {
-    if(!confirm('Delete this play from history?')) return;
-    const row = btnElement.closest('.history-row');
-    row.style.opacity = '0.5';
-    try {
-        const payload = { [type === 'episode' ? 'episodes' : 'movies']: [{ ids: { trakt: id }, watched_at: watchedAt }] };
-        await fetch(`${TRAKT_API_URL}/sync/history/remove`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payload) });
-        row.remove(); showToast('Removed from history');
-    } catch(e) { row.style.opacity = '1'; showToast('Failed to delete', 'error'); }
-};
-
-window.editHistoryItem = async (id, title, type, watchedAt) => {
-    if(!confirm('Proceed to edit (remove old, log new)?')) return;
-    try {
-        const payload = { [type === 'episode' ? 'episodes' : 'movies']: [{ ids: { trakt: id }, watched_at: watchedAt }] };
-        await fetch(`${TRAKT_API_URL}/sync/history/remove`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payload) });
-        const data = { ids: { trakt: id }, title: title }; 
-        currentModalItem = { item: data, type: type };
-        document.getElementById('modal-title').innerText = title;
-        document.getElementById('scrobble-modal').classList.remove('hidden');
-        const d = new Date(watchedAt); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-        document.getElementById('custom-date').value = d.toISOString().slice(0, 16);
-        showToast('Entry removed. Set new details.');
-    } catch(e) { showToast('Error editing', 'error'); }
-};
-
         // --- Card Component ---
         const createCardHtml = (item, typeOverride = null) => {
             const type = typeOverride || item.type;
@@ -372,28 +342,52 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 </div>
             </div>`;
         };
-        // --- API ---
+
+        // --- API & AUTH RECOVERY ---
         const traktHeader = () => ({ 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': TRAKT_CLIENT_ID, 'Authorization': `Bearer ${traktAccessToken}` });
+
+        const handleAuthError = () => {
+            if (isAuthErrorHandling) return;
+            isAuthErrorHandling = true;
+            showToast('Trakt Session Expired! Redirecting...', 'error');
+            setTimeout(() => {
+                if(confirm("Your Trakt connection has expired. Click OK to re-connect.")) {
+                    const authUrl = `https://trakt.tv/oauth/authorize?response_type=token&client_id=${TRAKT_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+                    window.location.href = authUrl;
+                } else {
+                    isAuthErrorHandling = false; 
+                }
+            }, 1000);
+        };
+
+        async function fetchDirect(endpoint) {
+            if (!traktAccessToken) { handleAuthError(); throw new Error("No Token"); }
+            const res = await fetch(`${TRAKT_API_URL}${endpoint}`, { headers: traktHeader() });
+            
+            if (res.status === 401) {
+                handleAuthError();
+                throw new Error('API Error 401: Unauthorized');
+            }
+            if (!res.ok) throw new Error('API Error ' + res.status);
+            return await res.json();
+        }
+
         async function fetchSmart(endpoint, renderFn, cacheKey = null) {
             const key = cacheKey || `trakt_cache_${endpoint}`;
             const cached = localStorage.getItem(key);
             if (cached) { try { renderFn(JSON.parse(cached), true); } catch(e){} } else showLoader();
             try {
-                const res = await fetch(`${TRAKT_API_URL}${endpoint}`, { headers: traktHeader() });
-                if (!res.ok) throw new Error();
-                const freshData = await res.json();
+                const freshData = await fetchDirect(endpoint); 
                 if (JSON.stringify(freshData) !== cached) {
                     localStorage.setItem(key, JSON.stringify(freshData));
                     renderFn(freshData, false);
                 }
-            } catch (e) { if(!cached) showToast("Connection error", 'error'); } 
+            } catch (e) { 
+                if(!cached && e.message !== 'API Error 401: Unauthorized') showToast("Connection error", 'error'); 
+            } 
             finally { if(!cached) hideLoader(); }
         }
-        async function fetchDirect(endpoint) {
-            const res = await fetch(`${TRAKT_API_URL}${endpoint}`, { headers: traktHeader() });
-            if (!res.ok) throw new Error('API Error ' + res.status);
-            return await res.json();
-        }
+
         async function syncUserRatings() {
             try {
                 const [movies, shows] = await Promise.all([ fetchDirect('/sync/ratings/movies'), fetchDirect('/sync/ratings/shows') ]);
@@ -402,6 +396,7 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 shows.forEach(r => userRatings.set(r.show.ids.trakt, r.rating));
             } catch(e) { console.warn("Could not sync ratings", e); }
         }
+
         // --- Renderers ---
         function renderGrid(title, items, append = false, containerId = 'content') {
             const gridHtml = `${!append && title ? `<h2 class="text-2xl font-bold mb-6 mt-8 px-2 border-l-4 border-[var(--primary)] animate-fade">${title}</h2>` : ''}<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 mb-8 animate-fade">${items.map(item => createCardHtml(item)).join('')}</div>`;
@@ -453,12 +448,8 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     const title = type === 'episode' ? `${h.show.title}: ${h.episode.title}` : h.movie.title;
                     const subTitle = type === 'episode' ? `S${h.episode.season}E${h.episode.number}` : h.movie.year;
                     const targetHash = type === 'episode' ? `#detail/episode/${h.episode.ids.trakt}` : `#detail/movie/${h.movie.ids.trakt}`;
-                    
-                    // CHANGED: Show Date AND Time
                     const dateObj = new Date(h.watched_at);
-                    const dateStr = dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'});
-                    const timeStr = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                    const dateTimeDisplay = `${dateStr} @ ${timeStr}`;
+                    const dateTimeDisplay = `${dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})} @ ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
 
                     return `
                         <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer" onclick="location.hash='${targetHash}'">
@@ -490,7 +481,6 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 const today = new Date().toISOString().split('T')[0];
                 const calendar = await fetchDirect(`/calendars/my/shows/${today}/7?extended=images`);
                 if(calendar.length > 0) {
-                    // CHANGED: line-clamp-2 and formatting
                     container.innerHTML = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-green-500">Airing This Week</h2><div class="flex gap-4 overflow-x-auto pb-4 hide-scroll">${calendar.map(item => `<div class="flex-shrink-0 w-64 card p-4 rounded-xl border border-gray-700 hover:border-green-500 transition cursor-pointer" onclick="location.hash='#detail/episode/${item.episode.ids.trakt}'"><div class="flex gap-3 mb-3"><img src="${getImage(item.show)}" class="w-12 h-16 object-cover rounded shadow"><div><p class="font-bold text-sm text-green-400">${new Date(item.first_aired).toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'})}</p><p class="font-bold text-sm leading-tight line-clamp-2 w-40 mb-1">${item.show.title}</p><p class="text-xs text-gray-500">S${item.episode.season}E${item.episode.number}</p></div></div><p class="text-xs text-gray-300 truncate">${item.episode.title}</p></div>`).join('')}</div>`;
                     container.classList.remove('hidden');
                 }
@@ -537,7 +527,6 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     <h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     ${nextEpisodes.map(ep => {
-                        // CHANGED: Increased padding (py-4 h-12) for mobile touch targets
                         const rateBtns = Array.from({length: 10}, (_, i) => 10 - i).map(n => 
                             `<button onclick="rateDirect(${ep.ids.trakt}, 'episode', ${n})" class="block w-full text-left px-4 py-4 h-12 hover:bg-[var(--primary)] text-sm font-bold text-gray-300 hover:text-white transition flex justify-between items-center border-b border-gray-700 last:border-0 active:bg-[var(--primary)]">
                                 <span>${n}</span> <i class="fa-solid fa-star text-[10px] text-yellow-500"></i>
@@ -574,7 +563,6 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
         }
 
         async function renderProgress() {
-            // ... (Same Progress code as before, but ensure grid-cols-1 on mobile) ...
             els.content.innerHTML = `
                 <h1 class="text-3xl font-bold mb-6">Your Progress</h1>
                 <div class="card p-6 rounded-2xl mb-10 border border-gray-800 shadow-xl">
@@ -584,7 +572,6 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 <h2 class="text-2xl font-bold mb-6 border-l-4 border-yellow-500 px-2">Show Progress</h2>
                 <div id="progress-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade"></div>
             `;
-            // ... (Rest of fetch/chart logic remains same as original) ...
             showLoader();
             try {
                 const today = new Date();
@@ -599,7 +586,7 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 const chartData = dailyData.map(d => d.length);
                 if(progressChartInstance) progressChartInstance.destroy();
                 const ctx = document.getElementById('activityChart').getContext('2d');
-                progressChartInstance = new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ label: 'Items', data: chartData, backgroundColor: '#ed2224', borderRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#374151' }, ticks: { color: '#9ca3af', precision: 0 } }, x: { grid: { display: false }, ticks: { color: '#9ca3af' } } } } });
+                progressChartInstance = new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ label: 'Items', data: chartData, backgroundColor: '#ed2224', borderRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#374151' }, ticks: { color: '#9ca3af', precision: 0 } }, x: { grid: { display: false }, ticks: { color: '#9ca3af' } } } } } );
 
                 const watchedShows = await fetchDirect('/sync/watched/shows?extended=noseasons');
                 watchedShows.sort((a,b) => new Date(b.last_watched_at) - new Date(a.last_watched_at));
@@ -626,7 +613,6 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 let item, notes, history = [], related = [], showInfo = null, people = null;
                 let showProgress = null; 
                 
-                // --- FETCHING DATA ---
                 if (isEpisode) {
                     const searchResults = await fetchDirect(`/search/trakt/${id}?type=episode&extended=full,images`);
                     if(searchResults && searchResults[0]) {
@@ -643,22 +629,18 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
                         (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=20`) : []),
                         fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`),
-                        // FIX: Added extended=images to fetch headshots
                         fetchDirect(`/${type}s/${id}/people?extended=images`) 
                     ]);
                 }
                 if(isEpisode) notes = await getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey));
 
-                // --- DATA PROCESSING ---
                 const userNote = notes.exists() ? notes.data().text : '';
                 const myRating = item.user_rating;
                 const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                 const titleText = isEpisode ? `${item.season}x${item.number}: ${item.title}` : item.title;
                 const fullTitle = isEpisode ? `${showInfo.title}: ${item.title}` : item.title;
-
                 const runtimeStr = item.runtime ? `${Math.floor(item.runtime/60)}h ${item.runtime%60}m` : 'N/A';
                 
-                // FIX: Genres logic changed to handle strings directly
                 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
                 const genresHtml = item.genres ? item.genres.map(g => {
                     const val = typeof g === 'string' ? g : g.name; 
@@ -669,13 +651,14 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 const network = item.network || (item.production_countries ? item.production_countries[0]?.name : 'N/A');
                 const trailerUrl = item.trailer ? (item.trailer.includes('youtube') ? item.trailer : null) : null;
                 const language = item.language ? item.language.toUpperCase() : 'EN';
-                
-                // NEW: Studios & Crew logic
                 const studios = item.production_companies ? item.production_companies.slice(0,2).map(c => c.name).join(', ') : 'N/A';
                 let director = 'N/A';
                 if(people && people.crew && people.crew.directing) {
                     director = people.crew.directing[0]?.person?.name || 'N/A';
                 }
+
+                // NEW: Stream Link
+                const watchLink = `https://trakt.tv/${type === 'episode' ? 'shows' : type + 's'}/${id}/watchnow`;
 
                 const watchedBadge = isWatched 
                     ? `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> Watched</span>`
@@ -685,20 +668,17 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     ? `<span class="bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(234,179,8,0.2)]"><i class="fa-solid fa-star mr-2"></i> ${myRating}</span>`
                     : `<button class="bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" onclick="document.querySelector('.scrobble-btn').click()"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
 
-                // --- HISTORY HTML ---
                 let historyHtml = '';
                 if (history.length > 0) {
                       historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Watch History</h3><div class="space-y-2">${history.map(h => `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}</span><span class="text-gray-500 font-mono text-xs">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex gap-2"><button class="text-xs bg-blue-900/30 text-blue-400 p-2 rounded hover:bg-blue-500 hover:text-white transition" onclick="window.editHistoryItem('${id}', '${fullTitle.replace(/'/g, "&apos;")}', '${type}', '${h.watched_at}')" title="Edit Date"><i class="fa-solid fa-pen"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${id}', '${type}', '${h.watched_at}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`).join('')}</div></div>`;
                 }
 
-                // --- CAST HTML (FIXED) ---
                 let castHtml = '';
                 if (people && people.cast && people.cast.length > 0) {
                     castHtml = `
                     <h3 class="text-xs font-bold text-[var(--primary)] mb-4 uppercase tracking-widest mt-8">Top Cast</h3>
                     <div class="flex gap-4 overflow-x-auto pb-6 hide-scroll">
                         ${people.cast.slice(0, 10).map(person => {
-                             // FIX: Use the actual image function
                              const pImg = getImage(person.person, 'person'); 
                              return `
                              <div class="flex-shrink-0 w-28 group relative">
@@ -714,11 +694,9 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     </div>`;
                 }
 
-                // --- MAIN RENDER START ---
                 let html = `<div class="animate-fade max-w-6xl mx-auto">`;
 
                 if (isEpisode) {
-                    // ... (Keeping Episode logic mostly same, just ensuring style consistency) ...
                     const bgImg = getImage(item, 'episode', true); 
                     html += `
                     <button onclick="history.back()" class="absolute top-24 left-4 z-20 text-sm bg-black/50 hover:bg-black/80 text-white px-4 py-2 rounded-full backdrop-blur-md transition"><i class="fa-solid fa-arrow-left"></i></button>
@@ -763,7 +741,6 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     </div>`;
 
                 } else {
-                    // --- MOVIE / SHOW DETAIL ---
                     const img = getImage(item, null, true);
                     html += `
                     <button onclick="history.back()" class="mb-6 text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition w-fit"><i class="fa-solid fa-arrow-left"></i> Back</button>
@@ -775,6 +752,10 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                             </div>
                             
                             <div class="mt-6 flex flex-col gap-3">
+                                <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-play"></i> Stream Now
+                                </a>
+
                                 ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition border border-gray-700">Official Website <i class="fa-solid fa-up-right-from-square ml-1"></i></a>` : ''}
                                 ${trailerUrl ? `<a href="${trailerUrl}" target="_blank" class="w-full text-center bg-red-900/20 hover:bg-red-900/40 text-red-500 py-2 rounded-lg font-bold text-xs transition border border-red-900/30"><i class="fa-brands fa-youtube mr-1"></i> Watch Trailer</a>` : ''}
                             </div>
@@ -839,7 +820,6 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 html += `</div>`;
                 els.content.innerHTML = html;
 
-                // --- EVENT LISTENERS ---
                 const saveBtn = document.getElementById('save-note');
                 if(saveBtn) saveBtn.onclick = async () => { 
                     saveBtn.innerText = 'Saving...';
@@ -847,7 +827,6 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     saveBtn.innerText = 'Saved!'; setTimeout(()=>saveBtn.innerText='Save', 2000); showToast('Note saved'); 
                 };
 
-                // --- SHOW SEASONS LOGIC (Standard - no changes needed here but included for closure) ---
                 if (type === 'show') {
                     const mount = document.getElementById('seasons-mount');
                     mount.innerHTML = `<div class="flex items-center gap-3 mb-6"><div class="animate-spin rounded-full h-6 w-6 border-2 border-yellow-500 border-t-transparent"></div> <span class="text-gray-400">Loading seasons...</span></div>`;
@@ -886,8 +865,7 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
             hideLoader();
         }
 
-        // --- Other Render Functions & Routing (Standard) ---
-       function renderHistory(page = 1) {
+        function renderHistory(page = 1) {
             if (page === 1) { els.content.innerHTML = ''; historyPage = 1; }
             isFetchingHistory = true; showLoader();
             
@@ -907,11 +885,9 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                     const myRating = userRatings.get(parseInt(navId));
                     const rateDisplay = myRating ? `<span class="text-green-400 font-bold ml-auto"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
                     
-                    // --- CHANGED SECTION: DATE FORMATTING ---
                     const wDate = new Date(item.watched_at);
                     const dateStr = wDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
                     const timeStr = wDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    // ----------------------------------------
 
                     return `<div class="card p-3 rounded-xl flex items-center gap-4 hover:bg-[var(--card)] border border-transparent hover:border-gray-600 transition group relative animate-fade shadow-sm bg-[var(--card)]/50" onclick="location.hash='#detail/${navType}/${navId}'"><div class="relative w-32 h-20 flex-shrink-0 overflow-hidden rounded-lg shadow-md"><img src="${img}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">${type}</div></div><div class="flex-grow min-w-0 flex flex-col justify-center"><div class="flex items-start"><h3 class="font-bold text-base leading-tight cursor-pointer hover:text-[var(--primary)] transition mr-2">${titleText}</h3>${rateDisplay}</div><div class="flex items-center gap-3 text-xs text-gray-500 mt-2"><span><i class="fa-solid fa-calendar-days opacity-50 mr-1 text-[var(--primary)]"></i> ${dateStr} <span class="opacity-50 mx-1">|</span> <i class="fa-solid fa-clock opacity-50 mr-1"></i> ${timeStr}</span></div></div></div>`;
                 }).join('');
@@ -929,33 +905,97 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
         }
 
         function renderSettings() { els.content.innerHTML = `<h1 class="text-3xl font-bold mb-6">Settings</h1><div class="grid gap-6 animate-fade"><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-file-export mr-3 text-[var(--primary)]"></i> Data Export</h2><p class="text-gray-400 mb-6">Download your entire listening/watching history as a CSV file for backup or analysis.</p><button id="export-btn" class="btn-primary px-6 py-3 rounded-lg font-bold shadow-lg hover:shadow-[var(--primary)]/30 transition">Export History to CSV</button></div><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-database mr-3 text-blue-500"></i> Storage</h2><p class="text-gray-400 mb-6">If images look broken or data is stale, try clearing the local cache.</p><button id="clear-cache-btn" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-bold shadow-lg transition">Clear Local Cache</button></div></div>`; setTimeout(() => { const exportBtn = document.getElementById('export-btn'); const clearBtn = document.getElementById('clear-cache-btn'); if(exportBtn) exportBtn.onclick = async () => { showLoader(); try { const data = await fetchDirect('/sync/history?limit=10000'); if(!data.length) return showToast('No history', 'error'); const csv = "Title,Type,Year,TraktID,WatchedAt\n" + data.map(i => `${(i.type==='episode'?`${i.show.title}: ${i.episode.title}`:i.movie.title).replace(/,/g,'')},${i.type},${i.type==='episode'?i.show.year:i.movie.year},${i.type==='episode'?i.episode.ids.trakt:i.movie.ids.trakt},${i.watched_at}`).join("\n"); const link = document.createElement("a"); link.href = encodeURI("data:text/csv;charset=utf-8,"+csv); link.download = "history.csv"; document.body.appendChild(link); link.click(); link.remove(); showToast('Exported'); } catch(e) { showToast('Export failed', 'error'); } hideLoader(); }; if(clearBtn) clearBtn.onclick = () => { localStorage.clear(); showToast('Cache Cleared! Refreshing...'); setTimeout(() => location.reload(), 1500); }; }, 100); }
-        function renderWatchlist(sort = 'added') { els.content.innerHTML = `<div class="flex justify-between items-center mb-6 mt-4"><h2 class="text-2xl font-bold border-l-4 border-[var(--primary)] px-2">Your Watchlist</h2><select id="wl-sort" class="bg-gray-800 border border-gray-700 text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]"><option value="added" ${sort==='added'?'selected':''}>Recently Added</option><option value="rank" ${sort==='rank'?'selected':''}>Rank</option><option value="title" ${sort==='title'?'selected':''}>Title</option><option value="released" ${sort==='released'?'selected':''}>Release Date</option><option value="runtime" ${sort==='runtime'?'selected':''}>Runtime</option></select></div><div id="wl-grid"></div>`; showLoader(); document.getElementById('wl-sort').onchange = (e) => renderWatchlist(e.target.value); fetchSmart(`/sync/watchlist/movies?extended=images&sort=${sort},asc`, (movies) => { fetchSmart(`/sync/watchlist/shows?extended=images&sort=${sort},asc`, (shows) => { let data = [...movies.map(m=>({...m, type:'movie'})), ...shows.map(s=>({...s, type:'show'}))]; if (sort === 'added' || sort === 'released') data.sort((a, b) => new Date(b[sort==='added'?'listed_at':'released']) - new Date(a[sort==='added'?'listed_at':'released'])); else if (sort === 'title') data.sort((a, b) => (a.movie||a.show).title.localeCompare((b.movie||b.show).title)); if(data.length === 0) document.getElementById('wl-grid').innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-inbox text-6xl mb-4 opacity-50"></i><p>Your watchlist is empty.</p></div>`; else renderGrid('', data, false, 'wl-grid'); hideLoader(); }, `cache_wl_shows_${sort}`); }, `cache_wl_movies_${sort}`); }
+        
+        // --- LIBRARY RENDERERS (MERGED) ---
+        function renderLibrary(activeTab = 'watchlist') {
+            els.content.innerHTML = `
+                <div class="flex items-center justify-between mb-8 mt-4 animate-fade">
+                    <h2 class="text-2xl font-bold border-l-4 border-[var(--primary)] px-3">Your Library</h2>
+                    <div class="flex bg-gray-900/50 p-1 rounded-lg border border-gray-700">
+                        <button id="tab-wl" class="px-5 py-2 rounded-md text-sm font-bold transition ${activeTab === 'watchlist' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('watchlist')">Watchlist</button>
+                        <button id="tab-lists" class="px-5 py-2 rounded-md text-sm font-bold transition ${activeTab === 'lists' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('lists')">Custom Lists</button>
+                    </div>
+                </div>
+                <div id="lib-target"></div>
+            `;
+            
+            // Helper to switch content without full page reload
+            window.switchLib = (tab) => {
+                const btnWl = document.getElementById('tab-wl');
+                const btnLists = document.getElementById('tab-lists');
+                
+                if(tab === 'watchlist') {
+                    btnWl.className = "px-5 py-2 rounded-md text-sm font-bold transition bg-[var(--primary)] text-white shadow";
+                    btnLists.className = "px-5 py-2 rounded-md text-sm font-bold transition text-gray-400 hover:text-white";
+                    renderWatchlist('added', 'lib-target');
+                } else {
+                    btnLists.className = "px-5 py-2 rounded-md text-sm font-bold transition bg-[var(--primary)] text-white shadow";
+                    btnWl.className = "px-5 py-2 rounded-md text-sm font-bold transition text-gray-400 hover:text-white";
+                    renderLists('lib-target');
+                }
+            };
+
+            // Init the default tab
+            if(activeTab === 'watchlist') renderWatchlist('added', 'lib-target');
+            else renderLists('lib-target');
+        }
+
+        function renderWatchlist(sort = 'added', containerId = 'content') { 
+            const container = document.getElementById(containerId) || els.content;
+            // Only add headers/controls if we are rendering into a fresh container (not just updating grid)
+            container.innerHTML = `<div class="flex justify-end mb-6 animate-fade"><select id="wl-sort" class="bg-gray-800 border border-gray-700 text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]"><option value="added" ${sort==='added'?'selected':''}>Recently Added</option><option value="rank" ${sort==='rank'?'selected':''}>Rank</option><option value="title" ${sort==='title'?'selected':''}>Title</option><option value="released" ${sort==='released'?'selected':''}>Release Date</option><option value="runtime" ${sort==='runtime'?'selected':''}>Runtime</option></select></div><div id="wl-grid"></div>`; 
+            
+            showLoader(); 
+            document.getElementById('wl-sort').onchange = (e) => renderWatchlist(e.target.value, containerId); 
+            
+            fetchSmart(`/sync/watchlist/movies?extended=images&sort=${sort},asc`, (movies) => { 
+                fetchSmart(`/sync/watchlist/shows?extended=images&sort=${sort},asc`, (shows) => { 
+                    let data = [...movies.map(m=>({...m, type:'movie'})), ...shows.map(s=>({...s, type:'show'}))]; 
+                    if (sort === 'added' || sort === 'released') data.sort((a, b) => new Date(b[sort==='added'?'listed_at':'released']) - new Date(a[sort==='added'?'listed_at':'released'])); 
+                    else if (sort === 'title') data.sort((a, b) => (a.movie||a.show).title.localeCompare((b.movie||b.show).title)); 
+                    
+                    if(data.length === 0) document.getElementById('wl-grid').innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-inbox text-6xl mb-4 opacity-50"></i><p>Your watchlist is empty.</p></div>`; 
+                    else renderGrid('', data, false, 'wl-grid'); 
+                    hideLoader(); 
+                }, `cache_wl_shows_${sort}`); 
+            }, `cache_wl_movies_${sort}`); 
+        }
+
+        async function renderLists(containerId = 'content') { 
+            const container = document.getElementById(containerId) || els.content;
+            container.innerHTML = ''; 
+            showLoader(); 
+            try { 
+                const lists = await fetchDirect(`/users/me/lists?extended=full`); 
+                if (lists.length === 0) container.innerHTML = `<div class="text-center p-20 text-gray-500"><i class="fa-solid fa-list-ul text-6xl mb-4 opacity-50"></i><p>You have no custom lists.</p></div>`; 
+                else container.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade">${lists.map(list => `<div class="card p-6 rounded-xl border border-gray-700 hover:border-purple-500 cursor-pointer transition group" onclick="location.hash='#lists/${list.ids.trakt}'"><div class="flex justify-between items-start mb-4"><h3 class="font-bold text-xl group-hover:text-purple-400 transition">${list.name}</h3><span class="bg-gray-800 text-xs px-2 py-1 rounded text-gray-400"><i class="fa-solid fa-layer-group mr-1"></i> ${list.item_count}</span></div><p class="text-gray-400 text-sm line-clamp-2 h-10 mb-4">${list.description || 'No description provided.'}</p><div class="flex items-center gap-4 text-xs text-gray-500"><span><i class="fa-solid fa-heart text-[var(--primary)] opacity-70"></i> ${list.likes}</span><span><i class="fa-solid fa-lock${list.privacy==='private'?'':'-open'}"></i> ${list.privacy}</span><span class="ml-auto text-purple-400 font-bold group-hover:translate-x-1 transition">View Items <i class="fa-solid fa-arrow-right"></i></span></div></div>`).join('')}</div>`; 
+            } catch (e) { showToast('Could not load lists', 'error'); } 
+            hideLoader(); 
+        }
+
         async function handleAction(shouldRate) { els.modal.classList.add('hidden'); showLoader(); const dateStr = document.getElementById('custom-date').value; const date = dateStr ? new Date(dateStr).toISOString() : selectedDate; const rating = parseInt(els.ratingSlider.value); try { const ids = { ids: { trakt: currentModalItem.item.ids.trakt } }; const rootKey = currentModalItem.type === 'episode' ? 'episodes' : 'movies'; const payloadLog = { [rootKey]: [{ ...ids, watched_at: date }] }; await fetch(`${TRAKT_API_URL}/sync/history`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadLog) }); if (shouldRate) { const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); showToast(`Logged & Rated ${rating}/10`); } else showToast(`Logged successfully`); } catch(e) { showToast('Action failed', 'error'); } hideLoader(); }
         async function loadSearch(query) { if (!query) return; showLoader(); els.content.innerHTML = ''; try { const data = await fetchDirect(`/search/movie,show?query=${encodeURIComponent(query)}&extended=images`); if (data.length === 0) els.content.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-magnifying-glass text-6xl mb-4 opacity-50"></i><p>No results found.</p></div>`; else renderGrid(`Results: "${decodeURIComponent(query)}"`, data); } catch (e) { showToast('Search failed', 'error'); } hideLoader(); }
-        async function renderLists() { els.content.innerHTML = ''; showLoader(); try { const lists = await fetchDirect(`/users/me/lists?extended=full`); if (lists.length === 0) els.content.innerHTML = `<div class="text-center p-20 text-gray-500"><i class="fa-solid fa-list-ul text-6xl mb-4 opacity-50"></i><p>You have no custom lists.</p></div>`; else els.content.innerHTML = `<h2 class="text-2xl font-bold mb-6 mt-4 px-2 border-l-4 border-purple-500">Your Custom Lists</h2><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade">${lists.map(list => `<div class="card p-6 rounded-xl border border-gray-700 hover:border-purple-500 cursor-pointer transition group" onclick="location.hash='#lists/${list.ids.trakt}'"><div class="flex justify-between items-start mb-4"><h3 class="font-bold text-xl group-hover:text-purple-400 transition">${list.name}</h3><span class="bg-gray-800 text-xs px-2 py-1 rounded text-gray-400"><i class="fa-solid fa-layer-group mr-1"></i> ${list.item_count}</span></div><p class="text-gray-400 text-sm line-clamp-2 h-10 mb-4">${list.description || 'No description provided.'}</p><div class="flex items-center gap-4 text-xs text-gray-500"><span><i class="fa-solid fa-heart text-[var(--primary)] opacity-70"></i> ${list.likes}</span><span><i class="fa-solid fa-lock${list.privacy==='private'?'':'-open'}"></i> ${list.privacy}</span><span class="ml-auto text-purple-400 font-bold group-hover:translate-x-1 transition">View Items <i class="fa-solid fa-arrow-right"></i></span></div></div>`).join('')}</div>`; } catch (e) { showToast('Could not load lists', 'error'); } hideLoader(); }
-        async function renderListItems(listId) { els.content.innerHTML = ''; showLoader(); try { const [listInfo, items] = await Promise.all([fetchDirect(`/users/me/lists/${listId}`), fetchDirect(`/users/me/lists/${listId}/items?extended=images`)]); els.content.innerHTML = `<div class="flex items-center justify-between mb-6"><div><h2 class="text-3xl font-bold">${listInfo.name}</h2><p class="text-gray-400 text-sm mt-1">${listInfo.item_count} items</p></div><button onclick="location.hash='#lists'" class="text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg transition"><i class="fa-solid fa-arrow-left mr-2"></i> Back to Lists</button></div><div id="list-grid"></div>`; if (items.length > 0) renderGrid('', items, false, 'list-grid'); else document.getElementById('list-grid').innerHTML = `<p class="text-gray-500 italic">This list is empty.</p>`; } catch (e) { showToast('Could not load list items', 'error'); } hideLoader(); }
+        async function renderListItems(listId) { els.content.innerHTML = ''; showLoader(); try { const [listInfo, items] = await Promise.all([fetchDirect(`/users/me/lists/${listId}`), fetchDirect(`/users/me/lists/${listId}/items?extended=images`)]); els.content.innerHTML = `<div class="flex items-center justify-between mb-6"><div><h2 class="text-3xl font-bold">${listInfo.name}</h2><p class="text-gray-400 text-sm mt-1">${listInfo.item_count} items</p></div><button onclick="location.hash='#library'" class="text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg transition"><i class="fa-solid fa-arrow-left mr-2"></i> Back to Lists</button></div><div id="list-grid"></div>`; if (items.length > 0) renderGrid('', items, false, 'list-grid'); else document.getElementById('list-grid').innerHTML = `<p class="text-gray-500 italic">This list is empty.</p>`; } catch (e) { showToast('Could not load list items', 'error'); } hideLoader(); }
 
         function handleRoute() {
             const hash = location.hash || '#dashboard';
-            // Update Desktop Nav
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
             const link = document.querySelector(`a[href="${hash.split('/')[0]}"]`);
             if(link) link.classList.add('active');
             
-            // Update Mobile Nav
             document.querySelectorAll('.mobile-nav-link').forEach(l => l.classList.remove('active'));
             const mobileLink = document.querySelector(`.mobile-nav-link[href="${hash.split('/')[0]}"]`);
             if(mobileLink) mobileLink.classList.add('active');
 
             if(hash.startsWith('#dashboard')) renderDashboard();
-            else if(hash.startsWith('#watchlist')) renderWatchlist();
+            else if(hash.startsWith('#library')) renderLibrary(); // CHANGED: Points to library
+            else if(hash.startsWith('#watchlist')) renderLibrary('watchlist'); // Redirect old hash
             else if(hash.startsWith('#history')) renderHistory();
             else if(hash.startsWith('#progress')) renderProgress();
             else if(hash.startsWith('#settings')) renderSettings();
-            else if(hash === '#lists') renderLists(); 
+            else if(hash === '#lists') renderLibrary('lists'); // Redirect old hash
             else if(hash.startsWith('#lists/')) renderListItems(hash.split('/')[1]);
             else if(hash.startsWith('#search')) loadSearch(hash.split('/')[1]);
-            // CHANGED: Support #detail/show/ID/season/NUM
             else if(hash.startsWith('#detail')) {
                 const parts = hash.split('/');
                 if(parts[3] === 'season' && parts[4]) {
@@ -974,7 +1014,6 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
             if (val.length > 1) location.hash = `#search/${val}`; else if (val.length === 0) history.back();
         }, 600);
         document.getElementById('search-input').addEventListener('input', searchHandler);
-        // Added Mobile Search Handler
         document.getElementById('mobile-search-input').addEventListener('input', searchHandler);
 
         document.addEventListener('click', e => {
@@ -1006,8 +1045,19 @@ window.editHistoryItem = async (id, title, type, watchedAt) => {
                 els.auth.innerHTML = `<button id="logout" class="text-xs text-red-500 hover:text-red-400 font-bold">Sign Out</button>`;
                 document.getElementById('logout').onclick = () => signOut(auth);
                 document.getElementById('main-nav').classList.remove('hidden'); els.searchContainer.classList.remove('hidden');
-                const snap = await getDoc(doc(db, 'users', user.uid, 'services', 'trakt'));
-                if (snap.exists()) { traktAccessToken = snap.data().accessToken; await syncUserRatings(); handleRoute(); }
+
+                if (!traktAccessToken) {
+                    try {
+                        const snap = await getDoc(doc(db, 'users', user.uid, 'services', 'trakt'));
+                        if (snap.exists()) { 
+                            traktAccessToken = snap.data().accessToken;
+                            localStorage.setItem('trakt_token', traktAccessToken); 
+                        }
+                    } catch(e) { console.warn("Firestore token check failed", e); }
+                }
+
+                if (traktAccessToken) { await syncUserRatings(); }
+                handleRoute();
             } else { 
                 els.content.innerHTML = `<div class="max-w-md mx-auto card p-10 rounded-2xl shadow-2xl mt-12 text-center animate-fade"><div class="mb-6 inline-block p-4 rounded-full bg-[var(--primary)]/10"><i class="fa-solid fa-ticket text-5xl text-[var(--primary)]"></i></div><h1 class="text-4xl font-bold mb-2 text-[var(--primary)]">VidTrackr</h1><p class="text-gray-400 mb-8">Sign in to track your movies and shows.</p><button class="w-full bg-white text-gray-900 font-bold py-3 rounded-lg hover:bg-gray-200 transition mb-4 shadow-lg" onclick="document.getElementById('email-login').classList.remove('hidden'); this.classList.add('hidden');">Sign In / Sign Up</button><form id="email-login" class="space-y-4 hidden animate-fade"><input type="email" id="email" placeholder="Email" class="w-full p-4 rounded-lg bg-[var(--bg)] border border-gray-700 focus:border-[var(--primary)] outline-none transition" required><input type="password" id="password" placeholder="Password" class="w-full p-4 rounded-lg bg-[var(--bg)] border border-gray-700 focus:border-[var(--primary)] outline-none transition" required><div class="flex gap-3"><button type="submit" name="login" class="flex-1 btn-primary py-3 rounded-lg font-bold">Login</button><button type="submit" name="signup" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-bold transition">Sign Up</button></div></form></div>`; 
                 document.getElementById('email-login').onsubmit = async (e) => { e.preventDefault(); try { if (e.submitter.name === 'signup') await createUserWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value); else await signInWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value); } catch(err) { showToast(err.message, 'error'); } };

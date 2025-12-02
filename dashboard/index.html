@@ -169,7 +169,7 @@
                     <a href="/medimanagr" class="text-xs text-pink-500 hover:underline">MediManagr</a>
                 </div>
                 <div id="meds-list" class="flex-grow custom-scroll overflow-y-auto space-y-2 pr-1 max-h-[140px]">
-                    <p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">No scheduled meds.</p>
+                    <p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">Loading schedule...</p>
                 </div>
             </div>
 
@@ -284,7 +284,7 @@
             dailyLogs: [],
             manualLogs: [],
             dailyPlan: [],
-            takenDoses: new Set(),
+            todayDoses: [], // Changed from Set to Array to hold full dose objects
             medsSchedule: []
         };
 
@@ -419,30 +419,73 @@
             ui.dailiesProgBar.style.width = `${prog}%`;
         };
 
+        // --- UPDATED MEDS RENDERER ---
         const renderMeds = () => {
             const dayName = new Date().toLocaleDateString('en-US', {weekday: 'long'});
             ui.medsList.innerHTML = '';
-            let medCount = 0;
-
+            
+            // 1. Build list of all scheduled doses for today
+            let scheduledDoses = [];
+            
             state.medsSchedule.forEach(med => {
                 if (med.isArchived) return;
+                
                 if (med.schedule && med.schedule.days.includes(dayName)) {
-                    medCount++;
-                    const isTaken = state.takenDoses.has(med.id);
-                    const div = document.createElement('div');
-                    div.className = `flex justify-between items-center p-2 rounded-lg text-xs ${isTaken ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-800'}`;
-                    div.innerHTML = `
-                        <div class="flex items-center gap-2">
-                            <i class="${med.icon || 'fas fa-pills'}" style="color: ${med.color || '#666'}"></i>
-                            <span class="${isTaken ? 'line-through opacity-60' : 'font-medium'} truncate max-w-[80px]">${med.name}</span>
-                        </div>
-                        <span class="font-bold text-[10px] ${isTaken ? 'text-green-600' : 'text-gray-400'}">${isTaken ? 'OK' : '...'}</span>
-                    `;
-                    ui.medsList.appendChild(div);
+                    // Split times (e.g., "08:00, 14:00")
+                    const times = med.schedule.times.split(',').map(t => t.trim()).filter(Boolean);
+                    
+                    times.forEach(time => {
+                        scheduledDoses.push({
+                            medId: med.id,
+                            name: med.name,
+                            icon: med.icon || 'fas fa-pills',
+                            color: med.color || '#666',
+                            time: time,
+                            status: 'pending' // Default status
+                        });
+                    });
                 }
             });
 
-            if (medCount === 0) ui.medsList.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">No meds today.</p>`;
+            // 2. Match logged doses to scheduled items
+            // We use a copy of todayDoses so we can consume them
+            let availableLogs = [...state.todayDoses];
+            
+            // Sort scheduled doses by time
+            scheduledDoses.sort((a, b) => a.time.localeCompare(b.time));
+
+            scheduledDoses.forEach(doseItem => {
+                // Find a taken log for this med
+                const logIndex = availableLogs.findIndex(log => log.medId === doseItem.medId && log.status === 'taken');
+                
+                if (logIndex !== -1) {
+                    doseItem.status = 'taken';
+                    availableLogs.splice(logIndex, 1); // Consume log so it doesn't count for next dose of same med
+                }
+            });
+
+            // 3. Render
+            if (scheduledDoses.length === 0) {
+                ui.medsList.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">No meds scheduled for today.</p>`;
+            } else {
+                scheduledDoses.forEach(dose => {
+                    const isTaken = dose.status === 'taken';
+                    const div = document.createElement('div');
+                    div.className = `flex justify-between items-center p-2 rounded-lg text-xs ${isTaken ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-800'}`;
+                    
+                    div.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <span class="font-mono text-[var(--text-secondary)] w-10 text-right">${dose.time}</span>
+                            <div class="flex items-center gap-2">
+                                <i class="${dose.icon}" style="color: ${dose.color}"></i>
+                                <span class="${isTaken ? 'line-through opacity-60' : 'font-medium'} truncate max-w-[90px]">${dose.name}</span>
+                            </div>
+                        </div>
+                        <i class="fas ${isTaken ? 'fa-check text-green-500' : 'fa-hourglass-half text-gray-300'}"></i>
+                    `;
+                    ui.medsList.appendChild(div);
+                });
+            }
         };
 
         // --- VidTrackr & PodTrackr ---
@@ -456,6 +499,17 @@
                         'Authorization': `Bearer ${accessToken}`
                     }
                 });
+
+                // NEW: Handle 401 specifically
+                if (response.status === 401) {
+                    ui.videoContainer.innerHTML = `
+                        <div class="w-full text-center flex flex-col justify-center h-full">
+                            <p class="text-xs text-red-500 font-bold mb-1">Session Expired</p>
+                            <a href="/vidtrackr" class="text-[10px] text-[var(--text-secondary)] underline hover:text-[var(--text-primary)]">Reconnect VidTrackr</a>
+                        </div>
+                    `;
+                    return;
+                }
                 
                 if (!response.ok) throw new Error('Failed to fetch Trakt history');
                 const data = await response.json();
@@ -466,27 +520,22 @@
                     const media = item[type];
                     
                     // --- REFINED IMAGE LOGIC (Matches VidTrackr Page) ---
-                    // Helper to safely get nested properties
                     const get = (path, obj) => path.split('.').reduce((acc, part) => acc && acc[part], obj);
 
                     let img = 'https://placehold.co/400x600/1f2937/FFF?text=No+Image';
 
                     if (type === 'episode') {
-                         // 1. Episode Screenshot (Landscape) - Primary for episodes
                          img = get('images.screenshot.medium', media) || 
                                get('images.screenshot.full', media) || 
-                               // 2. Fallback to Show Fanart (Landscape)
                                get('images.fanart.medium', item.show) || 
                                get('images.fanart.full', item.show) || 
                                img;
                     } else if (type === 'movie') {
-                         // 1. Movie Fanart (Landscape) - Primary for movies
                          img = get('images.fanart.medium', media) || 
                                get('images.fanart.full', media) || 
                                img;
                     }
                     
-                    // 3. Last Resort Fallback (Posters)
                     if (img.includes('placehold.co') || !img) {
                          if (type === 'episode' && item.show) {
                             img = get('images.poster.medium', item.show) || get('images.poster.full', item.show) || img;
@@ -498,7 +547,6 @@
                     const title = type === 'episode' ? `${item.show.title}` : media.title;
                     const subtitle = type === 'episode' ? `S${item.episode.season}E${item.episode.number}: ${item.episode.title}` : (media.year || 'Movie');
 
-                    // Changed image container to landscape (w-28 h-16) to match the aspect ratio of screenshots/fanart
                     ui.videoContainer.innerHTML = `
                         <img src="${img}" class="w-28 h-16 rounded-md object-cover shadow-sm bg-gray-800">
                         <div class="min-w-0 flex-grow">
@@ -606,11 +654,11 @@
 
             const dosesQ = query(collection(db, `users/${uid}/doses`), where('date', '>=', todayStr));
             unsubscribers.push(onSnapshot(dosesQ, (snap) => {
-                state.takenDoses.clear();
+                state.todayDoses = []; // Reset array
                 snap.forEach(d => {
                     const data = d.data();
-                    if (data.date.startsWith(todayStr) && data.status === 'taken') {
-                        state.takenDoses.add(data.medId);
+                    if (data.date.startsWith(todayStr)) {
+                        state.todayDoses.push({id: d.id, ...data});
                     }
                 });
                 renderMeds();
