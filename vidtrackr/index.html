@@ -172,6 +172,15 @@
         </div>
     </div>
 
+    <div id="list-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden backdrop-blur-sm px-4">
+        <div class="card p-6 rounded-2xl shadow-2xl max-w-sm w-full border border-gray-700 animate-fade">
+            <h3 class="text-xl font-bold mb-4">Add to List</h3>
+            <div id="list-modal-content" class="space-y-2 max-h-60 overflow-y-auto hide-scroll mb-4">
+                </div>
+            <button onclick="document.getElementById('list-modal').classList.add('hidden')" class="w-full text-sm text-gray-500 hover:text-white mt-2">Cancel</button>
+        </div>
+    </div>
+
     <div id="toast-container" class="fixed bottom-20 md:bottom-6 right-6 z-50 flex flex-col gap-3"></div>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -268,6 +277,70 @@
                 toast.style.transform = 'translate(-50%, 20px)'; 
                 setTimeout(()=>toast.remove(), 500); 
             }, 3000);
+        };
+
+        // --- NEW: Custom List Logic ---
+        window.openAddToList = async (traktId, type) => {
+            currentItemForList = { ids: { trakt: traktId }, type: type };
+            const modal = document.getElementById('list-modal');
+            const content = document.getElementById('list-modal-content');
+            modal.classList.remove('hidden');
+            content.innerHTML = '<div class="flex justify-center"><div class="animate-spin rounded-full h-8 w-8 border-2 border-[var(--primary)] border-t-transparent"></div></div>';
+            
+            try {
+                const lists = await fetchDirect(`/users/me/lists`);
+                if(lists.length === 0) {
+                    content.innerHTML = '<p class="text-gray-500 text-center">No custom lists found.</p>';
+                    return;
+                }
+                content.innerHTML = lists.map(l => `
+                    <button onclick="window.saveToList('${l.ids.trakt}')" class="w-full text-left p-3 rounded-lg bg-gray-800 hover:bg-[var(--primary)] hover:text-white transition flex justify-between items-center group">
+                        <span class="font-bold text-sm">${l.name}</span>
+                        <span class="text-xs bg-black/30 px-2 py-1 rounded group-hover:bg-white/20">${l.item_count}</span>
+                    </button>
+                `).join('');
+            } catch(e) {
+                content.innerHTML = '<p class="text-red-500 text-center">Failed to load lists.</p>';
+            }
+        };
+
+        window.saveToList = async (listId) => {
+            if(!currentItemForList) return;
+            showLoader();
+            document.getElementById('list-modal').classList.add('hidden');
+            try {
+                const type = currentItemForList.type;
+                const payload = {
+                    [type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies')]: [currentItemForList]
+                };
+                
+                await fetch(`${TRAKT_API_URL}/users/me/lists/${listId}/items`, {
+                    method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
+                });
+                showToast('Added to list!');
+            } catch(e) { showToast('Failed to add', 'error'); }
+            hideLoader();
+        };
+
+        // --- NEW: Fix Navigation Buttons ---
+        window.navigateEpisode = async (showId, currentSeason, targetNumber) => {
+            showLoader();
+            try {
+                if (targetNumber > 0) {
+                    const ep = await fetchDirect(`/shows/${showId}/seasons/${currentSeason}/episodes/${targetNumber}`);
+                    location.hash = `#detail/episode/${ep.ids.trakt}`;
+                } else if (targetNumber <= 0 && currentSeason > 1) {
+                    const prevSeasonData = await fetchDirect(`/shows/${showId}/seasons/${currentSeason - 1}?extended=full`);
+                    const lastEpNum = prevSeasonData.episode_count;
+                    const ep = await fetchDirect(`/shows/${showId}/seasons/${currentSeason - 1}/episodes/${lastEpNum}`);
+                    location.hash = `#detail/episode/${ep.ids.trakt}`;
+                } else {
+                    showToast('No previous episodes', 'error');
+                }
+            } catch (e) {
+                showToast('Episode not found', 'error');
+            }
+            hideLoader();
         };
 
         function getImage(item, typeOverride = null, preferLandscape = false) {
@@ -390,10 +463,19 @@
 
         async function syncUserRatings() {
             try {
-                const [movies, shows] = await Promise.all([ fetchDirect('/sync/ratings/movies'), fetchDirect('/sync/ratings/shows') ]);
+                // ADDED: fetchDirect('/sync/ratings/episodes')
+                const [movies, shows, episodes] = await Promise.all([ 
+                    fetchDirect('/sync/ratings/movies'), 
+                    fetchDirect('/sync/ratings/shows'),
+                    fetchDirect('/sync/ratings/episodes') 
+                ]);
+                
                 userRatings.clear();
                 movies.forEach(r => userRatings.set(r.movie.ids.trakt, r.rating));
                 shows.forEach(r => userRatings.set(r.show.ids.trakt, r.rating));
+                
+                // ADDED: Map episode ratings to your storage
+                episodes.forEach(r => userRatings.set(r.episode.ids.trakt, r.rating));
             } catch(e) { console.warn("Could not sync ratings", e); }
         }
 
@@ -727,10 +809,12 @@
                             <p class="text-lg text-gray-300 leading-relaxed mb-8">${item.overview || 'No overview available.'}</p>
                             ${historyHtml}
                             <div class="flex flex-col sm:flex-row gap-4 mb-8">
-                                <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode'}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check"></i> Log / Rate Again</button>
-                                <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center gap-2"><i class="fa-solid fa-layer-group"></i> View Season ${item.season}</button>
-                                <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}'" class="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold border border-gray-700 transition">View Show</button>
-                            </div>
+    <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode'}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check"></i> Log / Rate Again</button>
+    
+    <button onclick="window.openAddToList('${item.ids.trakt}', 'episode')" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center" title="Add to List"><i class="fa-solid fa-list-ul"></i></button>
+    
+    <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold border border-gray-700 transition flex items-center justify-center gap-2">Season ${item.season}</button>
+</div>
                              <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8">
                                 <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
                                 <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-3 text-sm outline-none resize-none" rows="2" placeholder="Private note...">${userNote}</textarea>
@@ -752,13 +836,17 @@
                             </div>
                             
                             <div class="mt-6 flex flex-col gap-3">
-                                <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2">
-                                    <i class="fa-solid fa-play"></i> Stream Now
-                                </a>
+    <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2">
+        <i class="fa-solid fa-play"></i> Stream Now
+    </a>
 
-                                ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition border border-gray-700">Official Website <i class="fa-solid fa-up-right-from-square ml-1"></i></a>` : ''}
-                                ${trailerUrl ? `<a href="${trailerUrl}" target="_blank" class="w-full text-center bg-red-900/20 hover:bg-red-900/40 text-red-500 py-2 rounded-lg font-bold text-xs transition border border-red-900/30"><i class="fa-brands fa-youtube mr-1"></i> Watch Trailer</a>` : ''}
-                            </div>
+    <button onclick="window.openAddToList('${item.ids.trakt}', '${type}')" class="w-full text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold text-xs transition border border-gray-600 flex items-center justify-center gap-2">
+        <i class="fa-solid fa-list-ul"></i> Add to List
+    </button>
+
+    ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition border border-gray-700">Official Website <i class="fa-solid fa-up-right-from-square ml-1"></i></a>` : ''}
+    ${trailerUrl ? `<a href="${trailerUrl}" target="_blank" class="w-full text-center bg-red-900/20 hover:bg-red-900/40 text-red-500 py-2 rounded-lg font-bold text-xs transition border border-red-900/30"><i class="fa-brands fa-youtube mr-1"></i> Watch Trailer</a>` : ''}
+</div>
 
                             <div class="mt-6 bg-[var(--card)] p-4 rounded-xl border border-gray-800 text-sm space-y-3">
                                 <h4 class="font-bold text-gray-400 text-xs uppercase mb-2">Production Info</h4>
@@ -865,16 +953,44 @@
             hideLoader();
         }
 
+        // --- UPDATED: Render History with Filters & Grouping ---
+        let currentHistoryFilter = 'all'; // State variable for filter
+
+        window.setHistoryFilter = (filter) => {
+            currentHistoryFilter = filter;
+            renderHistory(1);
+        };
+
         function renderHistory(page = 1) {
-            if (page === 1) { els.content.innerHTML = ''; historyPage = 1; }
+            if (page === 1) { 
+                els.content.innerHTML = ''; 
+                historyPage = 1; 
+                // Added Filters UI
+                els.content.innerHTML = `
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 mt-4 gap-4">
+                    <h2 class="text-2xl font-bold">History</h2>
+                    <div class="flex bg-gray-900 p-1 rounded-lg border border-gray-700">
+                        <button onclick="window.setHistoryFilter('all')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'all' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">All</button>
+                        <button onclick="window.setHistoryFilter('movies')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'movies' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Movies</button>
+                        <button onclick="window.setHistoryFilter('episodes')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'episodes' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Episodes</button>
+                    </div>
+                </div>
+                <div id="history-list-container" class="space-y-1 max-w-4xl mx-auto"></div>
+                <div id="load-more-container" class="text-center mt-8 pb-8"></div>`;
+            }
+            
             isFetchingHistory = true; showLoader();
             
-            fetchSmart(`/sync/history?limit=20&page=${page}&extended=images`, (data, fromCache) => {
-                 if (page === 1) {
-                    if (data.length === 0) els.content.innerHTML = `<div class="text-center p-10">No history found.</div>`;
-                    else els.content.innerHTML = `<h2 class="text-2xl font-bold mb-6 mt-4">History</h2><div id="history-list-container" class="space-y-4 max-w-4xl mx-auto"></div><div id="load-more-container" class="text-center mt-8 pb-8"></div>`;
-                }
+            let url = `/sync/history?limit=20&page=${page}&extended=images`;
+            if (currentHistoryFilter !== 'all') url += `&type=${currentHistoryFilter}`;
+
+            fetchSmart(url, (data, fromCache) => {
+                 if (page === 1 && data.length === 0) {
+                     document.getElementById('history-list-container').innerHTML = `<div class="text-center p-10 text-gray-500">No history found for this filter.</div>`;
+                     hideLoader(); return;
+                 }
                 
+                let lastDate = null;
                 const listHtml = data.map(item => {
                     const type = item.type;
                     const navType = type === 'episode' ? 'episode' : 'movie';
@@ -883,22 +999,53 @@
                     const displayImageObj = type === 'episode' ? item.episode : item.movie;
                     const img = getImage(displayImageObj, type, true); 
                     const myRating = userRatings.get(parseInt(navId));
-                    const rateDisplay = myRating ? `<span class="text-green-400 font-bold ml-auto"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
+                    const rateDisplay = myRating ? `<span class="text-green-400 font-bold ml-auto text-xs"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
                     
                     const wDate = new Date(item.watched_at);
-                    const dateStr = wDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                    const dateStr = wDate.toLocaleDateString();
+                    const prettyDate = wDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
                     const timeStr = wDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-                    return `<div class="card p-3 rounded-xl flex items-center gap-4 hover:bg-[var(--card)] border border-transparent hover:border-gray-600 transition group relative animate-fade shadow-sm bg-[var(--card)]/50" onclick="location.hash='#detail/${navType}/${navId}'"><div class="relative w-32 h-20 flex-shrink-0 overflow-hidden rounded-lg shadow-md"><img src="${img}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute bottom-1 right-1 bg-black/80 text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">${type}</div></div><div class="flex-grow min-w-0 flex flex-col justify-center"><div class="flex items-start"><h3 class="font-bold text-base leading-tight cursor-pointer hover:text-[var(--primary)] transition mr-2">${titleText}</h3>${rateDisplay}</div><div class="flex items-center gap-3 text-xs text-gray-500 mt-2"><span><i class="fa-solid fa-calendar-days opacity-50 mr-1 text-[var(--primary)]"></i> ${dateStr} <span class="opacity-50 mx-1">|</span> <i class="fa-solid fa-clock opacity-50 mr-1"></i> ${timeStr}</span></div></div></div>`;
+                    let headerHtml = '';
+                    if (dateStr !== lastDate) {
+                        const today = new Date().toLocaleDateString();
+                        const yest = new Date(); yest.setDate(yest.getDate() - 1);
+                        let label = prettyDate;
+                        if (dateStr === today) label = "Today";
+                        else if (dateStr === yest.toLocaleDateString()) label = "Yesterday";
+                        
+                        headerHtml = `<h3 class="text-xs font-bold text-[var(--primary)] uppercase tracking-widest mt-6 mb-2 ml-2 sticky top-20 z-10 bg-[var(--bg)]/90 backdrop-blur py-2 w-fit px-3 rounded-full border border-gray-800">${label}</h3>`;
+                        lastDate = dateStr;
+                    }
+
+                    return `${headerHtml}
+                    <div class="card p-3 rounded-xl flex items-center gap-4 hover:bg-[var(--card)] border border-transparent hover:border-gray-600 transition group relative animate-fade bg-[var(--card)]/40" onclick="location.hash='#detail/${navType}/${navId}'">
+                        <div class="relative w-24 h-14 md:w-32 md:h-20 flex-shrink-0 overflow-hidden rounded-lg shadow-md bg-gray-800">
+                            <img src="${img}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" onerror="this.src='${PLACEHOLDER_IMG}'">
+                            <div class="absolute bottom-0 right-0 bg-black/80 text-white text-[8px] px-1.5 py-0.5 rounded-tl font-bold uppercase tracking-wider">${type}</div>
+                        </div>
+                        <div class="flex-grow min-w-0 flex flex-col justify-center">
+                            <div class="flex items-start">
+                                <h3 class="font-bold text-sm md:text-base leading-tight cursor-pointer hover:text-[var(--primary)] transition mr-2 line-clamp-2">${titleText}</h3>
+                                ${rateDisplay}
+                            </div>
+                            <div class="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                                <span><i class="fa-solid fa-clock opacity-50 mr-1"></i> ${timeStr}</span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition px-2">
+                             <button class="text-xs bg-red-900/20 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="event.stopPropagation(); window.deleteHistoryItem('${navId}', '${type}', '${item.watched_at}', this)" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>`;
                 }).join('');
                 
                 document.getElementById('history-list-container').insertAdjacentHTML('beforeend', listHtml);
                 
                 const loadMoreContainer = document.getElementById('load-more-container');
                 if (data.length === 20) {
-                    loadMoreContainer.innerHTML = `<button id="btn-load-more" class="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-full font-bold transition shadow-lg border border-gray-600 hover:border-white">Load More History</button>`;
+                    loadMoreContainer.innerHTML = `<button id="btn-load-more" class="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-full font-bold transition shadow-lg border border-gray-600 hover:border-white">Load More</button>`;
                     document.getElementById('btn-load-more').onclick = () => { historyPage++; renderHistory(historyPage); };
-                } else loadMoreContainer.innerHTML = `<p class="text-gray-600 text-sm italic">End of history</p>`;
+                } else loadMoreContainer.innerHTML = `<p class="text-gray-600 text-sm italic opacity-50">End of history</p>`;
                 
                 isFetchingHistory = false; hideLoader();
             });

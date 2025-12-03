@@ -2,14 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v9.41.0-alpha",
+    date: "2025-12-03",
+    changes: [
+        "In VidTrackr: Fixed episode navigation buttons (left/right arrows) to correctly load the previous or next episode, handling season boundaries automatically.",
+        "In VidTrackr: Overhauled the History tab with new filters for 'Movies' and 'Episodes', and added date-based grouping headers (e.g., 'Today', 'Yesterday') for better readability.",
+        "In VidTrackr: Added an 'Add to List' button to Movie and Episode detail pages, allowing users to quickly save content to their custom lists via a new selection modal."
+    ]
+    },
+    {
     version: "v9.40.0-alpha",
     date: "2025-12-02",
     changes: [
-        "Fixed critical authentication loop by switching to Implicit Grant flow, eliminating '401 Unauthorized' errors.",
-        "Added a 'Stream Now' button to details pages, linking directly to Trakt's 'Watch Now' service to find available streaming platforms.",
-        "Merged separate Watchlist and Custom Lists pages into a single, unified 'Library' tab with sub-navigation.",
-        "Implemented local token persistence to ensure users remain logged in across sessions even if database connectivity lags.",
-        "Updated mobile navigation bar to point to the new Library section."
+        "In VidTrackr: Fixed critical authentication loop by switching to Implicit Grant flow, eliminating '401 Unauthorized' errors.",
+        "In VidTrackr: Added a 'Stream Now' button to details pages, linking directly to Trakt's 'Watch Now' service to find available streaming platforms.",
+        "In VidTrackr: Merged separate Watchlist and Custom Lists pages into a single, unified 'Library' tab with sub-navigation.",
+        "In VidTrackr: Implemented local token persistence to ensure users remain logged in across sessions even if database connectivity lags.",
+        "In VidTrackr: Updated mobile navigation bar to point to the new Library section."
     ]
     },
     {
