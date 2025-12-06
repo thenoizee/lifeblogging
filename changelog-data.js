@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.42.0-alpha",
+    date: "2025-12-06",
+    changes: [
+        "In Account Settings: Added a comprehensive 'Data Export' tool allowing users to back up their entire account lifetime data.",
+        "In Account Settings: Implemented granular export controls, letting users select specific apps (e.g., VidTrackr, MediManagr) via checkboxes to export only the data they need.",
+        "In Account Settings: Added smart file handling where single-source exports download as timestamped JSON files, while multi-source selections are automatically bundled into a structured ZIP file using JSZip.",
+        "In Account Settings: Configured specific export paths for the entire suite of apps, including FoodTrackr, WarrantyTrackr, RecipeManagr, Label Generator, and Email Templates.",
+        "In Account Settings: Enhanced the exporter to intelligently include shared dependencies, such as the 'notes' collection when exporting VidTrackr or PodTrackr."
+    ]
+    },
+    {
     version: "v9.41.0-alpha",
     date: "2025-12-03",
     changes: [

@@ -6,6 +6,7 @@
     <title>Account - Lifeblogging Hub</title>
     <link rel="icon" href="/favicons/house.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -97,10 +98,30 @@
 
                 <div class="p-4 border border-[var(--text-color-secondary)] rounded-lg mb-4">
                     <h3 class="text-lg font-semibold mb-2">Data Management</h3>
-                    <div class="flex gap-2">
-                        <button id="export-data-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg w-full text-sm">Export All Data</button>
+                    
+                    <div class="mb-4">
+                        <h4 class="text-sm font-bold text-[var(--text-color-secondary)] mb-2 uppercase tracking-wide">Export Data</h4>
+                        <div class="bg-[var(--input-bg-color)] rounded-lg p-3 mb-3 border border-[var(--text-color-secondary)] max-h-64 overflow-y-auto">
+                            <div id="export-sources-list" class="flex flex-col gap-2">
+                                <p class="text-xs text-gray-500 italic">Loading sources...</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 mb-3 text-xs">
+                            <button id="select-all-btn" class="text-blue-500 hover:text-blue-700 hover:underline font-semibold">Select All</button>
+                            <span class="text-gray-400">|</span>
+                            <button id="deselect-all-btn" class="text-blue-500 hover:text-blue-700 hover:underline font-semibold">Deselect All</button>
+                        </div>
+                        <button id="export-data-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg w-full text-sm flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-download"></i> Export Selected Data
+                        </button>
+                    </div>
+
+                    <div class="border-t border-[var(--text-color-secondary)] pt-4 mt-4">
+                        <h4 class="text-sm font-bold text-[var(--text-color-secondary)] mb-2 uppercase tracking-wide">Import Data</h4>
                         <input type="file" id="import-data-input" class="hidden" accept=".json">
-                        <label for="import-data-input" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition duration-300 ease-in-out shadow-lg w-full text-sm text-center cursor-pointer">Import Data</label>
+                        <label for="import-data-input" class="bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-yellow-600 transition duration-300 ease-in-out shadow-lg w-full text-sm text-center cursor-pointer block">
+                            <i class="fa-solid fa-file-import mr-2"></i> Import Data from JSON
+                        </label>
                     </div>
                 </div>
 
@@ -155,9 +176,54 @@
         const importDataInput = document.getElementById('import-data-input');
         const linkedAccountsContainer = document.getElementById('linked-accounts-container');
         const deleteAccountBtn = document.getElementById('delete-account-btn');
+        const exportSourcesList = document.getElementById('export-sources-list');
+        const selectAllBtn = document.getElementById('select-all-btn');
+        const deselectAllBtn = document.getElementById('deselect-all-btn');
 
         let themeDocRef = null;
         let themeUnsubscribe = null;
+
+        // Map apps to their Firestore collections
+        // 'paths' are root-level collections under users/{uid}/
+        // 'isSource' indicates it lives under users/{uid}/sources/{id}/data
+        const KNOWN_APPS = {
+            'hydrationtrackr': { 
+                label: 'HydrationTrackr', 
+                paths: ['hydrationtrackr'] 
+            },
+            'medimanagr': { 
+                label: 'MediManagr', 
+                paths: ['medications', 'doses', 'lenses_left', 'lenses_right'] 
+            },
+            'podtrackr': { 
+                label: 'PodTrackr', 
+                paths: ['podcasts', 'history', 'podcastListenlist', 'listenlist'] 
+            },
+            'vidtrackr': {
+                label: 'VidTrackr (Notes only)',
+                paths: [] // VidTrackr mainly uses Trakt, but shares the 'notes' collection
+            },
+            'foodtrackr': { 
+                label: 'FoodTrackr', 
+                paths: ['foodLog', 'favoriteFoods', 'meals'] 
+            },
+            'warrantytrackr': { 
+                label: 'WarrantyTrackr', 
+                paths: ['warranties'] 
+            },
+            'recipemanagr': { 
+                label: 'RecipeManagr', 
+                paths: ['recipes', 'appliances'] 
+            },
+            'labelgenerator': { 
+                label: 'Label Generator', 
+                paths: ['labelPresets'] 
+            },
+            'text-merge-templates': { 
+                label: 'Email Templates', 
+                isSource: true 
+            }
+        };
 
         const applyTheme = (theme) => {
             if (theme === 'dark') {
@@ -219,6 +285,62 @@
             }
         }
 
+        async function loadExportSources(user) {
+            exportSourcesList.innerHTML = '<div class="animate-pulse flex space-x-4 p-2"><div class="h-2 bg-gray-400 rounded w-full opacity-20"></div></div>';
+            try {
+                const dynamicSourcesColl = await getDocs(collection(db, `users/${user.uid}/sources`));
+                exportSourcesList.innerHTML = '';
+                
+                const availableSources = new Set();
+
+                // 1. Add Known Apps (Hardcoded)
+                for (const [key, config] of Object.entries(KNOWN_APPS)) {
+                    availableSources.add(key);
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center hover:bg-black/5 dark:hover:bg-white/5 p-1 rounded transition';
+                    div.innerHTML = `
+                        <input type="checkbox" id="source-${key}" name="export-source" value="${key}" checked 
+                               class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 cursor-pointer">
+                        <label for="source-${key}" class="ml-3 text-sm font-medium text-[var(--text-color-primary)] cursor-pointer flex-grow select-none">
+                            ${config.label}
+                        </label>
+                    `;
+                    exportSourcesList.appendChild(div);
+                }
+
+                // 2. Add Dynamic Sources (from Logger/Generic apps)
+                const dynamicSources = [];
+                dynamicSourcesColl.forEach(doc => {
+                    // Avoid duplicating keys we already handled (like hydrationtrackr which might have a metadata doc)
+                    if (!KNOWN_APPS[doc.id]) {
+                        dynamicSources.push(doc.id);
+                    }
+                });
+                dynamicSources.sort();
+
+                dynamicSources.forEach(source => {
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center hover:bg-black/5 dark:hover:bg-white/5 p-1 rounded transition';
+                    div.innerHTML = `
+                        <input type="checkbox" id="source-${source}" name="export-source" value="${source}" checked 
+                               class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 cursor-pointer">
+                        <label for="source-${source}" class="ml-3 text-sm font-medium text-[var(--text-color-primary)] capitalize cursor-pointer flex-grow select-none">
+                            Logger: ${source}
+                        </label>
+                    `;
+                    exportSourcesList.appendChild(div);
+                });
+
+                if (availableSources.size === 0 && dynamicSources.length === 0) {
+                    exportSourcesList.innerHTML = '<p class="text-xs text-gray-500 p-2">No data sources found.</p>';
+                }
+
+            } catch (e) {
+                console.error(e);
+                exportSourcesList.innerHTML = '<p class="text-xs text-red-500 p-2">Error loading sources. Check connection.</p>';
+            }
+        }
+
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 userEmailDisplay.textContent = user.isAnonymous ? 'Anonymous User' : user.email;
@@ -232,6 +354,7 @@
                     applyTheme(theme);
                 });
                 renderLinkedAccounts(user);
+                loadExportSources(user);
             } else {
                 window.location.href = '/';
             }
@@ -283,31 +406,128 @@
             }
         });
 
+        selectAllBtn.addEventListener('click', () => {
+            document.querySelectorAll('input[name="export-source"]').forEach(cb => cb.checked = true);
+        });
+
+        deselectAllBtn.addEventListener('click', () => {
+            document.querySelectorAll('input[name="export-source"]').forEach(cb => cb.checked = false);
+        });
+        
+        const formatTimestamp = () => {
+            const now = new Date();
+            // YYYY-MM-DD_HH-mm
+            return now.toISOString().replace(/[:.]/g, '-').slice(0, 16);
+        };
+
         exportDataBtn.addEventListener('click', async () => {
             const user = auth.currentUser;
             if (!user) return;
-            showMessage("Exporting data...", 'info');
-            const data = {};
-            const collections = await getDocs(collection(db, `users/${user.uid}/sources`));
-            for (const sourceDoc of collections.docs) {
-                data[sourceDoc.id] = {};
-                const dataCollections = await getDocs(collection(db, `users/${user.uid}/sources/${sourceDoc.id}/data`));
-                dataCollections.forEach(dataDoc => {
-                    data[sourceDoc.id][dataDoc.id] = dataDoc.data();
-                });
+
+            const checkboxes = document.querySelectorAll('input[name="export-source"]:checked');
+            const selectedSources = Array.from(checkboxes).map(cb => cb.value);
+
+            if (selectedSources.length === 0) {
+                showMessage("Please select at least one app/source to export.", 'error');
+                return;
             }
-            const blob = new Blob([JSON.stringify(data, null, 2)], {type : 'application/json'});
-            const href = URL.createObjectURL(blob);
-            const a = Object.assign(document.createElement("a"), {
-                href,
-                style:"display:none",
-                download: "lifeblogging-export.json",
-            });
-            document.body.appendChild(a);
-            a.click();
-            URL.revokeObjectURL(href);
-            a.remove();
-            showMessage("Data exported.");
+
+            showMessage("Preparing export... This may take a moment.", 'info');
+            
+            const zip = new JSZip();
+            let hasMultiple = selectedSources.length > 1;
+            
+            // If only 1 source selected, we will download a JSON file.
+            // If multiple, we zip them.
+            // But if we zip, we collect data into zip files.
+            
+            try {
+                let singleFileData = null;
+                let singleFileName = "";
+
+                for (const sourceId of selectedSources) {
+                    const data = {};
+                    
+                    if (KNOWN_APPS[sourceId]) {
+                        const appConfig = KNOWN_APPS[sourceId];
+                        
+                        if (appConfig.isSource) {
+                             // Handle like a dynamic source but triggered by checkbox
+                             // Structure: { [sourceId]: { docId: data } } to match importer expectations for dynamic sources
+                             data[sourceId] = {};
+                             const dataCollections = await getDocs(collection(db, `users/${user.uid}/sources/${sourceId}/data`));
+                             dataCollections.forEach(dataDoc => {
+                                 data[sourceId][dataDoc.id] = dataDoc.data();
+                             });
+                        } else {
+                            // Fetch defined root paths
+                            for (const path of appConfig.paths) {
+                                data[path] = {};
+                                const snap = await getDocs(collection(db, `users/${user.uid}/${path}`));
+                                snap.forEach(doc => {
+                                    data[path][doc.id] = doc.data();
+                                });
+                            }
+
+                            // Special handling for shared 'notes' collection (VidTrackr & PodTrackr)
+                            if (sourceId === 'vidtrackr' || sourceId === 'podtrackr') {
+                                data['notes'] = {};
+                                const notesSnap = await getDocs(collection(db, `users/${user.uid}/notes`));
+                                notesSnap.forEach(doc => {
+                                    data['notes'][doc.id] = doc.data();
+                                });
+                            }
+                        }
+
+                    } else {
+                        // Case 2: Dynamic Source (Logger App structure: sources/{id}/data)
+                        // Structure: { [sourceId]: { docId: data } }
+                        data[sourceId] = {};
+                        const dataCollections = await getDocs(collection(db, `users/${user.uid}/sources/${sourceId}/data`));
+                        dataCollections.forEach(dataDoc => {
+                            data[sourceId][dataDoc.id] = dataDoc.data();
+                        });
+                    }
+                    
+                    if (hasMultiple) {
+                        zip.file(`${sourceId}.json`, JSON.stringify(data, null, 2));
+                    } else {
+                        singleFileData = data;
+                        singleFileName = `${sourceId}-export-${formatTimestamp()}.json`;
+                    }
+                }
+
+                if (hasMultiple) {
+                    const content = await zip.generateAsync({type:"blob"});
+                    const href = URL.createObjectURL(content);
+                    const a = Object.assign(document.createElement("a"), {
+                        href,
+                        style: "display:none",
+                        download: `lifeblogging-multi-export-${formatTimestamp()}.zip`,
+                    });
+                    document.body.appendChild(a);
+                    a.click();
+                    URL.revokeObjectURL(href);
+                    a.remove();
+                } else {
+                    const blob = new Blob([JSON.stringify(singleFileData, null, 2)], {type : 'application/json'});
+                    const href = URL.createObjectURL(blob);
+                    const a = Object.assign(document.createElement("a"), {
+                        href,
+                        style:"display:none",
+                        download: singleFileName,
+                    });
+                    document.body.appendChild(a);
+                    a.click();
+                    URL.revokeObjectURL(href);
+                    a.remove();
+                }
+
+                showMessage("Data export completed.");
+            } catch (error) {
+                console.error(error);
+                showMessage("Failed to export data: " + error.message, 'error');
+            }
         });
 
         importDataInput.addEventListener('change', (e) => {
@@ -320,15 +540,44 @@
                     const user = auth.currentUser;
                     if (!user) return;
 
-                    for (const sourceId in data) {
-                        for (const docId in data[sourceId]) {
-                            const docRef = doc(db, `users/${user.uid}/sources/${sourceId}/data`, docId);
-                            await setDoc(docRef, data[sourceId][docId]);
+                    showMessage("Importing data... Please wait.", 'info');
+                    
+                    for (const collectionName in data) {
+                        // Determine if it's a known root collection or a generic source
+                        let isRootCollection = false;
+                        
+                        // Check if this key matches any known app path
+                        for (const appKey in KNOWN_APPS) {
+                            if ((KNOWN_APPS[appKey].paths && KNOWN_APPS[appKey].paths.includes(collectionName)) || collectionName === 'notes') {
+                                isRootCollection = true;
+                                break;
+                            }
+                        }
+
+                        if (isRootCollection) {
+                            // Import to root collection: users/{uid}/{collectionName}
+                            for (const docId in data[collectionName]) {
+                                const docRef = doc(db, `users/${user.uid}/${collectionName}`, docId);
+                                await setDoc(docRef, data[collectionName][docId]);
+                            }
+                        } else {
+                            // Import to generic source: users/{uid}/sources/{collectionName}/data
+                            const sourceDocRef = doc(db, `users/${user.uid}/sources`, collectionName);
+                            // Ensure source doc exists (optional, but good practice)
+                            await setDoc(sourceDocRef, { 
+                                collectionCreatedName: collectionName, 
+                                importedAt: new Date() 
+                            }, { merge: true });
+                            
+                            for (const docId in data[collectionName]) {
+                                const docRef = doc(db, `users/${user.uid}/sources/${collectionName}/data`, docId);
+                                await setDoc(docRef, data[collectionName][docId]);
+                            }
                         }
                     }
                     showMessage("Data imported successfully.");
                 } catch (error) {
-                    showMessage(error.message, 'error');
+                    showMessage("Import failed: " + error.message, 'error');
                 }
             };
             reader.readAsText(file);
