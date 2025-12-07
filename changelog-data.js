@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.43.0-alpha",
+    date: "2025-12-07",
+    changes: [
+        "In PDF Tools: Added a dedicated 'Edit Metadata' tool to the sidebar, allowing users to view and edit standard PDF properties including Title, Author, Subject, Keywords, Creator, and Dates.",
+        "In PDF Tools: Implemented a 'Filename (Save As)' feature within the Metadata tool, automatically populating with the original name (minus extension) to allow easy renaming before download.",
+        "In PDF Tools: Enhanced the metadata saving logic to automatically default the 'Producer' field to 'SH's PDF Editing Tool' if it is missing or set to the library default.",
+        "In PDF Tools: Added 'Download Updated PDF' functionality and UI feedback (loading spinners, status text) for the new metadata operations.",
+        "In PDF Tools: Fixed a critical syntax error in the drag-and-drop event listeners (dragleave) that was preventing the script from executing."
+    ]
+    },
+    {
     version: "v9.42.0-alpha",
     date: "2025-12-06",
     changes: [
