@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.43.1-alpha",
+    date: "2025-12-07",
+    changes: [
+        "In PDF Tools: Bug fix."
+    ]
+    },
+    {
     version: "v9.43.0-alpha",
     date: "2025-12-07",
     changes: [
