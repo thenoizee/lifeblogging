@@ -322,6 +322,47 @@
             hideLoader();
         };
 
+        window.deleteHistoryItem = async (traktId, type, watchedAt, btn) => {
+            if(!confirm('Are you sure you want to remove this log from your history?')) return;
+            
+            // Visual feedback
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+            
+            try {
+                // Determine API key (movies or episodes)
+                const rootKey = type === 'episode' ? 'episodes' : 'movies';
+                
+                // Construct payload to remove by Trakt ID
+                const payload = {
+                    [rootKey]: [{ ids: { trakt: traktId } }] 
+                };
+                
+                // Call Trakt Remove Endpoint
+                await fetch(`${TRAKT_API_URL}/sync/history/remove`, {
+                    method: 'POST',
+                    headers: traktHeader(),
+                    body: JSON.stringify(payload)
+                });
+                
+                showToast('Log removed successfully');
+                
+                // Remove the row from the list visually
+                const row = btn.closest('.card') || btn.closest('.history-row');
+                if(row) {
+                    row.style.transition = "opacity 0.5s";
+                    row.style.opacity = '0';
+                    setTimeout(() => row.remove(), 500);
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('Failed to remove log', 'error');
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }
+        };
+
         // --- NEW: Fix Navigation Buttons ---
         window.navigateEpisode = async (showId, currentSeason, targetNumber) => {
             showLoader();
@@ -1120,7 +1161,66 @@
             hideLoader(); 
         }
 
-        async function handleAction(shouldRate) { els.modal.classList.add('hidden'); showLoader(); const dateStr = document.getElementById('custom-date').value; const date = dateStr ? new Date(dateStr).toISOString() : selectedDate; const rating = parseInt(els.ratingSlider.value); try { const ids = { ids: { trakt: currentModalItem.item.ids.trakt } }; const rootKey = currentModalItem.type === 'episode' ? 'episodes' : 'movies'; const payloadLog = { [rootKey]: [{ ...ids, watched_at: date }] }; await fetch(`${TRAKT_API_URL}/sync/history`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadLog) }); if (shouldRate) { const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); showToast(`Logged & Rated ${rating}/10`); } else showToast(`Logged successfully`); } catch(e) { showToast('Action failed', 'error'); } hideLoader(); }
+        async function handleAction(shouldRate) {
+            const traktId = currentModalItem.item.ids.trakt;
+            const type = currentModalItem.type; // 'episode' or 'movie'
+            
+            // --- STEP 1: Check Trakt History via API ---
+            try {
+                // Determine the correct API endpoint path (must be plural: movies/episodes)
+                const typePath = type === 'episode' ? 'episodes' : 'movies';
+                const historyUrl = `/users/me/history/${typePath}/${traktId}?limit=1`;
+                
+                const historyData = await fetchDirect(historyUrl);
+                
+                if (historyData && historyData.length > 0) {
+                    // Get the timestamp of the last time this item was logged
+                    const lastWatched = new Date(historyData[0].watched_at).getTime();
+                    const now = Date.now();
+                    const diff = now - lastWatched;
+                    const fiveMins = 5 * 60 * 1000; // 5 minutes in milliseconds
+                    
+                    if (diff < fiveMins) {
+                        // It was logged less than 5 minutes ago!
+                        if (!confirm("⚠️ duplicate Check\n\nYou (or an app) logged this item on Trakt less than 5 minutes ago.\n\nDo you want to log it again?")) {
+                            els.modal.classList.add('hidden');
+                            return; // Stop here
+                        }
+                    }
+                }
+            } catch(e) {
+                console.warn("Could not verify history before logging - proceeding anyway", e);
+            }
+
+            // --- STEP 2: Proceed with Logging (Original Logic) ---
+            els.modal.classList.add('hidden'); 
+            showLoader(); 
+            
+            const dateStr = document.getElementById('custom-date').value; 
+            const date = dateStr ? new Date(dateStr).toISOString() : selectedDate; 
+            const rating = parseInt(els.ratingSlider.value); 
+            
+            try { 
+                const ids = { ids: { trakt: traktId } }; 
+                const rootKey = type === 'episode' ? 'episodes' : 'movies'; 
+                const payloadLog = { [rootKey]: [{ ...ids, watched_at: date }] }; 
+                
+                await fetch(`${TRAKT_API_URL}/sync/history`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadLog) }); 
+                
+                if (shouldRate) { 
+                    const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; 
+                    await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); 
+                    showToast(`Logged & Rated ${rating}/10`); 
+                } else {
+                    showToast(`Logged successfully`); 
+                }
+            } catch(e) { 
+                showToast('Action failed', 'error'); 
+            } 
+            
+            hideLoader(); 
+        }
+
         async function loadSearch(query) { if (!query) return; showLoader(); els.content.innerHTML = ''; try { const data = await fetchDirect(`/search/movie,show?query=${encodeURIComponent(query)}&extended=images`); if (data.length === 0) els.content.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-magnifying-glass text-6xl mb-4 opacity-50"></i><p>No results found.</p></div>`; else renderGrid(`Results: "${decodeURIComponent(query)}"`, data); } catch (e) { showToast('Search failed', 'error'); } hideLoader(); }
         async function renderListItems(listId) { els.content.innerHTML = ''; showLoader(); try { const [listInfo, items] = await Promise.all([fetchDirect(`/users/me/lists/${listId}`), fetchDirect(`/users/me/lists/${listId}/items?extended=images`)]); els.content.innerHTML = `<div class="flex items-center justify-between mb-6"><div><h2 class="text-3xl font-bold">${listInfo.name}</h2><p class="text-gray-400 text-sm mt-1">${listInfo.item_count} items</p></div><button onclick="location.hash='#library'" class="text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg transition"><i class="fa-solid fa-arrow-left mr-2"></i> Back to Lists</button></div><div id="list-grid"></div>`; if (items.length > 0) renderGrid('', items, false, 'list-grid'); else document.getElementById('list-grid').innerHTML = `<p class="text-gray-500 italic">This list is empty.</p>`; } catch (e) { showToast('Could not load list items', 'error'); } hideLoader(); }
 
@@ -1153,6 +1253,17 @@
             }
         }
         window.addEventListener('hashchange', handleRoute);
+
+        // --- Auto-Refresh on Tab Focus ---
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                // Only refresh if we are specifically looking at the History page
+                if (location.hash.startsWith('#history')) {
+                    console.log("Tab active: Refreshing History...");
+                    renderHistory(1); // Reloads the first page of history
+                }
+            }
+        });
 
         // --- Auth & Events ---
         els.ratingSlider.oninput = (e) => els.ratingValue.innerText = e.target.value;

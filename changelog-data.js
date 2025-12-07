@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.44.0-alpha",
+    date: "2025-12-07",
+    changes: [
+        "In VidTrackr: Implemented database synchronization for the Trakt authentication token, resolving persistent 'Reconnect' errors on the Dashboard.",
+        "In VidTrackr: Added a real-time duplicate check that queries the Trakt API before logging, warning users if they attempt to log an item watched within the last 5 minutes.",
+        "In VidTrackr: Fixed a critical bug where the 'Delete' button in the history list was non-functional.",
+        "In VidTrackr: The History page now auto-refreshes whenever the browser tab is reopened or focused to ensure data is strictly up-to-date."
+    ]
+    },
+    {
     version: "v9.43.2-alpha",
     date: "2025-12-07",
     changes: [
