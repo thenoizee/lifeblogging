@@ -97,6 +97,21 @@
                 </div>
 
                 <div class="p-4 border border-[var(--text-color-secondary)] rounded-lg mb-4">
+                    <h3 class="text-lg font-semibold mb-2">Service Connections</h3>
+                    
+                    <div class="mb-2">
+                        <label for="lastfm-username" class="block text-sm font-semibold mb-1">Last.fm Username</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="lastfm-username" placeholder="username" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <button id="save-lastfm-btn" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300 ease-in-out shadow-lg text-sm whitespace-nowrap">
+                                <i class="fa-solid fa-save"></i> Save
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-gray-500 mt-1 italic">Enter your username to display live music on the dashboard.</p>
+                    </div>
+                </div>
+
+                <div class="p-4 border border-[var(--text-color-secondary)] rounded-lg mb-4">
                     <h3 class="text-lg font-semibold mb-2">Data Management</h3>
                     
                     <div class="mb-4">
@@ -147,7 +162,7 @@
             getAuth, onAuthStateChanged, signOut,
             updatePassword, updateEmail, GoogleAuthProvider, linkWithPopup, unlink, deleteUser
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, onSnapshot, setDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -163,6 +178,7 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
+        // DOM Elements
         const userEmailDisplay = document.getElementById('user-email-display');
         const messageBox = document.getElementById('message-box');
         const signOutBtn = document.getElementById('sign-out-btn');
@@ -179,13 +195,15 @@
         const exportSourcesList = document.getElementById('export-sources-list');
         const selectAllBtn = document.getElementById('select-all-btn');
         const deselectAllBtn = document.getElementById('deselect-all-btn');
+        
+        // Service Elements
+        const lastfmInput = document.getElementById('lastfm-username');
+        const saveLastfmBtn = document.getElementById('save-lastfm-btn');
 
         let themeDocRef = null;
         let themeUnsubscribe = null;
 
         // Map apps to their Firestore collections
-        // 'paths' are root-level collections under users/{uid}/
-        // 'isSource' indicates it lives under users/{uid}/sources/{id}/data
         const KNOWN_APPS = {
             'hydrationtrackr': { 
                 label: 'HydrationTrackr', 
@@ -201,7 +219,7 @@
             },
             'vidtrackr': {
                 label: 'VidTrackr (Notes only)',
-                paths: [] // VidTrackr mainly uses Trakt, but shares the 'notes' collection
+                paths: [] 
             },
             'foodtrackr': { 
                 label: 'FoodTrackr', 
@@ -311,7 +329,7 @@
                 // 2. Add Dynamic Sources (from Logger/Generic apps)
                 const dynamicSources = [];
                 dynamicSourcesColl.forEach(doc => {
-                    // Avoid duplicating keys we already handled (like hydrationtrackr which might have a metadata doc)
+                    // Avoid duplicating keys we already handled
                     if (!KNOWN_APPS[doc.id]) {
                         dynamicSources.push(doc.id);
                     }
@@ -341,6 +359,35 @@
             }
         }
 
+        async function loadServices(user) {
+            try {
+                // Load Last.fm
+                const lastfmDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'lastfm'));
+                if (lastfmDoc.exists()) {
+                    lastfmInput.value = lastfmDoc.data().username || '';
+                }
+            } catch (error) {
+                console.error("Error loading services:", error);
+            }
+        }
+
+        // --- Save Services Event Listeners ---
+        saveLastfmBtn.addEventListener('click', async () => {
+            const username = lastfmInput.value.trim();
+            if (!auth.currentUser) return;
+            
+            try {
+                saveLastfmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                await setDoc(doc(db, 'users', auth.currentUser.uid, 'services', 'lastfm'), { username: username }, { merge: true });
+                showMessage("Last.fm username saved!");
+            } catch (error) {
+                showMessage("Error saving: " + error.message, 'error');
+            } finally {
+                saveLastfmBtn.innerHTML = '<i class="fa-solid fa-save"></i> Save';
+            }
+        });
+
+        // --- Auth State Change ---
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 userEmailDisplay.textContent = user.isAnonymous ? 'Anonymous User' : user.email;
@@ -355,6 +402,7 @@
                 });
                 renderLinkedAccounts(user);
                 loadExportSources(user);
+                loadServices(user); // Load service usernames
             } else {
                 window.location.href = '/';
             }
@@ -437,10 +485,6 @@
             const zip = new JSZip();
             let hasMultiple = selectedSources.length > 1;
             
-            // If only 1 source selected, we will download a JSON file.
-            // If multiple, we zip them.
-            // But if we zip, we collect data into zip files.
-            
             try {
                 let singleFileData = null;
                 let singleFileName = "";
@@ -451,16 +495,16 @@
                     if (KNOWN_APPS[sourceId]) {
                         const appConfig = KNOWN_APPS[sourceId];
                         
+                        // 1. Handle Generic "Source" Apps (like Templates)
                         if (appConfig.isSource) {
-                             // Handle like a dynamic source but triggered by checkbox
-                             // Structure: { [sourceId]: { docId: data } } to match importer expectations for dynamic sources
                              data[sourceId] = {};
                              const dataCollections = await getDocs(collection(db, `users/${user.uid}/sources/${sourceId}/data`));
                              dataCollections.forEach(dataDoc => {
                                  data[sourceId][dataDoc.id] = dataDoc.data();
                              });
-                        } else {
-                            // Fetch defined root paths
+                        } 
+                        // 2. Handle Standard Apps (Root Collections)
+                        else {
                             for (const path of appConfig.paths) {
                                 data[path] = {};
                                 const snap = await getDocs(collection(db, `users/${user.uid}/${path}`));
@@ -469,19 +513,40 @@
                                 });
                             }
 
-                            // Special handling for shared 'notes' collection (VidTrackr & PodTrackr)
-                            if (sourceId === 'vidtrackr' || sourceId === 'podtrackr') {
+                            // --- SEPARATED NOTE LOGIC START ---
+                            
+                            // If exporting VidTrackr, fetch notes but FILTER for video content
+                            if (sourceId === 'vidtrackr') {
                                 data['notes'] = {};
                                 const notesSnap = await getDocs(collection(db, `users/${user.uid}/notes`));
                                 notesSnap.forEach(doc => {
-                                    data['notes'][doc.id] = doc.data();
+                                    const n = doc.data();
+                                    // Check for video types or IDs (Trakt/TMDB)
+                                    const isVideo = ['movie', 'show', 'tv', 'episode', 'season'].includes(n.type) || n.traktId || n.tmdbId;
+                                    if (isVideo) {
+                                        data['notes'][doc.id] = n;
+                                    }
                                 });
                             }
+
+                            // If exporting PodTrackr, fetch notes but FILTER for podcast content
+                            if (sourceId === 'podtrackr') {
+                                data['notes'] = {};
+                                const notesSnap = await getDocs(collection(db, `users/${user.uid}/notes`));
+                                notesSnap.forEach(doc => {
+                                    const n = doc.data();
+                                    // Check for podcast types or IDs (Feed URL)
+                                    const isPodcast = n.type === 'podcast' || n.feedUrl || n.podcastTitle || n.episodeTitle;
+                                    if (isPodcast) {
+                                        data['notes'][doc.id] = n;
+                                    }
+                                });
+                            }
+                            // --- SEPARATED NOTE LOGIC END ---
                         }
 
                     } else {
-                        // Case 2: Dynamic Source (Logger App structure: sources/{id}/data)
-                        // Structure: { [sourceId]: { docId: data } }
+                        // 3. Handle Dynamic Logger Sources
                         data[sourceId] = {};
                         const dataCollections = await getDocs(collection(db, `users/${user.uid}/sources/${sourceId}/data`));
                         dataCollections.forEach(dataDoc => {
@@ -489,6 +554,7 @@
                         });
                     }
                     
+                    // Add to Zip or prepare single file
                     if (hasMultiple) {
                         zip.file(`${sourceId}.json`, JSON.stringify(data, null, 2));
                     } else {
@@ -497,6 +563,7 @@
                     }
                 }
 
+                // Generate Download
                 if (hasMultiple) {
                     const content = await zip.generateAsync({type:"blob"});
                     const href = URL.createObjectURL(content);
@@ -543,10 +610,7 @@
                     showMessage("Importing data... Please wait.", 'info');
                     
                     for (const collectionName in data) {
-                        // Determine if it's a known root collection or a generic source
                         let isRootCollection = false;
-                        
-                        // Check if this key matches any known app path
                         for (const appKey in KNOWN_APPS) {
                             if ((KNOWN_APPS[appKey].paths && KNOWN_APPS[appKey].paths.includes(collectionName)) || collectionName === 'notes') {
                                 isRootCollection = true;
@@ -555,15 +619,12 @@
                         }
 
                         if (isRootCollection) {
-                            // Import to root collection: users/{uid}/{collectionName}
                             for (const docId in data[collectionName]) {
                                 const docRef = doc(db, `users/${user.uid}/${collectionName}`, docId);
                                 await setDoc(docRef, data[collectionName][docId]);
                             }
                         } else {
-                            // Import to generic source: users/{uid}/sources/{collectionName}/data
                             const sourceDocRef = doc(db, `users/${user.uid}/sources`, collectionName);
-                            // Ensure source doc exists (optional, but good practice)
                             await setDoc(sourceDocRef, { 
                                 collectionCreatedName: collectionName, 
                                 importedAt: new Date() 
@@ -594,7 +655,6 @@
                 }
             }
         });
-
     </script>
 </body>
 </html>

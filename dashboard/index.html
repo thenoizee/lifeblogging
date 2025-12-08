@@ -76,6 +76,27 @@
         /* Timeline Specifics */
         .timeline-item:first-child .line-left { display: none; }
         .timeline-item:last-child .line-right { display: none; }
+
+        /* Equalizer Animation for Last.fm */
+        .equalizer {
+            display: flex;
+            align-items: flex-end;
+            height: 12px;
+            gap: 2px;
+        }
+        .bar {
+            width: 3px;
+            background-color: #10b981; /* Tailwind green-500 */
+            animation: bounce 1s infinite ease-in-out;
+        }
+        .bar:nth-child(2) { animation-delay: 0.1s; height: 60%; }
+        .bar:nth-child(3) { animation-delay: 0.2s; height: 30%; }
+        .bar:nth-child(4) { animation-delay: 0.3s; height: 70%; }
+
+        @keyframes bounce {
+            0%, 100% { height: 20%; }
+            50% { height: 100%; }
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8">
@@ -175,7 +196,21 @@
 
             <div class="dashboard-card col-span-1">
                 <div class="card-header">
-                    <span>Listening</span>
+                    <span>Watched</span>
+                    <a href="/vidtrackr" class="text-xs text-red-500 hover:underline">VidTrackr</a>
+                </div>
+                <div id="video-container" class="flex items-center gap-3 h-full">
+                    <div class="w-16 h-10 bg-gray-200 dark:bg-gray-700 rounded-md flex-shrink-0 animate-pulse"></div>
+                    <div class="flex-grow min-w-0">
+                        <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2 animate-pulse"></div>
+                        <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded w-1/2 animate-pulse"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-card col-span-1">
+                <div class="card-header">
+                    <span>Podcasts</span>
                     <a href="/podtrackr" class="text-xs text-purple-500 hover:underline">PodTrackr</a>
                 </div>
                 <div id="podcast-container" class="flex flex-col items-center text-center h-full justify-center">
@@ -187,16 +222,16 @@
                 </div>
             </div>
 
-            <div class="dashboard-card md:col-span-2">
+            <div class="dashboard-card col-span-1">
                 <div class="card-header">
-                    <span>Last Watched</span>
-                    <a href="/vidtrackr" class="text-xs text-red-500 hover:underline">VidTrackr</a>
+                    <span>Music</span>
+                    <a id="lastfm-link" href="https://last.fm" target="_blank" class="text-xs text-red-500 hover:underline">Last.fm</a>
                 </div>
-                <div id="video-container" class="flex items-center gap-4 h-full">
-                    <div class="w-28 h-16 bg-gray-200 dark:bg-gray-700 rounded-md flex-shrink-0 animate-pulse"></div>
-                    <div class="flex-grow min-w-0">
-                        <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2 animate-pulse"></div>
-                        <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2 animate-pulse"></div>
+                <div id="music-container" class="flex flex-col h-full justify-center">
+                    <div class="flex flex-col items-center text-center animate-pulse">
+                        <div class="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-md mb-2"></div>
+                        <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mx-auto mb-1"></div>
+                        <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mx-auto"></div>
                     </div>
                 </div>
             </div>
@@ -220,13 +255,12 @@
                     <div id="dailies-progress-bar" class="bg-green-600 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
                 </div>
                 <div id="dailies-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2 custom-scroll overflow-y-auto max-h-[150px] pr-1">
-                    </div>
+                </div>
             </div>
 
         </div>
     </div>
-
-<script type="module">
+    <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, onSnapshot, Timestamp, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -234,6 +268,9 @@
         // Constants
         const TRAKT_CLIENT_ID = '46c509e2cef42228978ae6a69b138628a6399c0bf28b729b7883b19ab9b082eb';
         const TRAKT_API_URL = 'https://api.trakt.tv';
+        
+        const LASTFM_API_KEY = '30a12197dac5d9d10dabf5880643cf35'; 
+        const LASTFM_API_URL = 'https://ws.audioscrobbler.com/2.0/';
 
         const firebaseConfig = {
             apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -262,6 +299,8 @@
             moodText: document.getElementById('mood-text'),
             moodTime: document.getElementById('mood-time'),
             podcastContainer: document.getElementById('podcast-container'),
+            musicContainer: document.getElementById('music-container'),
+            lastfmLink: document.getElementById('lastfm-link'),
             videoContainer: document.getElementById('video-container'),
             calVal: document.getElementById('calories-val'),
             calBreakdown: {
@@ -284,7 +323,7 @@
             dailyLogs: [],
             manualLogs: [],
             dailyPlan: [],
-            todayDoses: [], // Changed from Set to Array to hold full dose objects
+            todayDoses: [],
             medsSchedule: []
         };
 
@@ -310,7 +349,6 @@
             const allLogs = [...state.dailyLogs, ...state.manualLogs];
             allLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
             
-            // 1. Timeline Render (Top 12)
             const topLogs = allLogs.slice(0, 12);
             ui.lastLogContainer.innerHTML = '';
             
@@ -324,14 +362,13 @@
                     const name = log.attributeName.toLowerCase();
                     
                     if (name.includes('mood')) {
-                        // NEW: Specific Mood Logic for Timeline
                         const val = parseInt(log.attributeValue);
                         if(val === 1) { iconClass = 'fa-angry'; colorClass = 'text-red-500 border-red-500'; }
                         else if(val === 2) { iconClass = 'fa-frown'; colorClass = 'text-orange-500 border-orange-500'; }
                         else if(val === 3) { iconClass = 'fa-meh'; colorClass = 'text-yellow-500 border-yellow-500'; }
                         else if(val === 4) { iconClass = 'fa-smile'; colorClass = 'text-green-500 border-green-500'; }
                         else if(val === 5) { iconClass = 'fa-laugh-beam'; colorClass = 'text-green-600 border-green-600'; }
-                        else { iconClass = 'fa-face-smile'; colorClass = 'text-gray-400 border-gray-400'; } // Fallback
+                        else { iconClass = 'fa-face-smile'; colorClass = 'text-gray-400 border-gray-400'; }
                     }
                     else if (name.includes('water')) { iconClass = 'fa-glass-water'; colorClass = 'text-blue-500 border-blue-500'; }
                     else if (name.includes('run') || name.includes('walk') || name.includes('steps')) { iconClass = 'fa-person-running'; colorClass = 'text-green-500 border-green-500'; }
@@ -345,13 +382,10 @@
                     div.innerHTML = `
                         <div class="line-left absolute top-[26px] left-0 w-1/2 h-0.5 bg-[var(--timeline-line)]"></div>
                         <div class="line-right absolute top-[26px] right-0 w-1/2 h-0.5 bg-[var(--timeline-line)]"></div>
-                        
                         <span class="text-[10px] text-[var(--text-secondary)] mb-1 font-mono">${timeStr}</span>
-                        
                         <div class="w-8 h-8 rounded-full bg-[var(--card-bg)] border-2 ${colorClass} z-10 flex items-center justify-center text-xs shadow-sm">
                             <i class="fas ${iconClass}"></i>
                         </div>
-                        
                         <div class="mt-2 text-center w-full px-1">
                             <p class="font-bold text-[10px] truncate w-full" title="${log.attributeName}">${log.attributeName}</p>
                             <p class="text-[9px] text-[var(--text-secondary)] truncate w-full opacity-80" title="${log.attributeValue}">${log.attributeValue}</p>
@@ -361,7 +395,6 @@
                 });
             }
 
-            // 2. Mood Render
             const todayStr = new Date().toISOString().split('T')[0];
             const todaysMoodLog = allLogs.find(d => d.attributeName.toLowerCase() === 'mood' && d.date.startsWith(todayStr));
 
@@ -419,21 +452,15 @@
             ui.dailiesProgBar.style.width = `${prog}%`;
         };
 
-        // --- UPDATED MEDS RENDERER ---
         const renderMeds = () => {
             const dayName = new Date().toLocaleDateString('en-US', {weekday: 'long'});
             ui.medsList.innerHTML = '';
             
-            // 1. Build list of all scheduled doses for today
             let scheduledDoses = [];
-            
             state.medsSchedule.forEach(med => {
                 if (med.isArchived) return;
-                
                 if (med.schedule && med.schedule.days.includes(dayName)) {
-                    // Split times (e.g., "08:00, 14:00")
                     const times = med.schedule.times.split(',').map(t => t.trim()).filter(Boolean);
-                    
                     times.forEach(time => {
                         scheduledDoses.push({
                             medId: med.id,
@@ -441,30 +468,23 @@
                             icon: med.icon || 'fas fa-pills',
                             color: med.color || '#666',
                             time: time,
-                            status: 'pending' // Default status
+                            status: 'pending'
                         });
                     });
                 }
             });
 
-            // 2. Match logged doses to scheduled items
-            // We use a copy of todayDoses so we can consume them
             let availableLogs = [...state.todayDoses];
-            
-            // Sort scheduled doses by time
             scheduledDoses.sort((a, b) => a.time.localeCompare(b.time));
 
             scheduledDoses.forEach(doseItem => {
-                // Find a taken log for this med
                 const logIndex = availableLogs.findIndex(log => log.medId === doseItem.medId && log.status === 'taken');
-                
                 if (logIndex !== -1) {
                     doseItem.status = 'taken';
-                    availableLogs.splice(logIndex, 1); // Consume log so it doesn't count for next dose of same med
+                    availableLogs.splice(logIndex, 1);
                 }
             });
 
-            // 3. Render
             if (scheduledDoses.length === 0) {
                 ui.medsList.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">No meds scheduled for today.</p>`;
             } else {
@@ -472,7 +492,6 @@
                     const isTaken = dose.status === 'taken';
                     const div = document.createElement('div');
                     div.className = `flex justify-between items-center p-2 rounded-lg text-xs ${isTaken ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-800'}`;
-                    
                     div.innerHTML = `
                         <div class="flex items-center gap-3">
                             <span class="font-mono text-[var(--text-secondary)] w-10 text-right">${dose.time}</span>
@@ -488,7 +507,57 @@
             }
         };
 
-        // --- VidTrackr & PodTrackr ---
+        // --- Last.fm Logic ---
+        async function fetchLastFm(username) {
+            if (!username) return;
+            ui.lastfmLink.href = `https://www.last.fm/user/${username}`;
+
+            try {
+                const url = `${LASTFM_API_URL}?method=user.getrecenttracks&user=${username}&api_key=${LASTFM_API_KEY}&format=json&limit=1`;
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (!data.recenttracks || !data.recenttracks.track || data.recenttracks.track.length === 0) {
+                    ui.musicContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] text-center">No history found.</p>`;
+                    return;
+                }
+
+                const track = data.recenttracks.track[0];
+                const isNowPlaying = track['@attr'] && track['@attr'].nowplaying === 'true';
+                
+                let art = 'https://placehold.co/100x100/333/FFF?text=Music';
+                if (track.image && track.image.length > 0) {
+                    art = track.image[3]['#text'] || track.image[2]['#text'] || track.image[0]['#text'];
+                }
+
+                ui.musicContainer.innerHTML = `
+                    <div class="flex items-center gap-3 h-full px-1">
+                        <div class="relative flex-shrink-0">
+                            <img src="${art}" class="w-14 h-14 rounded-md object-cover shadow-sm bg-gray-100 dark:bg-gray-800">
+                            ${isNowPlaying ? `
+                                <div class="absolute -bottom-1 -right-1 bg-[var(--card-bg)] rounded-full p-1 border border-[var(--border-color)] shadow-sm" title="Listening Now">
+                                    <div class="equalizer">
+                                        <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="min-w-0 flex flex-col justify-center">
+                            <p class="font-bold text-xs truncate w-full pr-1" title="${track.name}">${track.name}</p>
+                            <p class="text-[10px] text-[var(--text-secondary)] truncate w-full" title="${track.artist['#text']}">${track.artist['#text']}</p>
+                            <p class="text-[9px] text-[var(--text-secondary)] mt-0.5 opacity-80">
+                                ${isNowPlaying ? '<span class="text-green-500 font-bold">Scrobbling now...</span>' : 'Last played'}
+                            </p>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                console.error("LastFM Error:", err);
+                ui.musicContainer.innerHTML = `<p class="text-[10px] text-red-400 text-center">Failed to load music.</p>`;
+            }
+        }
+
+        // --- VidTrackr Logic ---
         async function fetchTraktHistory(accessToken) {
             try {
                 const response = await fetch(`${TRAKT_API_URL}/sync/history?limit=1&extended=images`, {
@@ -504,7 +573,7 @@
                     ui.videoContainer.innerHTML = `
                         <div class="w-full text-center flex flex-col justify-center h-full">
                             <p class="text-xs text-red-500 font-bold mb-1">Session Expired</p>
-                            <a href="/vidtrackr" class="text-[10px] text-[var(--text-secondary)] underline hover:text-[var(--text-primary)]">Reconnect VidTrackr</a>
+                            <a href="/vidtrackr" class="text-[10px] text-[var(--text-secondary)] underline hover:text-[var(--text-primary)]">Reconnect</a>
                         </div>
                     `;
                     return;
@@ -518,20 +587,14 @@
                     const type = item.type;
                     const media = item[type];
                     
-                    // IMPROVED helper: 
-                    // 1. Handles arrays
-                    // 2. Checks for strings
-                    // 3. FORCE ADDS https:// if missing
                     const get = (path, obj) => {
                         const val = path.split('.').reduce((acc, part) => acc && acc[part], obj);
                         let final = Array.isArray(val) ? val[0] : val;
                         
                         if (typeof final === 'string') {
-                            // [FIX] If url starts with 'walter', add https://
                             if (!final.startsWith('http') && !final.startsWith('//')) {
                                 return `https://${final}`;
                             }
-                            // If it starts with //, add https:
                             if (final.startsWith('//')) {
                                 return `https:${final}`;
                             }
@@ -563,7 +626,6 @@
                                img;
                     }
                     
-                    // Fallback to Poster
                     if (img.includes('placehold.co') || !img) {
                          if (type === 'episode' && item.show) {
                             img = get('images.poster.medium', item.show) || 
@@ -582,11 +644,11 @@
                     const subtitle = type === 'episode' ? `S${item.episode.season}E${item.episode.number}: ${item.episode.title}` : (media.year || 'Movie');
 
                     ui.videoContainer.innerHTML = `
-                        <img src="${img}" class="w-28 h-16 rounded-md object-cover shadow-sm bg-gray-800" onerror="this.src='https://placehold.co/400x600/1f2937/FFF?text=Error'">
+                        <img src="${img}" class="w-16 h-10 rounded-md object-cover shadow-sm bg-gray-800" onerror="this.src='https://placehold.co/400x600/1f2937/FFF?text=Error'">
                         <div class="min-w-0 flex-grow">
-                            <p class="font-bold truncate text-base">${title}</p>
-                            <p class="text-xs text-[var(--text-secondary)] truncate">${subtitle}</p>
-                            <p class="text-[10px] text-[var(--text-secondary)] mt-2 flex items-center gap-1">
+                            <p class="font-bold truncate text-xs" title="${title}">${title}</p>
+                            <p class="text-[10px] text-[var(--text-secondary)] truncate" title="${subtitle}">${subtitle}</p>
+                            <p class="text-[9px] text-[var(--text-secondary)] mt-0.5 flex items-center gap-1">
                                 <i class="fas fa-check text-green-500"></i> ${new Date(item.watched_at).toLocaleDateString()}
                             </p>
                         </div>
@@ -644,10 +706,16 @@
                 if (!snap.empty) {
                     const pod = snap.docs[0].data();
                     ui.podcastContainer.innerHTML = `
-                        <img src="${pod.podcastArtwork}" class="w-12 h-12 rounded-md object-cover shadow-sm bg-gray-100 mb-2">
-                        <p class="font-bold truncate w-full text-xs">${pod.episodeTitle}</p>
-                        <p class="text-[10px] text-[var(--text-secondary)] truncate w-full">${pod.podcastTitle}</p>
+                        <div class="flex items-center gap-3 h-full px-1 text-left w-full">
+                            <img src="${pod.podcastArtwork}" class="w-12 h-12 rounded-md object-cover shadow-sm bg-gray-100 flex-shrink-0">
+                            <div class="min-w-0">
+                                <p class="font-bold truncate text-xs" title="${pod.episodeTitle}">${pod.episodeTitle}</p>
+                                <p class="text-[10px] text-[var(--text-secondary)] truncate" title="${pod.podcastTitle}">${pod.podcastTitle}</p>
+                            </div>
+                        </div>
                     `;
+                } else {
+                     ui.podcastContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic">No podcast history.</p>`;
                 }
             }));
 
@@ -688,7 +756,7 @@
 
             const dosesQ = query(collection(db, `users/${uid}/doses`), where('date', '>=', todayStr));
             unsubscribers.push(onSnapshot(dosesQ, (snap) => {
-                state.todayDoses = []; // Reset array
+                state.todayDoses = []; 
                 snap.forEach(d => {
                     const data = d.data();
                     if (data.date.startsWith(todayStr)) {
@@ -750,6 +818,22 @@
                         fetchTraktHistory(snap.data().accessToken);
                     } else {
                         ui.videoContainer.innerHTML = `<div class="w-full text-center text-sm text-[var(--text-secondary)]">VidTrackr not connected.</div>`;
+                    }
+                });
+
+                // --- Last.fm Polling ---
+                getDoc(doc(db, 'users', user.uid, 'services', 'lastfm')).then(snap => {
+                    if (snap.exists() && snap.data().username) {
+                        const fmUser = snap.data().username;
+                        fetchLastFm(fmUser);
+                        const fmInterval = setInterval(() => fetchLastFm(fmUser), 15000);
+                        unsubscribers.push(() => clearInterval(fmInterval));
+                    } else {
+                        ui.musicContainer.innerHTML = `
+                            <div class="text-center">
+                               <p class="text-xs text-[var(--text-secondary)] mb-1">Last.fm not linked</p>
+                               <a href="/account" class="text-[10px] underline">Connect in Settings</a>
+                            </div>`;
                     }
                 });
 

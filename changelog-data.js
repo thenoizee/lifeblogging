@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.45.0-alpha",
+    date: "2025-12-08",
+    changes: [
+        "In Account Page: Introduced last.fm account connection in account page for upcoming Dashboard feature release.",
+        "In Account Page: Bug fix - Updated Account Page VidTrackr notes export to only include notes from VidTrackr when exporting."
+    ]
+    },
+    {
     version: "v9.44.0-alpha",
     date: "2025-12-07",
     changes: [
