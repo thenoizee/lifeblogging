@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.46.0-alpha",
+    date: "2025-12-10",
+    changes: [
+        "In the Logger: Implemented a new modal-based editing workflow, replacing the previous inline field editing for a smoother user experience.",
+        "In the Logger: Reorganized the Dailies section into collapsible panels (Daily Plan, Calendar, Data Triage) to reduce visual clutter and improve page navigation."
+    ]
+    },
+    {
     version: "v9.45.0-alpha",
     date: "2025-12-08",
     changes: [
