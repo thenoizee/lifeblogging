@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.46.1-alpha",
+    date: "2025-12-10",
+    changes: [
+        "In the Logger: The updated Daily Plan tab will no longer be open by default upon opening."
+    ]
+    },
+    {
     version: "v9.46.0-alpha",
     date: "2025-12-10",
     changes: [
