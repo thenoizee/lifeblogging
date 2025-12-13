@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.47.0-alpha",
+    date: "2025-12-13",
+    changes: [
+        "In HydrationTrackr: Split the logging interface into two distinct sections: 'Log a Drink Now' for immediate updates and a dedicated 'Log a Drink at Custom Time' card for historical entries.",
+        "In HydrationTrackr: Added 'Quick Options (Historical)' buttons to the custom time section, allowing users to quickly log standard amounts (e.g., 250ml Water) for a specific past date and time."
+    ]
+    },
+    {
     version: "v9.46.1-alpha",
     date: "2025-12-10",
     changes: [
