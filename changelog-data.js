@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.48.0-alpha",
+    date: "2025-12-14",
+    changes: [
+        "In Changelog: Added a new 'App Filter' dropdown, allowing users to isolate and view version history specific to a single application.",
+        "In Changelog: Implemented dynamic grouping of entries; changes within each version are now categorized and visually separated by their respective app (e.g., 'VidTrackr', 'Hub').",
+        "In Changelog: Added a search bar to filter the changelog history by version number or date.",
+        "In Changelog: The app filter dropdown is dynamic and automatically populates based on the applications found in your data."
+    ]
+    },
+    {
     version: "v9.47.0-alpha",
     date: "2025-12-13",
     changes: [
@@ -71,11 +81,11 @@ export const changelogData = [
     version: "v9.42.0-alpha",
     date: "2025-12-06",
     changes: [
-        "In Account Settings: Added a comprehensive 'Data Export' tool allowing users to back up their entire account lifetime data.",
-        "In Account Settings: Implemented granular export controls, letting users select specific apps (e.g., VidTrackr, MediManagr) via checkboxes to export only the data they need.",
-        "In Account Settings: Added smart file handling where single-source exports download as timestamped JSON files, while multi-source selections are automatically bundled into a structured ZIP file using JSZip.",
-        "In Account Settings: Configured specific export paths for the entire suite of apps, including FoodTrackr, WarrantyTrackr, RecipeManagr, Label Generator, and Email Templates.",
-        "In Account Settings: Enhanced the exporter to intelligently include shared dependencies, such as the 'notes' collection when exporting VidTrackr or PodTrackr."
+        "In Account Page: Added a comprehensive 'Data Export' tool allowing users to back up their entire account lifetime data.",
+        "In Account Page: Implemented granular export controls, letting users select specific apps (e.g., VidTrackr, MediManagr) via checkboxes to export only the data they need.",
+        "In Account Page: Added smart file handling where single-source exports download as timestamped JSON files, while multi-source selections are automatically bundled into a structured ZIP file using JSZip.",
+        "In Account Page: Configured specific export paths for the entire suite of apps, including FoodTrackr, WarrantyTrackr, RecipeManagr, Label Generator, and Email Templates.",
+        "In Account Page: Enhanced the exporter to intelligently include shared dependencies, such as the 'notes' collection when exporting VidTrackr or PodTrackr."
     ]
     },
     {
@@ -113,7 +123,7 @@ export const changelogData = [
             "In VidTrackr: Resolved a bug where Genres displayed as 'undefined'. The logic now correctly handles the plain string array returned by the API.",
             "In VidTrackr: Expanded the Movie/Show Detail metadata to include a 'Production Info' box, displaying Director/Creator, Studio, Language, and Revenue data.",
             "In VidTrackr: Updated title icon to match the one used in the header ribbon.",
-            "General: Updated service worker."
+            "All: Updated service worker."
         ]
     },
     {
@@ -181,12 +191,12 @@ export const changelogData = [
   "version": "v9.33.0-alpha",
   "date": "2025-11-13",
   "changes": [
-    "In LabelGenerator: Overhauled the UI, replacing the long list of settings with a clear 4-step 'wizard' interface (Template, Layout, Content, Print).",
-    "In LabelGenerator: Clarified layout controls by replacing the 'Maximize' checkbox with 'Define by Grid' and 'Define by Label Size' radio buttons.",
-    "In LabelGenerator: Replaced the grid alignment dropdown with a 3x3 visual icon grid for more intuitive control.",
-    "In LabelGenerator: Added direct label editing. Users can now type directly into the first label in the preview grid, with content syncing to the main template box.",
-    "In LabelGenerator: Improved selection logic. Users can now select or deselect any label, and the print function will print *only* the selected labels.",
-    "In LabelGenerator: Fixed a bug where the first label in the grid could not be deselected.",
+    "In Label Generator: Overhauled the UI, replacing the long list of settings with a clear 4-step 'wizard' interface (Template, Layout, Content, Print).",
+    "In Label Generator: Clarified layout controls by replacing the 'Maximize' checkbox with 'Define by Grid' and 'Define by Label Size' radio buttons.",
+    "In Label Generator: Replaced the grid alignment dropdown with a 3x3 visual icon grid for more intuitive control.",
+    "In Label Generator: Added direct label editing. Users can now type directly into the first label in the preview grid, with content syncing to the main template box.",
+    "In Label Generator: Improved selection logic. Users can now select or deselect any label, and the print function will print *only* the selected labels.",
+    "In Label Generator: Fixed a bug where the first label in the grid could not be deselected.",
   ]
 },
     {
@@ -290,8 +300,8 @@ export const changelogData = [
     "version": "v9.25.1-alpha",
     "date": "2025-10-22",
     "changes": [
-        "In the PDF Tool: Added option to edit another PDF on each mode.",
-        "In the PDF Tool: Fixed dark/might mode toggle sync."
+        "In PDF Tools: Added option to edit another PDF on each mode.",
+        "In PDF Tools: Fixed dark/night mode toggle sync."
     ]
     },
     {
@@ -355,8 +365,8 @@ export const changelogData = [
     "changes": [
         "In the Template Generator: Added latest updated time to Conflict Sync Modal. ",
         "In the Template Generator: Bug fix to Pronoun presets auto-fill detection feature.",
-        "In the PDF Tool: Added a crop PDF feature.",
-        "In the PDF Tool: Added a stitch/cut PDF page tool.",
+        "In PDF Tools: Added a crop PDF feature.",
+        "In PDF Tools: Added a stitch/cut PDF page tool.",
     ]
     },
     {
@@ -466,7 +476,7 @@ export const changelogData = [
         version: "v9.16.0-alpha",
         date: "2025-09-28",
         changes: [
-            "Whole App: Update links to apps and tools to be more accurate to their official title.",
+            "All: Update links to apps and tools to be more accurate to their official title.",
         ]
     },
     {
@@ -474,7 +484,7 @@ export const changelogData = [
         date: "2025-09-28",
         changes: [
             "In the MediManagr: Added basic contact lens tracking features.",
-            "Whole App: Updated favicons."
+            "All: Updated favicons."
         ]
     },
     {
@@ -488,8 +498,8 @@ export const changelogData = [
     version: "v9.15.0-alpha",
     date: "2025-09-25",
     changes: [
-        "In Email Generator: Users can now generate drafts and load directly into Gmail once authorized.",
-        "In the Email Generator: Improved folder layout, dark mode toggle, and latest template updated time is now readily available.",
+        "In Email Template Generator: Users can now generate drafts and load directly into Gmail once authorized.",
+        "In Email Template Generator: Improved folder layout, dark mode toggle, and latest template updated time is now readily available.",
         
     ]
     },
@@ -527,9 +537,9 @@ export const changelogData = [
         version: "v9.12.1-alpha",
         date: "2025-09-16",
         changes: [
-        "In the Unlock PDF tool: Improved the unlocking engine to successfully process files with non-standard or slightly corrupted structures.",
-        "In the Unlock PDF tool: Fixed a bug where incorrect 'wrong password' errors were shown for corrupted files.",
-        "In the Unlock PDF tool: Added a new alert with instructions on how to repair corrupted PDFs using the 'Print to PDF' method.",
+        "In PDF Tools: Improved the unlocking engine to successfully process files with non-standard or slightly corrupted structures.",
+        "In PDF Tools: Fixed a bug where incorrect 'wrong password' errors were shown for corrupted files.",
+        "In PDF Tools: Added a new alert with instructions on how to repair corrupted PDFs using the 'Print to PDF' method.",
         ]
     },
     {

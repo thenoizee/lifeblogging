@@ -31,6 +31,7 @@
             --text-color-secondary: #4a5568;
             --border-color: #e2e8f0;
             --shadow-color: rgba(0, 0, 0, 0.1);
+            --header-bg: #edf2f7;
         }
         .dark {
             --bg-color: #1a202c;
@@ -39,6 +40,7 @@
             --text-color-secondary: #a0aec0;
             --border-color: #4a5568;
             --shadow-color: rgba(0, 0, 0, 0.4);
+            --header-bg: #4a5568;
         }
         body {
             font-family: 'Inter', sans-serif;
@@ -71,14 +73,30 @@
         </button>
     </div>
 
-    <div class="max-w-3xl mx-auto">
+    <div class="max-w-4xl mx-auto">
         <div class="bg-[var(--card-bg-color)] shadow-lg rounded-xl p-8">
-            <div class="flex justify-between items-center mb-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <h1 class="text-4xl font-bold text-[var(--text-color-primary)]">Changelog</h1>
-                <a href="/" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
+                
+                <div class="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
+                    <select id="app-filter" class="w-full sm:w-48 px-4 py-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-color)] text-[var(--text-color-primary)] focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                        <option value="All Apps">All Apps</option>
+                        </select>
+
+                    <input type="text" id="search-input" placeholder="Search version or date..." 
+                        class="w-full sm:w-56 px-4 py-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-color)] text-[var(--text-color-primary)] focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    
+                    <a href="/" class="hidden sm:inline-block bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg whitespace-nowrap">Back to Hub</a>
+                </div>
             </div>
+            
+            <a href="/" class="sm:hidden w-full text-center block mb-6 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg">Back to Hub</a>
+
             <div id="changelog-container" class="space-y-8">
                 </div>
+            <div id="no-results" class="hidden text-center text-[var(--text-color-secondary)] py-8">
+                No changes found matching your filters.
+            </div>
         </div>
     </div>
     
@@ -88,39 +106,161 @@
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const renderChangelog = () => {
-            const container = document.getElementById('changelog-container');
-            container.innerHTML = ''; // Clear existing content
+        // --- Helper: Parse Change String ---
+        const parseChange = (change) => {
+            // Patterns to match: "In App:", "In the App:", "App:", "Hub:"
+            const regex = /^(?:In (?:the )?)?([^:]+?):\s+(.*)/i;
+            const match = change.match(regex);
 
+            if (match && match[1] && match[2]) {
+                let appName = match[1].trim();
+                // Standardize naming (capitalize first letter)
+                appName = appName.charAt(0).toUpperCase() + appName.slice(1);
+                return { app: appName, text: match[2].trim() };
+            }
+            return { app: "General / Other", text: change };
+        };
+
+        // --- Logic: Populate App Dropdown ---
+        const populateAppDropdown = () => {
+            const appSet = new Set();
             changelogData.forEach(entry => {
-                const entryDiv = document.createElement('div');
-                entryDiv.className = 'border-l-4 border-indigo-500 pl-6';
+                entry.changes.forEach(change => {
+                    const parsed = parseChange(change);
+                    appSet.add(parsed.app);
+                });
+            });
 
+            const sortedApps = Array.from(appSet).sort();
+            const selectElement = document.getElementById('app-filter');
+
+            sortedApps.forEach(appName => {
+                if(appName === "General / Other") return; // Keep at bottom or ignore
+                const option = document.createElement('option');
+                option.value = appName;
+                option.textContent = appName;
+                selectElement.appendChild(option);
+            });
+            
+            // Add General at the end if it exists
+            if (appSet.has("General / Other")) {
+                const option = document.createElement('option');
+                option.value = "General / Other";
+                option.textContent = "General / Other";
+                selectElement.appendChild(option);
+            }
+        };
+
+        // --- Logic: Render Changelog ---
+        const renderChangelog = (data, filterApp = 'All Apps') => {
+            const container = document.getElementById('changelog-container');
+            const noResults = document.getElementById('no-results');
+            
+            container.innerHTML = ''; 
+
+            let visibleCount = 0;
+
+            data.forEach(entry => {
+                // Group changes by App
+                const groups = {};
+                let hasMatchingChanges = false;
+
+                entry.changes.forEach(change => {
+                    const parsed = parseChange(change);
+                    
+                    // If filtering by specific app, skip changes that don't match
+                    if (filterApp !== 'All Apps' && parsed.app !== filterApp) {
+                        return;
+                    }
+
+                    if (!groups[parsed.app]) {
+                        groups[parsed.app] = [];
+                    }
+                    groups[parsed.app].push(parsed.text);
+                    hasMatchingChanges = true;
+                });
+
+                // If this version has no changes relevant to the filter, skip rendering the card entirely
+                if (!hasMatchingChanges) return;
+
+                visibleCount++;
+
+                const entryDiv = document.createElement('div');
+                entryDiv.className = 'border-l-4 border-indigo-500 pl-6 pb-2';
+
+                // Header
                 const versionHeader = document.createElement('h2');
                 versionHeader.className = 'text-2xl font-bold text-[var(--text-color-primary)]';
                 versionHeader.textContent = entry.version;
 
                 const datePara = document.createElement('p');
-                datePara.className = 'text-sm text-[var(--text-color-secondary)] mb-2';
+                datePara.className = 'text-sm text-[var(--text-color-secondary)] mb-4';
                 datePara.textContent = new Date(entry.date).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' });
-
-                const changesList = document.createElement('ul');
-                changesList.className = 'list-disc list-inside space-y-1 text-[var(--text-color-secondary)]';
-
-                entry.changes.forEach(change => {
-                    const listItem = document.createElement('li');
-                    listItem.textContent = change;
-                    changesList.appendChild(listItem);
-                });
 
                 entryDiv.appendChild(versionHeader);
                 entryDiv.appendChild(datePara);
-                entryDiv.appendChild(changesList);
+
+                // Render Groups
+                const sortedKeys = Object.keys(groups).sort((a, b) => {
+                    if (a === 'General / Other') return 1;
+                    if (b === 'General / Other') return -1;
+                    return a.localeCompare(b);
+                });
+
+                sortedKeys.forEach(appName => {
+                    // Only show App Header if we are viewing "All Apps". 
+                    // If we filtered to "VidTrackr", the header is redundant (but can be kept for consistency).
+                    // Let's keep it for clarity.
+                    const categoryHeader = document.createElement('h3');
+                    categoryHeader.className = 'text-md font-bold text-indigo-500 mt-3 mb-1 uppercase tracking-wide text-xs';
+                    categoryHeader.textContent = appName;
+                    
+                    const changesList = document.createElement('ul');
+                    changesList.className = 'list-disc list-inside space-y-1 text-[var(--text-color-secondary)] mb-2';
+
+                    groups[appName].forEach(text => {
+                        const listItem = document.createElement('li');
+                        listItem.textContent = text;
+                        changesList.appendChild(listItem);
+                    });
+
+                    entryDiv.appendChild(categoryHeader);
+                    entryDiv.appendChild(changesList);
+                });
+
                 container.appendChild(entryDiv);
             });
+
+            if (visibleCount === 0) {
+                noResults.classList.remove('hidden');
+            } else {
+                noResults.classList.add('hidden');
+            }
         };
 
-        // --- Firebase & Theme Logic (copied from index.html) ---
+        // --- Logic: Filter Controller ---
+        const searchInput = document.getElementById('search-input');
+        const appSelect = document.getElementById('app-filter');
+
+        const applyFilters = () => {
+            const query = searchInput.value.toLowerCase();
+            const selectedApp = appSelect.value;
+
+            // 1. Filter by Search Query (Version/Date)
+            const searchFilteredData = changelogData.filter(entry => {
+                return entry.version.toLowerCase().includes(query) || 
+                       entry.date.includes(query);
+            });
+
+            // 2. Pass filtered data AND the selected app to render function
+            // The render function handles filtering the specific *bullet points* inside.
+            renderChangelog(searchFilteredData, selectedApp);
+        };
+        
+        searchInput.addEventListener('input', applyFilters);
+        appSelect.addEventListener('change', applyFilters);
+
+        // --- Firebase & Theme Logic ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' 
             ? JSON.parse(__firebase_config) 
             : {
@@ -162,7 +302,6 @@
         onAuthStateChanged(auth, (user) => {
             themeToggle.disabled = !user;
             if (user) {
-                // When the user views the changelog, update the last seen version
                 const LATEST_VERSION = changelogData[0].version;
                 localStorage.setItem('lastSeenVersion', LATEST_VERSION);
                 
@@ -183,7 +322,10 @@
 
         themeToggle.addEventListener('click', toggleTheme);
 
-        document.addEventListener('DOMContentLoaded', renderChangelog);
+        document.addEventListener('DOMContentLoaded', () => {
+            populateAppDropdown();
+            renderChangelog(changelogData);
+        });
     </script>
 </body>
 </html>

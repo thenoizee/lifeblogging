@@ -685,48 +685,6 @@
             } catch (e) { console.error("Up Next Error", e); }
         }
 
-        async function renderProgress() {
-            els.content.innerHTML = `
-                <h1 class="text-3xl font-bold mb-6">Your Progress</h1>
-                <div class="card p-6 rounded-2xl mb-10 border border-gray-800 shadow-xl">
-                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-chart-simple text-[var(--primary)]"></i> Watch Activity (Last 7 Days)</h2>
-                    <div class="h-64 relative w-full"><canvas id="activityChart"></canvas></div>
-                </div>
-                <h2 class="text-2xl font-bold mb-6 border-l-4 border-yellow-500 px-2">Show Progress</h2>
-                <div id="progress-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade"></div>
-            `;
-            showLoader();
-            try {
-                const today = new Date();
-                const historyPromises = [];
-                const labels = [];
-                for(let i=6; i>=0; i--) {
-                    const d = new Date(today); d.setDate(today.getDate() - i);
-                    labels.push(d.toLocaleDateString(undefined, {weekday:'short'}));
-                    historyPromises.push(fetchDirect(`/sync/history?start_at=${d.toISOString().split('T')[0]}T00:00:00.000Z&end_at=${d.toISOString().split('T')[0]}T23:59:59.000Z&limit=100`));
-                }
-                const dailyData = await Promise.all(historyPromises);
-                const chartData = dailyData.map(d => d.length);
-                if(progressChartInstance) progressChartInstance.destroy();
-                const ctx = document.getElementById('activityChart').getContext('2d');
-                progressChartInstance = new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ label: 'Items', data: chartData, backgroundColor: '#ed2224', borderRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#374151' }, ticks: { color: '#9ca3af', precision: 0 } }, x: { grid: { display: false }, ticks: { color: '#9ca3af' } } } } } );
-
-                const watchedShows = await fetchDirect('/sync/watched/shows?extended=noseasons');
-                watchedShows.sort((a,b) => new Date(b.last_watched_at) - new Date(a.last_watched_at));
-                const topShows = watchedShows.slice(0, 12);
-                const cards = await Promise.all(topShows.map(async (item) => {
-                    try {
-                        const showInfo = await fetchDirect(`/shows/${item.show.ids.trakt}?extended=full,images`);
-                        const aired = showInfo.aired_episodes || 0;
-                        const percent = aired > 0 ? Math.min(100, Math.round((item.plays / aired) * 100)) : 0;
-                        const img = getImage(showInfo, 'show', true);
-                        return `<div class="card rounded-xl overflow-hidden border border-gray-800 hover:border-yellow-500 transition cursor-pointer group relative" onclick="location.hash='#detail/show/${showInfo.ids.trakt}'"><div class="h-32 relative"><img src="${img}" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute inset-0 bg-gradient-to-t from-[var(--card)] to-transparent"></div><div class="absolute bottom-2 left-4"><h3 class="font-bold text-lg leading-tight shadow-black drop-shadow-md truncate w-64">${showInfo.title}</h3><p class="text-xs text-gray-400">Watched ${item.plays} of ${aired}</p></div><div class="absolute top-2 right-2 font-bold text-xl text-yellow-500 shadow-black drop-shadow-md">${percent}%</div></div><div class="px-4 pb-4 pt-1"><div class="w-full bg-gray-700 h-2 rounded-full overflow-hidden"><div class="bg-[var(--primary)] h-full transition-all duration-1000" style="width: ${percent}%"></div></div><p class="text-[10px] text-gray-500 mt-2 text-right">Last watched: ${new Date(item.last_watched_at).toLocaleDateString()}</p></div></div>`;
-                    } catch(e) { return ''; }
-                }));
-                document.getElementById('progress-list').innerHTML = cards.join('');
-            } catch(e) { console.error(e); } hideLoader();
-        }
-
         async function renderDetail(type, id, initialSeason = null) {
             showLoader(); els.content.innerHTML = '';
             try {
@@ -735,7 +693,8 @@
                 
                 let item, notes, history = [], related = [], showInfo = null, people = null;
                 let showProgress = null; 
-                
+                let collectionList = null; 
+
                 if (isEpisode) {
                     const searchResults = await fetchDirect(`/search/trakt/${id}?type=episode&extended=full,images`);
                     if(searchResults && searchResults[0]) {
@@ -747,6 +706,7 @@
                     item.user_data = userData.user_data;
                     history = await fetchDirect(`/users/me/history/episodes/${id}?limit=20`);
                 } else {
+                    // Fetch basic data
                     [item, notes, history, related, people] = await Promise.all([
                         fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
@@ -754,8 +714,73 @@
                         fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`),
                         fetchDirect(`/${type}s/${id}/people?extended=images`) 
                     ]);
+
+                    // --- NEW: Official Collection Logic (Corrected) ---
+                    if (type === 'movie') {
+                        try {
+                            // 1. Find lists containing this movie
+                            const lists = await fetchDirect(`/movies/${id}/lists?type=official&sort=likes&limit=20`);
+                            
+                            // 2. Find a list owned by 'official' that looks like a collection
+                            const officialList = lists.find(l => 
+                                (l.user && l.user.username === 'official') || 
+                                (l.name.toLowerCase().includes('collection') && l.likes > 10) 
+                            );
+
+                            if (officialList && officialList.user) {
+                                // FIX: Robustly get the username/slug
+                                const userSlug = (officialList.user.ids && officialList.user.ids.slug) 
+                                                 ? officialList.user.ids.slug 
+                                                 : officialList.user.username;
+                                
+                                if (userSlug) {
+                                    // 3. Fetch items from that specific list
+                                    const listItems = await fetchDirect(`/users/${userSlug}/lists/${officialList.ids.trakt}/items/movies?extended=images`);
+                                    // Extract just the movie objects
+                                    collectionList = listItems.map(li => li.movie);
+                                }
+                            }
+                        } catch (err) {
+                            console.warn("Failed to fetch official collection", err);
+                        }
+                    }
                 }
+
                 if(isEpisode) notes = await getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey));
+
+                // --- Navigation Logic (Official List > Related Fallback) ---
+                let navPrev = null, navNext = null;
+
+                if (!isEpisode && type === 'movie') {
+                    let navSet = [];
+                    
+                    if (collectionList && collectionList.length > 0) {
+                        // Use Official Collection
+                        navSet = collectionList;
+                    } else if (related.length > 0) {
+                        // Fallback: Use Related (sorted by release date)
+                        navSet = [item, ...related]
+                            .filter(m => m.released)
+                            .sort((a, b) => new Date(a.released) - new Date(b.released));
+                        
+                        // Deduplicate logic for fallback
+                        const unique = [];
+                        const seen = new Set();
+                        for(const m of navSet) {
+                            if(!seen.has(m.ids.trakt)) { unique.push(m); seen.add(m.ids.trakt); }
+                        }
+                        navSet = unique;
+                    }
+
+                    if (navSet.length > 0) {
+                        const idx = navSet.findIndex(m => m.ids.trakt == item.ids.trakt);
+                        if (idx !== -1) {
+                            if (idx > 0) navPrev = navSet[idx - 1];
+                            if (idx < navSet.length - 1) navNext = navSet[idx + 1];
+                        }
+                    }
+                }
+                // ----------------------------------------------
 
                 const userNote = notes.exists() ? notes.data().text : '';
                 const myRating = item.user_rating;
@@ -780,7 +805,6 @@
                     director = people.crew.directing[0]?.person?.name || 'N/A';
                 }
 
-                // NEW: Stream Link
                 const watchLink = `https://trakt.tv/${type === 'episode' ? 'shows' : type + 's'}/${id}/watchnow`;
 
                 const watchedBadge = isWatched 
@@ -850,12 +874,10 @@
                             <p class="text-lg text-gray-300 leading-relaxed mb-8">${item.overview || 'No overview available.'}</p>
                             ${historyHtml}
                             <div class="flex flex-col sm:flex-row gap-4 mb-8">
-    <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode'}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check"></i> Log / Rate Again</button>
-    
-    <button onclick="window.openAddToList('${item.ids.trakt}', 'episode')" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center" title="Add to List"><i class="fa-solid fa-list-ul"></i></button>
-    
-    <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold border border-gray-700 transition flex items-center justify-center gap-2">Season ${item.season}</button>
-</div>
+                                <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode'}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check"></i> Log / Rate Again</button>
+                                <button onclick="window.openAddToList('${item.ids.trakt}', 'episode')" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center" title="Add to List"><i class="fa-solid fa-list-ul"></i></button>
+                                <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold border border-gray-700 transition flex items-center justify-center gap-2">Season ${item.season}</button>
+                            </div>
                              <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8">
                                 <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
                                 <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-3 text-sm outline-none resize-none" rows="2" placeholder="Private note...">${userNote}</textarea>
@@ -874,20 +896,17 @@
                             <div class="rounded-2xl overflow-hidden shadow-2xl relative group border border-gray-800">
                                 <img src="${img}" class="w-full object-cover">
                                 ${type === 'movie' ? `<div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm"><button class="scrobble-btn ${getBgColor(type)} text-white px-8 py-3 rounded-full font-bold transform scale-90 group-hover:scale-100 transition shadow-xl" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-check mr-2"></i> Log Movie</button></div>` : ''}
+                                
+                                ${navPrev ? `<div class="nav-btn nav-prev" onclick="location.hash='#detail/movie/${navPrev.ids.trakt}'" title="Previous: ${navPrev.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-left"></i></div>` : ''}
+                                ${navNext ? `<div class="nav-btn nav-next" onclick="location.hash='#detail/movie/${navNext.ids.trakt}'" title="Next: ${navNext.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-right"></i></div>` : ''}
                             </div>
                             
                             <div class="mt-6 flex flex-col gap-3">
-    <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2">
-        <i class="fa-solid fa-play"></i> Stream Now
-    </a>
-
-    <button onclick="window.openAddToList('${item.ids.trakt}', '${type}')" class="w-full text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold text-xs transition border border-gray-600 flex items-center justify-center gap-2">
-        <i class="fa-solid fa-list-ul"></i> Add to List
-    </button>
-
-    ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition border border-gray-700">Official Website <i class="fa-solid fa-up-right-from-square ml-1"></i></a>` : ''}
-    ${trailerUrl ? `<a href="${trailerUrl}" target="_blank" class="w-full text-center bg-red-900/20 hover:bg-red-900/40 text-red-500 py-2 rounded-lg font-bold text-xs transition border border-red-900/30"><i class="fa-brands fa-youtube mr-1"></i> Watch Trailer</a>` : ''}
-</div>
+                                <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2"><i class="fa-solid fa-play"></i> Stream Now</a>
+                                <button onclick="window.openAddToList('${item.ids.trakt}', '${type}')" class="w-full text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold text-xs transition border border-gray-600 flex items-center justify-center gap-2"><i class="fa-solid fa-list-ul"></i> Add to List</button>
+                                ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition border border-gray-700">Official Website <i class="fa-solid fa-up-right-from-square ml-1"></i></a>` : ''}
+                                ${trailerUrl ? `<a href="${trailerUrl}" target="_blank" class="w-full text-center bg-red-900/20 hover:bg-red-900/40 text-red-500 py-2 rounded-lg font-bold text-xs transition border border-red-900/30"><i class="fa-brands fa-youtube mr-1"></i> Watch Trailer</a>` : ''}
+                            </div>
 
                             <div class="mt-6 bg-[var(--card)] p-4 rounded-xl border border-gray-800 text-sm space-y-3">
                                 <h4 class="font-bold text-gray-400 text-xs uppercase mb-2">Production Info</h4>
