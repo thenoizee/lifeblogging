@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.49.0-alpha",
+    date: "2025-12-14",
+    changes: [
+        "Launched TaskTrackr: A new comprehensive task management application powered by the TickTick API, accessible directly from the Hub.",
+        "In TaskTrackr: Features three distinct views: a Classic List, an interactive Calendar with daily dot indicators, and a Kanban board for visual priority management.",
+        "In TaskTrackr: Implemented full task management capabilities, including creating, editing, completing, and deleting tasks, with support for subtasks and tagging.",
+        "In TaskTrackr: Added advanced filtering options for Inbox, Today, Tomorrow, Overdue, and specific Projects to help focus your workflow.",
+        "In TaskTrackr: Includes a 'Quick Add' feature for rapid task entry and bulk action tools to move or manage multiple tasks efficiently."
+    ]
+    },
+    {
     version: "v9.48.0-alpha",
     date: "2025-12-14",
     changes: [

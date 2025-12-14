@@ -18,8 +18,9 @@ const urlsToCache = [
   '/account/index.html',
   '/recipemanagr/index.html',
   '/podtrackr/index.html',
-  '/hydration/index.html', // Add the new hydration app
-  '/palette/index.html', // Add the new palette app
+  '/hydration/index.html', 
+  '/palette/index.html', 
+  '/tasktrackr/index.html', // Add the new TaskTrackr app
   '/recipemanagr/style.css',
   '/changelog-data.js',
   '/icons/icon-192x192.png',
