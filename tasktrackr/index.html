@@ -260,9 +260,54 @@
 
     <script type="module">
         import { TICKTICK_CLIENT_ID, TICKTICK_CLIENT_SECRET, TICKTICK_REDIRECT_URI } from './api_keys.js';
+        
+        // --- 1. Add Firebase Imports ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- 2. Initialize Firebase (Config from your account/index.html) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
+            authDomain: "sammy-7298f.firebaseapp.com",
+            projectId: "sammy-7298f",
+            storageBucket: "sammy-7298f.firebasestorage.app",
+            messagingSenderId: "963185683535",
+            appId: "1:963185683535:web:807df8941feba46c208e3a",
+            measurementId: "G-JT1YF2ELN3"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
         const API_BASE = 'https://api.ticktick.com/open/v1';
         let accessToken = localStorage.getItem('ticktick_token');
+        
+        // --- 3. Sync Logic: Load Token from Firebase ---
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // User is logged into Lifeblogging. Check for stored TickTick token.
+                try {
+                    const docRef = doc(db, 'users', user.uid, 'services', 'ticktick');
+                    const docSnap = await getDoc(docRef);
+
+                    if (docSnap.exists() && docSnap.data().token) {
+                        const dbToken = docSnap.data().token;
+                        // If we have a token in DB that is different from local, update local and use it
+                        if (dbToken !== accessToken) {
+                            console.log("Syncing TickTick token from Lifeblogging Account...");
+                            accessToken = dbToken;
+                            localStorage.setItem('ticktick_token', accessToken);
+                            // Refresh data with new token
+                            fetchAllData();
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error syncing with Firestore:", e);
+                }
+            }
+        });
         let taskCache = [];
         try {
             const cached = localStorage.getItem('ticktrackr_tasks');
@@ -1304,6 +1349,32 @@ window.bulkAction = async (action, dateValue = null) => {
                     if (data.access_token) {
                         accessToken = data.access_token;
                         localStorage.setItem('ticktick_token', accessToken);
+                        
+                        // --- ROBUST SAVE LOGIC ---
+                        // Wait up to 2 seconds for Firebase Auth to initialize if it hasn't yet
+                        if (!auth.currentUser) {
+                            await new Promise(resolve => {
+                                const unsubscribe = onAuthStateChanged(auth, (u) => {
+                                    if(u) { unsubscribe(); resolve(); }
+                                });
+                                setTimeout(() => { resolve(); }, 2000); // Timeout fallback
+                            });
+                        }
+
+                        const user = auth.currentUser;
+                        if (user) {
+                            try {
+                                await setDoc(doc(db, 'users', user.uid, 'services', 'ticktick'), { 
+                                    token: accessToken,
+                                    updatedAt: new Date()
+                                }, { merge: true });
+                                showToast('TickTick connected to Lifeblogging Account');
+                            } catch(e) {
+                                console.error("Could not save token to cloud", e);
+                            }
+                        }
+                        // -------------------------
+
                         fetchAllData();
                     } 
                 } catch(e) { console.error(e); }

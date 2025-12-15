@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.50.0-alpha",
+    date: "2025-12-15",
+    changes: [
+        "In TaskTrackr: Implemented cloud synchronization for TickTick authentication tokens, allowing single sign-on across multiple devices.",
+        "In TaskTrackr: Integrated Firebase Firestore to securely store and retrieve TickTick session tokens linked to the user's Lifeblogging account.",
+        "In TaskTrackr: Added automatic session restoration so logging in on one device (e.g., laptop) automatically logs you in on others (e.g., phone)."
+    ]
+    },
+    {
     version: "v9.49.0-alpha",
     date: "2025-12-14",
     changes: [
