@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.51.0-alpha",
+    date: "2025-12-18",
+    changes: [
+        "Launched VehicleManagr: A comprehensive fleet management application accessible from the Hub.",
+        "In VehicleManagr: Features a 'Virtual Glovebox' to store vital metadata like VIN, insurance expiry, and oil type.",
+        "In VehicleManagr: Includes a full logging system for fuel, service, expenses, and trips, with automatic MPG calculation.",
+        "In VehicleManagr: Implemented an interactive tyre health visualizer to track pressure and tread depth per wheel."
+    ]
+    },
+    {
     version: "v9.50.0-alpha",
     date: "2025-12-15",
     changes: [
