@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v9.53.0-alpha",
+    date: "2025-12-20",
+    changes: [
+        "In TaskTrackr: Implemented project color coding; task cards now display a visual color strip and tinted badges matching their project's theme.",
+        "In TaskTrackr: Enhanced recurring task logic with a 'Complete Session' action that hides the task and automatically schedules the next occurrence.",
+        "In TaskTrackr: Added smart toast notifications for recurring tasks, which now calculate and display the exact date and day count for the next scheduled session (e.g., 'Next: Jan 25 (in 5 days)').",
+        "In TaskTrackr: Upgraded the Calendar view with drag-and-drop scheduling, allowing users to drag tasks directly onto calendar days to instantly update their due date.",
+        "In TaskTrackr: Added a 'Completed' filter tab for viewing task history, a 'Today' jump button for the calendar, and a global 'Back to Hub' navigation button.",
+        "In TaskTrackr: Improved general UX with relative date labels (Today, Tomorrow, Yesterday) and better visual feedback for empty lists."
+    ]
+    },
+    {
     version: "v9.52.0-alpha",
     date: "2025-12-20",
     changes: [

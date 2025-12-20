@@ -20,7 +20,7 @@
         .light { --bg: var(--bg-light); --card: var(--card-light); --text: var(--text-light); }
         
         body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); transition: 0.3s; padding-bottom: 80px; }
-        .card { background-color: var(--card); transition: all 0.2s; }
+        .card { background-color: var(--card); transition: all 0.2s; position: relative; overflow: hidden; }
         .btn-primary { background-color: var(--primary); color: white; transition: 0.2s; }
         .btn-primary:hover { background-color: var(--primary-hover); }
         .nav-tab { padding: 0.5rem 1rem; border-radius: 0.5rem; transition: all 0.2s; font-weight: 600; color: #6b7280; }
@@ -40,9 +40,10 @@
         #side-pane-overlay { transition: opacity 0.3s ease; }
         
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: #374151; border: 1px solid #374151; border-radius: 0.5rem; overflow: hidden; }
-        .calendar-day { min-height: 100px; background: var(--card); padding: 0.5rem; transition: background 0.2s; cursor: pointer; }
+        .calendar-day { min-height: 100px; background: var(--card); padding: 0.5rem; transition: background 0.2s; cursor: pointer; position: relative; }
         .calendar-day:hover { background: var(--bg); }
         .calendar-day.today { background: rgba(59, 130, 246, 0.1); }
+        .calendar-day.drag-over { background: rgba(59, 130, 246, 0.3); box-shadow: inset 0 0 0 2px var(--primary); }
         .calendar-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 2px; }
 
         /* Trello/Kanban Styles */
@@ -64,7 +65,8 @@
         .pomo-icon { display: none; }
 
         /* Compact Mode Overhaul */
-        .compact-mode .card { padding: 0.35rem 0.75rem; margin-bottom: 2px; font-size: 0.85rem; display: flex; align-items: center; border-radius: 4px; }
+        .compact-mode .card { padding: 0; margin-bottom: 2px; font-size: 0.85rem; display: flex; align-items: center; border-radius: 4px; height: 42px; }
+        .compact-mode .card .card-inner { padding: 0.25rem 0.75rem; display: flex; align-items: center; width: 100%; }
         .compact-mode .card h3 { font-size: 0.9rem; font-weight: 500; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .compact-mode .card .task-checkbox { width: 1rem; height: 1rem; }
         .compact-mode .card .task-details-wrapper { display: flex; align-items: center; width: 100%; gap: 8px; }
@@ -85,6 +87,8 @@
         .priority-5 { border-color: #ef4444; } .priority-5:checked { background-color: #ef4444; border-color: #ef4444; }
         .priority-3 { border-color: #eab308; } .priority-3:checked { background-color: #eab308; border-color: #eab308; }
         .priority-1 { border-color: #3b82f6; } .priority-1:checked { background-color: #3b82f6; border-color: #3b82f6; }
+
+        .project-color-strip { width: 4px; height: 100%; position: absolute; left: 0; top: 0; bottom: 0; border-top-left-radius: 0.75rem; border-bottom-left-radius: 0.75rem; }
     </style>
 </head>
 <body class="antialiased flex flex-col min-h-screen">
@@ -93,6 +97,9 @@
         <div class="container mx-auto px-4 py-2">
             <div class="flex items-center justify-between mb-2 mt-1">
                 <div class="flex items-center space-x-4">
+                    <a href="/" class="btn-primary text-xs font-bold py-1.5 px-3 rounded-lg shadow-md hover:shadow-lg transition flex items-center gap-1">
+                        <i class="fa-solid fa-arrow-left"></i> Hub
+                    </a>
                     <a href="#" class="flex items-center space-x-2 text-2xl font-bold text-[var(--primary)]">
                         <i class="fa-solid fa-check-double"></i>
                         <span class="hidden sm:inline tracking-tight">TaskTrackr</span>
@@ -132,6 +139,7 @@
                     <button onclick="window.setFilter('today')" class="filter-chip px-3 py-1 rounded-full border border-gray-700 text-xs font-bold transition whitespace-nowrap bg-gray-800 hover:border-[var(--primary)]" data-drop-action="today">Today</button>
                     <button onclick="window.setFilter('tomorrow')" class="filter-chip px-3 py-1 rounded-full border border-gray-700 text-xs font-bold transition whitespace-nowrap bg-gray-800 hover:border-[var(--primary)]" data-drop-action="tomorrow">Tomorrow</button>
                     <button onclick="window.setFilter('overdue')" class="filter-chip px-3 py-1 rounded-full border border-gray-700 text-xs font-bold transition whitespace-nowrap bg-gray-800 hover:border-red-500">Overdue</button>
+                    <button onclick="window.setFilter('completed')" class="filter-chip px-3 py-1 rounded-full border border-gray-700 text-xs font-bold transition whitespace-nowrap bg-gray-800 hover:border-green-500">Completed</button>
                     <button onclick="window.setFilter('all')" class="filter-chip px-3 py-1 rounded-full border border-gray-700 text-xs font-bold transition whitespace-nowrap bg-gray-800 hover:border-[var(--primary)]">All Active</button>
                     <button onclick="window.setFilter('projects')" class="filter-chip px-3 py-1 rounded-full border border-gray-700 text-xs font-bold transition whitespace-nowrap bg-gray-800 hover:border-purple-500">Projects</button>
                 </div>
@@ -217,15 +225,20 @@
             <div id="sp-checklist-items" class="space-y-2"></div>
         </div>
         
-        <div class="p-4 border-t border-gray-700 bg-[var(--card)] flex gap-3">
-            <button id="sp-trash-btn" class="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-300 py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition">
-                <i class="fa-solid fa-trash"></i>
-            </button>
-            <button id="sp-complete-btn" class="flex-[3] bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition">
-                <i class="fa-solid fa-check"></i> Complete
-            </button>
-            <button id="sp-edit-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center transition">
-                <i class="fa-solid fa-pen"></i>
+        <div class="p-4 border-t border-gray-700 bg-[var(--card)] flex flex-col gap-3">
+            <div class="flex gap-3">
+                <button id="sp-trash-btn" class="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-300 py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition" title="Delete Task">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+                <button id="sp-complete-btn" class="flex-[3] bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition">
+                    <i class="fa-solid fa-check"></i> Complete
+                </button>
+                <button id="sp-edit-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center transition" title="Edit Task">
+                    <i class="fa-solid fa-pen"></i>
+                </button>
+            </div>
+            <button id="sp-stop-repeat-btn" class="hidden w-full py-2 rounded-lg text-xs font-bold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition">
+                <i class="fa-solid fa-ban mr-1"></i> Stop Repeating
             </button>
         </div>
     </div>
@@ -310,6 +323,12 @@
         const API_BASE = 'https://api.ticktick.com/open/v1';
         let accessToken = localStorage.getItem('ticktick_token');
         
+        // Approx TickTick Color Mapping
+        const PROJECT_COLORS = [
+             '#808080', '#EC6E66', '#F0A060', '#F1C40F', '#1ABC9C', '#2ECC71', '#3498DB', '#9B59B6',
+             '#34495E', '#F39C12', '#D35400', '#C0392B', '#8E44AD', '#2980B9', '#27AE60', '#16A085'
+        ];
+        
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 try {
@@ -329,7 +348,7 @@
         
         let taskCache = [];
         try { const cached = localStorage.getItem('ticktrackr_tasks'); if (cached) taskCache = JSON.parse(cached); } catch(e) { console.error(e); }
-        let projectMap = {};
+        let projectMap = {}; // { id: { name, color } }
         let currentCalendarDate = new Date();
         let selectedTasks = new Set();
         let isSelectionMode = false;
@@ -342,6 +361,16 @@
         const escapeHtml = (unsafe) => !unsafe ? "" : unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         const stringToColor = (str) => { let hash = 0; for (let i = 0; i < str.length; i++) { hash = str.charCodeAt(i) + ((hash << 5) - hash); } return `hsl(${Math.abs(hash % 360)}, 70%, 25%)`; };
         const getTagBadge = (tag) => { const color = stringToColor(tag); return `<span class="tag-badge px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider opacity-80" style="color: ${color}; border-color: ${color}40; background-color: ${color}10;">#${escapeHtml(tag)}</span>`; };
+
+        const getProjectColor = (pid) => {
+             const proj = projectMap[pid];
+             if (!proj) return '#4b5563'; // gray-600
+             if (proj.color) {
+                 if(typeof proj.color === 'string' && proj.color.startsWith('#')) return proj.color;
+                 if(typeof proj.color === 'number') return PROJECT_COLORS[proj.color % PROJECT_COLORS.length] || PROJECT_COLORS[0];
+             }
+             return stringToColor(pid);
+        };
 
         function showLoader() { els.loader.classList.remove('hidden'); }
         function hideLoader() { els.loader.classList.add('hidden'); }
@@ -371,7 +400,7 @@
 
         const logTaskCompletion = async (task) => {
             if (!auth.currentUser) return;
-            try { await addDoc(collection(db, 'users', auth.currentUser.uid, 'task_history'), { taskId: task.id, title: task.title, projectId: task.projectId, projectName: projectMap[task.projectId] || 'Unknown', completedAt: new Date(), originalData: task }); } catch(e) {}
+            try { await addDoc(collection(db, 'users', auth.currentUser.uid, 'task_history'), { taskId: task.id, title: task.title, projectId: task.projectId, projectName: projectMap[task.projectId]?.name || 'Unknown', completedAt: new Date(), originalData: task }); } catch(e) {}
         };
 
         const fetchAllData = async () => {
@@ -379,11 +408,14 @@
             if(!document.getElementById('project-filter')) { setTimeout(fetchAllData, 100); return; }
             const projects = await api('/project');
             if(!projects) { hideLoader(); return; }
-            projectMap = projects.reduce((acc, p) => ({...acc, [p.id]: p.name}), {});
+            
+            // Map project name AND color
+            projectMap = projects.reduce((acc, p) => ({...acc, [p.id]: { name: p.name, color: p.color }}), {});
+            
             let inboxId = 'inbox';
             const inboxProj = projects.find(p => p.kind === 'inbox' || p.name === 'Inbox');
             if (inboxProj) inboxId = inboxProj.id;
-            projectMap[inboxId] = 'Inbox';
+            if(!projectMap[inboxId]) projectMap[inboxId] = { name: 'Inbox', color: '#3b82f6' };
 
             const projectIds = new Set(projects.map(p => p.id)); projectIds.add(inboxId);
             let allActiveTasks = [];
@@ -399,7 +431,7 @@
             localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
             
             const pSelect = document.getElementById('project-filter');
-            if(pSelect) { pSelect.innerHTML = `<option value="all">All Lists</option>` + Object.entries(projectMap).map(([id, name]) => `<option value="${id}" ${currentState.projectId===id?'selected':''}>${escapeHtml(name)}</option>`).join(''); }
+            if(pSelect) { pSelect.innerHTML = `<option value="all">All Lists</option>` + Object.entries(projectMap).map(([id, p]) => `<option value="${id}" ${currentState.projectId===id?'selected':''}>${escapeHtml(p.name)}</option>`).join(''); }
             const allTags = new Set(); taskCache.forEach(t => (t.tags || []).forEach(tag => allTags.add(tag)));
             const tSelect = document.getElementById('tag-filter');
             if(tSelect) { tSelect.innerHTML = `<option value="all">All Tags</option>` + Array.from(allTags).map(t => `<option value="${t}" ${currentState.tag===t?'selected':''}>#${t}</option>`).join(''); }
@@ -421,7 +453,7 @@
                 const title = input.value.trim();
                 if (!title) return;
                 input.disabled = true;
-                let pid = Object.keys(projectMap).find(id => projectMap[id].toLowerCase() === 'inbox') || 'inbox';
+                let pid = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
                 if (currentState.projectId !== 'all') { pid = currentState.projectId; }
                 let newDateISO = null;
                 const now = new Date();
@@ -491,7 +523,7 @@
             let tasks = taskCache;
             
             if (currentState.filter === 'inbox') {
-                const inboxId = Object.keys(projectMap).find(id => projectMap[id].toLowerCase() === 'inbox') || 'inbox';
+                const inboxId = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
                 tasks = tasks.filter(t => (t.projectId === inboxId || t.projectId.startsWith('inbox')) && t.status === 0);
             } else if (currentState.filter === 'today') {
                 tasks = tasks.filter(t => t.status === 0 && t.dueDate && new Date(t.dueDate).toISOString().startsWith(todayStr));
@@ -500,7 +532,6 @@
             } else if (currentState.filter === 'overdue') {
                 tasks = tasks.filter(t => t.status === 0 && t.dueDate && new Date(t.dueDate) < new Date(todayStr));
             } else if (currentState.filter === 'focus') {
-                // Today + Overdue
                  tasks = tasks.filter(t => t.status === 0 && t.dueDate && new Date(t.dueDate) < new Date(tmrwStr));
             } else if (currentState.filter === 'completed') {
                 tasks = tasks.filter(t => t.status === 2); 
@@ -512,12 +543,12 @@
             if (currentState.tag !== 'all') tasks = tasks.filter(t => (t.tags||[]).includes(currentState.tag));
             if (currentState.search) { tasks = tasks.filter(t => t.title.toLowerCase().includes(currentState.search) || (t.content && t.content.toLowerCase().includes(currentState.search))); }
             return tasks.sort((a,b) => {
-                // Sort Overdue first in Focus mode
                 if(currentState.filter === 'focus') {
                     const dateA = new Date(a.dueDate || '9999');
                     const dateB = new Date(b.dueDate || '9999');
                     return dateA - dateB;
                 }
+                // If viewing completed tasks, sort by most recently completed/due? Actually ticktick returns them as is, usually reverse chronologically would be better but due date is fine.
                 if (b.priority !== a.priority) return b.priority - a.priority;
                 return new Date(a.dueDate || '9999') - new Date(b.dueDate || '9999');
             });
@@ -545,32 +576,48 @@
             const now = new Date(); now.setHours(0,0,0,0);
             let dateBadgeHtml = '';
             let isOverdue = false;
+            
             if (task.dueDate) {
                 const dueDate = new Date(task.dueDate); dueDate.setHours(0,0,0,0);
-                const diffTime = now - dueDate;
+                const diffTime = dueDate - now;
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                isOverdue = diffDays > 0 && task.status !== 2;
-                const dateStr = new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                isOverdue = diffDays < 0 && task.status !== 2;
+                const dateObj = new Date(task.dueDate);
+                let dateStr = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                
+                if (diffDays === 0) dateStr = 'Today';
+                else if (diffDays === 1) dateStr = 'Tomorrow';
+                else if (diffDays === -1) dateStr = 'Yesterday';
+
                 if (isOverdue) {
-                    let overdueText = diffDays === 1 ? 'Yesterday' : `${diffDays}d ago`;
-                    dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-500 font-bold" title="Due on ${dateStr}"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i><span>${dateStr}</span><span class="mx-1.5 opacity-50 hidden sm:inline">•</span><span class="uppercase text-[10px] tracking-wide hidden sm:inline">${overdueText}</span></span>`;
+                    let overdueText = diffDays === -1 ? 'Yesterday' : `${Math.abs(diffDays)}d ago`;
+                    dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-500 font-bold" title="Due on ${dateObj.toLocaleDateString()}"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i><span>${dateStr}</span></span>`;
                 } else {
                     dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border bg-blue-500/10 border-transparent text-[var(--primary)]"><i class="fa-regular fa-clock mr-1.5"></i> ${dateStr}</span>`;
                 }
             }
+
             const wrapperClass = isSelected ? 'bg-blue-900/30 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.15)] z-10 select-none' : 'bg-[var(--card)] border-gray-800 hover:border-gray-600 hover:bg-gray-800/50 select-none';
             const selectIcon = isSelected ? '<i class="fa-solid fa-circle-check text-blue-400 text-xl drop-shadow-md"></i>' : '<i class="fa-regular fa-circle text-gray-500 text-xl group-hover:text-gray-300 transition-colors"></i>';
             const priorityClass = `priority-${task.priority || 0}`; 
-            const projectName = projectMap[task.projectId] || 'Unknown';
-            const projectBadge = `<span class="flex items-center text-gray-400 bg-gray-800 px-2 py-0.5 rounded border border-gray-700 whitespace-nowrap"><i class="fa-solid fa-layer-group mr-1 opacity-50"></i> ${escapeHtml(projectName)}</span>`;
+            
+            const project = projectMap[task.projectId] || { name: 'Unknown', color: '#4b5563' };
+            const pColor = getProjectColor(task.projectId);
+            
+            // Tint the project badge slightly
+            const projectBadge = `<span class="flex items-center text-gray-300 px-2 py-0.5 rounded border border-gray-700 whitespace-nowrap" style="background-color: ${pColor}20; border-color: ${pColor}40;"><i class="fa-solid fa-layer-group mr-1 opacity-50" style="color:${pColor}"></i> ${escapeHtml(project.name)}</span>`;
+            
+            const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule);
 
             return `<div class="card p-0 rounded-xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass}" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="window.openSidePane('${task.id}')">
-                <div class="w-12 flex items-center justify-center cursor-pointer border-r border-white/5 hover:bg-white/5 transition-colors flex-shrink-0" onclick="window.toggleTaskSelection('${task.id}', event)">${selectIcon}</div>
-                <div class="flex-grow p-4 min-w-0">
+                <div class="project-color-strip" style="background-color: ${pColor}"></div>
+                <div class="w-12 flex items-center justify-center cursor-pointer border-r border-white/5 hover:bg-white/5 transition-colors flex-shrink-0 ml-1" onclick="window.toggleTaskSelection('${task.id}', event)">${selectIcon}</div>
+                <div class="card-inner flex-grow p-4 min-w-0">
                     <div class="task-details-wrapper">
                         <div class="flex items-start gap-3 flex-grow min-w-0">
-                            <div class="pt-1 flex-shrink-0" onclick="event.stopPropagation()">
+                            <div class="pt-1 flex-shrink-0 relative" onclick="event.stopPropagation()">
                                 <input type="checkbox" class="task-checkbox ${priorityClass}" ${task.status===2?'checked':''} onclick="window.completeTask('${task.projectId}', '${task.id}', this, event)">
+                                ${isRecurring ? '<i class="fa-solid fa-rotate-right text-[10px] absolute -right-1 -bottom-1 bg-gray-800 rounded-full px-0.5 text-yellow-500"></i>' : ''}
                             </div>
                             <div class="min-w-0 flex-grow">
                                 <h3 class="font-bold text-gray-100 leading-tight mb-1 truncate ${task.isAllDay ? 'italic' : ''} ${task.status===2?'line-through text-gray-500':''}">${escapeHtml(task.title)}</h3>
@@ -583,7 +630,6 @@
                             ${(task.tags || []).map(getTagBadge).join('')}
                         </div>
                     </div>
-                    ${task.repeatFlag ? '<i class="fa-solid fa-arrows-rotate text-xs text-yellow-500 absolute top-2 right-2"></i>' : ''}
                 </div></div>`;
         };
 
@@ -658,7 +704,17 @@
             if (currentState.filter === 'overdue' && tasks.length > 0) {
                 html += `<div class="flex justify-between items-center mb-4 bg-red-900/20 p-3 rounded-lg border border-red-900/50"><div class="text-red-400 text-sm font-bold"><i class="fa-solid fa-triangle-exclamation mr-2"></i> ${tasks.length} Overdue Tasks</div></div>`;
             }
-            if(tasks.length === 0) html += `<div class="text-center p-12 text-gray-500"><i class="fa-solid fa-mug-hot text-6xl mb-4 opacity-20"></i><p class="text-lg font-bold">All caught up!</p></div>`;
+            if(tasks.length === 0) {
+                const msgs = {
+                    inbox: "Inbox Zero! Nice work.",
+                    today: "No tasks for today. Relax!",
+                    upcoming: "Nothing scheduled.",
+                    all: "No tasks found.",
+                    completed: "No completed tasks found."
+                };
+                const msg = msgs[currentState.filter] || "All caught up!";
+                html += `<div class="text-center p-12 text-gray-500 flex flex-col items-center"><div class="bg-gray-800/50 p-6 rounded-full mb-4"><i class="fa-solid fa-mug-hot text-4xl opacity-50 text-[var(--primary)]"></i></div><p class="text-lg font-bold text-gray-400">${msg}</p><button onclick="window.openAddTaskModal()" class="mt-4 text-[var(--primary)] hover:underline text-sm font-bold">Create Task</button></div>`;
+            }
             else html += tasks.map(renderTaskCard).join('');
             els.content.innerHTML = html;
         };
@@ -696,7 +752,10 @@
             const projects = Object.entries(projectMap).filter(([id]) => id !== 'inbox'); 
             let html = `<div class="flex justify-between items-center mb-6"><h1 class="text-3xl font-bold">Projects</h1><button onclick="window.openProjectModal()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg text-sm font-bold border border-gray-700">Create List</button></div>`;
             html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">`;
-            html += projects.map(([id, name]) => `<div class="card p-5 rounded-xl border border-gray-800 flex justify-between items-center group"><span class="font-bold text-lg">${escapeHtml(name)}</span><div class="flex gap-2 opacity-0 group-hover:opacity-100 transition"><button onclick="window.openProjectModal('${id}', '${escapeHtml(name)}')" class="p-2 text-blue-400 hover:bg-blue-900/30 rounded"><i class="fa-solid fa-pen"></i></button><button onclick="window.deleteProject('${id}')" class="p-2 text-red-400 hover:bg-red-900/30 rounded"><i class="fa-solid fa-trash"></i></button></div></div>`).join('');
+            html += projects.map(([id, p]) => {
+                const color = getProjectColor(id);
+                return `<div class="card p-5 rounded-xl border border-gray-800 flex justify-between items-center group shadow-md" style="border-left: 4px solid ${color};"><span class="font-bold text-lg">${escapeHtml(p.name)}</span><div class="flex gap-2 opacity-0 group-hover:opacity-100 transition"><button onclick="window.openProjectModal('${id}', '${escapeHtml(p.name)}')" class="p-2 text-blue-400 hover:bg-blue-900/30 rounded"><i class="fa-solid fa-pen"></i></button><button onclick="window.deleteProject('${id}')" class="p-2 text-red-400 hover:bg-red-900/30 rounded"><i class="fa-solid fa-trash"></i></button></div></div>`
+            }).join('');
             html += `</div>`;
             els.content.innerHTML = html;
         };
@@ -742,8 +801,8 @@
             const pSelect = document.getElementById('modal-project-input');
             const container = document.getElementById('checklist-builder');
             container.innerHTML = '';
-            pSelect.innerHTML = Object.entries(projectMap).map(([id, name]) => `<option value="${id}">${escapeHtml(name)}</option>`).join('');
-            if(!Object.keys(projectMap).find(id => projectMap[id].toLowerCase() === 'inbox')) { pSelect.innerHTML = `<option value="inbox">Inbox</option>` + pSelect.innerHTML; }
+            pSelect.innerHTML = Object.entries(projectMap).map(([id, p]) => `<option value="${id}">${escapeHtml(p.name)}</option>`).join('');
+            if(!Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox')) { pSelect.innerHTML = `<option value="inbox">Inbox</option>` + pSelect.innerHTML; }
 
             if (isEdit && taskId) {
                 const task = taskCache.find(t => t.id === taskId);
@@ -804,16 +863,84 @@
             }
         });
 
+        // New helper to calculate next occurrence string
+        const calculateNextOccurrence = (dueDate, repeatFlag) => {
+            let nextDate = new Date();
+            if (dueDate) nextDate = new Date(dueDate);
+            if (nextDate < new Date()) nextDate = new Date(); // If overdue, base next on today usually
+
+            if (repeatFlag) {
+                if (repeatFlag.includes('DAILY')) nextDate.setDate(nextDate.getDate() + 1);
+                else if (repeatFlag.includes('WEEKLY')) nextDate.setDate(nextDate.getDate() + 7);
+                else if (repeatFlag.includes('MONTHLY')) nextDate.setMonth(nextDate.getMonth() + 1);
+                else if (repeatFlag.includes('YEARLY')) nextDate.setFullYear(nextDate.getFullYear() + 1);
+            }
+
+            const diffTime = nextDate - new Date();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            const dateStr = nextDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            
+            return `${dateStr} (in ${diffDays} days)`;
+        };
+
         window.completeTask = async (pid, tid, checkbox, event) => {
              if(event) event.stopPropagation();
              const task = taskCache.find(t => t.id === tid); if(!task) return;
-             const rect = checkbox.getBoundingClientRect();
-             const x = (rect.left + rect.width / 2) / window.innerWidth;
-             const y = (rect.top + rect.height / 2) / window.innerHeight;
-             confetti({ particleCount: 60, spread: 50, origin: { x, y }, colors: ['#3b82f6', '#10b981'] });
-             const oldStatus = task.status; task.status = 2; localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache)); renderApp();
+             
+             // Visual feedback
+             if(checkbox) {
+                 const rect = checkbox.getBoundingClientRect();
+                 const x = (rect.left + rect.width / 2) / window.innerWidth;
+                 const y = (rect.top + rect.height / 2) / window.innerHeight;
+                 confetti({ particleCount: 60, spread: 50, origin: { x, y }, colors: ['#3b82f6', '#10b981'] });
+             }
+
+             const oldStatus = task.status; 
+             task.status = 2; // Mark local as done
+             localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache)); 
+             renderApp();
              await logTaskCompletion(task);
-             try { await api(`/project/${pid}/task/${tid}/complete`, 'POST'); showToast('Task completed', 'success', 'Undo', async () => { task.status = 0; localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache)); renderApp(); await api(`/task/${tid}`, 'POST', { projectId: task.projectId, title: task.title, status: 0 }); fetchAllData(); }); setTimeout(fetchAllData, 1000); } catch(e) { task.status = oldStatus; if(checkbox) checkbox.checked = false; renderApp(); showToast('Failed to complete', 'error'); }
+
+             try { 
+                 await api(`/project/${pid}/task/${tid}/complete`, 'POST'); 
+                 
+                 // Handle recurring task "Hide/Next" logic visual feedback
+                 const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule);
+                 if (isRecurring) {
+                     const nextStr = calculateNextOccurrence(task.dueDate, task.repeatFlag || (task.recurrence ? task.recurrence.rule : ""));
+                     showToast(`Session completed. Next: ${nextStr}`, 'success');
+                 } else {
+                     showToast('Task completed', 'success', 'Undo', async () => { 
+                         task.status = 0; 
+                         localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache)); 
+                         renderApp(); 
+                         await api(`/task/${tid}`, 'POST', { projectId: task.projectId, title: task.title, status: 0 }); 
+                         fetchAllData(); 
+                     });
+                 }
+                 setTimeout(fetchAllData, 1000); 
+             } catch(e) { 
+                 task.status = oldStatus; 
+                 if(checkbox) checkbox.checked = false; 
+                 renderApp(); 
+                 showToast('Failed to complete', 'error'); 
+             }
+        };
+
+        window.stopRepeating = async (taskId) => {
+            if(!confirm("Stop this task from repeating? It will become a regular task.")) return;
+            const task = taskCache.find(t => t.id === taskId);
+            if(!task) return;
+            showLoader();
+            try {
+                // Update task to remove recurrence
+                const payload = { ...task, recurrence: null, repeatFlag: null };
+                await api(`/task/${taskId}`, 'POST', payload);
+                showToast("Recurrence removed");
+                window.closeSidePane();
+                fetchAllData();
+            } catch(e) { showToast("Error updating task", "error"); }
+            hideLoader();
         };
 
         const renderKanban = (tasks) => {
@@ -836,18 +963,28 @@
             const tasksByDate = {};
             tasks.forEach(t => { if(!t.dueDate) return; const dateKey = t.dueDate.split('T')[0]; if(!tasksByDate[dateKey]) tasksByDate[dateKey] = []; tasksByDate[dateKey].push(t); });
             const firstDay = new Date(year, month, 1).getDay(); const daysInMonth = new Date(year, month + 1, 0).getDate(); const todayKey = new Date().toISOString().split('T')[0];
-            let html = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">${monthName} ${year}</h2><div class="flex gap-2"><button onclick="window.changeMonth(-1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-left"></i></button><button onclick="window.changeMonth(1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-bold text-gray-500 uppercase"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div><div class="calendar-grid">`;
-            for(let i=0; i<firstDay; i++) html += `<div class="calendar-day bg-gray-900/50"></div>`;
+            
+            let html = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">${monthName} ${year}</h2><div class="flex gap-2"><button onclick="window.jumpToToday()" class="p-2 px-3 bg-gray-800 rounded hover:bg-gray-700 text-xs font-bold mr-2">Today</button><button onclick="window.changeMonth(-1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-left"></i></button><button onclick="window.changeMonth(1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-bold text-gray-500 uppercase"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div><div class="calendar-grid">`;
+            for(let i=0; i<firstDay; i++) html += `<div class="calendar-day bg-gray-900/50 pointer-events-none"></div>`;
             for(let d=1; d<=daysInMonth; d++) {
                 const dateKey = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                 const dayTasks = tasksByDate[dateKey] || [];
                 const dots = dayTasks.slice(0, 5).map(t => { let color = t.status===2 ? 'bg-green-500' : (t.priority===5 ? 'bg-red-500' : 'bg-blue-500'); return `<span class="calendar-dot ${color}" title="${escapeHtml(t.title)}"></span>`; }).join('');
-                html += `<div class="calendar-day ${dateKey === todayKey ? 'today' : ''}" onclick="window.showDayTasks('${dateKey}')"><div class="flex justify-between items-start mb-1"><span class="text-sm font-bold ${dateKey === todayKey ? 'text-[var(--primary)]' : 'text-gray-400'}">${d}</span>${dayTasks.length > 0 ? `<span class="text-[10px] text-gray-500 font-mono">${dayTasks.length}</span>` : ''}</div><div class="flex flex-wrap content-start h-full pb-4">${dots}</div></div>`;
+                html += `<div class="calendar-day ${dateKey === todayKey ? 'today' : ''}" onclick="window.showDayTasks('${dateKey}')" data-date="${dateKey}"><div class="flex justify-between items-start mb-1 pointer-events-none"><span class="text-sm font-bold ${dateKey === todayKey ? 'text-[var(--primary)]' : 'text-gray-400'}">${d}</span>${dayTasks.length > 0 ? `<span class="text-[10px] text-gray-500 font-mono">${dayTasks.length}</span>` : ''}</div><div class="flex flex-wrap content-start h-full pb-4 pointer-events-none">${dots}</div></div>`;
             }
             html += `</div>`;
             els.content.innerHTML = html;
             window.dayTasksCache = tasksByDate;
+            
+            // Add drop handlers
+            document.querySelectorAll('.calendar-day[data-date]').forEach(el => {
+                el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag-over'); });
+                el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+                el.addEventListener('drop', (e) => { e.preventDefault(); el.classList.remove('drag-over'); window.bulkAction('specific', el.dataset.date); });
+            });
         };
+
+        window.jumpToToday = () => { currentCalendarDate = new Date(); renderApp(); };
 
         window.openSidePane = (taskId) => {
             const task = taskCache.find(t => t.id === taskId);
@@ -855,19 +992,57 @@
             document.getElementById('sp-title').textContent = task.title;
             const descEl = document.getElementById('sp-desc-container');
             if (task.content) { descEl.classList.remove('hidden'); document.getElementById('sp-desc').textContent = task.content; } else { descEl.classList.add('hidden'); }
-            document.getElementById('sp-project').textContent = projectMap[task.projectId] || 'Unknown';
+            
+            const pName = projectMap[task.projectId]?.name || 'Unknown';
+            const pColor = getProjectColor(task.projectId);
+            const spProj = document.getElementById('sp-project');
+            spProj.textContent = pName;
+            spProj.style.color = pColor;
+            spProj.style.borderColor = pColor + '40';
+            spProj.style.backgroundColor = pColor + '10';
+
             document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date';
             const pCont = document.getElementById('sp-priority-container');
             if(task.priority > 0) pCont.innerHTML = `<span class="bg-gray-800 border border-gray-600 px-3 py-1 rounded text-xs font-bold uppercase">Priority ${task.priority}</span>`; else pCont.innerHTML = '';
             const tCont = document.getElementById('sp-tags-container');
             tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-800 text-gray-400 px-2 py-1 rounded text-xs border border-gray-700">#${t}</span>`).join('');
-            if(task.repeatFlag) document.getElementById('sp-recurring-container').classList.remove('hidden'); else document.getElementById('sp-recurring-container').classList.add('hidden');
+            
+            const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule);
+            const compBtn = document.getElementById('sp-complete-btn');
+            const stopBtn = document.getElementById('sp-stop-repeat-btn');
+
+            if(isRecurring) {
+                document.getElementById('sp-recurring-container').classList.remove('hidden');
+                stopBtn.classList.remove('hidden');
+                stopBtn.onclick = () => window.stopRepeating(task.id);
+                // "Complete/Hide Next" Logic button
+                if (task.status === 2) {
+                     compBtn.className = "flex-[3] bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed";
+                     compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done';
+                } else {
+                     compBtn.className = "flex-[3] bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition";
+                     compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session';
+                     compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); };
+                }
+            } else {
+                document.getElementById('sp-recurring-container').classList.add('hidden');
+                stopBtn.classList.add('hidden');
+                if (task.status === 2) { 
+                    compBtn.className = "flex-[3] bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
+                    compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; 
+                    compBtn.onclick = null; 
+                } 
+                else { 
+                    compBtn.className = "flex-[3] bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
+                    compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; 
+                    compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
+                }
+            }
+
             window.renderSidePaneChecklist(task);
             document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); };
             document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId);
-            const compBtn = document.getElementById('sp-complete-btn');
-            if (task.status === 2) { compBtn.className = "flex-[3] bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; compBtn.onclick = null; } 
-            else { compBtn.className = "flex-[3] bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; }
+            
             const overlay = document.getElementById('side-pane-overlay'); const pane = document.getElementById('side-pane');
             overlay.classList.remove('hidden'); void overlay.offsetWidth; overlay.classList.remove('opacity-0'); pane.classList.remove('translate-x-full');
         };
