@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.52.0-alpha",
+    date: "2025-12-20",
+    changes: [
+        "In TaskTrackr: Launched a fully interactive Kanban Board view using SortableJS for drag-and-drop priority management.",
+        "In TaskTrackr: Enhanced the 'Quick Add' input to be context-aware, automatically applying due dates based on the currently active view (e.g., adding a task while viewing 'Tomorrow' sets the due date automatically)."
+    ]
+    },
+    {
     version: "v9.51.0-alpha",
     date: "2025-12-18",
     changes: [
