@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v9.54.0-alpha",
+    date: "2025-12-21",
+    changes: [
+        "In TaskTrackr: Added a new 'Timeline' view, visualizing tasks sequentially along a vertical line based on their due dates.",
+        "In TaskTrackr: Implemented sorting functionality in the Classic List view, allowing users to toggle between 'By Date' and 'A-Z' (Title) sorting.",
+        "In TaskTrackr: Enhanced the Classic List view with distinct section headers (Overdue, Today, Tomorrow, Later) to clearly distinguish task urgency.",
+        "In TaskTrackr: Added a fixed Floating Action Button (FAB) (+) in the bottom-right corner for quick task creation.",
+        "In TaskTrackr: Overhauled the Side Panel UI with cleaner typography, better spacing, and an improved layout for task details.",
+        "In TaskTrackr: Fixed an issue where the task list would refresh and interrupt drag-and-drop operations; drag interactions are now smoother and preserve selection state.",
+        "In TaskTrackr: Renamed the 'Cal' navigation tab to 'Calendar' for better clarity."
+    ]
+    },
+    {
     version: "v9.53.0-alpha",
     date: "2025-12-20",
     changes: [
