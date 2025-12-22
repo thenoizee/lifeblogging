@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v9.59.0-alpha",
+    date: "2025-12-22",
+    changes: [
+        "In TaskTrackr: Introduced a 'Review Mode' wizard that allows users to process Inbox tasks one-by-one with options to Delete, Skip, Schedule, or Complete.",
+        "In TaskTrackr: Enhanced the right-click context menu to include quick actions for 'Complete', 'Move to Inbox', and a dedicated 'Priority' selection submenu.",
+        "In TaskTrackr: Streamlined navigation by moving all filter chips (Today, Tomorrow, Overdue, etc.) from the top bar to the persistent left sidebar on desktop layouts.",
+        "In TaskTrackr: Added a 'Process Inbox' button and a 'Clear Project Filter' option to the sidebar for improved workflow efficiency.",
+        "In TaskTrackr: Fixed layout issues in Compact Mode for Kanban and Matrix views to ensure cards remain readable.",
+        "In TaskTrackr: Optimized the Calendar view rendering for mobile devices and fixed the positioning logic of the context menu to prevent it from being cut off by the screen edge."
+    ]
+    },
+    {
     version: "v9.58.0-alpha",
     date: "2025-12-22",
     changes: [
