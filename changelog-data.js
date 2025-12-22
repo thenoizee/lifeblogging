@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.60.0-alpha",
+    date: "2025-12-22",
+    changes: [
+        "In TaskTrackr: Implemented a centralized `callback.html` to handle OAuth authentication redirects, ensuring consistent login behavior across the application.",
+        "In TaskTrackr: Updated the login flow to preserve the user's session state, automatically redirecting them back to their previous page (Hub or Account) after connecting.",
+        "In Account: Integrated the new authentication callback to allow users to connect or disconnect their TickTick account directly from the settings interface.",
+        "In Account: Added logic to verify and display the TickTick connection status using the shared token stored in Firestore."
+    ]
+    },
+    {
     version: "v9.59.0-alpha",
     date: "2025-12-22",
     changes: [
