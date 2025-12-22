@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.57.0-alpha",
+    date: "2025-12-22",
+    changes: [
+        "In TaskTrackr: Implemented a custom right-click context menu for tasks, offering quick actions to Edit, Delete, or reschedule to Today/Tomorrow without opening the full details pane.",
+        "In TaskTrackr: Revamped the task card interaction design; the main left-hand strip is now a dedicated 'Complete' button for faster, one-click check-offs.",
+        "In TaskTrackr: Relocated the 'Select' action to a discrete inner icon next to the task title, preventing accidental selections during normal workflow.",
+        "In TaskTrackr: Improved visual cues with distinct hover states for the new completion strip and selection toggle."
+    ]
+    },
+    {
     version: "v9.56.0-alpha",
     date: "2025-12-22",
     changes: [

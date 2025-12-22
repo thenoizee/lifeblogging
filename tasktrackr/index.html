@@ -647,6 +647,46 @@ window.sectionStates = {
             });
         };
 
+        // --- Context Menu Logic ---
+let contextMenuTaskId = null;
+
+window.handleContextMenu = (e, taskId) => {
+    e.preventDefault();
+    contextMenuTaskId = taskId;
+    const menu = document.getElementById('context-menu');
+    
+    // Position menu
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    // Boundary check (keep on screen)
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    
+    menu.style.left = `${Math.min(x, winW - 200)}px`;
+    menu.style.top = `${Math.min(y, winH - 200)}px`;
+    menu.classList.remove('hidden');
+    menu.classList.add('flex');
+};
+
+window.handleContextAction = async (action) => {
+    if (!contextMenuTaskId) return;
+    const taskId = contextMenuTaskId;
+    
+    if (action === 'edit') {
+        window.openSidePane(taskId);
+    } else if (action === 'delete') {
+        const task = taskCache.find(t => t.id === taskId);
+        window.deleteTask(task.projectId, taskId);
+    } else if (action === 'today' || action === 'tomorrow') {
+        // Reuse bulk action logic for single task
+        selectedTasks.clear();
+        selectedTasks.add(taskId);
+        await window.bulkAction(action);
+    }
+    document.getElementById('context-menu').classList.add('hidden');
+};
+
         
 
         const renderApp = () => {
@@ -683,56 +723,72 @@ window.sectionStates = {
         isOverdue = diffDays < 0 && task.status !== 2;
         const dateObj = new Date(task.dueDate);
         
-        // Date String Formatting
         let dateStr = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         if (diffDays === 0) dateStr = 'Today';
         else if (diffDays === 1) dateStr = 'Tomorrow';
         else if (diffDays === -1) dateStr = 'Yesterday';
 
-        // Time Specific Formatting
         let timeStr = '';
-        let iconClass = 'fa-regular fa-clock'; // Default clock for time-specific
-        
+        let iconClass = 'fa-regular fa-clock'; 
         if (task.isAllDay) {
-            iconClass = 'fa-solid fa-calendar-day'; // Calendar icon for all-day
+            iconClass = 'fa-solid fa-calendar-day'; 
         } else {
-            // Extract time if not all-day
             timeStr = ', ' + dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
         if (isOverdue) {
             dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-500 font-bold" title="Due on ${dateObj.toLocaleDateString()}"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i><span>${dateStr}${timeStr}</span></span>`;
         } else {
-            // Visual distinction: All-day uses standard primary color, Time-specific can be slightly different or just rely on the icon/text
             const bgClass = task.isAllDay ? 'bg-blue-500/10' : 'bg-indigo-500/10';
             const textClass = task.isAllDay ? 'text-[var(--primary)]' : 'text-indigo-400';
-            
             dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border ${bgClass} border-transparent ${textClass}"><i class="${iconClass} mr-1.5"></i> ${dateStr}${timeStr}</span>`;
         }
     }
 
     const wrapperClass = isSelected ? 'selected bg-blue-900/30 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.15)] z-10 select-none' : 'bg-[var(--card)] border-gray-800 hover:border-gray-600 hover:bg-gray-800/50 select-none';
-    const selectIcon = isSelected ? '<i class="fa-solid fa-circle-check text-blue-400 text-xl drop-shadow-md"></i>' : '<i class="fa-regular fa-circle text-gray-500 text-xl group-hover:text-gray-300 transition-colors"></i>';
-    const priorityClass = `priority-${task.priority || 0}`; 
     
+    // SWAPPED: Complete Icon (Left Strip)
+    const isCompleted = task.status === 2;
+    const completeIcon = isCompleted 
+        ? '<i class="fa-solid fa-circle-check text-green-500 text-xl drop-shadow-md"></i>' 
+        : `<i class="fa-regular fa-circle text-gray-500 text-xl group-hover:text-[var(--primary)] transition-colors priority-${task.priority || 0}"></i>`;
+
+    // SWAPPED: Select Icon (Inner Body)
+    const selectIcon = isSelected 
+        ? '<i class="fa-solid fa-square-check text-blue-400 text-lg"></i>' 
+        : '<i class="fa-regular fa-square text-gray-600 text-lg hover:text-gray-400 transition-colors"></i>';
+
     const project = projectMap[task.projectId] || { name: 'Unknown', color: '#4b5563' };
     const pColor = getProjectColor(task.projectId);
-    
     const projectBadge = `<span class="flex items-center text-gray-300 px-2 py-0.5 rounded border border-gray-700 whitespace-nowrap" style="background-color: ${pColor}20; border-color: ${pColor}40;"><i class="fa-solid fa-layer-group mr-1 opacity-50" style="color:${pColor}"></i> ${escapeHtml(project.name)}</span>`;
     
     const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule);
     const clickHandler = task.isHistory ? `window.openSidePane('${task.id}', true)` : `window.openSidePane('${task.id}')`;
 
-    return `<div class="card p-0 rounded-xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass}" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="${clickHandler}">
+    return `<div class="card p-0 rounded-xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass}" 
+                draggable="true" 
+                ondragstart="window.handleDragStart(event, '${task.id}')" 
+                data-task-id="${task.id}" 
+                onclick="${clickHandler}"
+                oncontextmenu="window.handleContextMenu(event, '${task.id}')">
+                
         <div class="project-color-strip" style="background-color: ${pColor}"></div>
-        <div class="w-12 flex items-center justify-center cursor-pointer border-r border-white/5 hover:bg-white/5 transition-colors flex-shrink-0 ml-1" onclick="window.toggleTaskSelection('${task.id}', event)">${selectIcon}</div>
+        
+        <div class="w-12 flex items-center justify-center cursor-pointer border-r border-white/5 hover:bg-white/5 transition-colors flex-shrink-0 ml-1 z-20" 
+             onclick="window.completeTask('${task.projectId}', '${task.id}', null, event)"
+             title="Mark Completed">
+             ${completeIcon}
+        </div>
+        
         <div class="card-inner flex-grow p-4 min-w-0">
             <div class="task-details-wrapper">
                 <div class="flex items-start gap-3 flex-grow min-w-0">
-                    <div class="pt-1 flex-shrink-0 relative" onclick="event.stopPropagation()">
-                        <input type="checkbox" class="task-checkbox ${priorityClass}" ${task.status===2?'checked':''} onclick="window.completeTask('${task.projectId}', '${task.id}', this, event)">
+                    
+                    <div class="pt-1 flex-shrink-0 relative cursor-pointer z-20" onclick="window.toggleTaskSelection('${task.id}', event)" title="Select Task">
+                        ${selectIcon}
                         ${isRecurring ? '<i class="fa-solid fa-rotate-right text-[10px] absolute -right-1 -bottom-1 bg-gray-800 rounded-full px-0.5 text-yellow-500"></i>' : ''}
                     </div>
+
                     <div class="min-w-0 flex-grow">
                         <h3 class="font-bold text-gray-100 leading-tight mb-1 truncate ${task.status===2?'line-through text-gray-500':''}">${escapeHtml(task.title)}</h3>
                         ${task.content ? `<p class="desc-preview text-xs text-gray-500 line-clamp-1 mb-2">${escapeHtml(task.content)}</p>` : ''}
@@ -745,6 +801,7 @@ window.sectionStates = {
             </div>
         </div></div>`;
 };
+
         window.toggleSelectionMode = () => { isSelectionMode = !isSelectionMode; renderApp(); };
         window.toggleTaskSelection = (id, event) => {
             if (event) event.stopPropagation();
@@ -1147,12 +1204,13 @@ window.sectionStates = {
              if(!task) task = historyCache.find(t => t.id === tid);
              if(!task) return;
              
-             if(checkbox) {
-                 const rect = checkbox.getBoundingClientRect();
-                 const x = (rect.left + rect.width / 2) / window.innerWidth;
-                 const y = (rect.top + rect.height / 2) / window.innerHeight;
-                 confetti({ particleCount: 60, spread: 50, origin: { x, y }, colors: ['#3b82f6', '#10b981'] });
-             }
+             // Updated Confetti Logic
+     if(event && event.target) {
+         const rect = event.target.getBoundingClientRect();
+         const x = (rect.left + rect.width / 2) / window.innerWidth;
+         const y = (rect.top + rect.height / 2) / window.innerHeight;
+         confetti({ particleCount: 60, spread: 50, origin: { x, y }, colors: ['#3b82f6', '#10b981'] });
+     }
 
              const oldStatus = task.status; 
              task.status = 2; // Mark local as done
@@ -1383,5 +1441,26 @@ window.sectionStates = {
         <button onclick="window.bulkAction('delete')" class="text-gray-400 hover:text-red-500 flex flex-col items-center group" title="Delete"><i class="fa-solid fa-trash text-lg transition"></i><span class="text-[10px] font-bold mt-1">Trash</span></button>
         <button onclick="window.clearSelection()" class="ml-4 text-xs font-bold text-gray-500 hover:text-white border border-gray-600 px-2 py-1 rounded hover:bg-gray-700 transition">Cancel</button>
     </div>
+
+    <div id="context-menu" class="fixed z-50 bg-[#1f2937] border border-gray-700 rounded-lg shadow-xl py-1 w-48 hidden flex-col">
+    <button onclick="window.handleContextAction('edit')" class="text-left px-4 py-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white transition flex items-center gap-2">
+        <i class="fa-solid fa-pen text-xs w-4"></i> Edit
+    </button>
+    <div class="h-px bg-gray-700 my-1"></div>
+    <button onclick="window.handleContextAction('today')" class="text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 transition flex items-center gap-2">
+        <i class="fa-solid fa-sun text-xs w-4 text-yellow-500"></i> Set to Today
+    </button>
+    <button onclick="window.handleContextAction('tomorrow')" class="text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 transition flex items-center gap-2">
+        <i class="fa-solid fa-calendar-day text-xs w-4 text-orange-400"></i> Set to Tomorrow
+    </button>
+    <div class="h-px bg-gray-700 my-1"></div>
+    <button onclick="window.handleContextAction('delete')" class="text-left px-4 py-2 text-sm text-red-400 hover:bg-red-900/50 transition flex items-center gap-2">
+        <i class="fa-solid fa-trash text-xs w-4"></i> Delete
+    </button>
+</div>
+
+<script>
+    window.addEventListener('click', () => document.getElementById('context-menu').classList.add('hidden'));
+</script>
 </body>
 </html>
