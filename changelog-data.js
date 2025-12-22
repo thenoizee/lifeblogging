@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.56.0-alpha",
+    date: "2025-12-22",
+    changes: [
+        "In TaskTrackr: Implemented drag-and-drop rescheduling in the Classic view; users can now drag tasks between day sections (e.g., 'Today' to 'Tomorrow') to automatically update their due dates.",
+        "In TaskTrackr: Made all list sections (Overdue, Today, Tomorrow, Later, No Date, Completed) fully collapsible, allowing for a cleaner and more focused workspace.",
+        "In TaskTrackr: Enhanced task card visuals to clearly distinguish between 'All Day' items and time-specific tasks, which now display their scheduled time alongside a clock icon.",
+        "In TaskTrackr: Added visual empty states to task groups when dragging, ensuring drop targets are always accessible even in empty sections."
+    ]
+    },
+    {
     version: "v9.55.0-alpha",
     date: "2025-12-22",
     changes: [
@@ -9,7 +19,8 @@ export const changelogData = [
         "In TaskTrackr: Improved the Side Panel UI with an auto-expanding title text area, allowing full visibility of long task names without scrolling.",
         "In TaskTrackr: Updated the application logic to differentiate between active tasks and history items, ensuring completed tasks can be viewed in detail from the side pane.",
         "In TaskTrackr: Refined the task completion handler to prevent duplicate logging of history items and ensure smoother state transitions.",
-        "In TaskTrackr: Fixed the 'Completed' filter behavior to trigger an immediate fetch of historical data, resolving the issue where completed tasks would disappear."
+        "In TaskTrackr: Fixed the 'Completed' filter behavior to trigger an immediate fetch of historical data, resolving the issue where completed tasks would disappear.",
+        "In Account Page: Added ability to link & disconnect account to TickTick directly in the Account Page."
     ]
     },
     {

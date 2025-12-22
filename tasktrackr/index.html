@@ -1,7 +1,3 @@
-{
-type: uploaded file
-fileName: thenoizee/lifeblogging/lifeblogging-b9f01d5feccb2858d6e6ea1533cfac519a49962f/tasktrackr/index.html
-fullContent:
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -399,6 +395,15 @@ fullContent:
         let isCompactMode = localStorage.getItem('compactMode') === 'true';
         
         let currentState = { view: 'classic', filter: 'inbox', projectId: 'all', priority: 'all', tag: 'all', search: '', sortMode: 'date' };
+        // UPDATED: Track state for ALL sections
+window.sectionStates = { 
+    overdue: false, 
+    today: false, 
+    tomorrow: false, 
+    later: false, 
+    noDate: false, 
+    completed: true // Default completed to collapsed
+};
         
         const els = { content: document.getElementById('content'), loader: document.getElementById('loader'), modal: document.getElementById('task-modal'), taskCounter: document.getElementById('header-task-count') };
         const escapeHtml = (unsafe) => !unsafe ? "" : unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -592,6 +597,12 @@ fullContent:
         window.handleSearch = (text) => { currentState.search = text.toLowerCase(); renderApp(); };
         window.updateFilter = (key, val) => { currentState[key] = val; renderApp(); };
         window.resetFilters = () => { currentState.projectId = 'all'; currentState.priority = 'all'; currentState.tag = 'all'; currentState.sortMode = 'date'; document.getElementById('project-filter').value = 'all'; document.getElementById('sort-filter').value = 'date'; renderApp(); };
+        window.toggleSection = (sectionName) => {
+    window.sectionStates[sectionName] = !window.sectionStates[sectionName];
+    renderApp();
+};
+
+
 
         const getFilteredTasks = () => {
             if (currentState.filter === 'completed') {
@@ -636,6 +647,8 @@ fullContent:
             });
         };
 
+        
+
         const renderApp = () => {
             if(!document.getElementById('content')) return;
             const icon = document.getElementById('compact-icon');
@@ -655,65 +668,83 @@ fullContent:
         };
 
         const renderTaskCard = (task) => {
-            const isSelected = selectedTasks.has(task.id);
-            const now = new Date(); now.setHours(0,0,0,0);
-            let dateBadgeHtml = '';
-            let isOverdue = false;
-            
-            if (task.dueDate) {
-                const dueDate = new Date(task.dueDate); dueDate.setHours(0,0,0,0);
-                const diffTime = dueDate - now;
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                isOverdue = diffDays < 0 && task.status !== 2;
-                const dateObj = new Date(task.dueDate);
-                let dateStr = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-                
-                if (diffDays === 0) dateStr = 'Today';
-                else if (diffDays === 1) dateStr = 'Tomorrow';
-                else if (diffDays === -1) dateStr = 'Yesterday';
+    const isSelected = selectedTasks.has(task.id);
+    const now = new Date(); now.setHours(0,0,0,0);
+    let dateBadgeHtml = '';
+    let isOverdue = false;
+    
+    if (task.dueDate) {
+        const dueDate = new Date(task.dueDate); 
+        const dueTime = dueDate.getTime();
+        dueDate.setHours(0,0,0,0);
+        
+        const diffTime = dueDate - now;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        isOverdue = diffDays < 0 && task.status !== 2;
+        const dateObj = new Date(task.dueDate);
+        
+        // Date String Formatting
+        let dateStr = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        if (diffDays === 0) dateStr = 'Today';
+        else if (diffDays === 1) dateStr = 'Tomorrow';
+        else if (diffDays === -1) dateStr = 'Yesterday';
 
-                if (isOverdue) {
-                    dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-500 font-bold" title="Due on ${dateObj.toLocaleDateString()}"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i><span>${dateStr}</span></span>`;
-                } else {
-                    dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border bg-blue-500/10 border-transparent text-[var(--primary)]"><i class="fa-regular fa-clock mr-1.5"></i> ${dateStr}</span>`;
-                }
-            }
+        // Time Specific Formatting
+        let timeStr = '';
+        let iconClass = 'fa-regular fa-clock'; // Default clock for time-specific
+        
+        if (task.isAllDay) {
+            iconClass = 'fa-solid fa-calendar-day'; // Calendar icon for all-day
+        } else {
+            // Extract time if not all-day
+            timeStr = ', ' + dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
 
-            const wrapperClass = isSelected ? 'selected bg-blue-900/30 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.15)] z-10 select-none' : 'bg-[var(--card)] border-gray-800 hover:border-gray-600 hover:bg-gray-800/50 select-none';
-            const selectIcon = isSelected ? '<i class="fa-solid fa-circle-check text-blue-400 text-xl drop-shadow-md"></i>' : '<i class="fa-regular fa-circle text-gray-500 text-xl group-hover:text-gray-300 transition-colors"></i>';
-            const priorityClass = `priority-${task.priority || 0}`; 
+        if (isOverdue) {
+            dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-500 font-bold" title="Due on ${dateObj.toLocaleDateString()}"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i><span>${dateStr}${timeStr}</span></span>`;
+        } else {
+            // Visual distinction: All-day uses standard primary color, Time-specific can be slightly different or just rely on the icon/text
+            const bgClass = task.isAllDay ? 'bg-blue-500/10' : 'bg-indigo-500/10';
+            const textClass = task.isAllDay ? 'text-[var(--primary)]' : 'text-indigo-400';
             
-            const project = projectMap[task.projectId] || { name: 'Unknown', color: '#4b5563' };
-            const pColor = getProjectColor(task.projectId);
-            
-            const projectBadge = `<span class="flex items-center text-gray-300 px-2 py-0.5 rounded border border-gray-700 whitespace-nowrap" style="background-color: ${pColor}20; border-color: ${pColor}40;"><i class="fa-solid fa-layer-group mr-1 opacity-50" style="color:${pColor}"></i> ${escapeHtml(project.name)}</span>`;
-            
-            const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule);
-            const clickHandler = task.isHistory ? `window.openSidePane('${task.id}', true)` : `window.openSidePane('${task.id}')`;
+            dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border ${bgClass} border-transparent ${textClass}"><i class="${iconClass} mr-1.5"></i> ${dateStr}${timeStr}</span>`;
+        }
+    }
 
-            return `<div class="card p-0 rounded-xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass}" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="${clickHandler}">
-                <div class="project-color-strip" style="background-color: ${pColor}"></div>
-                <div class="w-12 flex items-center justify-center cursor-pointer border-r border-white/5 hover:bg-white/5 transition-colors flex-shrink-0 ml-1" onclick="window.toggleTaskSelection('${task.id}', event)">${selectIcon}</div>
-                <div class="card-inner flex-grow p-4 min-w-0">
-                    <div class="task-details-wrapper">
-                        <div class="flex items-start gap-3 flex-grow min-w-0">
-                            <div class="pt-1 flex-shrink-0 relative" onclick="event.stopPropagation()">
-                                <input type="checkbox" class="task-checkbox ${priorityClass}" ${task.status===2?'checked':''} onclick="window.completeTask('${task.projectId}', '${task.id}', this, event)">
-                                ${isRecurring ? '<i class="fa-solid fa-rotate-right text-[10px] absolute -right-1 -bottom-1 bg-gray-800 rounded-full px-0.5 text-yellow-500"></i>' : ''}
-                            </div>
-                            <div class="min-w-0 flex-grow">
-                                <h3 class="font-bold text-gray-100 leading-tight mb-1 truncate ${task.isAllDay ? 'italic' : ''} ${task.status===2?'line-through text-gray-500':''}">${escapeHtml(task.title)}</h3>
-                                ${task.content ? `<p class="desc-preview text-xs text-gray-500 line-clamp-1 mb-2">${escapeHtml(task.content)}</p>` : ''}
-                            </div>
-                        </div>
-                        <div class="card-meta flex flex-wrap items-center gap-2 text-xs ml-8 mt-2 sm:ml-0 sm:mt-0">
-                            ${dateBadgeHtml}
-                            ${projectBadge}
-                        </div>
+    const wrapperClass = isSelected ? 'selected bg-blue-900/30 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.15)] z-10 select-none' : 'bg-[var(--card)] border-gray-800 hover:border-gray-600 hover:bg-gray-800/50 select-none';
+    const selectIcon = isSelected ? '<i class="fa-solid fa-circle-check text-blue-400 text-xl drop-shadow-md"></i>' : '<i class="fa-regular fa-circle text-gray-500 text-xl group-hover:text-gray-300 transition-colors"></i>';
+    const priorityClass = `priority-${task.priority || 0}`; 
+    
+    const project = projectMap[task.projectId] || { name: 'Unknown', color: '#4b5563' };
+    const pColor = getProjectColor(task.projectId);
+    
+    const projectBadge = `<span class="flex items-center text-gray-300 px-2 py-0.5 rounded border border-gray-700 whitespace-nowrap" style="background-color: ${pColor}20; border-color: ${pColor}40;"><i class="fa-solid fa-layer-group mr-1 opacity-50" style="color:${pColor}"></i> ${escapeHtml(project.name)}</span>`;
+    
+    const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule);
+    const clickHandler = task.isHistory ? `window.openSidePane('${task.id}', true)` : `window.openSidePane('${task.id}')`;
+
+    return `<div class="card p-0 rounded-xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass}" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="${clickHandler}">
+        <div class="project-color-strip" style="background-color: ${pColor}"></div>
+        <div class="w-12 flex items-center justify-center cursor-pointer border-r border-white/5 hover:bg-white/5 transition-colors flex-shrink-0 ml-1" onclick="window.toggleTaskSelection('${task.id}', event)">${selectIcon}</div>
+        <div class="card-inner flex-grow p-4 min-w-0">
+            <div class="task-details-wrapper">
+                <div class="flex items-start gap-3 flex-grow min-w-0">
+                    <div class="pt-1 flex-shrink-0 relative" onclick="event.stopPropagation()">
+                        <input type="checkbox" class="task-checkbox ${priorityClass}" ${task.status===2?'checked':''} onclick="window.completeTask('${task.projectId}', '${task.id}', this, event)">
+                        ${isRecurring ? '<i class="fa-solid fa-rotate-right text-[10px] absolute -right-1 -bottom-1 bg-gray-800 rounded-full px-0.5 text-yellow-500"></i>' : ''}
                     </div>
-                </div></div>`;
-        };
-
+                    <div class="min-w-0 flex-grow">
+                        <h3 class="font-bold text-gray-100 leading-tight mb-1 truncate ${task.status===2?'line-through text-gray-500':''}">${escapeHtml(task.title)}</h3>
+                        ${task.content ? `<p class="desc-preview text-xs text-gray-500 line-clamp-1 mb-2">${escapeHtml(task.content)}</p>` : ''}
+                    </div>
+                </div>
+                <div class="card-meta flex flex-wrap items-center gap-2 text-xs ml-8 mt-2 sm:ml-0 sm:mt-0">
+                    ${dateBadgeHtml}
+                    ${projectBadge}
+                </div>
+            </div>
+        </div></div>`;
+};
         window.toggleSelectionMode = () => { isSelectionMode = !isSelectionMode; renderApp(); };
         window.toggleTaskSelection = (id, event) => {
             if (event) event.stopPropagation();
@@ -810,43 +841,141 @@ fullContent:
             els.content.innerHTML = html;
         };
 
+        window.handleSortableDrop = async (evt) => {
+    const taskId = evt.item.getAttribute('data-task-id');
+    const toSection = evt.to.getAttribute('data-section');
+    const fromSection = evt.from.getAttribute('data-section');
+
+    // If moved within the same list, we just keep the visual order (API doesn't support arbitrary sort index easily)
+    if (toSection === fromSection) return;
+
+    // Logic for moving between sections (Rescheduling)
+    const task = taskCache.find(t => t.id === taskId);
+    if (!task) return;
+
+    let newDate = null;
+    let removeDate = false;
+    const now = new Date();
+
+    if (toSection === 'today' || toSection === 'overdue') { // Treat overdue drop as moving to today
+        newDate = now;
+    } else if (toSection === 'tomorrow') {
+        const tmrw = new Date(now);
+        tmrw.setDate(tmrw.getDate() + 1);
+        newDate = tmrw;
+    } else if (toSection === 'later') {
+        // Move to next week for "Later"
+        const nextWeek = new Date(now);
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        newDate = nextWeek;
+    } else if (toSection === 'noDate') {
+        removeDate = true;
+    } else if (toSection === 'completed') {
+        window.completeTask(task.projectId, task.id, null);
+        return;
+    }
+
+    if (newDate || removeDate) {
+        // Optimistic update
+        if (removeDate) task.dueDate = null;
+        else task.dueDate = newDate.toISOString().replace(/\.\d{3}Z$/, '+0000');
+        
+        // Refresh app to update counters and correct sorting
+        renderApp(); 
+        
+        // API Save
+        try {
+            const payload = { projectId: task.projectId, title: task.title, dueDate: task.dueDate };
+            await api(`/task/${task.id}`, 'POST', payload);
+            showToast(`Moved to ${toSection}`);
+        } catch (e) { console.error(e); showToast('Failed to save changes', 'error'); }
+    }
+};
+
         const renderClassic = (tasks) => {
-            if(tasks.length === 0) {
-                 const msgs = { inbox: "Inbox Zero!", today: "All clear for today.", all: "No tasks found.", completed: "No completed tasks." };
-                 els.content.innerHTML = `<div class="text-center p-12 text-gray-500 flex flex-col items-center"><div class="bg-gray-800/50 p-6 rounded-full mb-4"><i class="fa-solid fa-mug-hot text-4xl opacity-50 text-[var(--primary)]"></i></div><p class="text-lg font-bold text-gray-400">${msgs[currentState.filter] || "Nothing here."}</p></div>`;
-                 return;
+    if(tasks.length === 0) {
+        const msgs = { inbox: "Inbox Zero!", today: "All clear for today.", all: "No tasks found.", completed: "No completed tasks." };
+        els.content.innerHTML = `<div class="text-center p-12 text-gray-500 flex flex-col items-center"><div class="bg-gray-800/50 p-6 rounded-full mb-4"><i class="fa-solid fa-mug-hot text-4xl opacity-50 text-[var(--primary)]"></i></div><p class="text-lg font-bold text-gray-400">${msgs[currentState.filter] || "Nothing here."}</p></div>`;
+        return;
+    }
+
+    if (currentState.sortMode === 'alpha' || currentState.filter === 'completed') {
+        els.content.innerHTML = `<div id="simple-list">${tasks.map(renderTaskCard).join('')}</div>`;
+        return;
+    }
+
+    // Group by Date
+    const now = new Date(); now.setHours(0,0,0,0);
+    const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1);
+    const groups = { overdue: [], today: [], tomorrow: [], later: [], noDate: [], completed: [] };
+
+    tasks.forEach(t => {
+        if (t.status === 2) { groups.completed.push(t); return; }
+        if (!t.dueDate) { groups.noDate.push(t); return; }
+        const d = new Date(t.dueDate); d.setHours(0,0,0,0);
+        if (d < now) groups.overdue.push(t);
+        else if (d.getTime() === now.getTime()) groups.today.push(t);
+        else if (d.getTime() === tmrw.getTime()) groups.tomorrow.push(t);
+        else groups.later.push(t);
+    });
+
+    const renderSection = (key, label, customClass = '') => {
+        const groupTasks = groups[key];
+        // Ensure even empty groups exist in DOM so tasks can be dragged into them (optional, but good for UX)
+        // For now, we hide empty groups to keep it clean, unless you want to drag into "Tomorrow" when it's empty.
+        // Let's render them if they have tasks OR if they are standard sections like Today/Tomorrow
+        const alwaysShow = ['today', 'tomorrow', 'noDate'];
+        if (groupTasks.length === 0 && !alwaysShow.includes(key)) return '';
+
+        const isCollapsed = window.sectionStates[key];
+        const icon = isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down';
+        
+        let headerClass = 'group-header';
+        if (customClass) headerClass += ` ${customClass}`;
+        headerClass += ' cursor-pointer hover:bg-gray-800/50 rounded px-2 select-none transition-colors';
+
+        return `
+        <div class="${headerClass}" onclick="window.toggleSection('${key}')">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid ${icon} text-xs w-4 text-gray-500"></i>
+                <span>${label}</span>
+            </div>
+            <span>${groupTasks.length}</span>
+        </div>
+        <div id="group-${key}" data-section="${key}" class="task-group ${isCollapsed ? 'hidden' : ''} min-h-[10px] pb-4 transition-all">
+            ${groupTasks.map(renderTaskCard).join('')}
+            ${groupTasks.length === 0 ? '<div class="text-xs text-gray-700 italic py-2 pl-4 dashed-placeholder">Drag tasks here...</div>' : ''}
+        </div>`;
+    };
+
+    let html = '';
+    html += renderSection('overdue', 'Overdue', 'overdue');
+    html += renderSection('today', 'Today', 'today');
+    html += renderSection('tomorrow', 'Tomorrow');
+    html += renderSection('later', 'Later');
+    html += renderSection('noDate', 'No Date');
+    html += renderSection('completed', 'Completed');
+
+    els.content.innerHTML = html;
+
+    // Initialize Sortable for each group
+    setTimeout(() => {
+        ['overdue', 'today', 'tomorrow', 'later', 'noDate', 'completed'].forEach(key => {
+            const el = document.getElementById(`group-${key}`);
+            if (el) {
+                new Sortable(el, {
+                    group: 'classic-view', // Allows dragging between lists
+                    animation: 150,
+                    ghostClass: 'sortable-ghost',
+                    dragClass: 'sortable-drag',
+                    delay: 150, // Slight delay to differentiate from clicks
+                    delayOnTouchOnly: true,
+                    onEnd: window.handleSortableDrop
+                });
             }
-
-            if (currentState.sortMode === 'alpha' || currentState.filter === 'completed') {
-                els.content.innerHTML = tasks.map(renderTaskCard).join('');
-                return;
-            }
-
-            // Group by Date for Classic View
-            const now = new Date(); now.setHours(0,0,0,0);
-            const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1);
-            const groups = { overdue: [], today: [], tomorrow: [], later: [], noDate: [], completed: [] };
-
-            tasks.forEach(t => {
-                if (t.status === 2) { groups.completed.push(t); return; }
-                if (!t.dueDate) { groups.noDate.push(t); return; }
-                const d = new Date(t.dueDate); d.setHours(0,0,0,0);
-                if (d < now) groups.overdue.push(t);
-                else if (d.getTime() === now.getTime()) groups.today.push(t);
-                else if (d.getTime() === tmrw.getTime()) groups.tomorrow.push(t);
-                else groups.later.push(t);
-            });
-
-            let html = '';
-            if (groups.overdue.length > 0) html += `<div class="group-header overdue"><span>Overdue</span><span>${groups.overdue.length}</span></div>` + groups.overdue.map(renderTaskCard).join('');
-            if (groups.today.length > 0) html += `<div class="group-header today"><span>Today</span><span>${groups.today.length}</span></div>` + groups.today.map(renderTaskCard).join('');
-            if (groups.tomorrow.length > 0) html += `<div class="group-header"><span>Tomorrow</span><span>${groups.tomorrow.length}</span></div>` + groups.tomorrow.map(renderTaskCard).join('');
-            if (groups.later.length > 0) html += `<div class="group-header"><span>Later</span><span>${groups.later.length}</span></div>` + groups.later.map(renderTaskCard).join('');
-            if (groups.noDate.length > 0) html += `<div class="group-header"><span>No Date</span><span>${groups.noDate.length}</span></div>` + groups.noDate.map(renderTaskCard).join('');
-            if (groups.completed.length > 0) html += `<div class="group-header"><span>Completed</span><span>${groups.completed.length}</span></div>` + groups.completed.map(renderTaskCard).join('');
-
-            els.content.innerHTML = html;
-        };
+        });
+    }, 50);
+};
         
         const renderEisenhower = (tasks) => {
             const today = new Date().toISOString().split('T')[0];
