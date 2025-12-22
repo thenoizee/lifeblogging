@@ -99,7 +99,7 @@
                 <div class="p-4 border border-[var(--text-color-secondary)] rounded-lg mb-4">
                     <h3 class="text-lg font-semibold mb-2">Service Connections</h3>
                     
-                    <div class="mb-2">
+                    <div class="mb-4">
                         <label for="lastfm-username" class="block text-sm font-semibold mb-1">Last.fm Username</label>
                         <div class="flex gap-2">
                             <input type="text" id="lastfm-username" placeholder="username" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -108,6 +108,20 @@
                             </button>
                         </div>
                         <p class="text-[10px] text-gray-500 mt-1 italic">Enter your username to display live music on the dashboard.</p>
+                    </div>
+
+                    <div class="border-t border-[var(--text-color-secondary)] pt-4">
+                        <label class="block text-sm font-semibold mb-1">TickTick Integration</label>
+                        <div class="flex justify-between items-center bg-[var(--input-bg-color)] p-3 rounded-lg">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-check-double text-blue-500"></i>
+                                <span id="ticktick-status" class="text-sm font-medium">Not Connected</span>
+                            </div>
+                            <button id="ticktick-auth-btn" class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm">
+                                Connect
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-gray-500 mt-1 italic">Link your TickTick account to use TaskTrackr.</p>
                     </div>
                 </div>
 
@@ -162,7 +176,10 @@
             getAuth, onAuthStateChanged, signOut,
             updatePassword, updateEmail, GoogleAuthProvider, linkWithPopup, unlink, deleteUser
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, onSnapshot, setDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, onSnapshot, setDoc, getDocs, collection, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Import TickTick Keys (assuming relative path structure)
+        import { TICKTICK_CLIENT_ID, TICKTICK_REDIRECT_URI } from '../tasktrackr/api_keys.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -199,48 +216,23 @@
         // Service Elements
         const lastfmInput = document.getElementById('lastfm-username');
         const saveLastfmBtn = document.getElementById('save-lastfm-btn');
+        const ticktickStatus = document.getElementById('ticktick-status');
+        const ticktickBtn = document.getElementById('ticktick-auth-btn');
 
         let themeDocRef = null;
         let themeUnsubscribe = null;
 
         // Map apps to their Firestore collections
         const KNOWN_APPS = {
-            'hydrationtrackr': { 
-                label: 'HydrationTrackr', 
-                paths: ['hydrationtrackr'] 
-            },
-            'medimanagr': { 
-                label: 'MediManagr', 
-                paths: ['medications', 'doses', 'lenses_left', 'lenses_right'] 
-            },
-            'podtrackr': { 
-                label: 'PodTrackr', 
-                paths: ['podcasts', 'history', 'podcastListenlist', 'listenlist'] 
-            },
-            'vidtrackr': {
-                label: 'VidTrackr (Notes only)',
-                paths: [] 
-            },
-            'foodtrackr': { 
-                label: 'FoodTrackr', 
-                paths: ['foodLog', 'favoriteFoods', 'meals'] 
-            },
-            'warrantytrackr': { 
-                label: 'WarrantyTrackr', 
-                paths: ['warranties'] 
-            },
-            'recipemanagr': { 
-                label: 'RecipeManagr', 
-                paths: ['recipes', 'appliances'] 
-            },
-            'labelgenerator': { 
-                label: 'Label Generator', 
-                paths: ['labelPresets'] 
-            },
-            'text-merge-templates': { 
-                label: 'Email Templates', 
-                isSource: true 
-            }
+            'hydrationtrackr': { label: 'HydrationTrackr', paths: ['hydrationtrackr'] },
+            'medimanagr': { label: 'MediManagr', paths: ['medications', 'doses', 'lenses_left', 'lenses_right'] },
+            'podtrackr': { label: 'PodTrackr', paths: ['podcasts', 'history', 'podcastListenlist', 'listenlist'] },
+            'vidtrackr': { label: 'VidTrackr (Notes only)', paths: [] },
+            'foodtrackr': { label: 'FoodTrackr', paths: ['foodLog', 'favoriteFoods', 'meals'] },
+            'warrantytrackr': { label: 'WarrantyTrackr', paths: ['warranties'] },
+            'recipemanagr': { label: 'RecipeManagr', paths: ['recipes', 'appliances'] },
+            'labelgenerator': { label: 'Label Generator', paths: ['labelPresets'] },
+            'text-merge-templates': { label: 'Email Templates', isSource: true }
         };
 
         const applyTheme = (theme) => {
@@ -303,15 +295,52 @@
             }
         }
 
+        async function loadServices(user) {
+            try {
+                // Load Last.fm
+                const lastfmDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'lastfm'));
+                if (lastfmDoc.exists()) {
+                    lastfmInput.value = lastfmDoc.data().username || '';
+                }
+
+                // Load TickTick
+                const ticktickDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'ticktick'));
+                if (ticktickDoc.exists() && ticktickDoc.data().token) {
+                    ticktickStatus.textContent = "Connected";
+                    ticktickStatus.className = "text-sm font-bold text-green-600";
+                    ticktickBtn.textContent = "Disconnect";
+                    ticktickBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
+                    ticktickBtn.onclick = async () => {
+                        if(confirm("Disconnect TickTick?")) {
+                            await setDoc(doc(db, 'users', user.uid, 'services', 'ticktick'), { token: deleteField() }, { merge: true });
+                            localStorage.removeItem('ticktick_token');
+                            showMessage("TickTick disconnected.");
+                            loadServices(user);
+                        }
+                    };
+                } else {
+                    ticktickStatus.textContent = "Not Connected";
+                    ticktickStatus.className = "text-sm font-medium text-gray-500";
+                    ticktickBtn.textContent = "Connect";
+                    ticktickBtn.className = "text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
+                    ticktickBtn.onclick = () => {
+                        const url = `https://ticktick.com/oauth/authorize?client_id=${TICKTICK_CLIENT_ID}&scope=tasks:read%20tasks:write&response_type=code&redirect_uri=${encodeURIComponent(TICKTICK_REDIRECT_URI)}`;
+                        window.location.href = url;
+                    };
+                }
+
+            } catch (error) {
+                console.error("Error loading services:", error);
+            }
+        }
+
         async function loadExportSources(user) {
-            exportSourcesList.innerHTML = '<div class="animate-pulse flex space-x-4 p-2"><div class="h-2 bg-gray-400 rounded w-full opacity-20"></div></div>';
+            // ... (Existing export logic remains unchanged) ...
+             exportSourcesList.innerHTML = '<div class="animate-pulse flex space-x-4 p-2"><div class="h-2 bg-gray-400 rounded w-full opacity-20"></div></div>';
             try {
                 const dynamicSourcesColl = await getDocs(collection(db, `users/${user.uid}/sources`));
                 exportSourcesList.innerHTML = '';
-                
                 const availableSources = new Set();
-
-                // 1. Add Known Apps (Hardcoded)
                 for (const [key, config] of Object.entries(KNOWN_APPS)) {
                     availableSources.add(key);
                     const div = document.createElement('div');
@@ -325,17 +354,13 @@
                     `;
                     exportSourcesList.appendChild(div);
                 }
-
-                // 2. Add Dynamic Sources (from Logger/Generic apps)
                 const dynamicSources = [];
                 dynamicSourcesColl.forEach(doc => {
-                    // Avoid duplicating keys we already handled
                     if (!KNOWN_APPS[doc.id]) {
                         dynamicSources.push(doc.id);
                     }
                 });
                 dynamicSources.sort();
-
                 dynamicSources.forEach(source => {
                     const div = document.createElement('div');
                     div.className = 'flex items-center hover:bg-black/5 dark:hover:bg-white/5 p-1 rounded transition';
@@ -348,26 +373,12 @@
                     `;
                     exportSourcesList.appendChild(div);
                 });
-
                 if (availableSources.size === 0 && dynamicSources.length === 0) {
                     exportSourcesList.innerHTML = '<p class="text-xs text-gray-500 p-2">No data sources found.</p>';
                 }
-
             } catch (e) {
                 console.error(e);
                 exportSourcesList.innerHTML = '<p class="text-xs text-red-500 p-2">Error loading sources. Check connection.</p>';
-            }
-        }
-
-        async function loadServices(user) {
-            try {
-                // Load Last.fm
-                const lastfmDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'lastfm'));
-                if (lastfmDoc.exists()) {
-                    lastfmInput.value = lastfmDoc.data().username || '';
-                }
-            } catch (error) {
-                console.error("Error loading services:", error);
             }
         }
 
@@ -375,7 +386,6 @@
         saveLastfmBtn.addEventListener('click', async () => {
             const username = lastfmInput.value.trim();
             if (!auth.currentUser) return;
-            
             try {
                 saveLastfmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
                 await setDoc(doc(db, 'users', auth.currentUser.uid, 'services', 'lastfm'), { username: username }, { merge: true });
@@ -402,7 +412,7 @@
                 });
                 renderLinkedAccounts(user);
                 loadExportSources(user);
-                loadServices(user); // Load service usernames
+                loadServices(user);
             } else {
                 window.location.href = '/';
             }
@@ -464,22 +474,18 @@
         
         const formatTimestamp = () => {
             const now = new Date();
-            // YYYY-MM-DD_HH-mm
             return now.toISOString().replace(/[:.]/g, '-').slice(0, 16);
         };
 
         exportDataBtn.addEventListener('click', async () => {
             const user = auth.currentUser;
             if (!user) return;
-
             const checkboxes = document.querySelectorAll('input[name="export-source"]:checked');
             const selectedSources = Array.from(checkboxes).map(cb => cb.value);
-
             if (selectedSources.length === 0) {
                 showMessage("Please select at least one app/source to export.", 'error');
                 return;
             }
-
             showMessage("Preparing export... This may take a moment.", 'info');
             
             const zip = new JSZip();
@@ -488,14 +494,10 @@
             try {
                 let singleFileData = null;
                 let singleFileName = "";
-
                 for (const sourceId of selectedSources) {
                     const data = {};
-                    
                     if (KNOWN_APPS[sourceId]) {
                         const appConfig = KNOWN_APPS[sourceId];
-                        
-                        // 1. Handle Generic "Source" Apps (like Templates)
                         if (appConfig.isSource) {
                              data[sourceId] = {};
                              const dataCollections = await getDocs(collection(db, `users/${user.uid}/sources/${sourceId}/data`));
@@ -503,7 +505,6 @@
                                  data[sourceId][dataDoc.id] = dataDoc.data();
                              });
                         } 
-                        // 2. Handle Standard Apps (Root Collections)
                         else {
                             for (const path of appConfig.paths) {
                                 data[path] = {};
@@ -512,49 +513,36 @@
                                     data[path][doc.id] = doc.data();
                                 });
                             }
-
-                            // --- SEPARATED NOTE LOGIC START ---
-                            
-                            // If exporting VidTrackr, fetch notes but FILTER for video content
                             if (sourceId === 'vidtrackr') {
                                 data['notes'] = {};
                                 const notesSnap = await getDocs(collection(db, `users/${user.uid}/notes`));
                                 notesSnap.forEach(doc => {
                                     const n = doc.data();
-                                    // Check for video types or IDs (Trakt/TMDB)
                                     const isVideo = ['movie', 'show', 'tv', 'episode', 'season'].includes(n.type) || n.traktId || n.tmdbId;
                                     if (isVideo) {
                                         data['notes'][doc.id] = n;
                                     }
                                 });
                             }
-
-                            // If exporting PodTrackr, fetch notes but FILTER for podcast content
                             if (sourceId === 'podtrackr') {
                                 data['notes'] = {};
                                 const notesSnap = await getDocs(collection(db, `users/${user.uid}/notes`));
                                 notesSnap.forEach(doc => {
                                     const n = doc.data();
-                                    // Check for podcast types or IDs (Feed URL)
                                     const isPodcast = n.type === 'podcast' || n.feedUrl || n.podcastTitle || n.episodeTitle;
                                     if (isPodcast) {
                                         data['notes'][doc.id] = n;
                                     }
                                 });
                             }
-                            // --- SEPARATED NOTE LOGIC END ---
                         }
-
                     } else {
-                        // 3. Handle Dynamic Logger Sources
                         data[sourceId] = {};
                         const dataCollections = await getDocs(collection(db, `users/${user.uid}/sources/${sourceId}/data`));
                         dataCollections.forEach(dataDoc => {
                             data[sourceId][dataDoc.id] = dataDoc.data();
                         });
                     }
-                    
-                    // Add to Zip or prepare single file
                     if (hasMultiple) {
                         zip.file(`${sourceId}.json`, JSON.stringify(data, null, 2));
                     } else {
@@ -562,8 +550,6 @@
                         singleFileName = `${sourceId}-export-${formatTimestamp()}.json`;
                     }
                 }
-
-                // Generate Download
                 if (hasMultiple) {
                     const content = await zip.generateAsync({type:"blob"});
                     const href = URL.createObjectURL(content);
@@ -589,7 +575,6 @@
                     URL.revokeObjectURL(href);
                     a.remove();
                 }
-
                 showMessage("Data export completed.");
             } catch (error) {
                 console.error(error);
@@ -606,9 +591,7 @@
                     const data = JSON.parse(event.target.result);
                     const user = auth.currentUser;
                     if (!user) return;
-
                     showMessage("Importing data... Please wait.", 'info');
-                    
                     for (const collectionName in data) {
                         let isRootCollection = false;
                         for (const appKey in KNOWN_APPS) {
@@ -617,7 +600,6 @@
                                 break;
                             }
                         }
-
                         if (isRootCollection) {
                             for (const docId in data[collectionName]) {
                                 const docRef = doc(db, `users/${user.uid}/${collectionName}`, docId);
@@ -629,7 +611,6 @@
                                 collectionCreatedName: collectionName, 
                                 importedAt: new Date() 
                             }, { merge: true });
-                            
                             for (const docId in data[collectionName]) {
                                 const docRef = doc(db, `users/${user.uid}/sources/${collectionName}/data`, docId);
                                 await setDoc(docRef, data[collectionName][docId]);

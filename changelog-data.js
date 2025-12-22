@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.55.0-alpha",
+    date: "2025-12-22",
+    changes: [
+        "In TaskTrackr: Restored the 'Completed' section by integrating a Firebase Firestore query to fetch and display historical tasks ordered by completion date.",
+        "In TaskTrackr: Improved the Side Panel UI with an auto-expanding title text area, allowing full visibility of long task names without scrolling.",
+        "In TaskTrackr: Updated the application logic to differentiate between active tasks and history items, ensuring completed tasks can be viewed in detail from the side pane.",
+        "In TaskTrackr: Refined the task completion handler to prevent duplicate logging of history items and ensure smoother state transitions.",
+        "In TaskTrackr: Fixed the 'Completed' filter behavior to trigger an immediate fetch of historical data, resolving the issue where completed tasks would disappear."
+    ]
+    },
+    {
     version: "v9.54.0-alpha",
     date: "2025-12-21",
     changes: [
