@@ -20,7 +20,8 @@
         <div id="success-icon" class="hidden text-green-500 text-5xl mb-4"><i class="fa-solid fa-check-circle"></i></div>
         
         <h2 id="status-title" class="text-xl font-bold mb-2">Connecting to TickTick</h2>
-        <p id="status-message" class="text-gray-400 text-sm">Please wait while we verify your account...</p>
+        <p id="status-message" class="text-gray-400 text-sm">Verifying your account...</p>
+        <p id="error-detail" class="text-red-400 text-xs mt-2 hidden font-mono bg-black/20 p-2 rounded"></p>
         
         <a id="return-btn" href="/" class="hidden mt-6 inline-block w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold transition">Return to App</a>
     </div>
@@ -36,7 +37,7 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        const updateStatus = (title, msg, type = 'loading') => {
+        const updateStatus = (title, msg, type = 'loading', detail = null) => {
             document.getElementById('status-title').textContent = title;
             document.getElementById('status-message').textContent = msg;
             
@@ -44,6 +45,14 @@
             document.getElementById('error-icon').classList.add('hidden');
             document.getElementById('success-icon').classList.add('hidden');
             document.getElementById('return-btn').classList.remove('hidden');
+
+            const detailEl = document.getElementById('error-detail');
+            if (detail) {
+                detailEl.textContent = detail;
+                detailEl.classList.remove('hidden');
+            } else {
+                detailEl.classList.add('hidden');
+            }
 
             if (type === 'loading') {
                 document.getElementById('loading-icon').classList.remove('hidden');
@@ -55,12 +64,12 @@
             }
         };
 
-        const processAuth = async () => {
+        const exchangeCode = async (user) => {
             const params = new URLSearchParams(window.location.search);
             const code = params.get('code');
-            const state = params.get('state') || '/'; // Default return path
-            
-            // Set the return button link just in case auto-redirect fails
+            const state = params.get('state') || '/';
+
+            // Set return link
             document.getElementById('return-btn').href = state;
 
             if (!code) {
@@ -69,7 +78,8 @@
             }
 
             try {
-                // 1. Exchange Code for Token
+                updateStatus("Connecting...", "Exchanging code for token...", "loading");
+
                 const credentials = btoa(`${TICKTICK_CLIENT_ID}:${TICKTICK_CLIENT_SECRET}`);
                 const response = await fetch('https://ticktick.com/oauth/token', { 
                     method: 'POST', 
@@ -91,47 +101,51 @@
                     throw new Error(data.error_description || "Failed to retrieve access token.");
                 }
 
-                // 2. Save Token to Firebase
-                // We need to wait for Auth to initialize to get the UID
-                updateStatus("Saving...", "Linking to your account...");
+                // Save to Firestore
+                updateStatus("Saving...", "Linking to your account...", "loading");
+                await setDoc(doc(db, 'users', user.uid, 'services', 'ticktick'), { 
+                    token: data.access_token, 
+                    updatedAt: new Date() 
+                }, { merge: true });
                 
-                const unsubscribe = onAuthStateChanged(auth, async (user) => {
-                    unsubscribe(); // Only run once
-                    if (user) {
-                        try {
-                            // Store token in Firestore under the user's ID
-                            await setDoc(doc(db, 'users', user.uid, 'services', 'ticktick'), { 
-                                token: data.access_token, 
-                                updatedAt: new Date() 
-                            }, { merge: true });
-                            
-                            // Also update local storage for immediate use
-                            localStorage.setItem('ticktick_token', data.access_token);
-                            
-                            updateStatus("Success!", "Redirecting you back...", "success");
-                            
-                            // 3. Redirect back to origin
-                            setTimeout(() => {
-                                window.location.href = state;
-                            }, 1500);
-
-                        } catch (dbError) {
-                            console.error(dbError);
-                            updateStatus("Database Error", "Could not save token to cloud.", "error");
-                        }
-                    } else {
-                        updateStatus("Authentication Error", "You must be logged in to Lifeblogging Hub.", "error");
-                    }
-                });
+                // Save to LocalStorage
+                localStorage.setItem('ticktick_token', data.access_token);
+                
+                updateStatus("Success!", "Redirecting you back...", "success");
+                
+                setTimeout(() => {
+                    window.location.href = state;
+                }, 1500);
 
             } catch (error) {
                 console.error(error);
-                updateStatus("Connection Failed", error.message, "error");
+                updateStatus("Connection Failed", "Could not connect to TickTick.", "error", error.message);
             }
         };
 
-        // Run on load
-        processAuth();
+        const init = () => {
+            let authTimeout;
+            
+            // 1. Set a timeout in case Auth hangs forever (e.g., user is actually logged out)
+            authTimeout = setTimeout(() => {
+                updateStatus("Authentication Error", "You do not appear to be logged in.", "error", "Session timeout. Please go back and log in again.");
+            }, 8000);
+
+            // 2. Listen for Auth State
+            const unsubscribe = onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    // User found! Clear timeout and proceed.
+                    clearTimeout(authTimeout);
+                    unsubscribe(); 
+                    exchangeCode(user);
+                } 
+                // If user is null, we do NOTHING. We wait for the next event or the timeout.
+                // This prevents the "immediate null" error.
+            });
+        };
+
+        // Start
+        init();
     </script>
 </body>
 </html>
