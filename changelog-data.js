@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.60.2-alpha",
+    date: "2025-12-22",
+    changes: [
+        "In Account: Callback auth bug fix 2."
+    ]
+    },
+    {
     version: "v9.60.1-alpha",
     date: "2025-12-22",
     changes: [
