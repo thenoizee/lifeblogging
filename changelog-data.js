@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.58.0-alpha",
+    date: "2025-12-22",
+    changes: [
+        "In TaskTrackr: Introduced a new persistent left-hand sidebar for seamless navigation between projects and filters, replacing the top-bar dropdown menu for faster access.",
+        "In TaskTrackr: Implemented auto-save functionality in the Side Pane; task titles and descriptions now save automatically to the server when you click away or close the pane.",
+        "In TaskTrackr: Fixed an issue where edits made in the side pane would sometimes be lost if the pane was closed without an explicit save action."
+    ]
+    },
+    {
     version: "v9.57.0-alpha",
     date: "2025-12-22",
     changes: [
