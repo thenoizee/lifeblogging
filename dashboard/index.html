@@ -61,23 +61,19 @@
             z-index: 10;
         }
         
-        /* Custom Scrollbar */
         .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
         .custom-scroll::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 20px; }
         
-        /* Mood Animation */
         .mood-face-large {
             font-size: 5rem;
             transition: transform 0.2s;
         }
         .mood-face-large:hover { transform: scale(1.1) rotate(5deg); }
 
-        /* Timeline Specifics */
         .timeline-item:first-child .line-left { display: none; }
         .timeline-item:last-child .line-right { display: none; }
 
-        /* Equalizer Animation for Last.fm */
         .equalizer {
             display: flex;
             align-items: flex-end;
@@ -86,7 +82,7 @@
         }
         .bar {
             width: 3px;
-            background-color: #10b981; /* Tailwind green-500 */
+            background-color: #10b981;
             animation: bounce 1s infinite ease-in-out;
         }
         .bar:nth-child(2) { animation-delay: 0.1s; height: 60%; }
@@ -125,7 +121,6 @@
         </div>
 
         <div id="dashboard-grid" class="grid grid-cols-1 md:grid-cols-4 gap-4 hidden">
-            
             <div class="dashboard-card md:col-span-2">
                 <div class="card-header">
                     <span>Daily Mood</span>
@@ -257,7 +252,6 @@
                 <div id="dailies-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2 custom-scroll overflow-y-auto max-h-[150px] pr-1">
                 </div>
             </div>
-
         </div>
     </div>
     <script type="module">
@@ -343,8 +337,7 @@
             }
         });
 
-        // --- Render Functions ---
-
+        // --- Render Functions (Existing functions unchanged) ---
         const renderLogsAndMood = () => {
             const allLogs = [...state.dailyLogs, ...state.manualLogs];
             allLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -663,7 +656,6 @@
         }
 
         // --- Real-time Listeners ---
-
         const setupListeners = (uid) => {
             const start = new Date(); start.setHours(0, 0, 0, 0);
             const end = new Date(); end.setHours(23, 59, 59, 999);
@@ -671,7 +663,14 @@
             const endTs = Timestamp.fromDate(end);
             const todayStr = start.toISOString().split('T')[0];
 
-            // 1. Logs
+            // NEW: Profile Listener for Greeting
+            unsubscribers.push(onSnapshot(doc(db, 'users', uid, 'settings', 'profile'), (snap) => {
+                const name = snap.data()?.displayName;
+                const emailName = currentUser.email.split('@')[0];
+                ui.greeting.textContent = `Hello, ${name || emailName}!`;
+            }));
+
+            // [Existing Listeners for Logs, Hydration, Podcast, Food, Plans, Meds]
             const dailiesQ = query(collection(db, `users/${uid}/sources/dailies/data`), orderBy('date', 'desc'), limit(20));
             unsubscribers.push(onSnapshot(dailiesQ, (snap) => {
                 state.dailyLogs = snap.docs.map(d => d.data());
@@ -685,7 +684,6 @@
                 renderLogsAndMood();
             }));
 
-            // 2. Hydration
             const hydroQ = query(collection(db, `users/${uid}/hydrationtrackr`), where('date', '>=', startTs), where('date', '<=', endTs));
             unsubscribers.push(onSnapshot(hydroQ, async (snap) => {
                 let waterTotal = 0;
@@ -700,7 +698,6 @@
                 updateWaterChart(waterTotal, waterGoal);
             }));
 
-            // 3. Podcast
             const podQ = query(collection(db, `users/${uid}/history`), orderBy('listenedAt', 'desc'), limit(1));
             unsubscribers.push(onSnapshot(podQ, (snap) => {
                 if (!snap.empty) {
@@ -719,7 +716,6 @@
                 }
             }));
 
-            // 4. Food
             const foodQ = query(collection(db, `users/${uid}/foodLog`), orderBy('eatenAt', 'desc'));
             unsubscribers.push(onSnapshot(foodQ, (snap) => {
                 let cals = { total: 0, breakfast: 0, lunch: 0, dinner: 0, other: 0 };
@@ -743,7 +739,6 @@
                 ui.calBreakdown.snacks.textContent = Math.round(cals.other);
             }));
 
-            // 5. Plans & Meds
             unsubscribers.push(onSnapshot(doc(db, `users/${uid}/settings/dailyPlan`), (snap) => {
                 state.dailyPlan = snap.exists() ? (snap.data().dailyLogs || []) : [];
                 renderDailies();
@@ -806,7 +801,8 @@
                 ui.loginPrompt.classList.add('hidden');
                 ui.grid.classList.remove('hidden');
                 ui.authContainer.classList.remove('hidden');
-                ui.greeting.textContent = `Hello, ${user.email.split('@')[0]}!`;
+                
+                // Greeting is now handled by setupListeners -> profile snapshot
                 ui.date.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
                 getDoc(doc(db, 'users', user.uid, 'settings', 'theme')).then(snap => {
@@ -821,7 +817,6 @@
                     }
                 });
 
-                // --- Last.fm Polling ---
                 getDoc(doc(db, 'users', user.uid, 'services', 'lastfm')).then(snap => {
                     if (snap.exists() && snap.data().username) {
                         const fmUser = snap.data().username;

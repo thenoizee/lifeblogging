@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.63.0-alpha",
+    date: "2025-12-23",
+    changes: [
+        "In Account: Introduced a new 'Profile' section in settings, allowing users to set a custom 'Display Name' that is used system-wide.",
+        "In Dashboard: The greeting message now dynamically uses the user's 'Display Name' (e.g., 'Hello, XYZ!') instead of the email address, with real-time updates."
+    ]
+    },
+    {
     version: "v9.62.0-beta",
     date: "2025-12-23",
     changes: [

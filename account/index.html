@@ -75,6 +75,20 @@
                 <p id="user-email-display" class="text-sm font-mono break-all text-center mb-4"></p>
 
                 <div class="p-4 border border-[var(--text-color-secondary)] rounded-lg mb-4">
+                    <h3 class="text-lg font-semibold mb-2">Profile</h3>
+                    <div class="mb-2">
+                        <label for="display-name" class="block text-sm font-semibold mb-1">Display Name</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="display-name" placeholder="Enter your name" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <button id="save-profile-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg text-sm whitespace-nowrap">
+                                Save
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-gray-500 mt-1 italic">This name will be displayed on your dashboard.</p>
+                    </div>
+                </div>
+
+                <div class="p-4 border border-[var(--text-color-secondary)] rounded-lg mb-4">
                     <h3 class="text-lg font-semibold mb-2">Change Password</h3>
                     <div class="mb-2">
                         <label for="new-password" class="block text-sm font-semibold mb-1">New Password</label>
@@ -178,7 +192,6 @@
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, onSnapshot, setDoc, getDocs, collection, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Import TickTick Keys (assuming relative path structure)
         import { TICKTICK_CLIENT_ID, TICKTICK_REDIRECT_URI } from '../tasktrackr/api_keys.js';
 
         const firebaseConfig = {
@@ -213,7 +226,9 @@
         const selectAllBtn = document.getElementById('select-all-btn');
         const deselectAllBtn = document.getElementById('deselect-all-btn');
         
-        // Service Elements
+        // Profile & Service Elements
+        const displayNameInput = document.getElementById('display-name');
+        const saveProfileBtn = document.getElementById('save-profile-btn');
         const lastfmInput = document.getElementById('lastfm-username');
         const saveLastfmBtn = document.getElementById('save-lastfm-btn');
         const ticktickStatus = document.getElementById('ticktick-status');
@@ -222,7 +237,6 @@
         let themeDocRef = null;
         let themeUnsubscribe = null;
 
-        // Map apps to their Firestore collections
         const KNOWN_APPS = {
             'hydrationtrackr': { label: 'HydrationTrackr', paths: ['hydrationtrackr'] },
             'medimanagr': { label: 'MediManagr', paths: ['medications', 'doses', 'lenses_left', 'lenses_right'] },
@@ -295,8 +309,14 @@
             }
         }
 
-        async function loadServices(user) {
+        async function loadSettings(user) {
             try {
+                // Load Profile Name
+                const profileDoc = await getDoc(doc(db, 'users', user.uid, 'settings', 'profile'));
+                if (profileDoc.exists()) {
+                    displayNameInput.value = profileDoc.data().displayName || '';
+                }
+
                 // Load Last.fm
                 const lastfmDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'lastfm'));
                 if (lastfmDoc.exists()) {
@@ -315,7 +335,7 @@
                             await setDoc(doc(db, 'users', user.uid, 'services', 'ticktick'), { token: deleteField() }, { merge: true });
                             localStorage.removeItem('ticktick_token');
                             showMessage("TickTick disconnected.");
-                            loadServices(user);
+                            loadSettings(user);
                         }
                     };
                 } else {
@@ -324,19 +344,18 @@
                     ticktickBtn.textContent = "Connect";
                     ticktickBtn.className = "text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
                     ticktickBtn.onclick = () => {
-                        const state = encodeURIComponent(window.location.pathname); // Return to Account page
+                        const state = encodeURIComponent(window.location.pathname); 
                         const url = `https://ticktick.com/oauth/authorize?client_id=${TICKTICK_CLIENT_ID}&scope=tasks:read%20tasks:write&response_type=code&redirect_uri=${encodeURIComponent(TICKTICK_REDIRECT_URI)}&state=${state}`;
                         window.location.href = url;
                     };
                 }
 
             } catch (error) {
-                console.error("Error loading services:", error);
+                console.error("Error loading settings:", error);
             }
         }
 
         async function loadExportSources(user) {
-            // ... (Existing export logic remains unchanged) ...
              exportSourcesList.innerHTML = '<div class="animate-pulse flex space-x-4 p-2"><div class="h-2 bg-gray-400 rounded w-full opacity-20"></div></div>';
             try {
                 const dynamicSourcesColl = await getDocs(collection(db, `users/${user.uid}/sources`));
@@ -383,7 +402,21 @@
             }
         }
 
-        // --- Save Services Event Listeners ---
+        // --- Save Settings Listeners ---
+        saveProfileBtn.addEventListener('click', async () => {
+            const name = displayNameInput.value.trim();
+            if (!auth.currentUser) return;
+            try {
+                saveProfileBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'profile'), { displayName: name }, { merge: true });
+                showMessage("Profile updated!");
+            } catch (error) {
+                showMessage("Error saving: " + error.message, 'error');
+            } finally {
+                saveProfileBtn.innerText = 'Save';
+            }
+        });
+
         saveLastfmBtn.addEventListener('click', async () => {
             const username = lastfmInput.value.trim();
             if (!auth.currentUser) return;
@@ -413,7 +446,7 @@
                 });
                 renderLinkedAccounts(user);
                 loadExportSources(user);
-                loadServices(user);
+                loadSettings(user);
             } else {
                 window.location.href = '/';
             }
@@ -429,6 +462,8 @@
             }
         });
 
+        // ... [Remaining password/email change and export logic from original file kept exactly the same] ...
+        
         changePasswordBtn.addEventListener('click', async () => {
             const newPassword = newPasswordInput.value;
             const confirmPassword = confirmNewPasswordInput.value;
