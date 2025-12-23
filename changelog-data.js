@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.62.0-beta",
+    date: "2025-12-23",
+    changes: [
+        "In TaskTrackr: Added 'Project Color Picker' - Visual color grid in the project management modal for easier list identification.",
+        "In TaskTrackr: Added 'Sync Indicator' - A 'Syncing...' badge now appears in the header to provide visual feedback during API activity.",
+        "In TaskTrackr: Logic Fixes - Resolved a potential infinite loop/race condition in the `fetchAllData` function.",
+        "In TaskTrackr: UX Improvement - Context menu now intelligently displays 'Session Done' for recurring tasks instead of a generic 'Complete'."
+    ]
+    },
+    {
     version: "v9.61.0-alpha",
     date: "2025-12-23",
     changes: [
@@ -27,7 +37,7 @@ export const changelogData = [
     {
     version: "v9.60.0-alpha",
     date: "2025-12-22",
-    changes: [
+    changes: [ 
         "In TaskTrackr: Implemented a centralized `callback.html` to handle OAuth authentication redirects, ensuring consistent login behavior across the application.",
         "In TaskTrackr: Updated the login flow to preserve the user's session state, automatically redirecting them back to their previous page (Hub or Account) after connecting.",
         "In Account: Integrated the new authentication callback to allow users to connect or disconnect their TickTick account directly from the settings interface.",
