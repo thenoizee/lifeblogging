@@ -40,6 +40,37 @@
         .task-checkbox { appearance: none; width: 1.25rem; height: 1.25rem; border: 2px solid #4b5563; border-radius: 4px; cursor: pointer; position: relative; transition: all 0.2s; }
         .task-checkbox:checked { background-color: var(--primary); border-color: var(--primary); }
         .task-checkbox:checked::after { content: '\f00c'; font-family: 'Font Awesome 6 Free'; font-weight: 900; color: white; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.75rem; }
+
+        /* --- ZEN MODE STYLES --- */
+#zen-overlay {
+    transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+    background: radial-gradient(circle at center, #1f2937 0%, #111827 100%);
+}
+
+.zen-active body { overflow: hidden; }
+
+/* Pulse animation for the Zen timer */
+@keyframes zenPulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.02); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 1; }
+}
+.zen-timer-active { animation: zenPulse 3s infinite ease-in-out; }
+
+/* --- BRAIN DUMP SCRATCHPAD --- */
+#scratchpad-drawer {
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: rgba(31, 41, 55, 0.95);
+    backdrop-filter: blur(10px);
+}
+#scratchpad-drawer.open { transform: translateX(0); }
+
+#scratchpad-toggle {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: translateY(-50%);
+}
         
         /* Side Pane */
         #side-pane { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease; }
@@ -150,7 +181,7 @@
         .group-header.overdue { color: #ef4444; border-color: #7f1d1d; }
         .group-header.today { color: #3b82f6; border-color: #1e3a8a; }
 
-        .fab-add { position: fixed; bottom: 2rem; right: 2rem; width: 3.5rem; height: 3.5rem; border-radius: 50%; background-color: var(--primary); color: white; box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5); z-index: 40; display: flex; items-center; justify-content: center; font-size: 1.5rem; transition: all 0.3s; }
+        .fab-add { position: fixed; bottom: 2rem; right: 2rem; width: 3.5rem; height: 3.5rem; border-radius: 50%; background-color: var(--primary); color: white; box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5); z-index: 40; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; transition: all 0.3s; }
         .fab-add:hover { transform: scale(1.1); background-color: var(--primary-hover); }
         .fab-add:active { transform: scale(0.95); }
 
@@ -314,7 +345,11 @@
         </div>
         
         <div class="p-4 border-t border-gray-800 bg-[#1f2937] flex flex-col gap-3 shrink-0">
-             <div class="flex gap-3">
+     <div class="flex gap-3">
+         <button onclick="window.toggleZenMode('current')" class="p-3 bg-gray-800 hover:bg-purple-900/30 text-gray-400 hover:text-purple-400 rounded-xl transition border border-gray-700" title="Enter Zen Mode">
+    <i class="fa-solid fa-om"></i>
+</button>
+
                  <button id="sp-trash-btn" class="p-3 bg-gray-800 hover:bg-red-900/30 text-gray-400 hover:text-red-400 rounded-xl transition" title="Delete"><i class="fa-solid fa-trash"></i></button>
                  <button id="sp-edit-btn" class="p-3 bg-gray-800 hover:bg-blue-900/30 text-gray-400 hover:text-blue-400 rounded-xl transition" title="Full Edit"><i class="fa-solid fa-pen"></i></button>
                  <button id="sp-complete-btn" class="flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition">
@@ -778,11 +813,170 @@
         window.stopRepeating = async (taskId) => { if(!confirm("Stop this task from repeating? It will become a regular task.")) return; const task = taskCache.find(t => t.id === taskId); if(!task) return; showLoader(); try { const payload = { ...task, recurrence: null, repeatFlag: null }; await api(`/task/${taskId}`, 'POST', payload); showToast("Recurrence removed"); window.closeSidePane(); fetchAllData(); } catch(e) { showToast("Error updating task", "error"); } hideLoader(); };
         const renderKanban = (tasks) => { const cols = { 5: { title: 'High Priority', items: [] }, 3: { title: 'Medium Priority', items: [] }, 1: { title: 'Low Priority', items: [] }, 0: { title: 'No Priority', items: [] } }; tasks.forEach(t => { if(cols[t.priority]) cols[t.priority].items.push(t); else cols[0].items.push(t); }); let html = `<div class="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-180px)] px-2">`; [5, 3, 1, 0].forEach(p => { const col = cols[p]; html += `<div class="kanban-col"><div class="kanban-header"><span>${col.title}</span><span class="bg-gray-700 px-2 rounded-full text-xs">${col.items.length}</span></div><div class="kanban-body space-y-2" id="col-${p}" data-priority="${p}">${col.items.map(renderTaskCard).join('')}</div></div>`; }); html += `</div>`; els.content.innerHTML = html; setTimeout(() => { [5, 3, 1, 0].forEach(p => { new Sortable(document.getElementById(`col-${p}`), { group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', onEnd: async (evt) => { const taskId = evt.item.dataset.taskId; const newPriority = parseInt(evt.to.dataset.priority); if (newPriority !== parseInt(evt.from.dataset.priority)) { const task = taskCache.find(t => t.id === taskId); showLoader(); await api(`/task/${taskId}`, 'POST', { ...task, priority: newPriority }); hideLoader(); task.priority = newPriority; } } }); }); }, 100); };
         const renderCalendar = (tasks) => { const date = currentCalendarDate; const year = date.getFullYear(); const month = date.getMonth(); const monthName = date.toLocaleString('default', { month: 'long' }); const tasksByDate = {}; tasks.forEach(t => { if(!t.dueDate) return; const dateKey = t.dueDate.split('T')[0]; if(!tasksByDate[dateKey]) tasksByDate[dateKey] = []; tasksByDate[dateKey].push(t); }); const firstDay = new Date(year, month, 1).getDay(); const daysInMonth = new Date(year, month + 1, 0).getDate(); const todayKey = new Date().toISOString().split('T')[0]; let html = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">${monthName} ${year}</h2><div class="flex gap-2"><button onclick="window.jumpToToday()" class="p-2 px-3 bg-gray-800 rounded hover:bg-gray-700 text-xs font-bold mr-2">Today</button><button onclick="window.changeMonth(-1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-left"></i></button><button onclick="window.changeMonth(1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-bold text-gray-500 uppercase"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div><div class="calendar-grid">`; for(let i=0; i<firstDay; i++) html += `<div class="calendar-day bg-gray-900/50 pointer-events-none"></div>`; for(let d=1; d<=daysInMonth; d++) { const dateKey = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const dayTasks = tasksByDate[dateKey] || []; const dots = dayTasks.slice(0, 5).map(t => { let color = t.status===2 ? 'bg-green-500' : (t.priority===5 ? 'bg-red-500' : 'bg-blue-500'); return `<span class="calendar-dot ${color}" title="${escapeHtml(t.title)}"></span>`; }).join(''); html += `<div class="calendar-day ${dateKey === todayKey ? 'today' : ''}" onclick="window.showDayTasks('${dateKey}')" data-date="${dateKey}"><div class="flex justify-between items-start mb-1 pointer-events-none day-label"><span class="text-sm font-bold ${dateKey === todayKey ? 'text-[var(--primary)]' : 'text-gray-400'}">${d}</span>${dayTasks.length > 0 ? `<span class="text-[10px] text-gray-500 font-mono">${dayTasks.length}</span>` : ''}</div><div class="flex flex-wrap content-start h-full pb-4 pointer-events-none task-dots-container">${dots}</div></div>`; } html += `</div>`; els.content.innerHTML = html; window.dayTasksCache = tasksByDate; document.querySelectorAll('.calendar-day[data-date]').forEach(el => { el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag-over'); }); el.addEventListener('dragleave', () => el.classList.remove('drag-over')); el.addEventListener('drop', (e) => { e.preventDefault(); el.classList.remove('drag-over'); window.bulkAction('specific', el.dataset.date); }); }); };
-        window.jumpToToday = () => { currentCalendarDate = new Date(); renderApp(); }; window.openSidePane = (taskId, isFromHistory = false) => { currentSidePaneTaskId = taskId; const task = isFromHistory ? historyCache.find(t => t.id === taskId) : taskCache.find(t => t.id === taskId); if (!task) return; const titleEl = document.getElementById('sp-title-edit'); titleEl.value = task.title; titleEl.style.height = 'auto'; titleEl.style.height = titleEl.scrollHeight + 'px'; const descEl = document.getElementById('sp-desc'); descEl.textContent = task.content || ""; const pName = projectMap[task.projectId]?.name || 'Unknown'; const spProj = document.getElementById('sp-project'); spProj.textContent = pName; spProj.className = "text-[10px] font-bold uppercase tracking-widest mb-1 block"; spProj.style.color = getProjectColor(task.projectId); document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date'; const pCont = document.getElementById('sp-priority-container'); if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; else pCont.textContent = "None"; const tCont = document.getElementById('sp-tags-container'); tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); const compBtn = document.getElementById('sp-complete-btn'); const stopBtn = document.getElementById('sp-stop-repeat-btn'); if(isRecurring) { document.getElementById('sp-recurring-container').classList.remove('hidden'); stopBtn.classList.remove('hidden'); stopBtn.onclick = () => window.stopRepeating(task.id); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; } else { compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } else { document.getElementById('sp-recurring-container').classList.add('hidden'); stopBtn.classList.add('hidden'); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; compBtn.onclick = null; } else { compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } const spCheck = document.getElementById('sp-checkbox'); spCheck.checked = task.status === 2; spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); window.renderSidePaneChecklist(task); document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); }; document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); const overlay = document.getElementById('side-pane-overlay'); const pane = document.getElementById('side-pane'); pane.classList.remove('hidden'); if (window.innerWidth >= 1024) { pane.classList.add('open'); } else { overlay.classList.remove('hidden'); void overlay.offsetWidth; overlay.classList.remove('opacity-0'); pane.classList.add('open'); } };
+        window.jumpToToday = () => { currentCalendarDate = new Date(); renderApp(); }; 
+        window.openSidePane = (taskId, isFromHistory = false) => { currentSidePaneTaskId = taskId; const task = isFromHistory ? historyCache.find(t => t.id === taskId) : taskCache.find(t => t.id === taskId); if (!task) return; const titleEl = document.getElementById('sp-title-edit'); titleEl.value = task.title; titleEl.style.height = 'auto'; titleEl.style.height = titleEl.scrollHeight + 'px'; const descEl = document.getElementById('sp-desc'); descEl.textContent = task.content || ""; const pName = projectMap[task.projectId]?.name || 'Unknown'; const spProj = document.getElementById('sp-project'); spProj.textContent = pName; spProj.className = "text-[10px] font-bold uppercase tracking-widest mb-1 block"; spProj.style.color = getProjectColor(task.projectId); document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date'; const pCont = document.getElementById('sp-priority-container'); if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; else pCont.textContent = "None"; const tCont = document.getElementById('sp-tags-container'); tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); const compBtn = document.getElementById('sp-complete-btn'); const stopBtn = document.getElementById('sp-stop-repeat-btn'); if(isRecurring) { document.getElementById('sp-recurring-container').classList.remove('hidden'); stopBtn.classList.remove('hidden'); stopBtn.onclick = () => window.stopRepeating(task.id); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; } else { compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } else { document.getElementById('sp-recurring-container').classList.add('hidden'); stopBtn.classList.add('hidden'); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; compBtn.onclick = null; } else { compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } const spCheck = document.getElementById('sp-checkbox'); spCheck.checked = task.status === 2; spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); window.renderSidePaneChecklist(task); document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); }; document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); const overlay = document.getElementById('side-pane-overlay'); const pane = document.getElementById('side-pane'); pane.classList.remove('hidden'); if (window.innerWidth >= 1024) { pane.classList.add('open'); } else { overlay.classList.remove('hidden'); void overlay.offsetWidth; overlay.classList.remove('opacity-0'); pane.classList.add('open'); } };
         window.renderSidePaneChecklist = (task) => { const listEl = document.getElementById('sp-checklist-items'); if(!listEl) return; listEl.innerHTML = ''; if(task.items && task.items.length > 0) { task.items.forEach((item, idx) => { const icon = item.status === 1 ? 'fa-square-check text-green-500' : 'fa-square text-gray-500'; const textClass = item.status === 1 ? 'line-through text-gray-600' : 'text-gray-300'; listEl.innerHTML += `<div class="flex items-center gap-3 p-2 bg-gray-800/40 rounded-lg cursor-pointer hover:bg-gray-800 transition" onclick="window.toggleSubtask('${task.id}', ${idx})"><i class="fa-regular ${icon}"></i><span class="text-sm ${textClass}">${escapeHtml(item.title)}</span></div>`; }); } else { listEl.innerHTML = '<div class="text-xs text-gray-600 italic">No subtasks</div>'; } };
         window.toggleSubtask = async (taskId, itemIndex) => { const task = taskCache.find(t => t.id === taskId); if(!task || !task.items) return; const item = task.items[itemIndex]; const oldStatus = item.status; item.status = oldStatus === 1 ? 0 : 1; window.renderSidePaneChecklist(task); renderApp(); try { await api(`/task/${taskId}`, 'POST', { title: task.title, projectId: task.projectId, items: task.items }); } catch(e) { item.status = oldStatus; window.renderSidePaneChecklist(task); showToast('Subtask update failed', 'error'); } };
         window.closeSidePane = () => { const pane = document.getElementById('side-pane'); pane.classList.remove('open'); document.getElementById('side-pane-overlay').classList.add('opacity-0'); setTimeout(() => document.getElementById('side-pane-overlay').classList.add('hidden'), 300); };
         window.openAddTaskModal = () => window.openModal(false); window.openProjectModal = (id = null, name = '') => { document.getElementById('project-modal-id').value = id || ''; document.getElementById('project-name-input').value = name; document.getElementById('project-modal-title').textContent = id ? 'Edit Project' : 'New Project'; document.getElementById('project-modal').classList.remove('hidden'); }; window.submitProjectForm = async () => { const id = document.getElementById('project-modal-id').value; const name = document.getElementById('project-name-input').value; if(!name) return showToast('Name required', 'error'); showLoader(); try { if(id) await api(`/project/${id}`, 'POST', { name }); else await api('/project', 'POST', { name }); showToast('Project saved'); document.getElementById('project-modal').classList.add('hidden'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); }; window.deleteProject = async (id) => { if(confirm("Delete this project and all its tasks?")) { showLoader(); try { await api(`/project/${id}`, 'DELETE'); showToast('Project deleted'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); } }; window.deleteTask = async (pid, tid) => { if(confirm("Are you sure?")) { showLoader(); await api(`/project/${pid}/task/${tid}`, 'DELETE'); showToast('Deleted'); window.closeSidePane(); fetchAllData(); } }; window.refreshData = () => fetchAllData(); window.changeMonth = (o) => { currentCalendarDate.setMonth(currentCalendarDate.getMonth()+o); renderApp(); }; window.showDayTasks = (k) => { const tasks = window.dayTasksCache[k] || []; els.content.innerHTML = `<div class="flex items-center gap-4 mb-6"><button onclick="renderApp()" class="bg-gray-800 p-2 rounded-lg"><i class="fa-solid fa-arrow-left"></i> Back</button><h1 class="text-2xl font-bold">Tasks for ${k}</h1></div>` + tasks.map(renderTaskCard).join(''); }; 
+        window.addEventListener('click', (e) => {
+            if (!e.target.closest('.card') && !e.target.closest('#context-menu')) {
+                document.getElementById('context-menu').classList.add('hidden');
+            }
+        });
+
+        /* --- ZEN MODE LOGIC --- */
+window.currentZenId = null;
+
+window.toggleZenMode = (taskId = null) => {
+    // FIX: If called with 'current', use the module-level variable
+    if (taskId === 'current') {
+        taskId = currentSidePaneTaskId;
+    }
+
+    const overlay = document.getElementById('zen-overlay');
+    
+    if (taskId) {
+        // --- OPEN ZEN MODE ---
+        const task = taskCache.find(t => t.id === taskId);
+        if (!task) return;
+
+        window.currentZenId = taskId;
+        
+        // Populate Data
+        document.getElementById('zen-title').textContent = task.title;
+        
+        // Project Badge
+        const proj = projectMap[task.projectId] || { name: 'Inbox', color: '#808080' };
+        const badge = document.getElementById('zen-project-badge');
+        badge.textContent = proj.name;
+        badge.style.color = getProjectColor(task.projectId);
+        badge.style.borderColor = `${getProjectColor(task.projectId)}40`;
+        badge.style.backgroundColor = `${getProjectColor(task.projectId)}10`;
+
+        // Check for subtasks
+        const nextStepEl = document.getElementById('zen-next-step');
+        if (task.items && task.items.length > 0) {
+            const nextItem = task.items.find(i => i.status === 0);
+            if (nextItem) {
+                nextStepEl.innerHTML = `<span class="text-xs uppercase font-bold text-gray-500 block mb-1">Next Step</span><i class="fa-regular fa-square mr-2"></i> ${escapeHtml(nextItem.title)}`;
+            } else {
+                nextStepEl.textContent = "All subtasks completed!";
+            }
+        } else {
+            nextStepEl.textContent = "";
+        }
+        
+        // Show Overlay
+        overlay.classList.remove('hidden');
+        void overlay.offsetWidth; // Force reflow
+        overlay.classList.remove('opacity-0');
+        document.body.classList.add('overflow-hidden');
+        
+        // Sync Timer
+        const zTimer = document.getElementById('zen-timer');
+        if(zTimer) {
+             const m = Math.floor(pomoSeconds / 60).toString().padStart(2, '0');
+             const s = (pomoSeconds % 60).toString().padStart(2, '0');
+             zTimer.textContent = `${m}:${s}`;
+        }
+        
+        // Start live update for this view
+        if (!window.zenInterval) {
+            window.zenInterval = setInterval(() => {
+                const zTimer = document.getElementById('zen-timer');
+                if(zTimer && !overlay.classList.contains('hidden')) {
+                    const m = Math.floor(pomoSeconds / 60).toString().padStart(2, '0');
+                    const s = (pomoSeconds % 60).toString().padStart(2, '0');
+                    zTimer.textContent = `${m}:${s}`;
+                    if(isPomoRunning) zTimer.classList.add('text-red-500', 'zen-timer-active');
+                    else zTimer.classList.remove('text-red-500', 'zen-timer-active');
+                }
+            }, 1000);
+        }
+
+    } else {
+        // --- CLOSE ZEN MODE ---
+        overlay.classList.add('opacity-0');
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+            document.body.classList.remove('overflow-hidden');
+            window.currentZenId = null;
+            // Clear interval to save resources
+            if (window.zenInterval) {
+                clearInterval(window.zenInterval);
+                window.zenInterval = null;
+            }
+        }, 500);
+    }
+};
+
+/* --- SCRATCHPAD LOGIC --- */
+const scratchpadKey = 'tasktrackr_scratchpad';
+const scratchEl = document.getElementById('scratchpad-area');
+
+// Load saved content
+if(localStorage.getItem(scratchpadKey)) {
+    scratchEl.value = localStorage.getItem(scratchpadKey);
+}
+
+// Auto-save
+scratchEl.addEventListener('input', () => {
+    localStorage.setItem(scratchpadKey, scratchEl.value);
+});
+
+window.toggleScratchpad = () => {
+    document.getElementById('scratchpad-drawer').classList.toggle('open');
+};
+
+window.convertScratchpad = () => {
+    const textarea = document.getElementById('scratchpad-area');
+    const fullText = textarea.value;
+    
+    // Check for selection
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const hasSelection = start !== end;
+    
+    const textToConvert = hasSelection ? fullText.substring(start, end) : fullText;
+    
+    if (!textToConvert.trim()) return showToast('Scratchpad is empty', 'error');
+
+    // Open Modal
+    window.openAddTaskModal();
+    
+    // Pre-fill Title and Desc
+    // Heuristic: First line is title, rest is description
+    const lines = textToConvert.split('\n');
+    const title = lines[0];
+    const desc = lines.slice(1).join('\n');
+    
+    setTimeout(() => {
+        document.getElementById('modal-title-input').value = title;
+        document.getElementById('modal-desc-input').value = desc;
+    }, 100);
+
+    // If text was selected, remove it from scratchpad. If all was taken, clear it.
+    if (hasSelection) {
+        const newText = fullText.substring(0, start) + fullText.substring(end);
+        textarea.value = newText;
+    } else {
+        textarea.value = '';
+    }
+    localStorage.setItem(scratchpadKey, textarea.value);
+    
+    // Close scratchpad on mobile, maybe keep open on desktop? Let's close it to focus on modal.
+    window.toggleScratchpad();
+};
+
+// Add Keyboard Shortcut for Scratchpad (Alt + S)
+document.addEventListener('keydown', (e) => {
+    if (e.altKey && e.code === 'KeyS') {
+        e.preventDefault();
+        window.toggleScratchpad();
+    }
+});
+        
         window.addEventListener('DOMContentLoaded', () => {
             // Update Login Button Logic to include state
             document.getElementById('login-btn').onclick = () => { 
@@ -969,12 +1163,54 @@ document.addEventListener('keydown', (e) => {
         </button>
     </div>
 
-    <script>
-        window.addEventListener('click', (e) => {
-            if (!e.target.closest('.card') && !e.target.closest('#context-menu')) {
-                document.getElementById('context-menu').classList.add('hidden');
-            }
-        });
-    </script>
+    <div id="zen-overlay" class="fixed inset-0 z-[100] hidden opacity-0 flex flex-col items-center justify-center p-8 text-center select-none">
+    <div class="absolute top-6 right-6">
+        <button onclick="window.toggleZenMode()" class="text-gray-500 hover:text-white p-4 rounded-full hover:bg-white/10 transition">
+            <i class="fa-solid fa-xmark text-2xl"></i>
+        </button>
+    </div>
+
+    <div class="max-w-4xl w-full animate-fade">
+        <div id="zen-project-badge" class="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest mb-6 border border-white/10"></div>
+        
+        <h1 id="zen-title" class="text-4xl md:text-6xl font-bold text-white mb-8 leading-tight"></h1>
+        
+        <div class="mb-12 relative group cursor-pointer" onclick="window.togglePomoTimer(event)">
+             <div id="zen-timer" class="text-[8rem] md:text-[10rem] font-mono font-bold text-white/90 leading-none tracking-tighter tabular-nums transition-colors hover:text-blue-400">25:00</div>
+             <div class="text-sm text-gray-500 font-bold uppercase tracking-[0.3em] mt-4 opacity-0 group-hover:opacity-100 transition">Click to Toggle Timer</div>
+        </div>
+
+        <div id="zen-next-step" class="text-xl text-gray-400 font-medium max-w-2xl mx-auto h-16"></div>
+        
+        <div class="flex justify-center gap-6 mt-12">
+            <button onclick="window.completeTask(currentZenId, currentZenId, null); window.toggleZenMode()" class="px-8 py-4 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-bold text-lg shadow-lg shadow-green-900/20 transition transform hover:scale-105">
+                <i class="fa-solid fa-check mr-2"></i> Complete Task
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="scratchpad-drawer" class="fixed top-0 right-0 bottom-0 w-96 max-w-[90vw] z-[60] border-l border-gray-700 shadow-2xl flex flex-col">
+    <button onclick="window.toggleScratchpad()" class="absolute -left-10 top-1/2 w-10 h-32 bg-gray-800 border-l border-t border-b border-gray-600 rounded-l-xl text-gray-400 hover:text-white flex items-center justify-center shadow-[-5px_0_15px_rgba(0,0,0,0.3)]">
+        <i class="fa-solid fa-brain"></i>
+    </button>
+
+    <div class="p-6 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center shrink-0">
+        <h2 class="font-bold text-lg text-white flex items-center gap-2"><i class="fa-solid fa-brain text-pink-500"></i> Brain Dump</h2>
+        <button onclick="window.toggleScratchpad()" class="text-gray-400 hover:text-white"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+
+    <div class="flex-grow relative">
+        <textarea id="scratchpad-area" class="w-full h-full bg-transparent resize-none p-6 outline-none text-gray-300 placeholder-gray-600 leading-relaxed text-sm font-mono" placeholder="Type anything... thoughts, ideas, draft tasks. Auto-saved locally."></textarea>
+    </div>
+
+    <div class="p-4 border-t border-gray-700 bg-gray-800/50 shrink-0">
+        <button onclick="window.convertScratchpad()" class="w-full py-3 bg-gray-700 hover:bg-blue-600 text-white rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 group">
+            <i class="fa-solid fa-magic text-gray-400 group-hover:text-white transition"></i> Convert Selection to Task
+        </button>
+        <div class="text-[10px] text-center text-gray-600 mt-2">Selection clears from pad. No selection copies all.</div>
+    </div>
+</div>
+
 </body>
 </html>

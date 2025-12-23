@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.61.0-alpha",
+    date: "2025-12-23",
+    changes: [
+        "In TaskTrackr: Added 'Zen Mode' - A distraction-free, full-screen focus view with a large synced Pomodoro timer.",
+        "In TaskTrackr: Added 'Brain Dump Scratchpad' - A persistent side drawer for quick notes with a 'Convert to Task' feature.",
+        "In TaskTrackr: UI/UX Improvements - Fixed non-centre aligned Add New Task button in bottom right corner."
+    ]
+    },
+    {
     version: "v9.60.2-alpha",
     date: "2025-12-22",
     changes: [
