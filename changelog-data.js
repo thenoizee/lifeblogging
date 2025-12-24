@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.64.0-alpha",
+    date: "2025-12-24",
+    changes: [
+        "In RecipeManagr: Added Print functionality with a custom print-friendly CSS layout, ingredient checkboxes, and a branded timestamp footer.",
+        "In RecipeManagr: Added Ingredient Scaling (0.5x - 4x) with smart parsing logic for fractions/decimals that works seamlessly with unit conversions."
+    ]
+    },
+    {
     version: "v9.63.0-alpha",
     date: "2025-12-23",
     changes: [
