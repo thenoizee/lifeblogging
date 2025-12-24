@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.65.0-alpha",
+    date: "2025-12-24",
+    changes: [
+        "In VidTrackr: Implemented persistent, cross-device Trakt authentication by syncing OAuth tokens to the Firebase user profile (similar to TaskTrackr).",
+        "In VidTrackr: Added a dedicated `callback.html` handler to intercept Trakt tokens and save them directly to the database.",
+        "In Account: Added a 'Trakt Integration' section to centrally Connect/Disconnect the service and view connection status.",
+        "In VidTrackr: Updated dashboard initialization to prioritize database tokens over local storage and gracefully handle 'logged in but not connected' states."
+    ]
+    },
+    {
     version: "v9.64.0-alpha",
     date: "2025-12-24",
     changes: [

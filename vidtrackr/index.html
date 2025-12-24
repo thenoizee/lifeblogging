@@ -186,7 +186,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { TRAKT_CLIENT_ID } from './api_keys.js';
+        import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI } from './api_keys.js';
 
         // --- Config ---
         const app = initializeApp({
@@ -195,7 +195,8 @@
           projectId: "sammy-7298f",
           storageBucket: "sammy-7298f.firebasestorage.app",
           messagingSenderId: "963185683535",
-          appId: "1:963185683535:web:807df8941feba46c208e3a"
+          appId: "1:963185683535:web:807df8941feba46c208e3a",
+          measurementId: "G-JT1YF2ELN3"
         });
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -203,15 +204,11 @@
         const PLACEHOLDER_IMG = 'https://placehold.co/400x600/1f2937/FFF?text=No+Image';
 
         // --- AUTH & TOKEN HANDLING ---
+        // Clean URL if we somehow get redirected here with a token hash (fallback)
         const REDIRECT_URI = window.location.href.split('#')[0].split('?')[0];
-
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         if (hashParams.has('access_token')) {
-            const newToken = hashParams.get('access_token');
-            console.log("New Token Received:", newToken);
-            localStorage.setItem('trakt_token', newToken); 
             window.history.replaceState({}, document.title, REDIRECT_URI);
-            window.location.reload(); 
         }
 
         // --- State ---
@@ -224,6 +221,7 @@
         let isFetchingHistory = false;
         let progressChartInstance = null;
         let isAuthErrorHandling = false;
+        let currentItemForList = null; // Added variable for list modal
 
         // --- DOM ---
         const els = {
@@ -324,37 +322,18 @@
 
         window.deleteHistoryItem = async (traktId, type, watchedAt, btn) => {
             if(!confirm('Are you sure you want to remove this log from your history?')) return;
-            
-            // Visual feedback
             const originalContent = btn.innerHTML;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             btn.disabled = true;
-            
             try {
-                // Determine API key (movies or episodes)
                 const rootKey = type === 'episode' ? 'episodes' : 'movies';
-                
-                // Construct payload to remove by Trakt ID
-                const payload = {
-                    [rootKey]: [{ ids: { trakt: traktId } }] 
-                };
-                
-                // Call Trakt Remove Endpoint
+                const payload = { [rootKey]: [{ ids: { trakt: traktId } }] };
                 await fetch(`${TRAKT_API_URL}/sync/history/remove`, {
-                    method: 'POST',
-                    headers: traktHeader(),
-                    body: JSON.stringify(payload)
+                    method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
                 });
-                
                 showToast('Log removed successfully');
-                
-                // Remove the row from the list visually
                 const row = btn.closest('.card') || btn.closest('.history-row');
-                if(row) {
-                    row.style.transition = "opacity 0.5s";
-                    row.style.opacity = '0';
-                    setTimeout(() => row.remove(), 500);
-                }
+                if(row) { row.style.transition = "opacity 0.5s"; row.style.opacity = '0'; setTimeout(() => row.remove(), 500); }
             } catch(e) {
                 console.error(e);
                 showToast('Failed to remove log', 'error');
@@ -363,7 +342,6 @@
             }
         };
 
-        // --- NEW: Fix Navigation Buttons ---
         window.navigateEpisode = async (showId, currentSeason, targetNumber) => {
             showLoader();
             try {
@@ -378,53 +356,34 @@
                 } else {
                     showToast('No previous episodes', 'error');
                 }
-            } catch (e) {
-                showToast('Episode not found', 'error');
-            }
+            } catch (e) { showToast('Episode not found', 'error'); }
             hideLoader();
         };
 
         function getImage(item, typeOverride = null, preferLandscape = false) {
             const type = typeOverride || item.type;
             const data = (type && item[type]) ? item[type] : item;
-            const extract = (val) => {
-                if (!val) return null;
-                if (Array.isArray(val)) return extract(val[0]);
-                if (typeof val === 'string') return val;
-                return null;
-            };
+            const extract = (val) => { if (!val) return null; if (Array.isArray(val)) return extract(val[0]); if (typeof val === 'string') return val; return null; };
 
             if (!data.images) return PLACEHOLDER_IMG;
             let url = null;
-
             if (preferLandscape) {
-                if (type === 'episode') {
-                    url = extract(data.images.screenshot?.medium) || extract(data.images.screenshot?.full);
-                } else {
-                    url = extract(data.images.fanart?.medium) || extract(data.images.fanart?.full);
-                }
+                if (type === 'episode') url = extract(data.images.screenshot?.medium) || extract(data.images.screenshot?.full);
+                else url = extract(data.images.fanart?.medium) || extract(data.images.fanart?.full);
                 if (!url) url = extract(data.images.thumb?.full);
             }
-
             if (!url) {
-                if (type === 'episode') {
-                    url = extract(data.images.screenshot?.medium) || extract(data.images.screenshot?.full) || extract(data.images.screenshot);
-                } else if (type === 'person') {
-                      url = extract(data.images.headshot?.medium) || extract(data.images.headshot?.full) || extract(data.images.headshot);
-                } else {
-                    url = extract(data.images.poster?.medium) || extract(data.images.poster?.full) || extract(data.images.poster);
-                }
+                if (type === 'episode') url = extract(data.images.screenshot?.medium) || extract(data.images.screenshot?.full) || extract(data.images.screenshot);
+                else if (type === 'person') url = extract(data.images.headshot?.medium) || extract(data.images.headshot?.full) || extract(data.images.headshot);
+                else url = extract(data.images.poster?.medium) || extract(data.images.poster?.full) || extract(data.images.poster);
             }
-            
             if (!url) url = extract(data.images.thumb);
             if (!url) url = extract(data.images.fanart);
-            
             if (!url) return PLACEHOLDER_IMG;
             if (!url.startsWith('http') && !url.startsWith('//')) return `https://${url}`;
             return url;
         }
 
-        // --- Card Component ---
         const createCardHtml = (item, typeOverride = null) => {
             const type = typeOverride || item.type;
             const data = item[type] || item;
@@ -466,7 +425,8 @@
             showToast('Trakt Session Expired! Redirecting...', 'error');
             setTimeout(() => {
                 if(confirm("Your Trakt connection has expired. Click OK to re-connect.")) {
-                    const authUrl = `https://trakt.tv/oauth/authorize?response_type=token&client_id=${TRAKT_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+                    const state = encodeURIComponent(window.location.pathname);
+                    const authUrl = `https://trakt.tv/oauth/authorize?response_type=token&client_id=${TRAKT_CLIENT_ID}&redirect_uri=${encodeURIComponent(TRAKT_REDIRECT_URI)}&state=${state}`;
                     window.location.href = authUrl;
                 } else {
                     isAuthErrorHandling = false; 
@@ -504,18 +464,14 @@
 
         async function syncUserRatings() {
             try {
-                // ADDED: fetchDirect('/sync/ratings/episodes')
                 const [movies, shows, episodes] = await Promise.all([ 
                     fetchDirect('/sync/ratings/movies'), 
                     fetchDirect('/sync/ratings/shows'),
                     fetchDirect('/sync/ratings/episodes') 
                 ]);
-                
                 userRatings.clear();
                 movies.forEach(r => userRatings.set(r.movie.ids.trakt, r.rating));
                 shows.forEach(r => userRatings.set(r.show.ids.trakt, r.rating));
-                
-                // ADDED: Map episode ratings to your storage
                 episodes.forEach(r => userRatings.set(r.episode.ids.trakt, r.rating));
             } catch(e) { console.warn("Could not sync ratings", e); }
         }
@@ -706,7 +662,6 @@
                     item.user_data = userData.user_data;
                     history = await fetchDirect(`/users/me/history/episodes/${id}?limit=20`);
                 } else {
-                    // Fetch basic data
                     [item, notes, history, related, people] = await Promise.all([
                         fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
@@ -715,72 +670,37 @@
                         fetchDirect(`/${type}s/${id}/people?extended=images`) 
                     ]);
 
-                    // --- NEW: Official Collection Logic (Corrected) ---
                     if (type === 'movie') {
                         try {
-                            // 1. Find lists containing this movie
                             const lists = await fetchDirect(`/movies/${id}/lists?type=official&sort=likes&limit=20`);
-                            
-                            // 2. Find a list owned by 'official' that looks like a collection
-                            const officialList = lists.find(l => 
-                                (l.user && l.user.username === 'official') || 
-                                (l.name.toLowerCase().includes('collection') && l.likes > 10) 
-                            );
-
+                            const officialList = lists.find(l => (l.user && l.user.username === 'official') || (l.name.toLowerCase().includes('collection') && l.likes > 10));
                             if (officialList && officialList.user) {
-                                // FIX: Robustly get the username/slug
-                                const userSlug = (officialList.user.ids && officialList.user.ids.slug) 
-                                                 ? officialList.user.ids.slug 
-                                                 : officialList.user.username;
-                                
+                                const userSlug = (officialList.user.ids && officialList.user.ids.slug) ? officialList.user.ids.slug : officialList.user.username;
                                 if (userSlug) {
-                                    // 3. Fetch items from that specific list
                                     const listItems = await fetchDirect(`/users/${userSlug}/lists/${officialList.ids.trakt}/items/movies?extended=images`);
-                                    // Extract just the movie objects
                                     collectionList = listItems.map(li => li.movie);
                                 }
                             }
-                        } catch (err) {
-                            console.warn("Failed to fetch official collection", err);
-                        }
+                        } catch (err) { console.warn("Failed to fetch official collection", err); }
                     }
                 }
 
                 if(isEpisode) notes = await getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey));
 
-                // --- Navigation Logic (Official List > Related Fallback) ---
                 let navPrev = null, navNext = null;
-
                 if (!isEpisode && type === 'movie') {
                     let navSet = [];
-                    
                     if (collectionList && collectionList.length > 0) {
-                        // Use Official Collection
                         navSet = collectionList;
                     } else if (related.length > 0) {
-                        // Fallback: Use Related (sorted by release date)
-                        navSet = [item, ...related]
-                            .filter(m => m.released)
-                            .sort((a, b) => new Date(a.released) - new Date(b.released));
-                        
-                        // Deduplicate logic for fallback
-                        const unique = [];
-                        const seen = new Set();
-                        for(const m of navSet) {
-                            if(!seen.has(m.ids.trakt)) { unique.push(m); seen.add(m.ids.trakt); }
-                        }
-                        navSet = unique;
+                        navSet = [item, ...related].filter(m => m.released).sort((a, b) => new Date(a.released) - new Date(b.released));
+                        const unique = []; const seen = new Set(); for(const m of navSet) { if(!seen.has(m.ids.trakt)) { unique.push(m); seen.add(m.ids.trakt); } } navSet = unique;
                     }
-
                     if (navSet.length > 0) {
                         const idx = navSet.findIndex(m => m.ids.trakt == item.ids.trakt);
-                        if (idx !== -1) {
-                            if (idx > 0) navPrev = navSet[idx - 1];
-                            if (idx < navSet.length - 1) navNext = navSet[idx + 1];
-                        }
+                        if (idx !== -1) { if (idx > 0) navPrev = navSet[idx - 1]; if (idx < navSet.length - 1) navNext = navSet[idx + 1]; }
                     }
                 }
-                // ----------------------------------------------
 
                 const userNote = notes.exists() ? notes.data().text : '';
                 const myRating = item.user_rating;
@@ -806,18 +726,16 @@
                 }
 
                 const watchLink = `https://trakt.tv/${type === 'episode' ? 'shows' : type + 's'}/${id}/watchnow`;
-
                 const watchedBadge = isWatched 
                     ? `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> Watched</span>`
                     : `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
-
                 const myRatingHtml = myRating 
                     ? `<span class="bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(234,179,8,0.2)]"><i class="fa-solid fa-star mr-2"></i> ${myRating}</span>`
                     : `<button class="bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" onclick="document.querySelector('.scrobble-btn').click()"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
 
                 let historyHtml = '';
                 if (history.length > 0) {
-                      historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Watch History</h3><div class="space-y-2">${history.map(h => `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}</span><span class="text-gray-500 font-mono text-xs">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex gap-2"><button class="text-xs bg-blue-900/30 text-blue-400 p-2 rounded hover:bg-blue-500 hover:text-white transition" onclick="window.editHistoryItem('${id}', '${fullTitle.replace(/'/g, "&apos;")}', '${type}', '${h.watched_at}')" title="Edit Date"><i class="fa-solid fa-pen"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${id}', '${type}', '${h.watched_at}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`).join('')}</div></div>`;
+                      historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Watch History</h3><div class="space-y-2">${history.map(h => `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}</span><span class="text-gray-500 font-mono text-xs">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex gap-2"><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${id}', '${type}', '${h.watched_at}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`).join('')}</div></div>`;
                 }
 
                 let castHtml = '';
@@ -869,7 +787,6 @@
                                 <span class="flex items-center"><i class="fa-regular fa-clock mr-2"></i> ${runtimeStr}</span>
                                 <span class="flex items-center"><i class="fa-regular fa-calendar mr-2"></i> ${new Date(item.first_aired).toLocaleDateString()}</span>
                             </div>
-
                             <h3 class="text-xs font-bold text-[var(--primary)] mb-2 uppercase tracking-widest">Overview</h3>
                             <p class="text-lg text-gray-300 leading-relaxed mb-8">${item.overview || 'No overview available.'}</p>
                             ${historyHtml}
@@ -928,16 +845,13 @@
                         <div class="md:w-2/3 lg:w-3/4">
                             <h1 class="text-4xl md:text-6xl font-bold mb-2 leading-tight tracking-tight">${item.title}</h1>
                             ${item.tagline ? `<p class="text-xl text-gray-400 italic mb-4">"${item.tagline}"</p>` : ''}
-                            
                             ${type === 'show' ? await (async () => { try { showProgress = await fetchDirect(`/shows/${id}/progress/watched`); const percent = showProgress.aired > 0 ? Math.round((showProgress.completed / showProgress.aired) * 100) : 0; return `<div class="mb-6 bg-gray-800 rounded-full h-4 w-full overflow-hidden border border-gray-700 relative group"><div class="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-1000" style="width: ${percent}%"></div><div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">${percent}% WATCHED</div></div>`; } catch(e){ return ''; } })() : ''}
-                            
                             <div class="flex flex-wrap items-center gap-4 text-gray-300 mb-6 text-sm md:text-base font-medium">
                                 <span class="bg-gray-800 px-3 py-1 rounded-md border border-gray-700 text-white">${item.year || 'N/A'}</span>
                                 <span class="border border-gray-600 px-2 py-0.5 rounded text-xs uppercase text-gray-400">${cert}</span>
                                 ${watchedBadge} ${myRatingHtml}
                                 ${item.status ? `<span class="uppercase tracking-wider font-bold ${getTypeColor(type)} px-2 py-1 bg-gray-800 rounded text-xs">${item.status}</span>` : ''}
                             </div>
-                            
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 bg-gray-900/30 p-4 rounded-xl border border-gray-800/50 backdrop-blur-sm">
                                 <div><p class="text-xs text-gray-500 uppercase font-bold">Typical Runtime</p><p class="font-medium text-gray-300">${runtimeStr}</p></div>
                                 <div><p class="text-xs text-gray-500 uppercase font-bold">Network</p><p class="font-medium text-gray-300 truncate" title="${network}">${network}</p></div>
@@ -947,13 +861,10 @@
                                     <span class="text-xs text-gray-500 uppercase font-bold mr-2">Genres:</span> ${genresHtml}
                                 </div>
                             </div>
-
                             <h3 class="text-xs font-bold ${getTypeColor(type)} mb-2 uppercase tracking-widest">Overview</h3>
                             <p class="text-gray-300 text-lg leading-relaxed mb-6 max-w-3xl">${item.overview || 'No overview available.'}</p>
-                            
                             ${castHtml}
                             ${historyHtml}
-                            
                              <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8 mt-8">
                                 <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
                                 <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-3 text-sm outline-none resize-none" rows="2" placeholder="Your thoughts...">${userNote}</textarea>
@@ -1013,8 +924,7 @@
             hideLoader();
         }
 
-        // --- UPDATED: Render History with Filters & Grouping ---
-        let currentHistoryFilter = 'all'; // State variable for filter
+        let currentHistoryFilter = 'all'; 
 
         window.setHistoryFilter = (filter) => {
             currentHistoryFilter = filter;
@@ -1025,7 +935,6 @@
             if (page === 1) { 
                 els.content.innerHTML = ''; 
                 historyPage = 1; 
-                // Added Filters UI
                 els.content.innerHTML = `
                 <div class="flex flex-col md:flex-row justify-between items-center mb-6 mt-4 gap-4">
                     <h2 class="text-2xl font-bold">History</h2>
@@ -1073,7 +982,6 @@
                         let label = prettyDate;
                         if (dateStr === today) label = "Today";
                         else if (dateStr === yest.toLocaleDateString()) label = "Yesterday";
-                        
                         headerHtml = `<h3 class="text-xs font-bold text-[var(--primary)] uppercase tracking-widest mt-6 mb-2 ml-2 sticky top-20 z-10 bg-[var(--bg)]/90 backdrop-blur py-2 w-fit px-3 rounded-full border border-gray-800">${label}</h3>`;
                         lastDate = dateStr;
                     }
@@ -1113,7 +1021,6 @@
 
         function renderSettings() { els.content.innerHTML = `<h1 class="text-3xl font-bold mb-6">Settings</h1><div class="grid gap-6 animate-fade"><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-file-export mr-3 text-[var(--primary)]"></i> Data Export</h2><p class="text-gray-400 mb-6">Download your entire listening/watching history as a CSV file for backup or analysis.</p><button id="export-btn" class="btn-primary px-6 py-3 rounded-lg font-bold shadow-lg hover:shadow-[var(--primary)]/30 transition">Export History to CSV</button></div><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-database mr-3 text-blue-500"></i> Storage</h2><p class="text-gray-400 mb-6">If images look broken or data is stale, try clearing the local cache.</p><button id="clear-cache-btn" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-bold shadow-lg transition">Clear Local Cache</button></div></div>`; setTimeout(() => { const exportBtn = document.getElementById('export-btn'); const clearBtn = document.getElementById('clear-cache-btn'); if(exportBtn) exportBtn.onclick = async () => { showLoader(); try { const data = await fetchDirect('/sync/history?limit=10000'); if(!data.length) return showToast('No history', 'error'); const csv = "Title,Type,Year,TraktID,WatchedAt\n" + data.map(i => `${(i.type==='episode'?`${i.show.title}: ${i.episode.title}`:i.movie.title).replace(/,/g,'')},${i.type},${i.type==='episode'?i.show.year:i.movie.year},${i.type==='episode'?i.episode.ids.trakt:i.movie.ids.trakt},${i.watched_at}`).join("\n"); const link = document.createElement("a"); link.href = encodeURI("data:text/csv;charset=utf-8,"+csv); link.download = "history.csv"; document.body.appendChild(link); link.click(); link.remove(); showToast('Exported'); } catch(e) { showToast('Export failed', 'error'); } hideLoader(); }; if(clearBtn) clearBtn.onclick = () => { localStorage.clear(); showToast('Cache Cleared! Refreshing...'); setTimeout(() => location.reload(), 1500); }; }, 100); }
         
-        // --- LIBRARY RENDERERS (MERGED) ---
         function renderLibrary(activeTab = 'watchlist') {
             els.content.innerHTML = `
                 <div class="flex items-center justify-between mb-8 mt-4 animate-fade">
@@ -1126,7 +1033,6 @@
                 <div id="lib-target"></div>
             `;
             
-            // Helper to switch content without full page reload
             window.switchLib = (tab) => {
                 const btnWl = document.getElementById('tab-wl');
                 const btnLists = document.getElementById('tab-lists');
@@ -1142,14 +1048,12 @@
                 }
             };
 
-            // Init the default tab
             if(activeTab === 'watchlist') renderWatchlist('added', 'lib-target');
             else renderLists('lib-target');
         }
 
         function renderWatchlist(sort = 'added', containerId = 'content') { 
             const container = document.getElementById(containerId) || els.content;
-            // Only add headers/controls if we are rendering into a fresh container (not just updating grid)
             container.innerHTML = `<div class="flex justify-end mb-6 animate-fade"><select id="wl-sort" class="bg-gray-800 border border-gray-700 text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]"><option value="added" ${sort==='added'?'selected':''}>Recently Added</option><option value="rank" ${sort==='rank'?'selected':''}>Rank</option><option value="title" ${sort==='title'?'selected':''}>Title</option><option value="released" ${sort==='released'?'selected':''}>Release Date</option><option value="runtime" ${sort==='runtime'?'selected':''}>Runtime</option></select></div><div id="wl-grid"></div>`; 
             
             showLoader(); 
@@ -1182,61 +1086,41 @@
 
         async function handleAction(shouldRate) {
             const traktId = currentModalItem.item.ids.trakt;
-            const type = currentModalItem.type; // 'episode' or 'movie'
-            
-            // --- STEP 1: Check Trakt History via API ---
+            const type = currentModalItem.type; 
             try {
-                // Determine the correct API endpoint path (must be plural: movies/episodes)
                 const typePath = type === 'episode' ? 'episodes' : 'movies';
                 const historyUrl = `/users/me/history/${typePath}/${traktId}?limit=1`;
-                
                 const historyData = await fetchDirect(historyUrl);
-                
                 if (historyData && historyData.length > 0) {
-                    // Get the timestamp of the last time this item was logged
                     const lastWatched = new Date(historyData[0].watched_at).getTime();
                     const now = Date.now();
                     const diff = now - lastWatched;
-                    const fiveMins = 5 * 60 * 1000; // 5 minutes in milliseconds
-                    
+                    const fiveMins = 5 * 60 * 1000; 
                     if (diff < fiveMins) {
-                        // It was logged less than 5 minutes ago!
                         if (!confirm("⚠️ duplicate Check\n\nYou (or an app) logged this item on Trakt less than 5 minutes ago.\n\nDo you want to log it again?")) {
                             els.modal.classList.add('hidden');
-                            return; // Stop here
+                            return; 
                         }
                     }
                 }
-            } catch(e) {
-                console.warn("Could not verify history before logging - proceeding anyway", e);
-            }
+            } catch(e) { console.warn("Could not verify history before logging - proceeding anyway", e); }
 
-            // --- STEP 2: Proceed with Logging (Original Logic) ---
             els.modal.classList.add('hidden'); 
             showLoader(); 
-            
             const dateStr = document.getElementById('custom-date').value; 
             const date = dateStr ? new Date(dateStr).toISOString() : selectedDate; 
             const rating = parseInt(els.ratingSlider.value); 
-            
             try { 
                 const ids = { ids: { trakt: traktId } }; 
                 const rootKey = type === 'episode' ? 'episodes' : 'movies'; 
                 const payloadLog = { [rootKey]: [{ ...ids, watched_at: date }] }; 
-                
                 await fetch(`${TRAKT_API_URL}/sync/history`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadLog) }); 
-                
                 if (shouldRate) { 
                     const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; 
                     await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); 
                     showToast(`Logged & Rated ${rating}/10`); 
-                } else {
-                    showToast(`Logged successfully`); 
-                }
-            } catch(e) { 
-                showToast('Action failed', 'error'); 
-            } 
-            
+                } else { showToast(`Logged successfully`); }
+            } catch(e) { showToast('Action failed', 'error'); } 
             hideLoader(); 
         }
 
@@ -1254,12 +1138,12 @@
             if(mobileLink) mobileLink.classList.add('active');
 
             if(hash.startsWith('#dashboard')) renderDashboard();
-            else if(hash.startsWith('#library')) renderLibrary(); // CHANGED: Points to library
-            else if(hash.startsWith('#watchlist')) renderLibrary('watchlist'); // Redirect old hash
+            else if(hash.startsWith('#library')) renderLibrary(); 
+            else if(hash.startsWith('#watchlist')) renderLibrary('watchlist'); 
             else if(hash.startsWith('#history')) renderHistory();
             else if(hash.startsWith('#progress')) renderProgress();
             else if(hash.startsWith('#settings')) renderSettings();
-            else if(hash === '#lists') renderLibrary('lists'); // Redirect old hash
+            else if(hash === '#lists') renderLibrary('lists'); 
             else if(hash.startsWith('#lists/')) renderListItems(hash.split('/')[1]);
             else if(hash.startsWith('#search')) loadSearch(hash.split('/')[1]);
             else if(hash.startsWith('#detail')) {
@@ -1273,18 +1157,14 @@
         }
         window.addEventListener('hashchange', handleRoute);
 
-        // --- Auto-Refresh on Tab Focus ---
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                // Only refresh if we are specifically looking at the History page
                 if (location.hash.startsWith('#history')) {
-                    console.log("Tab active: Refreshing History...");
-                    renderHistory(1); // Reloads the first page of history
+                    renderHistory(1); 
                 }
             }
         });
 
-        // --- Auth & Events ---
         els.ratingSlider.oninput = (e) => els.ratingValue.innerText = e.target.value;
         const searchHandler = debounce((e) => {
             const val = e.target.value.trim();
@@ -1316,6 +1196,7 @@
             if(e.target.id === 'close-modal') els.modal.classList.add('hidden');
         });
 
+        // --- AUTH INIT ---
         onAuthStateChanged(auth, async user => {
             currentUser = user;
             if (user) {
@@ -1323,24 +1204,24 @@
                 document.getElementById('logout').onclick = () => signOut(auth);
                 document.getElementById('main-nav').classList.remove('hidden'); els.searchContainer.classList.remove('hidden');
 
-                if (!traktAccessToken) {
-                    // 1. If no local token, try to get it from the database
-                    try {
-                        const snap = await getDoc(doc(db, 'users', user.uid, 'services', 'trakt'));
-                        if (snap.exists()) { 
-                            traktAccessToken = snap.data().accessToken;
-                            localStorage.setItem('trakt_token', traktAccessToken); 
+                // SYNC STRATEGY: Fetch from Firestore first. If it exists there, it's the source of truth.
+                try {
+                    const snap = await getDoc(doc(db, 'users', user.uid, 'services', 'trakt'));
+                    if (snap.exists() && snap.data().accessToken) { 
+                        const dbToken = snap.data().accessToken;
+                        // If DB token differs from local, update local
+                        if (traktAccessToken !== dbToken) {
+                            traktAccessToken = dbToken;
+                            localStorage.setItem('trakt_token', traktAccessToken);
                         }
-                    } catch(e) { console.warn("Firestore token check failed", e); }
-                } else {
-                    // 2. [FIX] If we HAVE a local token, ensure the database is synced so Dashboard works
-                    try {
+                    } else if (traktAccessToken) {
+                        // If we have local but no DB, push local to DB to sync
                         await setDoc(doc(db, 'users', user.uid, 'services', 'trakt'), { 
                             accessToken: traktAccessToken,
                             updatedAt: new Date()
                         }, { merge: true });
-                    } catch(e) { console.error("Failed to sync token to db", e); }
-                }
+                    }
+                } catch(e) { console.warn("Firestore sync error", e); }
 
                 if (traktAccessToken) { await syncUserRatings(); }
                 handleRoute();

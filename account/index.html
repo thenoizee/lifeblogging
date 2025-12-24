@@ -124,7 +124,7 @@
                         <p class="text-[10px] text-gray-500 mt-1 italic">Enter your username to display live music on the dashboard.</p>
                     </div>
 
-                    <div class="border-t border-[var(--text-color-secondary)] pt-4">
+                    <div class="border-t border-[var(--text-color-secondary)] pt-4 mb-4">
                         <label class="block text-sm font-semibold mb-1">TickTick Integration</label>
                         <div class="flex justify-between items-center bg-[var(--input-bg-color)] p-3 rounded-lg">
                             <div class="flex items-center gap-2">
@@ -136,6 +136,20 @@
                             </button>
                         </div>
                         <p class="text-[10px] text-gray-500 mt-1 italic">Link your TickTick account to use TaskTrackr.</p>
+                    </div>
+
+                    <div class="border-t border-[var(--text-color-secondary)] pt-4">
+                        <label class="block text-sm font-semibold mb-1">Trakt Integration</label>
+                        <div class="flex justify-between items-center bg-[var(--input-bg-color)] p-3 rounded-lg">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-ticket text-red-500"></i>
+                                <span id="trakt-status" class="text-sm font-medium">Not Connected</span>
+                            </div>
+                            <button id="trakt-auth-btn" class="text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm">
+                                Connect
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-gray-500 mt-1 italic">Link Trakt to sync VidTrackr across devices.</p>
                     </div>
                 </div>
 
@@ -193,6 +207,7 @@
         import { getFirestore, doc, getDoc, onSnapshot, setDoc, getDocs, collection, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         import { TICKTICK_CLIENT_ID, TICKTICK_REDIRECT_URI } from '../tasktrackr/api_keys.js';
+        import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI } from '../vidtrackr/api_keys.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -233,6 +248,8 @@
         const saveLastfmBtn = document.getElementById('save-lastfm-btn');
         const ticktickStatus = document.getElementById('ticktick-status');
         const ticktickBtn = document.getElementById('ticktick-auth-btn');
+        const traktStatus = document.getElementById('trakt-status');
+        const traktBtn = document.getElementById('trakt-auth-btn');
 
         let themeDocRef = null;
         let themeUnsubscribe = null;
@@ -344,9 +361,35 @@
                     ticktickBtn.textContent = "Connect";
                     ticktickBtn.className = "text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
                     ticktickBtn.onclick = () => {
-                        const state = encodeURIComponent(window.location.pathname); 
-                        const url = `https://ticktick.com/oauth/authorize?client_id=${TICKTICK_CLIENT_ID}&scope=tasks:read%20tasks:write&response_type=code&redirect_uri=${encodeURIComponent(TICKTICK_REDIRECT_URI)}&state=${state}`;
-                        window.location.href = url;
+                        const state = encodeURIComponent(window.location.pathname);
+                        window.location.href = `https://ticktick.com/oauth/authorize?client_id=${TICKTICK_CLIENT_ID}&scope=tasks:read%20tasks:write&response_type=code&redirect_uri=${encodeURIComponent(TICKTICK_REDIRECT_URI)}&state=${state}`;
+                    };
+                }
+
+                // Load Trakt (VIDTRACKR)
+                const traktDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'trakt'));
+                if (traktDoc.exists() && traktDoc.data().accessToken) {
+                    traktStatus.textContent = "Connected";
+                    traktStatus.className = "text-sm font-bold text-green-600";
+                    traktBtn.textContent = "Disconnect";
+                    traktBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
+                    traktBtn.onclick = async () => {
+                        if(confirm("Disconnect Trakt from account? This will sign you out of VidTrackr on all devices.")) {
+                            await setDoc(doc(db, 'users', user.uid, 'services', 'trakt'), { accessToken: deleteField() }, { merge: true });
+                            localStorage.removeItem('trakt_token');
+                            showMessage("Trakt disconnected.");
+                            loadSettings(user);
+                        }
+                    };
+                } else {
+                    traktStatus.textContent = "Not Connected";
+                    traktStatus.className = "text-sm font-medium text-gray-500";
+                    traktBtn.textContent = "Connect";
+                    traktBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
+                    traktBtn.onclick = () => {
+                        const state = encodeURIComponent(window.location.pathname);
+                        // Using implicit flow (token) for client-side app, redirecting to callback handler
+                        window.location.href = `https://trakt.tv/oauth/authorize?response_type=token&client_id=${TRAKT_CLIENT_ID}&redirect_uri=${encodeURIComponent(TRAKT_REDIRECT_URI)}&state=${state}`;
                     };
                 }
 
@@ -462,8 +505,6 @@
             }
         });
 
-        // ... [Remaining password/email change and export logic from original file kept exactly the same] ...
-        
         changePasswordBtn.addEventListener('click', async () => {
             const newPassword = newPasswordInput.value;
             const confirmPassword = confirmNewPasswordInput.value;

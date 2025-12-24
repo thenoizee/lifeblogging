@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connecting... - VidTrackr</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .dark body { background-color: #111827; color: #f3f4f6; }
+        .loader { border-top-color: #ed2224; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+
+    <div id="status-container" class="text-center p-8 rounded-2xl bg-gray-800 border border-gray-700 shadow-2xl max-w-sm w-full mx-4">
+        <div id="loading-icon" class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4 mx-auto"></div>
+        <div id="error-icon" class="hidden text-red-500 text-5xl mb-4"><i class="fa-solid fa-circle-exclamation"></i></div>
+        <div id="success-icon" class="hidden text-green-500 text-5xl mb-4"><i class="fa-solid fa-check-circle"></i></div>
+        
+        <h2 id="status-title" class="text-xl font-bold mb-2">Connecting to Trakt</h2>
+        <p id="status-message" class="text-gray-400 text-sm">Verifying your account...</p>
+        <p id="error-detail" class="text-red-400 text-xs mt-2 hidden font-mono bg-black/20 p-2 rounded"></p>
+        
+        <a id="return-btn" href="/account/" class="hidden mt-6 inline-block w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold transition">Return to Settings</a>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = { apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8", authDomain: "sammy-7298f.firebaseapp.com", projectId: "sammy-7298f", storageBucket: "sammy-7298f.firebasestorage.app", messagingSenderId: "963185683535", appId: "1:963185683535:web:807df8941feba46c208e3a", measurementId: "G-JT1YF2ELN3" };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        const updateStatus = (title, msg, type = 'loading', detail = null) => {
+            document.getElementById('status-title').textContent = title;
+            document.getElementById('status-message').textContent = msg;
+            
+            document.getElementById('loading-icon').classList.add('hidden');
+            document.getElementById('error-icon').classList.add('hidden');
+            document.getElementById('success-icon').classList.add('hidden');
+            document.getElementById('return-btn').classList.remove('hidden');
+
+            const detailEl = document.getElementById('error-detail');
+            if (detail) {
+                detailEl.textContent = detail;
+                detailEl.classList.remove('hidden');
+            } else {
+                detailEl.classList.add('hidden');
+            }
+
+            if (type === 'loading') {
+                document.getElementById('loading-icon').classList.remove('hidden');
+                document.getElementById('return-btn').classList.add('hidden');
+            } else if (type === 'error') {
+                document.getElementById('error-icon').classList.remove('hidden');
+            } else if (type === 'success') {
+                document.getElementById('success-icon').classList.remove('hidden');
+            }
+        };
+
+        const processToken = async (user) => {
+            // Trakt Implicit Flow returns token in hash: #access_token=...&token_type=bearer...
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+            const accessToken = params.get('access_token');
+            const state = params.get('state') || '/vidtrackr/'; // Default to app, but might be account page
+
+            // Also check query params just in case (though Trakt implicit uses hash)
+            const queryParams = new URLSearchParams(window.location.search);
+            const stateFromQuery = queryParams.get('state'); 
+
+            const returnUrl = (state && state !== 'null') ? decodeURIComponent(state) : '/vidtrackr/';
+            document.getElementById('return-btn').href = returnUrl;
+
+            if (!accessToken) {
+                updateStatus("Error", "No access token found in response.", "error");
+                return;
+            }
+
+            try {
+                updateStatus("Saving...", "Linking Trakt to your account...", "loading");
+
+                // Save to Firestore
+                await setDoc(doc(db, 'users', user.uid, 'services', 'trakt'), { 
+                    accessToken: accessToken, 
+                    updatedAt: new Date() 
+                }, { merge: true });
+                
+                // Update LocalStorage immediately for this device
+                localStorage.setItem('trakt_token', accessToken);
+                
+                updateStatus("Success!", "Redirecting you back...", "success");
+                
+                setTimeout(() => {
+                    window.location.href = returnUrl;
+                }, 1500);
+
+            } catch (error) {
+                console.error(error);
+                updateStatus("Connection Failed", "Could not save to database.", "error", error.message);
+            }
+        };
+
+        const init = () => {
+            let authTimeout = setTimeout(() => {
+                updateStatus("Authentication Error", "You must be logged in to Lifeblogging.", "error", "Session timeout.");
+            }, 8000);
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    clearTimeout(authTimeout);
+                    processToken(user);
+                } 
+            });
+        };
+
+        init();
+    </script>
+</body>
+</html>
