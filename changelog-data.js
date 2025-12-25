@@ -1,6 +1,17 @@
 // /changelog-data.js
 
 export const changelogData = [
+    {version: "v9.66.0-alpha",
+    date: "2025-12-25",
+    changes: [
+        "In RecipeManagr: Optimized the header and navigation for mobile devices, introducing compact titles, icon-only buttons, and full-width tabs.",
+        "In RecipeManagr: Implemented a collapsible 'Filter & Sort' panel to save vertical screen space on small screens.",
+        "In RecipeManagr: Updated Recipe, History, and Appliance modals to utilize full-screen layouts on mobile devices for better readability.",
+        "In RecipeManagr: Reorganized the Recipe Details modal on mobile to prioritize Ingredients and Instructions at the top, moving metadata to a collapsible section at the bottom.",
+        "In RecipeManagr: Added a 'Keep Screen On' (Wake Lock) toggle to the recipe view to prevent the device from sleeping while cooking.",
+        "In RecipeManagr: Added a native 'Share' button to the recipe modal to easily send recipe links via system share sheets."
+    ]
+    },
     {
     version: "v9.65.0-alpha",
     date: "2025-12-24",
