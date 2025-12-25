@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.68.0-alpha",
+    date: "2025-12-25",
+    changes: [
+        "In TaskTrackr: Implemented the ability to 'un-complete' tasks, allowing users to toggle a completed task back to active status.",
+        "In TaskTrackr: Reinstated Shift+Click (and Ctrl/Cmd+Click) functionality for multi-selecting tasks, making bulk organization easier.",
+        "In TaskTrackr: Updated the data syncing process to run in the background, preventing the UI from freezing or dimming while updating.",
+        "In TaskTrackr: Fixed the recurrence calculation logic so that overdue repeating tasks correctly schedule the next occurrence based on the original due date instead of resetting to the current time."
+    ]
+    },
+    {
     version: "v9.67.0-alpha",
     date: "2025-12-25",
     changes: [
