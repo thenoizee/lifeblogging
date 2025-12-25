@@ -1,7 +1,19 @@
 // /changelog-data.js
 
 export const changelogData = [
-    {version: "v9.66.0-alpha",
+    {
+    version: "v9.67.0-alpha",
+    date: "2025-12-25",
+    changes: [
+        "In RecipeManagr: Replaced the plain text 'Instructions' input with a new interactive 'Instruction Builder', allowing users to easily add, remove, and organize steps and section headers.",
+        "In RecipeManagr: Added the ability to attach specific timers (with custom values and units) to individual instruction steps within the editor.",
+        "In RecipeManagr: Implemented interactive timer buttons in the Recipe Details view that feature live countdowns, visual status indicators (Running/Finished), audio alerts, and browser notifications.",
+        "In RecipeManagr: Updated the import tools (URL and File) to automatically parse and populate the new structured instruction builder.",
+        "In RecipeManagr: Fixed a bug where instruction steps from a previously viewed recipe would persist in the 'Add Recipe' form after resetting."
+    ]
+    },
+    {
+    version: "v9.66.0-alpha",
     date: "2025-12-25",
     changes: [
         "In RecipeManagr: Optimized the header and navigation for mobile devices, introducing compact titles, icon-only buttons, and full-width tabs.",

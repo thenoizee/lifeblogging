@@ -46,6 +46,52 @@
             grid-template-columns: 1fr 2fr;
             gap: 2rem;
         }
+
+        /* Timer Button Styles */
+.timer-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background-color: #e0e7ff; /* indigo-100 */
+    color: #4338ca; /* indigo-700 */
+    padding: 0.1rem 0.5rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid #c7d2fe;
+}
+.dark .timer-btn {
+    background-color: #312e81; /* indigo-900 */
+    color: #e0e7ff; /* indigo-100 */
+    border-color: #4338ca;
+}
+.timer-btn:hover {
+    background-color: #c7d2fe;
+}
+.timer-btn.running {
+    background-color: #fef3c7; /* amber-100 */
+    color: #b45309; /* amber-700 */
+    border-color: #fcd34d;
+}
+.dark .timer-btn.running {
+    background-color: #78350f; /* amber-900 */
+    color: #fef3c7; /* amber-100 */
+    border-color: #d97706;
+}
+.timer-btn.finished {
+    background-color: #fee2e2; /* red-100 */
+    color: #b91c1c; /* red-700 */
+    border-color: #fca5a5;
+    animation: pulse-red 1s infinite;
+}
+@keyframes pulse-red {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+    70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
     }
 </style>
 </head>
@@ -299,12 +345,23 @@
                             <textarea id="recipe-ingredients" placeholder="e.g., [Sauce]&#10;1 cup tomatoes ## fresh is best" rows="5" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 w-full"></textarea>
                         </div>
                         <div class="lg:col-span-3">
-                            <label class="flex items-center gap-2 text-sm mb-1">
-                                Instructions
-                                <i class="fas fa-info-circle text-gray-400" title="Use [Section Name] for headings and ## for inline tips."></i>
-                            </label>
-                            <textarea id="recipe-instructions" placeholder="e.g., [Prep]&#10;1. Dice onions ## dice finely" rows="5" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 w-full"></textarea>
-                        </div>
+    <label class="flex items-center gap-2 text-sm mb-2">
+        Instructions
+        <i class="fas fa-info-circle text-gray-400" title="Add steps and optional timers."></i>
+    </label>
+    
+    <div id="instructions-builder" class="space-y-2 mb-2">
+        </div>
+
+    <div class="flex gap-2">
+        <button type="button" id="add-step-btn" class="text-sm bg-indigo-50 text-indigo-700 border border-indigo-200 py-1 px-3 rounded hover:bg-indigo-100">
+            <i class="fas fa-plus"></i> Add Step
+        </button>
+        <button type="button" id="add-section-btn" class="text-sm bg-gray-50 text-gray-700 border border-gray-200 py-1 px-3 rounded hover:bg-gray-100">
+            <i class="fas fa-heading"></i> Add Section
+        </button>
+    </div>
+</div>
                         <div class="lg:col-span-3">
                             <label for="recipe-notes" class="block text-sm font-medium mb-1">General Notes</label>
                             <textarea id="recipe-notes" placeholder="Any other notes about this recipe" rows="3" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 w-full"></textarea>
@@ -463,6 +520,14 @@
             const timelineContainer = document.getElementById('timeline-container');
             const mobileFilterToggle = document.getElementById('mobile-filter-toggle');
             const filterContainer = document.getElementById('filter-container');
+            // Instruction Builder Listeners
+    document.getElementById('add-step-btn').addEventListener('click', () => {
+        document.getElementById('instructions-builder').appendChild(createInstructionRow());
+    });
+    
+    document.getElementById('add-section-btn').addEventListener('click', () => {
+        document.getElementById('instructions-builder').appendChild(createSectionRow());
+    });
 
             if (mobileFilterToggle) {
         mobileFilterToggle.addEventListener('click', () => {
@@ -859,7 +924,7 @@
                         mealType: document.getElementById('recipe-meal-type').value,
                         category: document.getElementById('recipe-category').value,
                         ingredients: parseSections(document.getElementById('recipe-ingredients').value),
-                        instructions: parseSections(document.getElementById('recipe-instructions').value),
+                        instructions: getInstructionsFromBuilder(),
                         notes: document.getElementById('recipe-notes').value,
                         labels: document.getElementById('recipe-labels').value.split(',').map(l => l.trim()).filter(Boolean),
                         rating: currentRating,
@@ -922,6 +987,10 @@
                 form.reset();
                 currentRating = 0;
                 renderAddRatingStars();
+                
+                // FIX: Clear the dynamic instruction builder
+                renderInstructionBuilder([]); 
+
                 editingRecipeId = null;
                 importedImageUrl = null;
                 fetchedRecipesCache = [];
@@ -934,7 +1003,6 @@
                 document.getElementById('image-preview').classList.add('hidden');
                 populateLinkedRecipesSelect();
             }
-
             function populateFormForEdit(recipeOrId) {
                 const isEditing = typeof recipeOrId === 'string';
                 const recipe = isEditing
@@ -969,7 +1037,8 @@
                 document.getElementById('recipe-notes').value = recipe.notes || '';
                 document.getElementById('recipe-labels').value = (recipe.labels || []).join(', ');
                 document.getElementById('recipe-ingredients').value = formatSections(ingredientsForForm);
-                document.getElementById('recipe-instructions').value = formatSections(instructionsForForm);
+                // Use the raw object data, not the formatted text string
+    renderInstructionBuilder(recipe.instructions || []);
                 renderAddRatingStars(recipe.rating || 0);
                 populateLinkedRecipesSelect(recipe.linkedRecipeIds);
                 
@@ -996,96 +1065,244 @@
             }
 
             function printRecipe(recipe) {
-    const printArea = document.getElementById('print-area');
-    
-    // Process data for display
-    const ingredientsData = processData(recipe.ingredients, 'Ingredients');
-    const instructionsData = processData(recipe.instructions, 'Instructions');
+                const printArea = document.getElementById('print-area');
+                
+                // Process data for display
+                const ingredientsData = processData(recipe.ingredients, 'Ingredients');
+                const instructionsData = processData(recipe.instructions, 'Instructions');
 
-    // Format Ingredients for Print (with checkboxes)
-    const ingredientsHtml = ingredientsData.map(section => `
-        <h3 class="font-bold mt-4 uppercase text-sm border-b border-gray-300 mb-2">${section.section}</h3>
-        <ul class="space-y-1 text-sm">
-            ${(section.items || []).map(item => {
-                const text = typeof item === 'string' ? item : item.text;
-                const tip = (typeof item === 'object' && item.tip) ? ` <i class="text-xs">(${item.tip})</i>` : '';
-                return `<li class="flex items-start gap-2">
-                    <span class="inline-block w-4 h-4 border border-gray-400 rounded-sm mt-0.5 flex-shrink-0"></span>
-                    <span>${text}${tip}</span>
-                </li>`;
-            }).join('')}
-        </ul>
-    `).join('');
+                // Format Ingredients for Print (with checkboxes)
+                const ingredientsHtml = ingredientsData.map(section => `
+                    <h3 class="font-bold mt-4 uppercase text-sm border-b border-gray-300 mb-2">${section.section}</h3>
+                    <ul class="space-y-1 text-sm">
+                        ${(section.items || []).map(item => {
+                            const text = typeof item === 'string' ? item : item.text;
+                            const tip = (typeof item === 'object' && item.tip) ? ` <i class="text-xs">(${item.tip})</i>` : '';
+                            return `<li class="flex items-start gap-2">
+                                <span class="inline-block w-4 h-4 border border-gray-400 rounded-sm mt-0.5 flex-shrink-0"></span>
+                                <span>${text}${tip}</span>
+                            </li>`;
+                        }).join('')}
+                    </ul>
+                `).join('');
 
-    // Format Instructions for Print
-    const instructionsHtml = instructionsData.map(section => `
-        <h3 class="font-bold mt-4 uppercase text-sm border-b border-gray-300 mb-2">${section.section}</h3>
-        <ol class="list-decimal list-inside space-y-2 text-sm">
-            ${(section.items || []).map(item => {
-                const text = typeof item === 'string' ? item : item.text;
-                const tip = (typeof item === 'object' && item.tip) ? ` <i class="text-xs">(${item.tip})</i>` : '';
-                return `<li class="mb-2 pl-2 border-l-2 border-gray-100">${text}${tip}</li>`;
-            }).join('')}
-        </ol>
-    `).join('');
+                // Format Instructions for Print
+                const instructionsHtml = instructionsData.map(section => `
+                    <h3 class="font-bold mt-4 uppercase text-sm border-b border-gray-300 mb-2">${section.section}</h3>
+                    <ol class="list-decimal list-inside space-y-2 text-sm">
+                        ${(section.items || []).map(item => {
+                            const text = typeof item === 'string' ? item : item.text;
+                            const tip = (typeof item === 'object' && item.tip) ? ` <i class="text-xs">(${item.tip})</i>` : '';
+                            return `<li class="mb-2 pl-2 border-l-2 border-gray-100">${text}${tip}</li>`;
+                        }).join('')}
+                    </ol>
+                `).join('');
 
-    // Generate Layout
-    const yieldText = typeof recipe.yield === 'object' && recipe.yield !== null 
-        ? `${recipe.yield.quantity || ''} ${recipe.yield.unit || ''}` 
-        : recipe.yield || 'N/A';
+                // Generate Layout
+                const yieldText = typeof recipe.yield === 'object' && recipe.yield !== null 
+                    ? `${recipe.yield.quantity || ''} ${recipe.yield.unit || ''}` 
+                    : recipe.yield || 'N/A';
 
-    printArea.innerHTML = `
-        <div class="max-w-4xl mx-auto">
-            <div class="flex items-start justify-between mb-6 border-b-2 border-black pb-4">
-                <div>
-                    <h1 class="text-3xl font-bold mb-2">${recipe.name}</h1>
-                    <div class="text-sm space-y-1 text-gray-600">
-                        <p><strong>Source:</strong> ${recipe.sourceName || 'N/A'}</p>
-                        <p><strong>Cuisine:</strong> ${recipe.cuisine || 'N/A'}</p>
-                    </div>
-                </div>
-                ${recipe.imageUrl ? `<img src="${recipe.imageUrl}" class="w-32 h-32 object-cover rounded-lg border border-gray-300">` : ''}
-            </div>
-
-            <div class="grid grid-cols-4 gap-4 mb-6 text-sm bg-gray-50 p-4 rounded border border-gray-200">
-                <div><span class="font-bold block text-gray-500 text-xs uppercase">Prep Time</span>${recipe.prepTime || '-'} mins</div>
-                <div><span class="font-bold block text-gray-500 text-xs uppercase">Cook Time</span>${recipe.cookTime || '-'} mins</div>
-                <div><span class="font-bold block text-gray-500 text-xs uppercase">Total Time</span>${recipe.totalTime || '-'} mins</div>
-                <div><span class="font-bold block text-gray-500 text-xs uppercase">Yield</span>${yieldText}</div>
-            </div>
-
-            <div class="print-grid">
-                <div>
-                    <h2 class="text-xl font-bold mb-2">Ingredients</h2>
-                    ${ingredientsHtml}
-                    
-                    ${recipe.notes ? `
-                        <div class="mt-8 pt-4 border-t border-gray-300">
-                            <h3 class="font-bold text-sm uppercase mb-2">Notes</h3>
-                            <p class="text-sm italic text-gray-600">${recipe.notes}</p>
+                printArea.innerHTML = `
+                    <div class="max-w-4xl mx-auto">
+                        <div class="flex items-start justify-between mb-6 border-b-2 border-black pb-4">
+                            <div>
+                                <h1 class="text-3xl font-bold mb-2">${recipe.name}</h1>
+                                <div class="text-sm space-y-1 text-gray-600">
+                                    <p><strong>Source:</strong> ${recipe.sourceName || 'N/A'}</p>
+                                    <p><strong>Cuisine:</strong> ${recipe.cuisine || 'N/A'}</p>
+                                </div>
+                            </div>
+                            ${recipe.imageUrl ? `<img src="${recipe.imageUrl}" class="w-32 h-32 object-cover rounded-lg border border-gray-300">` : ''}
                         </div>
-                    ` : ''}
-                </div>
-                <div>
-                    <h2 class="text-xl font-bold mb-2">Instructions</h2>
-                    ${instructionsHtml}
-                </div>
+
+                        <div class="grid grid-cols-4 gap-4 mb-6 text-sm bg-gray-50 p-4 rounded border border-gray-200">
+                            <div><span class="font-bold block text-gray-500 text-xs uppercase">Prep Time</span>${recipe.prepTime || '-'} mins</div>
+                            <div><span class="font-bold block text-gray-500 text-xs uppercase">Cook Time</span>${recipe.cookTime || '-'} mins</div>
+                            <div><span class="font-bold block text-gray-500 text-xs uppercase">Total Time</span>${recipe.totalTime || '-'} mins</div>
+                            <div><span class="font-bold block text-gray-500 text-xs uppercase">Yield</span>${yieldText}</div>
+                        </div>
+
+                        <div class="print-grid">
+                            <div>
+                                <h2 class="text-xl font-bold mb-2">Ingredients</h2>
+                                ${ingredientsHtml}
+                                
+                                ${recipe.notes ? `
+                                    <div class="mt-8 pt-4 border-t border-gray-300">
+                                        <h3 class="font-bold text-sm uppercase mb-2">Notes</h3>
+                                        <p class="text-sm italic text-gray-600">${recipe.notes}</p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div>
+                                <h2 class="text-xl font-bold mb-2">Instructions</h2>
+                                ${instructionsHtml}
+                            </div>
+                        </div>
+                        
+                        <div class="mt-12 pt-4 border-t border-gray-300 text-center text-xs text-gray-400">
+                            Printed via SH's RecipeManagr on ${new Date().toLocaleString()}
+                        </div>
+                    </div>
+                `;
+
+                // Trigger Browser Print
+                window.print();
+            }
+
+            // --- Timer Helper Functions (MOVED HERE) ---
+
+            const parseDurationToMillis = (val, unit) => {
+                let multiplier = 1000; // seconds
+                if (unit.startsWith('m')) multiplier *= 60;
+                else if (unit.startsWith('h')) multiplier *= 3600;
+                return val * multiplier;
+            };
+
+            // Converts text like "(10 mins)" into clickable timer HTML
+            const renderTextWithTimers = (text) => {
+                // Regex matches: ( number space unit ) e.g. (5 mins), (1.5 h), (30s)
+                const regex = /\((\d+(?:\.\d+)?)\s*(m|min|mins|minutes?|h|hr|hrs|hours?|s|sec|secs?|seconds?)\)/gi;
+                
+                return text.replace(regex, (match, val, unit) => {
+                    const millis = parseDurationToMillis(parseFloat(val), unit.toLowerCase());
+                    const displayUnit = unit.toLowerCase().startsWith('h') ? 'h' : (unit.toLowerCase().startsWith('m') ? 'm' : 's');
+                    return `<button class="timer-btn" data-original-text="${val}${displayUnit}" data-millis="${millis}"><i class="fas fa-stopwatch"></i> ${val}${displayUnit}</button>`;
+                });
+            };
+
+            // --- Instruction Builder Helpers ---
+
+const createInstructionRow = (data = {}) => {
+    const row = document.createElement('div');
+    row.className = 'instruction-row flex flex-col md:flex-row gap-2 items-start bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-200 dark:border-gray-600';
+    row.dataset.type = 'step';
+
+    const text = data.text || '';
+    const timeVal = data.timer ? data.timer.val : '';
+    const timeUnit = data.timer ? data.timer.unit : 'm';
+
+    row.innerHTML = `
+        <div class="flex-grow w-full">
+            <textarea placeholder="Step instruction..." rows="2" class="step-text w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 resize-y">${text}</textarea>
+        </div>
+        <div class="flex items-center gap-1 flex-shrink-0">
+            <div class="flex items-center border rounded dark:border-gray-600 bg-white dark:bg-gray-700 overflow-hidden">
+                <div class="px-2 text-gray-400 text-xs"><i class="fas fa-stopwatch"></i></div>
+                <input type="number" placeholder="0" value="${timeVal}" class="step-time w-12 p-1 text-sm text-center outline-none dark:bg-gray-700 border-r dark:border-gray-600 appearance-none">
+                <select class="step-unit p-1 text-sm bg-gray-50 dark:bg-gray-700 outline-none cursor-pointer">
+                    <option value="s" ${timeUnit === 's' ? 'selected' : ''}>s</option>
+                    <option value="m" ${timeUnit === 'm' ? 'selected' : ''}>m</option>
+                    <option value="h" ${timeUnit === 'h' ? 'selected' : ''}>h</option>
+                </select>
             </div>
-            
-            <div class="mt-12 pt-4 border-t border-gray-300 text-center text-xs text-gray-400">
-                Printed via SH's RecipeManagr on ${new Date().toLocaleString()}
-            </div>
+            <button type="button" class="remove-row-btn text-red-400 hover:text-red-600 p-2"><i class="fas fa-times"></i></button>
         </div>
     `;
 
-    // Trigger Browser Print
-    window.print();
+    row.querySelector('.remove-row-btn').addEventListener('click', () => row.remove());
+    return row;
+};
+
+const createSectionRow = (title = '') => {
+    const row = document.createElement('div');
+    row.className = 'instruction-row flex gap-2 items-center mt-4 mb-1';
+    row.dataset.type = 'section';
+
+    row.innerHTML = `
+        <div class="flex-grow bg-gray-200 dark:bg-gray-600 h-px"></div>
+        <input type="text" placeholder="Section Name (e.g. Sauce)" value="${title}" class="section-title font-bold text-sm text-center bg-transparent border-b border-gray-300 dark:border-gray-500 focus:border-indigo-500 outline-none w-1/2">
+        <div class="flex-grow bg-gray-200 dark:bg-gray-600 h-px"></div>
+        <button type="button" class="remove-row-btn text-gray-400 hover:text-red-500"><i class="fas fa-times"></i></button>
+    `;
+
+    row.querySelector('.remove-row-btn').addEventListener('click', () => row.remove());
+    return row;
+};
+
+const renderInstructionBuilder = (sections) => {
+    const container = document.getElementById('instructions-builder');
+    container.innerHTML = '';
+
+    if (!sections || sections.length === 0) {
+        // Add one empty step by default
+        container.appendChild(createInstructionRow());
+        return;
+    }
+
+    sections.forEach(section => {
+        // Only render section header if it's not the default "Instructions" or "General"
+        if (section.section && section.section !== 'Instructions' && section.section !== 'General') {
+            container.appendChild(createSectionRow(section.section));
+        }
+        
+        if (section.items) {
+            section.items.forEach(item => {
+                // Handle legacy string items vs object items
+                const data = typeof item === 'string' ? { text: item } : item;
+                container.appendChild(createInstructionRow(data));
+            });
+        }
+    });
+};
+
+const getInstructionsFromBuilder = () => {
+    const container = document.getElementById('instructions-builder');
+    const rows = container.querySelectorAll('.instruction-row');
     
-    // Clear area after print dialog closes (optional, keeps DOM clean)
-    // setTimeout(() => { printArea.innerHTML = ''; }, 1000);
-}
-            
+    const sections = [];
+    let currentSection = { section: 'Instructions', items: [] };
+
+    rows.forEach(row => {
+        if (row.dataset.type === 'section') {
+            if (currentSection.items.length > 0) sections.push(currentSection);
+            const title = row.querySelector('.section-title').value.trim() || 'Section';
+            currentSection = { section: title, items: [] };
+        } else {
+            const text = row.querySelector('.step-text').value.trim();
+            if (text) {
+                const item = { text };
+                const timeVal = row.querySelector('.step-time').value;
+                const timeUnit = row.querySelector('.step-unit').value;
+                
+                if (timeVal) {
+                    item.timer = { val: parseFloat(timeVal), unit: timeUnit };
+                }
+                currentSection.items.push(item);
+            }
+        }
+    });
+
+    if (currentSection.items.length > 0 || sections.length === 0) {
+        sections.push(currentSection);
+    }
+    
+    return sections;
+};
+
+            const playTimerSound = () => {
+                // Simple beep using AudioContext
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioContext) return;
+                    const ctx = new AudioContext();
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.5);
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.5);
+                } catch(e) { console.error("Audio play failed", e); }
+            };
+
             async function showRecipeDetailsModal(recipeId) {
+                // ... (rest of the function remains the same)
     let recipe = recipesCache.find(r => r.id === recipeId);
     if (!recipe) return;
     
@@ -1179,10 +1396,21 @@
         <h5 class="font-bold mt-3 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">${section.section}</h5>
         <ol class="list-decimal list-inside space-y-3 mt-1">
                 ${(section.items || []).map(item => {
-                    const itemText = item ? item.text : '';
-                    const itemTip = item ? item.tip : '';
+                    const itemText = typeof item === 'object' ? item.text : item;
+                    const itemTip = (typeof item === 'object' && item.tip) ? item.tip : '';
+                    
+                    // 1. Render timers from text (backward compatibility)
+                    let contentHtml = renderTextWithTimers(itemText);
+
+                    // 2. Render structured timer (NEW)
+                    if (typeof item === 'object' && item.timer) {
+                        const millis = parseDurationToMillis(item.timer.val, item.timer.unit);
+                        const display = `${item.timer.val}${item.timer.unit}`;
+                        contentHtml += ` <button class="timer-btn ml-2" data-original-text="${display}" data-millis="${millis}"><i class="fas fa-stopwatch"></i> ${display}</button>`;
+                    }
+                    
                     return `<li data-type="instruction" data-key="${itemText}" class="group pl-1">
-                <span class="cursor-pointer hover:text-gray-500 transition-colors">${itemText} ${itemTip ? `<span class="text-xs text-gray-400 italic">(${itemTip})</span>` : ''}</span>
+                <span class="cursor-pointer hover:text-gray-500 transition-colors">${contentHtml} ${itemTip ? `<span class="text-xs text-gray-400 italic">(${itemTip})</span>` : ''}</span>
                 <button class="add-note-btn opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 hover:text-indigo-700 ml-2"><i class="fas fa-plus-circle"></i></button>
                 ${renderNote(recipe.instructionNotes[createSafeKey(itemText)])}
             </li>`}).join('')}
@@ -1413,6 +1641,79 @@
 
     unitSelect.addEventListener('change', updateIngredientsDisplay);
     scaleSelect.addEventListener('change', updateIngredientsDisplay);
+
+    // Logic: Timer Click Handling
+    const activeIntervals = new Map(); // Store intervals for this modal instance
+
+    modalContainer.addEventListener('click', (e) => {
+        const timerBtn = e.target.closest('.timer-btn');
+        if (!timerBtn) return;
+        
+        e.stopPropagation(); // Prevent strikethrough logic
+
+        if (timerBtn.classList.contains('running')) {
+            // STOP Timer
+            clearInterval(activeIntervals.get(timerBtn));
+            activeIntervals.delete(timerBtn);
+            timerBtn.classList.remove('running');
+            timerBtn.innerHTML = `<i class="fas fa-stopwatch"></i> ${timerBtn.dataset.originalText}`;
+        } else if (timerBtn.classList.contains('finished')) {
+            // RESET Timer
+            timerBtn.classList.remove('finished');
+            timerBtn.innerHTML = `<i class="fas fa-stopwatch"></i> ${timerBtn.dataset.originalText}`;
+        } else {
+            // START Timer
+            const duration = parseInt(timerBtn.dataset.millis);
+            const endTime = Date.now() + duration;
+            
+            timerBtn.classList.add('running');
+            
+            const updateTimer = () => {
+                const remaining = endTime - Date.now();
+                if (remaining <= 0) {
+                    clearInterval(activeIntervals.get(timerBtn));
+                    activeIntervals.delete(timerBtn);
+                    timerBtn.classList.remove('running');
+                    timerBtn.classList.add('finished');
+                    timerBtn.innerHTML = `<i class="fas fa-bell"></i> Done!`;
+                    playTimerSound();
+                    
+                    // Optional: Browser Notification
+                    if (Notification.permission === "granted") {
+                        new Notification(`Timer Done: ${recipe.name}`, { body: "Your step timer has finished!" });
+                    }
+                } else {
+                    const totalSeconds = Math.ceil(remaining / 1000);
+                    const m = Math.floor(totalSeconds / 60);
+                    const s = totalSeconds % 60;
+                    const timeStr = m > 0 ? `${m}m ${s}s` : `${s}s`;
+                    timerBtn.innerHTML = `<i class="fas fa-hourglass-half"></i> ${timeStr}`;
+                }
+            };
+            
+            updateTimer(); // Initial call
+            const intervalId = setInterval(updateTimer, 1000);
+            activeIntervals.set(timerBtn, intervalId);
+
+            // Request Notification Permission if needed
+            if (Notification.permission === "default") {
+                Notification.requestPermission();
+            }
+        }
+    });
+
+    // Cleanup intervals when modal closes
+    const originalCloseModal = closeModal; // Capture the closure defined earlier
+    const cleanupAndClose = () => {
+        activeIntervals.forEach(id => clearInterval(id));
+        activeIntervals.clear();
+        originalCloseModal();
+    };
+    // Re-attach close listeners to use the cleanup version
+    modalContainer.querySelectorAll('.modal-close-btn').forEach(btn => {
+        btn.removeEventListener('click', closeModal); // Remove old
+        btn.addEventListener('click', cleanupAndClose); // Add new
+    });
 
     modalContainer.classList.remove('hidden');
     modalContainer.classList.add('flex');
@@ -2265,7 +2566,10 @@
                 }
                 
                 document.getElementById('recipe-ingredients').value = formatSections(normalizeJsonLdStructure(recipe.recipeIngredient, 'Ingredients'));
-                document.getElementById('recipe-instructions').value = formatSections(normalizeJsonLdStructure(recipe.recipeInstructions, 'Instructions'));
+                
+                // FIX: Define and process instructions before rendering
+                const instructions = normalizeJsonLdStructure(recipe.recipeInstructions, 'Instructions');
+                renderInstructionBuilder(instructions);
                 
                 let notes = '';
                 if (Array.isArray(recipe.comment)) {
