@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.71.0-alpha",
+    date: "2025-12-26",
+    changes: [
+        "In FoodTrackr: Overhauled the 'Selected Product' display during logging; it now features a large hero image, bold typography, and is fully clickable to review product details.",
+        "In FoodTrackr: Redesigned the Dashboard summary cards with a modern 'stat card' layout and visual icons for clearer nutrient tracking.",
+        "In FoodTrackr: Updated Search Result and Frequent Food cards to a cleaner horizontal layout (Image Left, Text Right) for improved readability and faster scanning.",
+        "In FoodTrackr: Fixed a critical bug in the Frequent Foods renderer where nested functions caused the application to crash.",
+    ]
+    },
+    {
     version: "v9.70.0-alpha",
     date: "2025-12-26",
     changes: [
