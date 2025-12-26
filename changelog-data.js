@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.72.0-alpha",
+    date: "2025-12-26",
+    changes: [
+        "In TaskTrackr: Introduced a new 'Source' property to tasks, allowing users to distinguish between items created in TickTick, TaskTrackr, or Google Tasks.",
+        "In TaskTrackr: Implemented 'Task Origins' persistence via Firebase. Tasks created within TaskTrackr now save a permanent record to the cloud, ensuring they retain their 'TaskTrackr' branding even after syncing with the TickTick API.",
+        "In TaskTrackr: Updated the Task Card and Side Pane to display source badges (e.g., a purple lightning bolt for TaskTrackr) for immediate visual context.",
+        "In TaskTrackr: Added a 'Source' dropdown to the Task Editor modal, defaulting to 'TickTick' but allowing explicit assignment.",
+        "In TaskTrackr: Enhanced the Sync Indicator to show a green 'Saved to Cloud' success state after creating or editing tasks, providing better user feedback."
+    ] 
+},
+    {
     version: "v9.71.0-alpha",
     date: "2025-12-26",
     changes: [

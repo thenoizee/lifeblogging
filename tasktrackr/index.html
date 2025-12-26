@@ -298,15 +298,20 @@
             <div class="flex flex-wrap gap-2" id="sp-tags-container"></div>
             
             <div class="grid grid-cols-2 gap-4 text-sm">
-                <div class="bg-gray-800/50 p-3 rounded-lg border border-gray-700/50">
-                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Due Date</label>
-                    <div class="flex items-center text-gray-300"><i class="fa-regular fa-clock mr-2 text-[var(--primary)]"></i><span id="sp-date">No date</span></div>
-                </div>
-                <div class="bg-gray-800/50 p-3 rounded-lg border border-gray-700/50">
-                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Priority</label>
-                    <div id="sp-priority-container" class="text-gray-300">None</div>
-                </div>
-            </div>
+    <div class="bg-gray-800/50 p-3 rounded-lg border border-gray-700/50">
+        <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Due Date</label>
+        <div class="flex items-center text-gray-300"><i class="fa-regular fa-clock mr-2 text-[var(--primary)]"></i><span id="sp-date">No date</span></div>
+    </div>
+    <div class="bg-gray-800/50 p-3 rounded-lg border border-gray-700/50">
+        <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Priority</label>
+        <div id="sp-priority-container" class="text-gray-300">None</div>
+    </div>
+
+    <div class="bg-gray-800/50 p-3 rounded-lg border border-gray-700/50 col-span-2">
+        <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Source</label>
+        <div id="sp-source" class="text-gray-300 font-medium flex items-center gap-2"></div>
+    </div>
+    </div>
 
             <div id="sp-recurring-container" class="hidden flex items-center p-3 rounded-lg bg-yellow-900/10 border border-yellow-700/30 text-yellow-500 text-sm">
                 <i class="fa-solid fa-repeat mr-3"></i>
@@ -385,6 +390,20 @@
 
                 <div><label class="text-xs font-bold text-gray-500 uppercase">Tags</label><input type="text" id="modal-tags-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm" placeholder="tag1, tag2"></div>
 
+                <div class="mt-4">
+    <label class="text-xs font-bold text-gray-500 uppercase">Source</label>
+    <div class="relative">
+        <select id="modal-source-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm appearance-none">
+            <option value="ticktick">TickTick</option>
+            <option value="tasktrackr" disabled>TaskTrackr (Local - Pending)</option>
+            <option value="google" disabled>Google Tasks (Pending)</option>
+        </select>
+        <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
+            <i class="fa-solid fa-chevron-down text-xs"></i>
+        </div>
+    </div>
+</div>
+                
                 <div class="grid grid-cols-2 gap-4">
                     <div><label class="text-xs font-bold text-gray-500 uppercase">Start Date</label><input type="datetime-local" id="modal-start-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm"></div>
                     <div><label class="text-xs font-bold text-gray-500 uppercase">Due Date</label><input type="datetime-local" id="modal-due-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm"></div>
@@ -572,76 +591,111 @@
             setTimeout(() => { if(toast.isConnected) toast.remove() }, 5000);
         };
 
-       // Safer Sync Status function
-        window.updateSyncStatus = (active) => {
-            const el = document.getElementById('sync-indicator');
-            if (!el) return; // Prevent crash if element is missing
-            if (active) el.classList.remove('hidden');
-            else setTimeout(() => el.classList.add('hidden'), 500);
-        };
+       // Replace the existing updateSyncStatus and api functions
 
-        const api = async (endpoint, method = 'GET', body = null) => {
-            if (!accessToken) return null;
-            
-            // Trigger Sync Indicator safely
-            try { window.updateSyncStatus(true); } catch(e) {}
-            
-            const opts = { method, headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' } };
-            if (body) opts.body = JSON.stringify(body);
-            
-            try {
-                const res = await fetch(`${API_BASE}${endpoint}`, opts);
-                if (res.status === 401) { 
-                    localStorage.removeItem('ticktick_token'); 
-                    location.reload(); 
-                    return null; 
-                }
-                const text = await res.text();
-                return text ? JSON.parse(text) : {};
-            } catch (e) { 
-                console.error("API Error:", e); 
-                return null; 
-            } finally {
-                // Ensure Sync Indicator is hidden
-                try { window.updateSyncStatus(false); } catch(e) {}
-            }
-        };
+window.updateSyncStatus = (status) => {
+    const el = document.getElementById('sync-indicator');
+    if (!el) return;
+    
+    const icon = el.querySelector('i');
+    const text = el.querySelector('span') || el; // specific span or just the div text
+    
+    el.classList.remove('hidden');
+
+    if (status === 'syncing') {
+        el.className = "hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-gray-800 border border-gray-700 text-xs text-blue-400 font-bold transition-all";
+        el.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin"></i> Syncing...';
+    } else if (status === 'success') {
+        el.className = "hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-green-900/30 border border-green-500/50 text-xs text-green-400 font-bold transition-all shadow-[0_0_10px_rgba(34,197,94,0.2)]";
+        el.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Saved to Cloud';
+        
+        // Hide after 3 seconds
+        setTimeout(() => {
+            el.classList.add('hidden');
+        }, 3000);
+    } else {
+        el.classList.add('hidden');
+    }
+};
+
+const api = async (endpoint, method = 'GET', body = null) => {
+    if (!accessToken) return null;
+    
+    // Only show "Syncing" for write operations (POST/DELETE/PUT) to avoid flicker on reads
+    const isWrite = method !== 'GET';
+    if(isWrite) window.updateSyncStatus('syncing');
+    
+    const opts = { method, headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    
+    try {
+        const res = await fetch(`${API_BASE}${endpoint}`, opts);
+        if (res.status === 401) { 
+            localStorage.removeItem('ticktick_token'); 
+            location.reload(); 
+            return null; 
+        }
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : {};
+        
+        // If it was a write operation, show success!
+        if(isWrite) window.updateSyncStatus('success');
+        
+        return data;
+    } catch (e) { 
+        console.error("API Error:", e); 
+        window.updateSyncStatus('error'); // You can implement an error red state if you like
+        return null; 
+    }
+};
 
         const logTaskCompletion = async (task) => {
             if (!auth.currentUser) return;
             try { await addDoc(collection(db, 'users', auth.currentUser.uid, 'task_history'), { taskId: task.id, title: task.title, projectId: task.projectId, projectName: projectMap[task.projectId]?.name || 'Unknown', completedAt: new Date(), originalData: task }); } catch(e) {}
         };
 
+        // --- PASTE THIS HERE ---
+        const saveTaskOrigin = async (taskId, source) => {
+            if (!auth.currentUser || !taskId || source !== 'tasktrackr') return;
+            try {
+                // We use setDoc with the taskId as the document name for easy lookup later
+                await setDoc(doc(db, 'users', auth.currentUser.uid, 'task_origins', taskId), {
+                    source: 'tasktrackr',
+                    createdAt: new Date()
+                });
+            } catch (e) {
+                console.error("Failed to save task origin", e);
+            }
+        };
+        // -----------------------
+
         const fetchHistory = async () => { /* Same as previous */ 
              if (!auth.currentUser) return; showLoader(); try { const q = query(collection(db, 'users', auth.currentUser.uid, 'task_history'), orderBy('completedAt', 'desc'), limit(100)); const querySnapshot = await getDocs(q); historyCache = querySnapshot.docs.map(doc => { const data = doc.data(); const base = data.originalData || {}; return { ...base, id: data.taskId || doc.id, title: data.title || base.title || 'Untitled', projectId: data.projectId || base.projectId || 'inbox', status: 2, completedAt: data.completedAt ? (data.completedAt.toDate ? data.completedAt.toDate() : new Date(data.completedAt)) : new Date(), isHistory: true }; }); renderApp(); } catch (e) { console.error(e); showToast('Error loading history', 'error'); } hideLoader();
         };
 
-        const fetchAllData = async () => {
-    // Removed showLoader() so the page stays interactive
-    
+       // ... inside <script type="module">
+
+const fetchAllData = async () => {
+    // 1. Fetch Projects from TickTick
     const projects = await api('/project');
     if (!projects) return;
 
     projectMap = projects.reduce((acc, p) => ({
         ...acc,
-        [p.id]: {
-            name: p.name,
-            color: p.color
-        }
+        [p.id]: { name: p.name, color: p.color }
     }), {});
 
+    // Ensure Inbox exists
     let inboxId = 'inbox';
     const inboxProj = projects.find(p => p.kind === 'inbox' || p.name === 'Inbox');
     if (inboxProj) inboxId = inboxProj.id;
-    if (!projectMap[inboxId]) projectMap[inboxId] = {
-        name: 'Inbox',
-        color: '#3b82f6'
-    };
+    if (!projectMap[inboxId]) projectMap[inboxId] = { name: 'Inbox', color: '#3b82f6' };
 
     const projectIds = new Set(projects.map(p => p.id));
     projectIds.add(inboxId);
+    
+    // 2. Fetch Tasks from TickTick
     let allActiveTasks = [];
-
     await Promise.all(Array.from(projectIds).map(async (pid) => {
         try {
             const data = await api(`/project/${pid}/data`);
@@ -649,16 +703,42 @@
         } catch (e) {}
     }));
 
+    // 3. Fetch "Origins" from Firebase (The "Source of Truth" for Source)
+    let originsMap = new Set();
+    if (auth.currentUser) {
+        try {
+            // We fetch all IDs that were created in TaskTrackr
+            const originsRef = collection(db, 'users', auth.currentUser.uid, 'task_origins');
+            const originSnaps = await getDocs(originsRef);
+            originSnaps.forEach(doc => {
+                originsMap.add(doc.id); // The doc ID is the TickTick Task ID
+            });
+        } catch (e) { console.error("Error fetching origins:", e); }
+    }
+
+    // 4. Merge Data
     const activeMap = new Map(allActiveTasks.map(t => [t.id, t]));
     const newCache = [];
-    newCache.push(...allActiveTasks);
+    
+    allActiveTasks.forEach(task => {
+        // If this ID exists in our Firebase "task_origins" collection, it's TaskTrackr native.
+        // Otherwise, it defaults to TickTick.
+        if (originsMap.has(task.id)) {
+            task.source = 'tasktrackr';
+        } else {
+            task.source = 'ticktick'; 
+        }
+        newCache.push(task);
+    });
 
+    // Retain completed tasks from history cache if needed
     taskCache.forEach(t => {
         if (t.status === 2 && !activeMap.has(t.id)) {
             newCache.push(t);
         }
     });
 
+    // Save and Render
     taskCache = Array.from(new Map(newCache.map(item => [item.id, item])).values());
     localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
 
@@ -757,7 +837,46 @@
 
         /* Drag, Drop, Quick Add, Filters... (Same logic) */
         window.handleDragStart = (e, taskId) => { /*...*/ const taskEl = e.target.closest('.card'); if (!selectedTasks.has(taskId)) { if(!e.shiftKey) { selectedTasks.clear(); document.querySelectorAll('.card.selected').forEach(c => { c.classList.remove('selected'); c.querySelector('.fa-circle-check').className = 'fa-regular fa-circle text-gray-500 text-xl group-hover:text-gray-300 transition-colors'; }); } selectedTasks.add(taskId); taskEl.classList.add('selected'); const icon = taskEl.querySelector('.fa-circle, .fa-circle-check'); if(icon) icon.className = 'fa-solid fa-circle-check text-blue-400 text-xl drop-shadow-md'; updateBulkToolbar(); } taskEl.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; const tasksData = JSON.stringify(Array.from(selectedTasks)); e.dataTransfer.setData('text/plain', tasksData); };
-        window.handleQuickAdd = async (e) => { /*...*/ if (e.key === 'Enter') { const input = document.getElementById('quick-add-input'); const title = input.value.trim(); if (!title) return; input.disabled = true; let pid = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; if (currentState.projectId !== 'all') { pid = currentState.projectId; } let newDateISO = null; const now = new Date(); if (currentState.filter === 'today' || currentState.filter === 'focus') { newDateISO = now.toISOString(); } else if (currentState.filter === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } const payload = { title: title, projectId: pid, priority: 0 }; if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } try { await api('/task', 'POST', payload); input.value = ''; showToast('Task added'); fetchAllData(); } catch (err) { showToast('Failed to add task', 'error'); } finally { input.disabled = false; input.focus(); } } };
+        window.handleQuickAdd = async (e) => {
+    if (e.key === 'Enter') {
+        const input = document.getElementById('quick-add-input');
+        const title = input.value.trim();
+        if (!title) return;
+        
+        input.disabled = true;
+        // ... (existing project ID logic) ...
+        let pid = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; 
+        if (currentState.projectId !== 'all') { pid = currentState.projectId; } 
+        
+        // ... (existing date logic) ...
+        let newDateISO = null; 
+        const now = new Date(); 
+        if (currentState.filter === 'today' || currentState.filter === 'focus') { newDateISO = now.toISOString(); } 
+        else if (currentState.filter === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
+        
+        const payload = { title: title, projectId: pid, priority: 0 }; 
+        if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } 
+        
+        try {
+            // 1. Create in TickTick
+            const newTask = await api('/task', 'POST', payload);
+            
+            // 2. Save Origin to Firebase (if successful)
+            if (newTask && newTask.id) {
+                await saveTaskOrigin(newTask.id, 'tasktrackr');
+            }
+
+            input.value = '';
+            showToast('Task added');
+            fetchAllData();
+        } catch (err) {
+            showToast('Failed to add task', 'error');
+        } finally {
+            input.disabled = false;
+            input.focus();
+        }
+    }
+};
         const initDropZones = () => { /*...*/ const filters = document.querySelectorAll('.filter-chip'); filters.forEach(btn => { let action = btn.getAttribute('data-drop-action'); if(!action) { const text = btn.innerText.toLowerCase(); if (text.includes('today') || text.includes('focus')) action = 'today'; else if (text.includes('tomorrow')) action = 'tomorrow'; else if (text.includes('inbox')) action = 'inbox'; } if (!action) return; btn.setAttribute('data-drop-action', action); btn.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; btn.classList.add('drag-over'); }); btn.addEventListener('dragleave', (e) => { btn.classList.remove('drag-over'); }); btn.addEventListener('drop', (e) => { e.preventDefault(); btn.classList.remove('drag-over'); const actionType = btn.getAttribute('data-drop-action'); document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging')); if (actionType) { window.bulkAction(actionType); } }); }); };
         document.addEventListener('dragend', () => { document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging')); });
 
@@ -808,6 +927,21 @@
             menu.classList.remove('hidden');
             menu.classList.add('flex');
         };
+
+        // --- ADD THESE NEW FUNCTIONS ---
+
+const getTaskSource = (task) => {
+    // Returns the explicit source or defaults to 'ticktick'
+    return task.source || (task.kind === 'google' ? 'google' : 'ticktick');
+};
+
+const getSourceConfig = (source) => {
+    switch(source) {
+        case 'google': return { label: 'Google Tasks', icon: 'fa-brands fa-google', color: '#4285F4', bg: '#4285F415' };
+        case 'tasktrackr': return { label: 'TaskTrackr', icon: 'fa-solid fa-check-double', color: '#3b82f6', bg: '#8b5cf615' };
+        case 'ticktick': default: return { label: 'TickTick', icon: 'fa-solid fa-check', color: '#8b5cf6', bg: '#3b82f615' };
+    }
+};
 
         window.handleContextAction = async (action) => {
             if (!contextMenuTaskId) return;
@@ -888,12 +1022,17 @@
     const project = projectMap[task.projectId] || { name: 'Unknown', color: '#4b5563' }; 
     const pColor = getProjectColor(task.projectId); 
     const projectBadge = `<span class="flex items-center text-gray-300 px-2 py-0.5 rounded border border-gray-700 whitespace-nowrap" style="background-color: ${pColor}20; border-color: ${pColor}40;"><i class="fa-solid fa-layer-group mr-1 opacity-50" style="color:${pColor}"></i> ${escapeHtml(project.name)}</span>`;
+    // INSERT THIS CODE BELOW IT:
+const source = getTaskSource(task);
+const srcCfg = getSourceConfig(source);
+const sourceBadge = `<span class="flex items-center justify-center w-5 h-5 rounded-full border border-gray-700/50" style="background-color: ${srcCfg.bg};" title="Source: ${srcCfg.label}"><i class="${srcCfg.icon} text-[10px]" style="color: ${srcCfg.color}"></i></span>`;
+
     const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); 
     
     // UPDATED CLICK HANDLER
     const clickHandler = `window.handleCardClick(event, '${task.id}', ${!!task.isHistory})`;
     
-    return `<div class="card p-0 rounded-xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass}" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="${clickHandler}" oncontextmenu="window.handleContextMenu(event, '${task.id}')"> <div class="project-color-strip" style="background-color: ${pColor}"></div> <div class="w-12 flex items-center justify-center cursor-pointer border-r border-white/5 hover:bg-white/5 transition-colors flex-shrink-0 ml-1 z-20" onclick="window.completeTask('${task.projectId}', '${task.id}', null, event)" title="Mark Completed"> ${completeIcon} </div> <div class="card-inner flex-grow p-4 min-w-0"> <div class="task-details-wrapper"> <div class="flex items-start gap-3 flex-grow min-w-0"> <div class="pt-1 flex-shrink-0 relative cursor-pointer z-20" onclick="window.toggleTaskSelection('${task.id}', event)" title="Select Task"> ${selectIcon} ${isRecurring ? '<i class="fa-solid fa-rotate-right text-[10px] absolute -right-1 -bottom-1 bg-gray-800 rounded-full px-0.5 text-yellow-500"></i>' : ''} </div> <div class="min-w-0 flex-grow"> <h3 class="font-bold text-gray-100 leading-tight mb-1 truncate ${task.status===2?'line-through text-gray-500':''}">${escapeHtml(task.title)}</h3> ${task.content ? `<p class="desc-preview text-xs text-gray-500 line-clamp-1 mb-2">${escapeHtml(task.content)}</p>` : ''} </div> </div> <div class="card-meta flex flex-wrap items-center gap-2 text-xs ml-8 mt-2 sm:ml-0 sm:mt-0"> ${dateBadgeHtml} ${projectBadge} </div> </div> </div></div>`;
+    return `<div class="card p-0 rounded-xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass}" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="${clickHandler}" oncontextmenu="window.handleContextMenu(event, '${task.id}')"> <div class="project-color-strip" style="background-color: ${pColor}"></div> <div class="w-12 flex items-center justify-center cursor-pointer border-r border-white/5 hover:bg-white/5 transition-colors flex-shrink-0 ml-1 z-20" onclick="window.completeTask('${task.projectId}', '${task.id}', null, event)" title="Mark Completed"> ${completeIcon} </div> <div class="card-inner flex-grow p-4 min-w-0"> <div class="task-details-wrapper"> <div class="flex items-start gap-3 flex-grow min-w-0"> <div class="pt-1 flex-shrink-0 relative cursor-pointer z-20" onclick="window.toggleTaskSelection('${task.id}', event)" title="Select Task"> ${selectIcon} ${isRecurring ? '<i class="fa-solid fa-rotate-right text-[10px] absolute -right-1 -bottom-1 bg-gray-800 rounded-full px-0.5 text-yellow-500"></i>' : ''} </div> <div class="min-w-0 flex-grow"> <h3 class="font-bold text-gray-100 leading-tight mb-1 truncate ${task.status===2?'line-through text-gray-500':''}">${escapeHtml(task.title)}</h3> ${task.content ? `<p class="desc-preview text-xs text-gray-500 line-clamp-1 mb-2">${escapeHtml(task.content)}</p>` : ''} </div> </div> <div class="card-meta flex flex-wrap items-center gap-2 text-xs ml-8 mt-2 sm:ml-0 sm:mt-0"> ${dateBadgeHtml} ${projectBadge} ${sourceBadge} </div> </div> </div></div>`;
 };
 
         window.toggleSelectionMode = () => { isSelectionMode = !isSelectionMode; renderApp(); };
@@ -963,8 +1102,65 @@ const renderProjectsManager = () => {
             hideLoader(); 
         };
         window.addChecklistItem = (text = '') => { /* Same */ const container = document.getElementById('checklist-builder'); const div = document.createElement('div'); div.className = 'flex gap-2 items-center'; div.innerHTML = `<i class="fa-regular fa-square text-gray-500"></i><input type="text" value="${escapeHtml(text)}" class="checklist-input w-full bg-transparent border-b border-gray-700 focus:border-blue-500 outline-none text-sm py-1" placeholder="Subtask..."><button type="button" onclick="this.parentElement.remove()" class="text-gray-500 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>`; container.appendChild(div); div.querySelector('input').focus(); };
-        window.submitTaskForm = async () => { /* Same */ const id = document.getElementById('modal-task-id').value; const checklistItems = []; document.querySelectorAll('.checklist-input').forEach(input => { if(input.value.trim()) checklistItems.push({ title: input.value.trim(), status: 0 }); }); const payload = { title: document.getElementById('modal-title-input').value, content: document.getElementById('modal-desc-input').value, projectId: document.getElementById('modal-project-input').value, priority: parseInt(document.getElementById('modal-priority-input').value), isAllDay: document.getElementById('modal-allday-input').checked, tags: document.getElementById('modal-tags-input').value.split(',').map(t=>t.trim()).filter(t=>t), repeatFlag: document.getElementById('modal-repeat-input').value || null, items: checklistItems }; const dueVal = document.getElementById('modal-due-date').value; if(dueVal) payload.dueDate = new Date(dueVal).toISOString().replace(/\.\d{3}Z$/, '+0000'); const startVal = document.getElementById('modal-start-date').value; if(startVal) payload.startDate = new Date(startVal).toISOString().replace(/\.\d{3}Z$/, '+0000'); showLoader(); try { if(id) await api(`/task/${id}`, 'POST', payload); else await api('/task', 'POST', payload); showToast('Success!'); els.modal.classList.add('hidden'); window.closeSidePane(); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); };
-        window.openModal = (isEdit, taskId = null) => { /* Same */ const modal = document.getElementById('task-modal'); const pSelect = document.getElementById('modal-project-input'); const container = document.getElementById('checklist-builder'); container.innerHTML = ''; pSelect.innerHTML = Object.entries(projectMap).map(([id, p]) => `<option value="${id}">${escapeHtml(p.name)}</option>`).join(''); if(!Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox')) { pSelect.innerHTML = `<option value="inbox">Inbox</option>` + pSelect.innerHTML; } if (isEdit && taskId) { const task = taskCache.find(t => t.id === taskId); document.getElementById('modal-title').textContent = "Edit Task"; document.getElementById('modal-task-id').value = task.id; document.getElementById('modal-title-input').value = task.title; document.getElementById('modal-desc-input').value = task.content || ''; document.getElementById('modal-tags-input').value = (task.tags || []).join(', '); document.getElementById('modal-priority-input').value = task.priority || 0; document.getElementById('modal-project-input').value = task.projectId; document.getElementById('modal-allday-input').checked = !!task.isAllDay; document.getElementById('modal-repeat-input').value = task.repeatFlag || ""; if (task.items) task.items.forEach(item => window.addChecklistItem(item.title)); const fmtDate = (iso) => iso ? new Date(new Date(iso) - (new Date(iso).getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : ''; document.getElementById('modal-start-date').value = fmtDate(task.startDate); document.getElementById('modal-due-date').value = fmtDate(task.dueDate); } else { document.getElementById('modal-title').textContent = "New Task"; document.getElementById('modal-task-id').value = ''; document.getElementById('modal-title-input').value = ''; document.getElementById('modal-desc-input').value = ''; document.getElementById('modal-tags-input').value = ''; document.getElementById('modal-start-date').value = ''; document.getElementById('modal-due-date').value = ''; document.getElementById('modal-priority-input').value = 0; document.getElementById('modal-allday-input').checked = false; document.getElementById('modal-repeat-input').value = ""; } modal.classList.remove('hidden'); };
+        window.submitTaskForm = async () => {
+    const id = document.getElementById('modal-task-id').value;
+    // ... (existing checklist logic) ...
+    const checklistItems = []; 
+    document.querySelectorAll('.checklist-input').forEach(input => { if(input.value.trim()) checklistItems.push({ title: input.value.trim(), status: 0 }); }); 
+    
+    // ... (existing payload construction) ...
+    const payload = { 
+        title: document.getElementById('modal-title-input').value, 
+        content: document.getElementById('modal-desc-input').value, 
+        projectId: document.getElementById('modal-project-input').value, 
+        priority: parseInt(document.getElementById('modal-priority-input').value), 
+        // We DON'T send 'source' to TickTick API, it will reject it or ignore it.
+        isAllDay: document.getElementById('modal-allday-input').checked, 
+        tags: document.getElementById('modal-tags-input').value.split(',').map(t=>t.trim()).filter(t=>t), 
+        repeatFlag: document.getElementById('modal-repeat-input').value || null, 
+        items: checklistItems 
+    }; 
+    
+    // ... (existing date logic) ...
+    const dueVal = document.getElementById('modal-due-date').value; 
+    if(dueVal) payload.dueDate = new Date(dueVal).toISOString().replace(/\.\d{3}Z$/, '+0000'); 
+    const startVal = document.getElementById('modal-start-date').value; 
+    if(startVal) payload.startDate = new Date(startVal).toISOString().replace(/\.\d{3}Z$/, '+0000'); 
+    
+    // Capture the source selected in the modal
+    const selectedSource = document.getElementById('modal-source-input').value;
+
+    showLoader(); 
+    try {
+        let savedTask;
+        if(id) {
+            savedTask = await api(`/task/${id}`, 'POST', payload);
+        } else {
+            savedTask = await api('/task', 'POST', payload);
+        }
+        
+        // Save Origin to Firebase
+        if (savedTask && savedTask.id && selectedSource === 'tasktrackr') {
+             await saveTaskOrigin(savedTask.id, 'tasktrackr');
+        }
+
+        showToast('Success!'); 
+        els.modal.classList.add('hidden'); 
+        window.closeSidePane(); 
+        fetchAllData(); 
+    } catch(e) { 
+        showToast('Error', 'error'); 
+    } 
+    hideLoader(); 
+};
+
+        window.openModal = (isEdit, taskId = null) => { /* Same */ const modal = document.getElementById('task-modal'); const pSelect = document.getElementById('modal-project-input'); const container = document.getElementById('checklist-builder'); container.innerHTML = ''; pSelect.innerHTML = Object.entries(projectMap).map(([id, p]) => `<option value="${id}">${escapeHtml(p.name)}</option>`).join(''); if(!Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox')) { pSelect.innerHTML = `<option value="inbox">Inbox</option>` + pSelect.innerHTML; } if (isEdit && taskId) { const task = taskCache.find(t => t.id === taskId); document.getElementById('modal-title').textContent = "Edit Task"; document.getElementById('modal-task-id').value = task.id; document.getElementById('modal-title-input').value = task.title; document.getElementById('modal-desc-input').value = task.content || ''; document.getElementById('modal-tags-input').value = (task.tags || []).join(', '); 
+        document.getElementById('modal-priority-input').value = task.priority || 0;
+        document.getElementById('modal-source-input').value = getTaskSource(task); 
+        document.getElementById('modal-project-input').value = task.projectId; document.getElementById('modal-allday-input').checked = !!task.isAllDay; document.getElementById('modal-repeat-input').value = task.repeatFlag || ""; if (task.items) task.items.forEach(item => window.addChecklistItem(item.title)); const fmtDate = (iso) => iso ? new Date(new Date(iso) - (new Date(iso).getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : ''; document.getElementById('modal-start-date').value = fmtDate(task.startDate); document.getElementById('modal-due-date').value = fmtDate(task.dueDate); } else { document.getElementById('modal-title').textContent = "New Task"; document.getElementById('modal-task-id').value = ''; document.getElementById('modal-title-input').value = ''; document.getElementById('modal-desc-input').value = ''; document.getElementById('modal-tags-input').value = ''; document.getElementById('modal-start-date').value = ''; document.getElementById('modal-due-date').value = ''; 
+        document.getElementById('modal-priority-input').value = 0; 
+        document.getElementById('modal-source-input').value = 'ticktick';
+        document.getElementById('modal-allday-input').checked = false; document.getElementById('modal-repeat-input').value = ""; } modal.classList.remove('hidden'); };
 
         /* Pomo, Keydown, Helper functions */
         let pomoInterval; let pomoSeconds = 25 * 60; let isPomoRunning = false;
@@ -1079,7 +1275,14 @@ window.stopRepeating = async (taskId) => { if(!confirm("Stop this task from repe
         const renderKanban = (tasks) => { const cols = { 5: { title: 'High Priority', items: [] }, 3: { title: 'Medium Priority', items: [] }, 1: { title: 'Low Priority', items: [] }, 0: { title: 'No Priority', items: [] } }; tasks.forEach(t => { if(cols[t.priority]) cols[t.priority].items.push(t); else cols[0].items.push(t); }); let html = `<div class="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-180px)] px-2">`; [5, 3, 1, 0].forEach(p => { const col = cols[p]; html += `<div class="kanban-col"><div class="kanban-header"><span>${col.title}</span><span class="bg-gray-700 px-2 rounded-full text-xs">${col.items.length}</span></div><div class="kanban-body space-y-2" id="col-${p}" data-priority="${p}">${col.items.map(renderTaskCard).join('')}</div></div>`; }); html += `</div>`; els.content.innerHTML = html; setTimeout(() => { [5, 3, 1, 0].forEach(p => { new Sortable(document.getElementById(`col-${p}`), { group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', onEnd: async (evt) => { const taskId = evt.item.dataset.taskId; const newPriority = parseInt(evt.to.dataset.priority); if (newPriority !== parseInt(evt.from.dataset.priority)) { const task = taskCache.find(t => t.id === taskId); showLoader(); await api(`/task/${taskId}`, 'POST', { ...task, priority: newPriority }); hideLoader(); task.priority = newPriority; } } }); }); }, 100); };
         const renderCalendar = (tasks) => { const date = currentCalendarDate; const year = date.getFullYear(); const month = date.getMonth(); const monthName = date.toLocaleString('default', { month: 'long' }); const tasksByDate = {}; tasks.forEach(t => { if(!t.dueDate) return; const dateKey = t.dueDate.split('T')[0]; if(!tasksByDate[dateKey]) tasksByDate[dateKey] = []; tasksByDate[dateKey].push(t); }); const firstDay = new Date(year, month, 1).getDay(); const daysInMonth = new Date(year, month + 1, 0).getDate(); const todayKey = new Date().toISOString().split('T')[0]; let html = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">${monthName} ${year}</h2><div class="flex gap-2"><button onclick="window.jumpToToday()" class="p-2 px-3 bg-gray-800 rounded hover:bg-gray-700 text-xs font-bold mr-2">Today</button><button onclick="window.changeMonth(-1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-left"></i></button><button onclick="window.changeMonth(1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-bold text-gray-500 uppercase"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div><div class="calendar-grid">`; for(let i=0; i<firstDay; i++) html += `<div class="calendar-day bg-gray-900/50 pointer-events-none"></div>`; for(let d=1; d<=daysInMonth; d++) { const dateKey = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const dayTasks = tasksByDate[dateKey] || []; const dots = dayTasks.slice(0, 5).map(t => { let color = t.status===2 ? 'bg-green-500' : (t.priority===5 ? 'bg-red-500' : 'bg-blue-500'); return `<span class="calendar-dot ${color}" title="${escapeHtml(t.title)}"></span>`; }).join(''); html += `<div class="calendar-day ${dateKey === todayKey ? 'today' : ''}" onclick="window.showDayTasks('${dateKey}')" data-date="${dateKey}"><div class="flex justify-between items-start mb-1 pointer-events-none day-label"><span class="text-sm font-bold ${dateKey === todayKey ? 'text-[var(--primary)]' : 'text-gray-400'}">${d}</span>${dayTasks.length > 0 ? `<span class="text-[10px] text-gray-500 font-mono">${dayTasks.length}</span>` : ''}</div><div class="flex flex-wrap content-start h-full pb-4 pointer-events-none task-dots-container">${dots}</div></div>`; } html += `</div>`; els.content.innerHTML = html; window.dayTasksCache = tasksByDate; document.querySelectorAll('.calendar-day[data-date]').forEach(el => { el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag-over'); }); el.addEventListener('dragleave', () => el.classList.remove('drag-over')); el.addEventListener('drop', (e) => { e.preventDefault(); el.classList.remove('drag-over'); window.bulkAction('specific', el.dataset.date); }); }); };
         window.jumpToToday = () => { currentCalendarDate = new Date(); renderApp(); }; 
-        window.openSidePane = (taskId, isFromHistory = false) => { currentSidePaneTaskId = taskId; const task = isFromHistory ? historyCache.find(t => t.id === taskId) : taskCache.find(t => t.id === taskId); if (!task) return; const titleEl = document.getElementById('sp-title-edit'); titleEl.value = task.title; titleEl.style.height = 'auto'; titleEl.style.height = titleEl.scrollHeight + 'px'; const descEl = document.getElementById('sp-desc'); descEl.textContent = task.content || ""; const pName = projectMap[task.projectId]?.name || 'Unknown'; const spProj = document.getElementById('sp-project'); spProj.textContent = pName; spProj.className = "text-[10px] font-bold uppercase tracking-widest mb-1 block"; spProj.style.color = getProjectColor(task.projectId); document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date'; const pCont = document.getElementById('sp-priority-container'); if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; else pCont.textContent = "None"; const tCont = document.getElementById('sp-tags-container'); tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); const compBtn = document.getElementById('sp-complete-btn'); const stopBtn = document.getElementById('sp-stop-repeat-btn'); if(isRecurring) { document.getElementById('sp-recurring-container').classList.remove('hidden'); stopBtn.classList.remove('hidden'); stopBtn.onclick = () => window.stopRepeating(task.id); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; } else { compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } else { document.getElementById('sp-recurring-container').classList.add('hidden'); stopBtn.classList.add('hidden'); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; compBtn.onclick = null; } else { compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } const spCheck = document.getElementById('sp-checkbox'); spCheck.checked = task.status === 2; spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); window.renderSidePaneChecklist(task); document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); }; document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); const overlay = document.getElementById('side-pane-overlay'); const pane = document.getElementById('side-pane'); pane.classList.remove('hidden'); if (window.innerWidth >= 1024) { pane.classList.add('open'); } else { overlay.classList.remove('hidden'); void overlay.offsetWidth; overlay.classList.remove('opacity-0'); pane.classList.add('open'); } };
+        window.openSidePane = (taskId, isFromHistory = false) => { currentSidePaneTaskId = taskId; const task = isFromHistory ? historyCache.find(t => t.id === taskId) : taskCache.find(t => t.id === taskId); if (!task) return; const titleEl = document.getElementById('sp-title-edit'); titleEl.value = task.title; titleEl.style.height = 'auto'; titleEl.style.height = titleEl.scrollHeight + 'px'; const descEl = document.getElementById('sp-desc'); descEl.textContent = task.content || ""; const pName = projectMap[task.projectId]?.name || 'Unknown'; const spProj = document.getElementById('sp-project'); spProj.textContent = pName; spProj.className = "text-[10px] font-bold uppercase tracking-widest mb-1 block"; spProj.style.color = getProjectColor(task.projectId); document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date'; 
+        const pCont = document.getElementById('sp-priority-container'); 
+        // INSERT THIS CODE BELOW IT:
+const spSource = document.getElementById('sp-source');
+const src = getTaskSource(task);
+const srcCfg = getSourceConfig(src);
+spSource.innerHTML = `<i class="${srcCfg.icon}" style="color: ${srcCfg.color}"></i> ${srcCfg.label}`;
+        if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; else pCont.textContent = "None"; const tCont = document.getElementById('sp-tags-container'); tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); const compBtn = document.getElementById('sp-complete-btn'); const stopBtn = document.getElementById('sp-stop-repeat-btn'); if(isRecurring) { document.getElementById('sp-recurring-container').classList.remove('hidden'); stopBtn.classList.remove('hidden'); stopBtn.onclick = () => window.stopRepeating(task.id); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; } else { compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } else { document.getElementById('sp-recurring-container').classList.add('hidden'); stopBtn.classList.add('hidden'); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; compBtn.onclick = null; } else { compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } const spCheck = document.getElementById('sp-checkbox'); spCheck.checked = task.status === 2; spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); window.renderSidePaneChecklist(task); document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); }; document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); const overlay = document.getElementById('side-pane-overlay'); const pane = document.getElementById('side-pane'); pane.classList.remove('hidden'); if (window.innerWidth >= 1024) { pane.classList.add('open'); } else { overlay.classList.remove('hidden'); void overlay.offsetWidth; overlay.classList.remove('opacity-0'); pane.classList.add('open'); } };
         window.renderSidePaneChecklist = (task) => { const listEl = document.getElementById('sp-checklist-items'); if(!listEl) return; listEl.innerHTML = ''; if(task.items && task.items.length > 0) { task.items.forEach((item, idx) => { const icon = item.status === 1 ? 'fa-square-check text-green-500' : 'fa-square text-gray-500'; const textClass = item.status === 1 ? 'line-through text-gray-600' : 'text-gray-300'; listEl.innerHTML += `<div class="flex items-center gap-3 p-2 bg-gray-800/40 rounded-lg cursor-pointer hover:bg-gray-800 transition" onclick="window.toggleSubtask('${task.id}', ${idx})"><i class="fa-regular ${icon}"></i><span class="text-sm ${textClass}">${escapeHtml(item.title)}</span></div>`; }); } else { listEl.innerHTML = '<div class="text-xs text-gray-600 italic">No subtasks</div>'; } };
         window.toggleSubtask = async (taskId, itemIndex) => { const task = taskCache.find(t => t.id === taskId); if(!task || !task.items) return; const item = task.items[itemIndex]; const oldStatus = item.status; item.status = oldStatus === 1 ? 0 : 1; window.renderSidePaneChecklist(task); renderApp(); try { await api(`/task/${taskId}`, 'POST', { title: task.title, projectId: task.projectId, items: task.items }); } catch(e) { item.status = oldStatus; window.renderSidePaneChecklist(task); showToast('Subtask update failed', 'error'); } };
         window.closeSidePane = () => { const pane = document.getElementById('side-pane'); pane.classList.remove('open'); document.getElementById('side-pane-overlay').classList.add('opacity-0'); setTimeout(() => document.getElementById('side-pane-overlay').classList.add('hidden'), 300); };
