@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.73.0-alpha",
+    date: "2025-12-26",
+    changes: [
+        "In Hub: Implemented a new, distinct colour palette for all apps and tools to improve visual separation, while preserving specific brand colours for VidTrackr, TaskTrackr, and MediManagr.",
+        "In Hub: Added a 'Smart Welcome' header that personalizes the greeting by fetching the user's Display Name directly from their profile settings.",
+        "In Hub: Introduced a real-time Search Bar at the top of the app list, allowing users to instantly filter tools by name.",
+        "In Hub: Added a live Clock & Date widget to the main dashboard header."
+    ]
+},
+    {
     version: "v9.72.0-alpha",
     date: "2025-12-26",
     changes: [
