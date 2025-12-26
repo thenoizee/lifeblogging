@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     
-    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -426,6 +426,9 @@
                      <label for="food-search">Search Food or Scan Barcode</label>
                      <div class="flex gap-2">
                          <input id="food-search" type="text" placeholder="e.g., Apple or 3017620422003">
+                         
+                         <input type="file" id="barcode-file-input" accept="image/*" class="hidden">
+                         
                          <button id="scan-barcode-btn" class="secondary-button px-4" title="Scan Barcode"><i class="fa-solid fa-barcode"></i></button>
                          <button id="search-btn" class="main-button px-4"><i class="fa-solid fa-search"></i></button>
                      </div>
@@ -480,10 +483,6 @@
              <label for="food-name">Food Name</label>
              <input id="food-name" type="text" placeholder="e.g., Chicken Breast">
         </div>
-                    <div class="input-group md:col-span-2">
-                        <label for="food-name">Food Name</label>
-                        <input id="food-name" type="text" placeholder="e.g., Chicken Breast">
-                    </div>
                      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:col-span-2">
                         <div class="input-group">
                             <label for="quantity-amount">Amount</label>
@@ -2505,41 +2504,102 @@
           }
       });
 
-      // --- NEW: Barcode Scanner Listeners ---
+      // --- UPDATED: Barcode Scanner Logic ---
+      
+      // Simple mobile detection
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+      // Optional: Update button icon on desktop to indicate upload
+      if (!isMobile) {
+          const scanBtn = document.getElementById('scan-barcode-btn');
+          if (scanBtn) {
+              scanBtn.innerHTML = '<i class="fa-solid fa-file-arrow-up"></i>';
+              scanBtn.title = "Upload Barcode Image";
+          }
+      }
+
       document.getElementById('scan-barcode-btn').addEventListener('click', () => {
-            document.getElementById('barcode-scanner-container').classList.remove('hidden');
-            if (!html5QrcodeScanner) {
-                html5QrcodeScanner = new Html5QrcodeScanner(
-                    "barcode-scanner-reader", 
-                    { fps: 10, qrbox: { width: 250, height: 250 } }, 
-                    false // verbose
-                );
+            if (!isMobile) {
+                // DESKTOP: Trigger file upload
+                document.getElementById('barcode-file-input').click();
+                return;
             }
+
+            // MOBILE: Use Camera Scanner
+            const container = document.getElementById('barcode-scanner-container');
+            container.classList.remove('hidden');
+            
+            // Cleanup previous instance if exists
+            if (html5QrcodeScanner) {
+                try { html5QrcodeScanner.clear(); } catch (e) {}
+                html5QrcodeScanner = null;
+            }
+
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "barcode-scanner-reader", 
+                { fps: 10, qrbox: { width: 250, height: 250 } }, 
+                false
+            );
             html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-        });
+      });
 
-        document.getElementById('stop-barcode-scanner-btn').addEventListener('click', () => {
+      document.getElementById('stop-barcode-scanner-btn').addEventListener('click', async () => {
             if (html5QrcodeScanner) {
-                html5QrcodeScanner.stop().then(() => {
-                    document.getElementById('barcode-scanner-container').classList.add('hidden');
-                }).catch(err => console.warn('Scanner stop failed', err));
+                try {
+                    await html5QrcodeScanner.stop();
+                    html5QrcodeScanner.clear();
+                    html5QrcodeScanner = null;
+                } catch (err) { console.warn('Scanner stop failed', err); }
             }
-        });
-        
-        const onScanSuccess = (decodedText, decodedResult) => {
+            document.getElementById('barcode-scanner-container').classList.add('hidden');
+      });
+
+      // Find the file input listener
+      document.getElementById('barcode-file-input').addEventListener('change', async (e) => {
+            if (e.target.files.length === 0) return;
+            
+            // 1. Safety Check: Ensure library is defined
+            if (typeof Html5Qrcode === "undefined") {
+                console.warn("Html5Qrcode library not loaded.");
+                return;
+            }
+
+            const file = e.target.files[0];
+            const html5QrCode = new Html5Qrcode("barcode-scanner-reader");
+            
+            try {
+                const decodedText = await html5QrCode.scanFile(file, false);
+                onScanSuccess(decodedText, null);
+            } catch (err) {
+                // 2. SILENCE THE ERROR:
+                // Remove 'console.error(err)' so it doesn't clutter your console.
+                // We keep the alert so the user knows it failed.
+                
+                // console.error(err);  <-- DELETED/COMMENTED OUT
+                alert("Could not detect a barcode in this image. Please try a clearer photo.");
+            }
+            
+            e.target.value = '';
+      });
+
+      const onScanSuccess = async (decodedText, decodedResult) => {
+            // Stop camera if running
+            if (html5QrcodeScanner) {
+                try {
+                    await html5QrcodeScanner.stop();
+                    html5QrcodeScanner.clear();
+                    html5QrcodeScanner = null;
+                } catch (err) {}
+            }
+            document.getElementById('barcode-scanner-container').classList.add('hidden');
+
             document.getElementById('food-search').value = decodedText;
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.stop().then(() => {
-                    document.getElementById('barcode-scanner-container').classList.add('hidden');
-                }).catch(err => console.warn('Scanner stop failed', err));
-            }
-            searchFood();
-        };
+            searchFood(true);
+      };
 
-        const onScanFailure = (error) => {
-            // This can be noisy; keep it quiet unless debugging
-            // console.warn(`Scan failure: ${error}`);
-        };
+      const onScanFailure = (error) => {
+            // Keep empty to avoid console spam
+      };
 
       // --- Other Listeners ---
       document.getElementById('search-btn').addEventListener('click', () => searchFood(true));

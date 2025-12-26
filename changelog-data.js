@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.70.0-alpha",
+    date: "2025-12-26",
+    changes: [
+        "In FoodTrackr: Fixed critical Barcode Scanner bugs where the camera would not close or restart correctly by implementing proper instance cleanup and lifecycle management.",
+        "In FoodTrackr: Implemented device detection for the scanner; mobile users get the camera UI, while desktop users now see a 'Upload Image' button to scan barcode files.",
+        "In FoodTrackr: Updated the barcode scanning library version and added safety checks to prevent console errors when a code is not immediately detected."
+    ]
+    },
+    {
     version: "v9.69.0-alpha",
     date: "2025-12-26",
     changes: [
@@ -51,7 +60,7 @@ export const changelogData = [
     changes: [
         "In VidTrackr: Implemented persistent, cross-device Trakt authentication by syncing OAuth tokens to the Firebase user profile (similar to TaskTrackr).",
         "In VidTrackr: Added a dedicated `callback.html` handler to intercept Trakt tokens and save them directly to the database.",
-        "In Account: Added a 'Trakt Integration' section to centrally Connect/Disconnect the service and view connection status.",
+        "In Account Page: Added a 'Trakt Integration' section to centrally Connect/Disconnect the service and view connection status.",
         "In VidTrackr: Updated dashboard initialization to prioritize database tokens over local storage and gracefully handle 'logged in but not connected' states."
     ]
     },
@@ -67,7 +76,7 @@ export const changelogData = [
     version: "v9.63.0-alpha",
     date: "2025-12-23",
     changes: [
-        "In Account: Introduced a new 'Profile' section in settings, allowing users to set a custom 'Display Name' that is used system-wide.",
+        "In Account Page: Introduced a new 'Profile' section in settings, allowing users to set a custom 'Display Name' that is used system-wide.",
         "In Dashboard: The greeting message now dynamically uses the user's 'Display Name' (e.g., 'Hello, XYZ!') instead of the email address, with real-time updates."
     ]
     },
@@ -94,14 +103,14 @@ export const changelogData = [
     version: "v9.60.2-alpha",
     date: "2025-12-22",
     changes: [
-        "In Account: Callback auth bug fix 2."
+        "In Account Page: Callback auth bug fix 2."
     ]
     },
     {
     version: "v9.60.1-alpha",
     date: "2025-12-22",
     changes: [
-        "In Account: Callback auth bug fix."
+        "In Account Page: Callback auth bug fix."
     ]
     },
     {
@@ -110,8 +119,8 @@ export const changelogData = [
     changes: [ 
         "In TaskTrackr: Implemented a centralized `callback.html` to handle OAuth authentication redirects, ensuring consistent login behavior across the application.",
         "In TaskTrackr: Updated the login flow to preserve the user's session state, automatically redirecting them back to their previous page (Hub or Account) after connecting.",
-        "In Account: Integrated the new authentication callback to allow users to connect or disconnect their TickTick account directly from the settings interface.",
-        "In Account: Added logic to verify and display the TickTick connection status using the shared token stored in Firestore."
+        "In Account Page: Integrated the new authentication callback to allow users to connect or disconnect their TickTick account directly from the settings interface.",
+        "In Account Page: Added logic to verify and display the TickTick connection status using the shared token stored in Firestore."
     ]
     },
     {
