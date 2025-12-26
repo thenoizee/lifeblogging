@@ -464,8 +464,22 @@
                  <button id="manual-entry-btn"><i class="fa-solid fa-pencil"></i> Manual Entry</button>
              </div>
 
-             <div id="entry-form-section" class="border-t pt-6 mt-6 hidden"> <h3 class="text-xl font-semibold mb-3 text-left">Selected Food / Manual Entry</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <div id="entry-form-section" class="border-t pt-6 mt-6 hidden">
+    <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-semibold text-left">Log Item</h3>
+        <button id="back-to-search-btn" class="secondary-button text-sm py-1 px-3 hidden">
+            <i class="fa-solid fa-arrow-left"></i> Back to Search
+        </button>
+    </div>
+
+    <div id="selected-product-display" class="hidden mb-6 bg-[var(--input-bg-color)] p-4 rounded-lg flex items-center gap-4 border border-[var(--border-color)]">
+        </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="input-group md:col-span-2">
+             <label for="food-name">Food Name</label>
+             <input id="food-name" type="text" placeholder="e.g., Chicken Breast">
+        </div>
                     <div class="input-group md:col-span-2">
                         <label for="food-name">Food Name</label>
                         <input id="food-name" type="text" placeholder="e.g., Chicken Breast">
@@ -742,13 +756,16 @@
       let macrosChart = null;
       let themeDocRef = null;
       let themeUnsubscribe = null;
+      // ... existing state ...
       let currentFoodItem = { baseNutrients: null, source: 'Manual Entry', brands: null, imageUrl: null };
 
-      let currentSearchResults = [];
-      let currentDisplayCount = 0;
-      const resultsPerLoad = 9;
-      
+      // UPDATED: Search State Variables
+      let currentSearchPage = 1;
+      let isFetching = false; 
+      // Removed: currentSearchResults, currentDisplayCount, resultsPerLoad
+
       let editingItemId = null;
+      // ... existing state ...
       let editingItemType = null; // 'log', 'favorite'
       let itemToMoveCopy = null; 
       
@@ -794,6 +811,26 @@
             'salt': 'salt_100g'
         };
 
+        // Helper to parse serving size strings (e.g., "1 bar (40g)")
+      const parseServingToGrams = (product) => {
+          // 1. Try explicit serving_quantity field from API
+          if (product.serving_quantity && !isNaN(product.serving_quantity)) {
+              return parseFloat(product.serving_quantity);
+          }
+          
+          // 2. Fallback: Parse the serving_size string
+          if (product.serving_size) {
+              const match = product.serving_size.match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
+              if (match) {
+                  let val = parseFloat(match[1]);
+                  const unit = match[2].toLowerCase();
+                  if (unit === 'kg' || unit === 'l') val *= 1000;
+                  return val;
+              }
+          }
+          return null;
+      };
+
 
       // --- Helper Functions ---
       const toLocalISOString = (date) => {
@@ -817,6 +854,12 @@
           document.getElementById('protein').value = '';
           document.getElementById('carbs').value = '';
           document.getElementById('fat').value = '';
+
+          // ADD THIS:
+          document.getElementById('selected-product-display').classList.add('hidden');
+          document.getElementById('back-to-search-btn').classList.add('hidden');
+          
+          // ... existing rest of function ...
           
           // NEW: Clear detailed fields
           document.getElementById('fiber').value = '';
@@ -1457,46 +1500,114 @@
           });
         };
 
-      const searchFood = async () => {
-          const query = document.getElementById('food-search').value;
+      const searchFood = async (isNewSearch = true) => {
+        // ADD THIS at the very top:
+          document.getElementById('entry-form-section').classList.add('hidden');
+          document.getElementById('search-results').classList.remove('hidden');
+          document.getElementById('search-controls').classList.remove('hidden');
+          
+          // ... rest of function ...
+          const query = document.getElementById('food-search').value.trim();
           if (!query) return;
-          const searchResultsDiv = document.getElementById('search-results');
-          searchResultsDiv.innerHTML = '<p class="text-left">Searching...</p>';
+          
+          // Prevent multiple simultaneous fetches
+          if (isFetching) return;
 
+          const searchResultsDiv = document.getElementById('search-results');
+          const searchControlsDiv = document.getElementById('search-controls');
+
+          if (isNewSearch) {
+              currentSearchPage = 1;
+              // Add a nice loading spinner
+              searchResultsDiv.innerHTML = `
+                  <div class="col-span-full text-center py-10">
+                      <i class="fas fa-spinner fa-spin text-3xl text-[var(--button-bg)] mb-3"></i>
+                      <p class="text-[var(--text-color-secondary)]">Searching Open Food Facts...</p>
+                  </div>`;
+              searchControlsDiv.innerHTML = '';
+          } else {
+              currentSearchPage++;
+              const btn = document.getElementById('load-more-btn');
+              if (btn) {
+                  btn.disabled = true;
+                  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+              }
+          }
+
+          isFetching = true;
           const isBarcode = /^\d+$/.test(query);
+          const pageSize = 24; // Standard API page size
+
+          // Construct URL with pagination
           const url = isBarcode
               ? `https://world.openfoodfacts.org/api/v2/product/${query}`
-              : `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${query}&search_simple=1&action=process&json=1`;
+              : `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page=${currentSearchPage}&page_size=${pageSize}`;
 
           try {
               const response = await fetch(url);
               const data = await response.json();
-              searchResultsDiv.innerHTML = '';
+              
+              if (isNewSearch) searchResultsDiv.innerHTML = '';
+
+              let products = [];
               if (isBarcode) {
-                  currentSearchResults = data.product ? [data.product] : [];
+                  products = data.product ? [data.product] : [];
               } else {
-                  currentSearchResults = data.products || [];
+                  products = data.products || [];
               }
-              if (currentSearchResults.length === 0) {
-                  searchResultsDiv.innerHTML = '<p class="text-left">No results found.</p>';
-                  return;
+
+              if (products.length === 0) {
+                  if (isNewSearch) {
+                      searchResultsDiv.innerHTML = `
+                          <div class="col-span-full text-center py-8 text-[var(--text-color-secondary)]">
+                              <i class="fa-solid fa-carrot text-4xl mb-3 opacity-30"></i>
+                              <p>No products found for "${query}".</p>
+                          </div>`;
+                  } else {
+                      // Remove button if no more results on next page
+                      if(document.getElementById('load-more-btn')) document.getElementById('load-more-btn').remove();
+                  }
+              } else {
+                  renderSearchResults(products);
+                  
+                  // Manage "Load More" button visibility
+                  if (!isBarcode) {
+                      if (products.length < pageSize) {
+                          // Assumed end of results
+                          if(document.getElementById('load-more-btn')) document.getElementById('load-more-btn').remove();
+                      } else {
+                          // Check if button exists, if not create it
+                          if (!document.getElementById('load-more-btn')) {
+                              const loadMoreBtn = document.createElement('button');
+                              loadMoreBtn.id = 'load-more-btn';
+                              loadMoreBtn.className = 'main-button mt-4';
+                              loadMoreBtn.textContent = 'Load More Results';
+                              loadMoreBtn.addEventListener('click', () => searchFood(false));
+                              searchControlsDiv.appendChild(loadMoreBtn);
+                          } else {
+                              // Reset button state
+                              const btn = document.getElementById('load-more-btn');
+                              btn.textContent = 'Load More Results';
+                              btn.disabled = false;
+                          }
+                      }
+                  }
               }
-              currentDisplayCount = 0;
-              renderSearchResults();
           } catch (error) {
-              console.error('Error fetching data from Open Food Facts:', error);
-              searchResultsDiv.innerHTML = '<p class="text-left">An error occurred while searching.</p>';
+              console.error('Error fetching data:', error);
+              if (isNewSearch) {
+                  searchResultsDiv.innerHTML = '<p class="text-center col-span-full text-red-500">Error connecting to database. Please check your connection.</p>';
+              }
+          } finally {
+              isFetching = false;
           }
       };
 
-        // MODIFIED: renderSearchResults to change click flow and add "View Details"
-        const renderSearchResults = () => {
+        const renderSearchResults = (products) => {
             const searchResultsDiv = document.getElementById('search-results');
-            const searchControlsDiv = document.getElementById('search-controls');
-            if (currentDisplayCount === 0) searchResultsDiv.innerHTML = '';
-            searchControlsDiv.innerHTML = '';
 
-            currentSearchResults.sort((a, b) => {
+            // Sort logic: Favorites first
+            products.sort((a, b) => {
                 const aIsFav = favoriteFoods.some(fav => fav.originalName === a.product_name && fav.brands === a.brands);
                 const bIsFav = favoriteFoods.some(fav => fav.originalName === b.product_name && fav.brands === b.brands);
                 if (aIsFav && !bIsFav) return -1;
@@ -1504,59 +1615,72 @@
                 return 0;
             });
 
-            const itemsToRender = currentSearchResults.slice(currentDisplayCount, currentDisplayCount + resultsPerLoad);
-
-            itemsToRender.forEach((product) => {
+            products.forEach((product) => {
                 const card = document.createElement('div');
-                card.className = 'p-4 border rounded-lg hover:bg-[var(--input-bg-color)] cursor-pointer flex flex-col text-left gap-2';
+                // Added hover effects and transition
+                card.className = 'p-3 border rounded-lg hover:shadow-md hover:border-[var(--button-bg)] cursor-pointer flex flex-col text-left gap-2 bg-[var(--card-bg-color)] transition-all duration-200';
+                
                 const name = product.product_name || 'Unknown Food';
                 const brands = product.brands || '';
                 const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
-                const imageUrl = product.image_front_thumb_url || PLACEHOLDER_IMG; 
+                // Prefer small image for speed, fall back to thumb
+                const imageUrl = product.image_front_small_url || product.image_front_thumb_url || PLACEHOLDER_IMG; 
 
+                // Improved layout with lazy loading image
                 card.innerHTML = `
-                    <img src="${imageUrl}" alt="${name}" class="w-full h-24 object-contain mb-2 rounded" style="background-color: white;">
-                    <div class="flex justify-between items-start">
-                        <div class="truncate">
-                            <h3 class="font-bold truncate">${name}</h3>
-                            <p class="text-sm text-[var(--text-color-secondary)] truncate">${brands}</p>
-                        </div>
-                        <div class="flex-shrink-0 flex items-center gap-2">
-                            ${isFavorite ? '<i class="fas fa-star text-yellow-500"></i>' : ''}
-                            <button class="secondary-button text-xs p-1 view-details-btn" title="View Details"><i class="fa-solid fa-eye pointer-events-none"></i></button>
+                    <div class="relative w-full h-32 bg-white rounded-md overflow-hidden flex items-center justify-center border border-gray-100">
+                        <img src="${imageUrl}" alt="${name}" loading="lazy" class="max-w-full max-h-full object-contain">
+                        ${isFavorite ? '<div class="absolute top-1 right-1 bg-white/90 rounded-full p-1 shadow-sm"><i class="fas fa-star text-yellow-500 text-xs"></i></div>' : ''}
+                    </div>
+                    <div class="flex flex-col flex-grow">
+                        <h3 class="font-bold text-sm leading-tight mb-1 line-clamp-2" title="${name}">${name}</h3>
+                        <p class="text-xs text-[var(--text-color-secondary)] mb-2 truncate" title="${brands}">${brands}</p>
+                        
+                        <div class="mt-auto flex gap-2 pt-2">
+                             <button class="main-button text-xs py-1.5 px-3 flex-grow rounded select-product-btn">Select</button>
+                             <button class="secondary-button text-xs py-1.5 px-2 rounded view-details-btn" title="View Details"><i class="fa-solid fa-eye"></i></button>
                         </div>
                     </div>
                 `;
                 
-                // NEW: Modified click handler
                 card.addEventListener('click', (e) => {
                     if (e.target.closest('.view-details-btn')) {
-                        e.stopPropagation(); // Don't trigger the card click
+                        e.stopPropagation(); 
                         showProductDetailsModal(product);
                     } else {
-                        // This is the new "inline form" flow
+                        // Select logic
                         selectProductFromSearch(product, 100);
                     }
                 });
                 searchResultsDiv.appendChild(card);
             });
-
-            currentDisplayCount += itemsToRender.length;
-
-            if (currentDisplayCount < currentSearchResults.length) {
-                const loadMoreBtn = document.createElement('button');
-                loadMoreBtn.id = 'load-more-btn';
-                loadMoreBtn.className = 'main-button';
-                loadMoreBtn.textContent = 'Load More';
-                searchControlsDiv.appendChild(loadMoreBtn);
-            }
-        };
+      };
         
-        // NEW: Function to handle selecting a product from search (inline flow)
         const selectProductFromSearch = (product, qty = 100) => {
             const name = product.product_name || 'Unknown';
             const brands = product.brands || '';
+            const imageUrl = product.image_front_thumb_url || product.image_front_small_url || PLACEHOLDER_IMG;
             
+            // --- 1. Populate the Visual Card ---
+            const displayEl = document.getElementById('selected-product-display');
+            displayEl.innerHTML = `
+                <img src="${imageUrl}" class="w-16 h-16 object-contain bg-white rounded-md border border-[var(--border-color)]">
+                <div class="flex-grow">
+                    <h4 class="font-bold text-lg leading-tight">${name}</h4>
+                    <p class="text-sm text-[var(--text-color-secondary)]">${brands}</p>
+                </div>
+            `;
+            displayEl.classList.remove('hidden');
+
+            // --- 2. Handle Search Results Visibility ---
+            // Hide results instead of clearing them, so we can go back
+            document.getElementById('search-results').classList.add('hidden');
+            document.getElementById('search-controls').classList.add('hidden');
+            
+            // Show "Back to Search" button
+            document.getElementById('back-to-search-btn').classList.remove('hidden');
+
+            // --- 3. Process Nutrients (Existing Logic) ---
             const nutriments = product.nutriments || {};
             const baseNutrients = {
                 calories: parseFloat(nutriments['energy-kcal_100g'] || nutriments['energy-kcal_100ml'] || 0),
@@ -1567,26 +1691,46 @@
             for (const key in DETAILED_NUTRIENTS_MAP) {
                 baseNutrients[key] = parseFloat(nutriments[key] || 0);
             }
-            
-            const imageUrl = product.image_front_thumb_url || product.image_front_small_url || PLACEHOLDER_IMG;
 
             document.getElementById('food-name').value = name;
             
-            // NEW: Reset quantity fields and set to 'qty' in grams
-            document.getElementById('quantity-amount').value = qty;
+            // --- 4. Handle Serving Size (Previous Logic) ---
             const unitSelect = document.getElementById('quantity-unit');
             unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
-            unitSelect.value = 'g';
-            document.getElementById('quantity').value = qty; // Set total grams
-
-            currentFoodItem = { baseNutrients, source: 'Open Food Facts', brands, imageUrl, servingUnits: null };
             
-            updateNutrientFieldsFromBase(); // This will now populate all fields
+            let servingUnits = [];
+            let servingGrams = parseServingToGrams(product);
+            let defaultUnit = 'g';
+            let defaultAmount = qty;
+
+            if (servingGrams) {
+                const servingName = `Serving (${product.serving_size || servingGrams + 'g'})`;
+                const option = document.createElement('option');
+                option.value = servingName;
+                option.textContent = servingName;
+                option.dataset.grams = servingGrams;
+                option.dataset.custom = 'true';
+                unitSelect.appendChild(option);
+                servingUnits.push({ name: servingName, grams: servingGrams });
+                defaultUnit = servingName;
+                defaultAmount = 1; 
+            }
+
+            document.getElementById('quantity-amount').value = defaultAmount;
+            unitSelect.value = defaultUnit;
+            
+            currentFoodItem = { 
+                baseNutrients, 
+                source: 'Open Food Facts', 
+                brands, 
+                imageUrl, 
+                servingUnits: servingUnits
+            };
+            
+            updateQuantityInGrams(); 
             setNutrientFieldsReadOnly(true);
             
-            document.getElementById('search-results').innerHTML = '';
-            document.getElementById('search-controls').innerHTML = '';
-            
+            // --- 5. Show Form ---
             editingItemId = null;
             editingItemType = null;
             document.getElementById('log-food-btn').textContent = 'Log Food';
@@ -1595,6 +1739,7 @@
             formSection.classList.remove('hidden');
             formSection.scrollIntoView({ behavior: 'smooth' });
         };
+
         // MODIFIED: showProductDetailsModal now uses selectProductFromSearch
         const showProductDetailsModal = (product) => {
             const modal = document.getElementById('product-modal');
@@ -1978,6 +2123,16 @@
             const container = document.getElementById('detailed-nutrients-container');
             const isHidden = container.classList.toggle('hidden');
             e.target.textContent = isHidden ? 'Show Detailed Nutrients' : 'Hide Detailed Nutrients';
+      });
+
+      // NEW: Back to Search Button Listener
+      document.getElementById('back-to-search-btn').addEventListener('click', () => {
+          document.getElementById('entry-form-section').classList.add('hidden');
+          document.getElementById('search-results').classList.remove('hidden');
+          document.getElementById('search-controls').classList.remove('hidden');
+          
+          // Clear the form temporarily to avoid confusion
+          clearLogForm();
       });
       
       
@@ -2387,14 +2542,11 @@
         };
 
       // --- Other Listeners ---
-      document.getElementById('search-btn').addEventListener('click', searchFood);
-      document.getElementById('food-search').addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') searchFood();
-      });
-      document.getElementById('search-controls').addEventListener('click', (e) => {
-        if (e.target.id === 'load-more-btn') renderSearchResults();
-      });
-
+      document.getElementById('search-btn').addEventListener('click', () => searchFood(true));
+document.getElementById('food-search').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') searchFood(true);
+});
+      
       document.getElementById('frequent-btn').addEventListener('click', () => {
             document.getElementById('frequent-foods-section').classList.toggle('hidden');
             if (!document.getElementById('frequent-foods-section').classList.contains('hidden')) renderFrequentFoods();

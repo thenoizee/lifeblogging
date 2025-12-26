@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.69.0-alpha",
+    date: "2025-12-26",
+    changes: [
+        "In FoodTrackr: Implemented server-side pagination for food search queries to improve performance and reduce bandwidth usage.",
+        "In FoodTrackr: Added visual loading indicators (spinners) during search and 'Load More' actions for better user feedback.",
+        "In FoodTrackr: Redesigned search result cards with lazy-loading images and separated 'Select' and 'View Details' actions.",
+        "In FoodTrackr: Added automatic serving size detection from Open Food Facts, allowing users to log by 'Serving' unit instead of just grams.",
+        "In FoodTrackr: Improved the logging workflow by displaying a persistent 'Selected Product' card and allowing easy navigation back to search results without losing context."
+    ]
+    },
+    {
     version: "v9.68.0-alpha",
     date: "2025-12-25",
     changes: [
