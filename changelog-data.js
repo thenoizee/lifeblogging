@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.77.0-alpha",
+    date: "2025-12-27",
+    changes: [
+        "In FoodTrackr: Added a new 'Edit Item' modal allowing users to add custom photo URLs to Favorite Foods and Meals.",
+        "In FoodTrackr: Improved Meal creation with a dedicated modal for naming and adding cover images, replacing the native browser prompt.",
+        "In FoodTrackr: Added a clickable Date Picker to the Dashboard header for quick navigation to specific dates.",
+    ]
+    },
+    {
     version: "v9.76.0-alpha",
     date: "2025-12-27",
     changes: [
