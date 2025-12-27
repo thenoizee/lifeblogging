@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.75.0-alpha",
+    date: "2025-12-27",
+    changes: [
+        "In Dashboard: Added a customizable drag-and-drop layout. Users can now rearrange widgets into their preferred order, with settings automatically saved to the browser.",
+        "In Dashboard: Introduced a live 'Inbox' widget that syncs with TaskTrackr/TickTick to display the number of active tasks remaining.",
+        "In Dashboard: Updated the live clock to display seconds for more precise timekeeping.",
+        "In Hub: Added a direct link to the Dashboard for quicker access."
+    ]
+    },
+    {
     version: "v9.74.0-alpha",
     date: "2025-12-27",
     changes: [
