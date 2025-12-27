@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.76.0-alpha",
+    date: "2025-12-27",
+    changes: [
+        "In FoodTrackr: Reorganized the 'Log Food' interface into sub-tabs (Search, Recent, My Meals, My Foods, Manual) for a cleaner and faster workflow.",
+        "In FoodTrackr: Added ability to filter Open Food Facts search results by Brand and Country of Origin.",
+        "In FoodTrackr: Replaced the text-based 'Log To' dropdown with a visual tile selector featuring icons for Breakfast, Lunch, Dinner, etc.",
+        "In FoodTrackr: Redesigned the search bar area to clearly distinguish between text search and barcode scanning buttons.",
+    ]
+    },
+    {
     version: "v9.75.0-alpha",
     date: "2025-12-27",
     changes: [
