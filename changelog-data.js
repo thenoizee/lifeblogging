@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.74.0-alpha",
+    date: "2025-12-27",
+    changes: [
+        "In FoodTrackr: Overhauled the visual interface with a modern 'Glassmorphism' aesthetic, featuring translucent containers, smoother animations, and Skeleton Loading states for search results.",
+        "In FoodTrackr: Introduced a 'Smart Copy' modal, allowing users to visually browse history and selectively copy specific items or entire meals from previous days.",
+        "In FoodTrackr: Upgraded 'My Foods' and 'My Meals' lists to use rich, card-based layouts with improved empty states.",
+        "In FoodTrackr: Added the version number watermark to the top-right corner of the interface."
+    ]
+    },
+    {
     version: "v9.73.0-alpha",
     date: "2025-12-26",
     changes: [

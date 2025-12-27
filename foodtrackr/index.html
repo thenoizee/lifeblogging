@@ -68,17 +68,49 @@
             /* Removed padding: 20px; */
             transition: background-color 0.3s ease, color 0.3s ease;
         }
-        .container {
-            background-color: var(--card-bg-color);
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px var(--shadow-color);
-            width: 100%;
-            max-width: 1200px; /* Increased from 800px */
-            text-align: center;
-            transition: background-color 0.3s ease, box-shadow 0.3s ease;
-            margin: 20px auto; /* Added margin for spacing */
-        }
+
+        @keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.animate-fade-in-up {
+    /* Animation definition is handled inline for the delay, 
+       but we define the base behavior here if needed or just rely on the inline style */
+    opacity: 0; /* Start hidden */
+}
+        
+        /* Find the existing .container class and REPLACE it with this: */
+.container {
+    background-color: rgba(255, 255, 255, 0.9); /* Slight transparency */
+    backdrop-filter: blur(10px);                 /* The "Frosted Glass" effect */
+    -webkit-backdrop-filter: blur(10px);         /* Safari support */
+    padding: 40px;
+    border-radius: 16px;                         /* Softer corners */
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);   /* Deeper, smoother shadow */
+    width: 100%;
+    max-width: 1200px;
+    text-align: center;
+    transition: all 0.3s ease;
+    margin: 20px auto;
+    border: 1px solid rgba(255, 255, 255, 0.3);  /* Subtle border */
+}
+
+/* Add this specifically for Dark Mode */
+.dark-mode .container {
+    background-color: rgba(45, 55, 72, 0.85);    /* Dark translucent */
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+
+
+
         h1 { font-size: 28px; margin-bottom: 20px; font-weight: 700; }
         .input-group { margin-bottom: 15px; text-align: left; }
         .input-group label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-color-primary); }
@@ -602,7 +634,12 @@
                 </div>
 
             <div id="todays-log-section" class="mt-12 border-t pt-8">
-                <h2 class="text-2xl font-semibold mb-4 text-left">Today's Log</h2>
+                <div class="flex justify-between items-center mb-4">
+    <h2 class="text-2xl font-semibold text-left">Today's Log</h2>
+    <button id="copy-yesterday-btn" class="secondary-button text-sm py-2 px-4">
+        <i class="fa-solid fa-copy"></i> Copy Yesterday
+    </button>
+</div>
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div>
                         <div class="flex justify-between items-center mb-2">
@@ -672,6 +709,38 @@
                 </div>
              </div>
              </div>
+
+             <div id="copy-history-modal" class="modal-overlay hidden">
+    <div class="modal-container w-full max-w-2xl flex flex-col max-h-[90vh]">
+        <div class="flex justify-between items-center mb-4 flex-shrink-0">
+            <h2 class="text-2xl font-bold">Copy Meals</h2>
+            <button id="close-copy-history-modal" class="text-2xl font-bold text-[var(--text-color-secondary)] hover:text-[var(--text-color-primary)]">&times;</button>
+        </div>
+        
+        <div class="flex flex-wrap gap-2 mb-4 flex-shrink-0 p-2 bg-[var(--bg-color)] rounded-lg">
+            <button class="secondary-button text-xs py-1 px-3 bg-indigo-100 text-indigo-700 border-indigo-200" id="hist-btn-yesterday">Yesterday</button>
+            <button class="secondary-button text-xs py-1 px-3" id="hist-btn-2days">2 Days Ago</button>
+            <input type="date" id="hist-source-date-picker" class="border rounded px-2 text-xs py-1">
+        </div>
+
+        <div id="copy-history-list" class="overflow-y-auto flex-grow pr-2 space-y-4">
+            <p class="text-center text-gray-500 py-8">Select a date to view items.</p>
+        </div>
+
+        <div class="border-t border-[var(--border-color)] mt-4 pt-4 flex justify-between items-center flex-shrink-0">
+             <div class="text-xs text-[var(--text-color-secondary)]">
+                 <label class="flex items-center gap-2 cursor-pointer">
+                     <input type="checkbox" id="copy-keep-time" checked>
+                     Keep original times
+                 </label>
+             </div>
+             <div class="flex gap-3">
+                 <button id="cancel-copy-btn" class="secondary-button">Cancel</button>
+                 <button id="confirm-copy-btn" class="main-button px-6" disabled>Copy Selected</button>
+             </div>
+        </div>
+    </div>
+</div>
 
         <div id="tab-content-foods-meals" class="tab-content">
             <h2 class="text-2xl font-semibold mb-4 text-left">Manage Foods & Meals</h2>
@@ -751,9 +820,31 @@
         </div>
     </div>
     <script type="module">
+      import { changelogData } from '../changelog-data.js'; 
       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
       import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
       import { getFirestore, collection, addDoc, Timestamp, doc, deleteDoc, updateDoc, getDocs, onSnapshot, query, setDoc, writeBatch, orderBy, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+      // --- 2. ADD THIS FUNCTION IMMEDIATELY AFTER IMPORTS ---
+    const renderVersion = () => {
+        if (changelogData && changelogData.length > 0) {
+            const latestVersion = changelogData[0].version;
+            const versionEl = document.createElement('div');
+            
+            // Styling to sit in the top-right corner, semi-transparent
+            versionEl.className = 'absolute top-2 right-4 text-[10px] font-mono font-bold text-gray-400 opacity-60 z-50 select-none pointer-events-none';
+            versionEl.textContent = latestVersion;
+            
+            // Append to the main container
+            const container = document.querySelector('.container');
+            if (container) {
+                container.style.position = 'relative'; // Ensures absolute positioning works
+                container.appendChild(versionEl);
+            }
+        }
+    };
+    // Call it immediately
+    renderVersion();
 
       // --- Firebase Config ---
       const firebaseConfig = {
@@ -868,6 +959,7 @@
           const today = new Date();
           document.getElementById("log-datetime").value = toLocalISOString(today);
       };
+
 
       // MODIFIED: clearLogForm
       const clearLogForm = () => {
@@ -1029,6 +1121,167 @@
           });
       };
 
+      const openCopyModal = (targetDate = null) => {
+    const modal = document.getElementById('copy-history-modal');
+    const listContainer = document.getElementById('copy-history-list');
+    const datePicker = document.getElementById('hist-source-date-picker');
+    
+    modal.classList.remove('hidden');
+    listContainer.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-2xl"></i></div>';
+
+    // 1. Determine Source Date
+    let sourceDate = new Date();
+    if (targetDate) {
+        sourceDate = new Date(targetDate);
+    } else {
+        // Default to yesterday
+        sourceDate.setDate(sourceDate.getDate() - 1);
+    }
+    sourceDate.setHours(0,0,0,0);
+    
+    // Update picker to match
+    datePicker.value = toLocalISOString(sourceDate).split('T')[0];
+
+    // 2. Filter Log for that Day
+    const nextDay = new Date(sourceDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    const items = foodLog.filter(item => {
+        const d = item.eatenAt.toDate();
+        return d >= sourceDate && d < nextDay;
+    });
+
+    // 3. Render
+    if (items.length === 0) {
+        listContainer.innerHTML = `
+            <div class="text-center py-8 opacity-50">
+                <i class="fa-solid fa-ghost text-4xl mb-2"></i>
+                <p>No food logged on this day.</p>
+            </div>`;
+        document.getElementById('confirm-copy-btn').disabled = true;
+        return;
+    }
+
+    listContainer.innerHTML = '';
+    document.getElementById('confirm-copy-btn').disabled = false;
+
+    // Group by Section
+    const grouped = {};
+    ALL_SECTIONS.forEach(s => grouped[s] = []); // Ensure order
+    items.forEach(item => {
+        let s = item.section || 'breakfast';
+        if (!grouped[s]) grouped[s] = [];
+        grouped[s].push(item);
+    });
+
+    // Render Groups
+    Object.keys(grouped).forEach(section => {
+        if (grouped[section].length === 0) return;
+
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'border border-[var(--border-color)] rounded-lg overflow-hidden mb-4';
+        
+        // Header with "Select All" checkbox
+        groupDiv.innerHTML = `
+            <div class="bg-[var(--input-bg-color)] p-2 px-3 flex justify-between items-center cursor-pointer select-none group-header">
+                <label class="font-bold capitalize flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" class="section-checkbox accent-indigo-600" checked data-section="${section}">
+                    ${SECTION_NAMES[section] || section}
+                </label>
+                <span class="text-xs text-[var(--text-color-secondary)]">${grouped[section].length} items</span>
+            </div>
+            <div class="bg-[var(--card-bg-color)] p-2 space-y-1">
+                ${grouped[section].map(item => `
+                    <label class="flex items-center gap-3 p-2 hover:bg-[var(--bg-color)] rounded cursor-pointer border border-transparent hover:border-[var(--border-color)] transition-colors">
+                        <input type="checkbox" class="item-checkbox accent-indigo-600 w-4 h-4" checked 
+                            data-id="${item.id}" data-section="${section}">
+                        <div class="flex items-center gap-3 flex-grow overflow-hidden">
+                             <img src="${item.imageUrl || PLACEHOLDER_IMG}" class="w-8 h-8 rounded object-contain bg-white border border-gray-100">
+                             <div class="flex-grow truncate">
+                                 <p class="font-medium text-sm truncate">${item.name}</p>
+                                 <p class="text-xs text-[var(--text-color-secondary)]">${item.quantity || 100}g • ${item.calories.toFixed(0)} kcal</p>
+                             </div>
+                        </div>
+                    </label>
+                `).join('')}
+            </div>
+        `;
+        listContainer.appendChild(groupDiv);
+    });
+
+    // Add Checkbox Logic (Section Checkbox toggles children)
+    listContainer.querySelectorAll('.section-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const section = e.target.dataset.section;
+            const childCbs = listContainer.querySelectorAll(`.item-checkbox[data-section="${section}"]`);
+            childCbs.forEach(child => child.checked = e.target.checked);
+            updateCopyButtonState();
+        });
+    });
+    
+    listContainer.querySelectorAll('.item-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateCopyButtonState);
+    });
+    
+    updateCopyButtonState();
+};
+
+const updateCopyButtonState = () => {
+    const count = document.querySelectorAll('.item-checkbox:checked').length;
+    const btn = document.getElementById('confirm-copy-btn');
+    btn.textContent = `Copy ${count} Items`;
+    btn.disabled = count === 0;
+};
+
+const executeSmartCopy = async () => {
+    const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
+    if (checkedBoxes.length === 0) return;
+
+    const keepTime = document.getElementById('copy-keep-time').checked;
+    const batch = writeBatch(db);
+    const now = new Date(); // Today's date base
+    const timestampNow = Timestamp.now();
+    let copyCount = 0;
+
+    checkedBoxes.forEach(cb => {
+        const originalId = cb.dataset.id;
+        const originalItem = foodLog.find(i => i.id === originalId);
+        
+        if (originalItem) {
+            const docRef = doc(collection(db, `users/${user.uid}/foodLog`));
+            const { id, eatenAt, ...data } = originalItem;
+
+            // Date Logic
+            let newEatenAtDate = new Date(now);
+            if (keepTime) {
+                // Use today's date, but keep the original HH:MM
+                const originalDate = originalItem.eatenAt.toDate();
+                newEatenAtDate.setHours(originalDate.getHours(), originalDate.getMinutes());
+            }
+
+            batch.set(docRef, {
+                ...data,
+                eatenAt: Timestamp.fromDate(newEatenAtDate),
+                createdAt: timestampNow,
+                updatedAt: timestampNow,
+                source: 'Smart Copy'
+            });
+            copyCount++;
+        }
+    });
+
+    try {
+        await batch.commit();
+        if(typeof showToast === 'function') showToast(`Successfully copied ${copyCount} items!`, 'success');
+        else alert(`Successfully copied ${copyCount} items!`);
+        
+        document.getElementById('copy-history-modal').classList.add('hidden');
+    } catch (error) {
+        console.error("Copy failed", error);
+        alert("Failed to copy items.");
+    }
+};
+
       const renderDailyLog = () => {
           ALL_SECTIONS.forEach(section => {
               const el = document.getElementById(`log-section-${section}`);
@@ -1177,6 +1430,37 @@
             }
         };
 
+        // 1. Open Modal (Update your existing "Copy Yesterday" button or add the listener)
+const copyBtn = document.getElementById('copy-yesterday-btn');
+if (copyBtn) {
+    // Remove old listener if needed (by cloning) or just ensure this is the only one
+    copyBtn.onclick = () => openCopyModal(); // Defaults to yesterday
+}
+
+// 2. Modal Controls
+document.getElementById('close-copy-history-modal').addEventListener('click', () => {
+    document.getElementById('copy-history-modal').classList.add('hidden');
+});
+document.getElementById('cancel-copy-btn').addEventListener('click', () => {
+    document.getElementById('copy-history-modal').classList.add('hidden');
+});
+
+// 3. Date Navigation Buttons
+document.getElementById('hist-btn-yesterday').addEventListener('click', () => {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    openCopyModal(d);
+});
+document.getElementById('hist-btn-2days').addEventListener('click', () => {
+    const d = new Date(); d.setDate(d.getDate() - 2);
+    openCopyModal(d);
+});
+document.getElementById('hist-source-date-picker').addEventListener('change', (e) => {
+    if(e.target.value) openCopyModal(new Date(e.target.value));
+});
+
+// 4. Confirm Action
+document.getElementById('confirm-copy-btn').addEventListener('click', executeSmartCopy);
+
         // MODIFIED: handleEditLogItem to populate new fields
         const handleEditLogItem = (itemId) => {
             if (!itemId) return;
@@ -1322,66 +1606,88 @@
         };
 
         const renderMyFoodsQuickList = () => {
-            const listEl = document.getElementById('my-foods-quick-list');
-            if (!listEl) return;
-            listEl.innerHTML = '';
-            
-            if (favoriteFoods.length === 0) {
-                 listEl.innerHTML = `<p class="text-sm text-[var(--text-color-secondary)] col-span-full">You haven't saved any favorite foods yet.</p>`;
-                 return;
+    const listEl = document.getElementById('my-foods-quick-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    
+    if (favoriteFoods.length === 0) {
+            listEl.innerHTML = `
+            <div class="col-span-full text-center py-8 opacity-50 select-none border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                <i class="fa-solid fa-star text-4xl mb-2 text-yellow-500/50"></i>
+                <p class="font-medium text-sm">No favorites yet</p>
+                <p class="text-xs">Save foods to see them here.</p>
+            </div>`;
+            return;
+    }
+    
+    favoriteFoods.sort((a, b) => a.name.localeCompare(b.name)).forEach(food => {
+        const card = document.createElement('div');
+        // Matches the "Frequent Foods" styling exactly
+        card.className = 'group p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md hover:border-indigo-500 dark:hover:border-indigo-500 cursor-pointer flex flex-row items-center gap-3 transition-all duration-200 relative overflow-hidden';
+        
+        const imageUrl = (food.imageUrl && food.imageUrl.startsWith('http')) ? food.imageUrl : PLACEHOLDER_IMG;
+
+        card.innerHTML = `
+            <div class="w-12 h-12 flex-shrink-0 bg-white rounded-lg border border-gray-100 p-0.5 overflow-hidden">
+                <img src="${imageUrl}" alt="${food.name}" class="w-full h-full object-contain">
+            </div>
+            <div class="flex-grow min-w-0">
+                <p class="font-bold text-sm leading-tight truncate text-gray-800 dark:text-gray-100">${food.name}</p>
+                <p class="text-xs text-gray-500 truncate">${food.brands || 'Manual'}</p>
+            </div>
+            <div class="text-xs font-mono font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded">
+                ${food.calories.toFixed(0)}
+            </div>
+        `;
+        card.addEventListener('click', () => {
+            selectFoodItem(food, 100);
+        });
+        listEl.appendChild(card);
+    });
+};
+
+const renderMyMealsQuickList = () => {
+        const listEl = document.getElementById('my-meals-list');
+        if (!listEl) return;
+        listEl.innerHTML = '';
+
+        if (meals.length === 0) {
+            listEl.innerHTML = `
+            <div class="col-span-full text-center py-8 opacity-50 select-none border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                <i class="fa-solid fa-utensils text-4xl mb-2 text-blue-500/50"></i>
+                <p class="font-medium text-sm">No meals saved</p>
+                <p class="text-xs">Group items in your log to create meals.</p>
+            </div>`;
+            return;
+        }
+
+        meals.sort((a, b) => a.name.localeCompare(b.name)).forEach(meal => {
+        const totalCals = meal.items.reduce((sum, item) => sum + item.calories, 0);
+        const card = document.createElement('div');
+        // Matches the modern card styling
+        card.className = 'group p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md hover:border-indigo-500 dark:hover:border-indigo-500 cursor-pointer flex flex-row items-center gap-3 transition-all duration-200 relative overflow-hidden';
+        
+        card.innerHTML = `
+            <div class="w-12 h-12 flex-shrink-0 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800 flex items-center justify-center">
+                <i class="fa-solid fa-utensils text-blue-500 text-lg"></i>
+            </div>
+            <div class="flex-grow min-w-0">
+                <p class="font-bold text-sm leading-tight truncate text-gray-800 dark:text-gray-100">${meal.name}</p>
+                <p class="text-xs text-gray-500 truncate">${meal.items.length} items</p>
+            </div>
+            <div class="text-xs font-mono font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                ${totalCals.toFixed(0)}
+            </div>
+        `;
+        card.addEventListener('click', () => {
+            if (confirm(`Do you want to log the meal "${meal.name}" now?`)) {
+                logMeal(meal.id);
             }
-            
-            favoriteFoods.sort((a, b) => a.name.localeCompare(b.name)).forEach(food => {
-                const card = document.createElement('div');
-                card.className = 'secondary-button text-left p-2 rounded-lg cursor-pointer flex items-center';
-                
-                const imageUrl = (food.imageUrl && food.imageUrl.startsWith('http')) ? food.imageUrl : PLACEHOLDER_IMG;
+        });
+        listEl.appendChild(card);
+        });
+};        
 
-                card.innerHTML = `
-                    <img src="${imageUrl}" alt="${food.name}" class="quick-list-image">
-                    <div class="truncate">
-                        <p class="font-bold text-sm leading-tight truncate">${food.name}</p>
-                        <p class="text-xs opacity-80 truncate">${food.brands || 'Manual'}</p>
-                    </div>
-                     <p class="text-xs font-mono mt-1 ml-auto flex-shrink-0">${food.calories.toFixed(0)} kcal</p>
-                `;
-                card.addEventListener('click', () => {
-                    selectFoodItem(food, 100);
-                });
-                listEl.appendChild(card);
-            });
-        };
-
-        const renderMyMealsQuickList = () => {
-             const listEl = document.getElementById('my-meals-list');
-             if (!listEl) return;
-             listEl.innerHTML = '';
-
-             if (meals.length === 0) {
-                 listEl.innerHTML = `<p class="text-sm text-[var(--text-color-secondary)] col-span-full">You haven't saved any meals yet.</p>`;
-                 return;
-             }
-
-             meals.sort((a, b) => a.name.localeCompare(b.name)).forEach(meal => {
-                const totalCals = meal.items.reduce((sum, item) => sum + item.calories, 0);
-                const card = document.createElement('div');
-                card.className = 'secondary-button text-left p-2 rounded-lg cursor-pointer flex items-center';
-                
-                card.innerHTML = `
-                    <i class="fa-solid fa-utensils quick-list-image text-center text-lg text-[var(--text-color-secondary)]"></i>
-                    <div class="truncate">
-                        <p class="font-bold text-sm leading-tight truncate">${meal.name}</p>
-                        <p class="text-xs opacity-80">${meal.items.length} items | ~${totalCals.toFixed(0)} kcal</p>
-                    </div>
-                `;
-                card.addEventListener('click', () => {
-                    if (confirm(`Do you want to log the meal "${meal.name}" now?`)) {
-                        logMeal(meal.id);
-                    }
-                });
-                listEl.appendChild(card);
-             });
-        };
         // MODIFIED: selectFoodItem to handle new quantity/serving fields
         const selectFoodItem = (item, quantity) => {
             document.getElementById('food-name').value = item.name;
@@ -1534,162 +1840,178 @@
           });
         };
 
-      const searchFood = async (isNewSearch = true) => {
-        // ADD THIS at the very top:
-          document.getElementById('entry-form-section').classList.add('hidden');
-          document.getElementById('search-results').classList.remove('hidden');
-          document.getElementById('search-controls').classList.remove('hidden');
-          
-          // ... rest of function ...
-          const query = document.getElementById('food-search').value.trim();
-          if (!query) return;
-          
-          // Prevent multiple simultaneous fetches
-          if (isFetching) return;
+const searchFood = async (isNewSearch = true) => {
+    // UI Prep
+    document.getElementById('entry-form-section').classList.add('hidden');
+    document.getElementById('search-results').classList.remove('hidden');
+    document.getElementById('search-controls').classList.remove('hidden');
+    
+    const query = document.getElementById('food-search').value.trim();
+    if (!query) return;
+    if (isFetching) return;
 
-          const searchResultsDiv = document.getElementById('search-results');
-          const searchControlsDiv = document.getElementById('search-controls');
+    const searchResultsDiv = document.getElementById('search-results');
+    const searchControlsDiv = document.getElementById('search-controls');
 
-          if (isNewSearch) {
-              currentSearchPage = 1;
-              // Add a nice loading spinner
-              searchResultsDiv.innerHTML = `
-                  <div class="col-span-full text-center py-10">
-                      <i class="fas fa-spinner fa-spin text-3xl text-[var(--button-bg)] mb-3"></i>
-                      <p class="text-[var(--text-color-secondary)]">Searching Open Food Facts...</p>
-                  </div>`;
-              searchControlsDiv.innerHTML = '';
-          } else {
-              currentSearchPage++;
-              const btn = document.getElementById('load-more-btn');
-              if (btn) {
-                  btn.disabled = true;
-                  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
-              }
-          }
+    if (isNewSearch) {
+        currentSearchPage = 1;
+        // SKELETON LOADING UI: Generates 6 pulsing cards
+        searchResultsDiv.innerHTML = Array(6).fill(0).map(() => `
+            <div class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl flex items-center gap-4 animate-pulse">
+                <div class="w-20 h-20 bg-gray-200 dark:bg-gray-700 rounded-lg flex-shrink-0"></div>
+                <div class="flex-grow space-y-2">
+                    <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                    <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                </div>
+            </div>
+        `).join('');
+        searchControlsDiv.innerHTML = '';
+    } else {
+        currentSearchPage++;
+        const btn = document.getElementById('load-more-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+        }
+    }
 
-          isFetching = true;
-          const isBarcode = /^\d+$/.test(query);
-          const pageSize = 24; // Standard API page size
+    isFetching = true;
+    const isBarcode = /^\d+$/.test(query);
+    const pageSize = 24;
 
-          // Construct URL with pagination
-          const url = isBarcode
-              ? `https://world.openfoodfacts.org/api/v2/product/${query}`
-              : `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page=${currentSearchPage}&page_size=${pageSize}`;
+    const url = isBarcode
+        ? `https://world.openfoodfacts.org/api/v2/product/${query}`
+        : `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page=${currentSearchPage}&page_size=${pageSize}`;
 
-          try {
-              const response = await fetch(url);
-              const data = await response.json();
-              
-              if (isNewSearch) searchResultsDiv.innerHTML = '';
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (isNewSearch) searchResultsDiv.innerHTML = '';
 
-              let products = [];
-              if (isBarcode) {
-                  products = data.product ? [data.product] : [];
-              } else {
-                  products = data.products || [];
-              }
+        let products = [];
+        if (isBarcode) {
+            products = data.product ? [data.product] : [];
+        } else {
+            products = data.products || [];
+        }
 
-              if (products.length === 0) {
-                  if (isNewSearch) {
-                      searchResultsDiv.innerHTML = `
-                          <div class="col-span-full text-center py-8 text-[var(--text-color-secondary)]">
-                              <i class="fa-solid fa-carrot text-4xl mb-3 opacity-30"></i>
-                              <p>No products found for "${query}".</p>
-                          </div>`;
-                  } else {
-                      // Remove button if no more results on next page
-                      if(document.getElementById('load-more-btn')) document.getElementById('load-more-btn').remove();
-                  }
-              } else {
-                  renderSearchResults(products);
-                  
-                  // Manage "Load More" button visibility
-                  if (!isBarcode) {
-                      if (products.length < pageSize) {
-                          // Assumed end of results
-                          if(document.getElementById('load-more-btn')) document.getElementById('load-more-btn').remove();
-                      } else {
-                          // Check if button exists, if not create it
-                          if (!document.getElementById('load-more-btn')) {
-                              const loadMoreBtn = document.createElement('button');
-                              loadMoreBtn.id = 'load-more-btn';
-                              loadMoreBtn.className = 'main-button mt-4';
-                              loadMoreBtn.textContent = 'Load More Results';
-                              loadMoreBtn.addEventListener('click', () => searchFood(false));
-                              searchControlsDiv.appendChild(loadMoreBtn);
-                          } else {
-                              // Reset button state
-                              const btn = document.getElementById('load-more-btn');
-                              btn.textContent = 'Load More Results';
-                              btn.disabled = false;
-                          }
-                      }
-                  }
-              }
-          } catch (error) {
-              console.error('Error fetching data:', error);
-              if (isNewSearch) {
-                  searchResultsDiv.innerHTML = '<p class="text-center col-span-full text-red-500">Error connecting to database. Please check your connection.</p>';
-              }
-          } finally {
-              isFetching = false;
-          }
-      };
+        if (products.length === 0) {
+            if (isNewSearch) {
+                // Enhanced Empty State for Search
+                searchResultsDiv.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-gray-400 select-none">
+                        <div class="inline-block p-4 rounded-full bg-gray-100 dark:bg-gray-800 mb-3">
+                            <i class="fa-solid fa-magnifying-glass text-3xl opacity-50"></i>
+                        </div>
+                        <p class="font-medium">No products found</p>
+                        <p class="text-sm opacity-70">Try a different search term or scan a barcode.</p>
+                    </div>`;
+            } else {
+                if(document.getElementById('load-more-btn')) document.getElementById('load-more-btn').remove();
+            }
+        } else {
+            renderSearchResults(products);
+            
+            if (!isBarcode) {
+                if (products.length < pageSize) {
+                    if(document.getElementById('load-more-btn')) document.getElementById('load-more-btn').remove();
+                } else {
+                    if (!document.getElementById('load-more-btn')) {
+                        const loadMoreBtn = document.createElement('button');
+                        loadMoreBtn.id = 'load-more-btn';
+                        loadMoreBtn.className = 'main-button mt-4';
+                        loadMoreBtn.textContent = 'Load More Results';
+                        loadMoreBtn.addEventListener('click', () => searchFood(false));
+                        searchControlsDiv.appendChild(loadMoreBtn);
+                    } else {
+                        const btn = document.getElementById('load-more-btn');
+                        btn.textContent = 'Load More Results';
+                        btn.disabled = false;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching data:', error);
+        if (isNewSearch) {
+            searchResultsDiv.innerHTML = '<p class="text-center col-span-full text-red-500">Error connecting to database. Please check your connection.</p>';
+        }
+    } finally {
+        isFetching = false;
+    }
+};
 
       const renderSearchResults = (products) => {
-            const searchResultsDiv = document.getElementById('search-results');
+    const searchResultsDiv = document.getElementById('search-results');
+    // Note: We don't clear innerHTML here if implementing infinite scroll, 
+    // but for search it's usually handled by the search function clearing it first.
+    
+    // Sort logic: Favorites first
+    products.sort((a, b) => {
+        const nameA = a.product_name || '';
+        const brandsA = a.brands || '';
+        const nameB = b.product_name || '';
+        const brandsB = b.brands || '';
+        
+        const aIsFav = favoriteFoods.some(fav => fav.originalName === nameA && fav.brands === brandsA);
+        const bIsFav = favoriteFoods.some(fav => fav.originalName === nameB && fav.brands === brandsB);
+        if (aIsFav && !bIsFav) return -1;
+        if (!aIsFav && bIsFav) return 1;
+        return 0;
+    });
 
-            // Sort logic: Favorites first
-            products.sort((a, b) => {
-                const nameA = a.product_name || '';
-                const brandsA = a.brands || '';
-                const nameB = b.product_name || '';
-                const brandsB = b.brands || '';
-                
-                const aIsFav = favoriteFoods.some(fav => fav.originalName === nameA && fav.brands === brandsA);
-                const bIsFav = favoriteFoods.some(fav => fav.originalName === nameB && fav.brands === brandsB);
-                if (aIsFav && !bIsFav) return -1;
-                if (!aIsFav && bIsFav) return 1;
-                return 0;
-            });
+    products.forEach((product, index) => {
+        const card = document.createElement('div');
+        
+        // 1. Animation Delay: Cards cascade in (50ms stagger)
+        // 2. Layout: Matches your modern card styling
+        card.className = 'group p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-lg hover:border-indigo-500 dark:hover:border-indigo-500 cursor-pointer flex flex-row items-center gap-4 transition-all duration-200 relative overflow-hidden opacity-0 animate-fade-in-up';
+        card.style.animation = `fadeInUp 0.4s ease-out forwards ${index * 0.05}s`; // Inline animation
 
-            products.forEach((product) => {
-                const card = document.createElement('div');
-                card.className = 'group p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-lg hover:border-indigo-500 dark:hover:border-indigo-500 cursor-pointer flex flex-row items-center gap-4 transition-all duration-200 relative overflow-hidden';
+        const name = product.product_name || 'Unknown Food';
+        const brands = product.brands || '';
+        const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
+        
+        // Image Handling
+        const imageUrl = product.image_front_small_url || product.image_front_thumb_url || PLACEHOLDER_IMG;
+        
+        // Construct inner HTML with an Image Skeleton wrapper
+        card.innerHTML = `
+            <div class="w-20 h-20 flex-shrink-0 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-100 dark:border-gray-600 p-1 overflow-hidden relative">
+                <div class="absolute inset-0 flex items-center justify-center text-gray-300 dark:text-gray-500">
+                   <i class="fa-regular fa-image text-xl animate-pulse"></i>
+                </div>
+                <img src="${imageUrl}" 
+                     alt="${name}" 
+                     loading="lazy" 
+                     class="w-full h-full object-contain relative z-10 opacity-0 transition-opacity duration-300 ease-in"
+                     onload="this.classList.remove('opacity-0'); this.previousElementSibling.remove()" 
+                     onerror="this.src='${PLACEHOLDER_IMG}'; this.classList.remove('opacity-0');">
+            </div>
+            
+            <div class="flex-grow min-w-0">
+                <div class="flex justify-between items-start">
+                    <h3 class="font-bold text-gray-900 dark:text-white text-base leading-tight truncate pr-2" title="${name}">${name}</h3>
+                    ${isFavorite ? '<i class="fas fa-star text-yellow-400 text-sm flex-shrink-0"></i>' : ''}
+                </div>
+                <p class="text-sm text-gray-500 dark:text-gray-400 truncate mb-2" title="${brands}">${brands}</p>
                 
-                const name = product.product_name || 'Unknown Food';
-                const brands = product.brands || '';
-                const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
-                const imageUrl = product.image_front_small_url || product.image_front_thumb_url || PLACEHOLDER_IMG; 
-
-                card.innerHTML = `
-                    <div class="w-20 h-20 flex-shrink-0 bg-white rounded-lg border border-gray-100 p-1 overflow-hidden">
-                        <img src="${imageUrl}" alt="${name}" loading="lazy" class="w-full h-full object-contain">
-                    </div>
-                    
-                    <div class="flex-grow min-w-0">
-                        <div class="flex justify-between items-start">
-                            <h3 class="font-bold text-gray-900 dark:text-white text-base leading-tight truncate pr-2" title="${name}">${name}</h3>
-                            ${isFavorite ? '<i class="fas fa-star text-yellow-400 text-sm flex-shrink-0"></i>' : ''}
-                        </div>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 truncate mb-2" title="${brands}">${brands}</p>
-                        
-                        <div class="flex items-center justify-between mt-1">
-                             <div class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300">
-                                ${product.nutriments?.['energy-kcal_100g'] ? Math.round(product.nutriments['energy-kcal_100g']) + ' kcal' : 'N/A'}
-                             </div>
-                             <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline">Select <i class="fa-solid fa-arrow-right ml-1"></i></span>
-                        </div>
-                    </div>
-                `;
-                
-                card.addEventListener('click', (e) => {
-                    selectProductFromSearch(product, 100);
-                });
-                searchResultsDiv.appendChild(card);
-            });
-      };
+                <div class="flex items-center justify-between mt-1">
+                     <div class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300">
+                        ${product.nutriments?.['energy-kcal_100g'] ? Math.round(product.nutriments['energy-kcal_100g']) + ' kcal' : 'N/A'}
+                     </div>
+                     <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline">Select <i class="fa-solid fa-arrow-right ml-1"></i></span>
+                </div>
+            </div>
+        `;
+        
+        card.addEventListener('click', () => {
+            selectProductFromSearch(product, 100);
+        });
+        searchResultsDiv.appendChild(card);
+    });
+};
 
         const selectProductFromSearch = (product, qty = 100) => {
     const name = product.product_name || 'Unknown';
