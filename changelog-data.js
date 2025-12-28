@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.80.0-alpha",
+    date: "2025-12-28",
+    changes: [
+        "In TaskTrackr: Overhauled the 'Process Inbox' feature (Review Mode) to allow selecting any project via a new dropdown menu.",
+        "In TaskTrackr: Fixed a UI bug in Review Mode where the task card blocked control buttons on smaller screens.",
+        "In TaskTrackr: Implemented a 'Smart Scan' fallback that automatically suggests the busiest list if the main Inbox is empty.",
+    ]
+    },
+    {
     version: "v9.79.0-alpha",
     date: "2025-12-28",
     changes: [
