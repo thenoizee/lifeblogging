@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.79.0-alpha",
+    date: "2025-12-28",
+    changes: [
+        "In RecipeManagr: Added a 'Resting Time' field to the Add/Edit form and displayed it in the Recipe Details modal.",
+        "In RecipeManagr: Introduced 'Flavor Profile' checkboxes (Sweet/Savoury) to allow better categorization of recipes.",
+        "In RecipeManagr: Updated the 'Date Discovered' field to automatically default to the current date when adding a new recipe.",
+        "In RecipeManagr: Enhanced the Recipe Details modal to explicitly show the Source Name and link it to the Source URL if available."
+    ]
+    },
+    {
     version: "v9.78.0-alpha",
     date: "2025-12-28",
     changes: [
