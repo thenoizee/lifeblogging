@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.78.0-alpha",
+    date: "2025-12-28",
+    changes: [
+        "In FoodTrackr: Implemented custom Serving Units (e.g., '1 Egg = 55g') in the Edit Item modal, allowing specific unit selection during logging.",
+        "In FoodTrackr: Overhauled mobile navigation by moving the main tab bar to the bottom of the screen for easier one-handed use.",
+        "In FoodTrackr: Replaced native browser alerts with high-visibility, non-blocking 'Toast' notifications positioned at the top of the screen.",
+        "In FoodTrackr: Introduced custom Confirmation Modals for delete actions (Logs, Favorites, Meals), replacing standard browser prompts.",
+        "In FoodTrackr: Fixed a bug where clearing the log form would unintentionally hide the search results list."
+    ]
+    },
+    {
     version: "v9.77.0-alpha",
     date: "2025-12-27",
     changes: [
