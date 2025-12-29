@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.84.0-alpha",
+    date: "2025-12-29",
+    changes: [
+        "In Dashboard: Added a 'Recently Cooked' widget to the grid, displaying the most recently prepared meal from RecipeManagr.",
+        "In RecipeManagr: Updated the logging system to automatically sync the 'Last Cooked' date to the main recipe list, enabling dashboard integration.",
+    ]
+    },
+    {
     version: "v9.83.0-alpha",
     date: "2025-12-29",
     changes: [
