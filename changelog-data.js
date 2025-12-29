@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.85.0-alpha",
+    date: "2025-12-29",
+    changes: [
+        "In RecipeManagr: Replaced single-select dropdown filters with granular multi-select checkbox groups for Flavor Profile, Meal Type, Cuisines, and Labels.",
+    ]
+    },
+    {
     version: "v9.84.0-alpha",
     date: "2025-12-29",
     changes: [
