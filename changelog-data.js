@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v9.81.0-alpha",
+    date: "2025-12-29",
+    changes: [
+        "In RecipeManagr: Added the ability to upload and view images for specific instruction steps.",
+        "In RecipeManagr: Implemented 'Active Step Time' calculation, automatically summing up timers set within instructions.",
+        "In RecipeManagr: Added an 'Ingredient/Food Mode' toggle to hide instructions and cooking times for simple items.",
+        "In RecipeManagr: Added a 'Portions Cooked (Scale)' dropdown to the History Log to record the quantity cooked.",
+        "In RecipeManagr: Changed recipe ratings to be read-only in the view modal; they can now only be modified in Edit Mode.",
+        "In FoodTrackr: Added utensils icon to title bar in app and made red to match theme of app on Hub page.",
+    ]
+    },
+    {
     version: "v9.80.0-alpha",
     date: "2025-12-28",
     changes: [

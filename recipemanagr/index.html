@@ -287,6 +287,13 @@
                  <div id="add-recipe-container" class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg mb-6">
                     <h2 id="form-summary" class="text-2xl font-bold">Add a New Recipe</h2>
                     <form id="add-recipe-form" class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="lg:col-span-3 bg-indigo-50 dark:bg-indigo-900/30 p-3 rounded-lg border border-indigo-100 dark:border-indigo-800 mb-2">
+    <label class="flex items-center space-x-2 cursor-pointer">
+        <input type="checkbox" id="is-food-item-toggle" class="rounded text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 w-5 h-5">
+        <span class="font-bold text-indigo-900 dark:text-indigo-200">Ingredient/Food Mode</span>
+    </label>
+    <p class="text-xs text-indigo-700 dark:text-indigo-300 ml-7 mt-1">Enable this to create a food item (made of specific quantities of ingredients) without instructions or cooking times.</p>
+</div>
                         <div class="lg:col-span-3">
                             <label for="recipe-name" class="block text-sm font-medium mb-1">Title</label>
                             <input type="text" id="recipe-name" placeholder="e.g., Spicy Chicken Curry" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 w-full">
@@ -537,6 +544,37 @@
             const timelineContainer = document.getElementById('timeline-container');
             const mobileFilterToggle = document.getElementById('mobile-filter-toggle');
             const filterContainer = document.getElementById('filter-container');
+
+const foodModeToggle = document.getElementById('is-food-item-toggle');
+foodModeToggle.addEventListener('change', (e) => {
+    const isFood = e.target.checked;
+    const fieldsToHide = [
+        'recipe-prep-time', 'recipe-cook-time', 'recipe-resting-time', 'recipe-total-time',
+        'instructions-builder', 'add-step-btn', 'add-section-btn'
+    ];
+    
+    fieldsToHide.forEach(id => {
+        const el = document.getElementById(id);
+        if(el) {
+            // Hide the input and its parent label/container if possible, or just the input
+            const container = el.closest('div'); 
+            if(container && !container.classList.contains('lg:col-span-3')) {
+                 // Hide specific time inputs containers
+                 container.style.display = isFood ? 'none' : 'block';
+            } else if (id === 'instructions-builder' || id.includes('btn')) {
+                 // Hide instructions area buttons
+                 el.parentElement.style.display = isFood ? 'none' : 'block';
+            }
+        }
+    });
+    
+    // Explicitly handle instructions label
+    const instrLabel = document.querySelector('label[for="instructions-builder"]') || 
+                       [...document.querySelectorAll('label')].find(l => l.textContent.includes('Instructions'));
+    if(instrLabel) instrLabel.parentElement.style.display = isFood ? 'none' : 'block';
+});
+
+
             // Instruction Builder Listeners
     document.getElementById('add-step-btn').addEventListener('click', () => {
         document.getElementById('instructions-builder').appendChild(createInstructionRow());
@@ -896,119 +934,134 @@
                  }).join('\n\n');
             }
 
-            async function handleAddOrUpdateRecipe() {
-                if (!userId) {
-                    return showNotification("Please log in to add recipes.", "error");
-                }
+async function handleAddOrUpdateRecipe() {
+    if (!userId) {
+        return showNotification("Please log in to add recipes.", "error");
+    }
 
-                const name = document.getElementById('recipe-name').value;
-                if (!name) {
-                    return showNotification("Please fill out the Title.", "error");
-                }
-                
-                addRecipeBtn.disabled = true;
-                addRecipeBtn.textContent = "Saving...";
+    const name = document.getElementById('recipe-name').value;
+    if (!name) {
+        return showNotification("Please fill out the Title.", "error");
+    }
+    
+    addRecipeBtn.disabled = true;
+    addRecipeBtn.textContent = "Saving...";
 
-                try {
-                    let imageUrl = editingRecipeId ? (recipesCache.find(r => r.id === editingRecipeId)?.imageUrl || '') : '';
-                    const imageFile = document.getElementById('recipe-image-upload').files[0];
+    try {
+        let imageUrl = editingRecipeId ? (recipesCache.find(r => r.id === editingRecipeId)?.imageUrl || '') : '';
+        const imageFile = document.getElementById('recipe-image-upload').files[0];
 
-                    if (imageFile) {
-                        const imageRef = ref(storage, `users/${userId}/recipes/${Date.now()}_${imageFile.name}`);
-                        await uploadBytes(imageRef, imageFile);
-                        imageUrl = await getDownloadURL(imageRef);
-                    } else if (importedImageUrl) {
-                        imageUrl = importedImageUrl;
+        if (imageFile) {
+            const imageRef = ref(storage, `users/${userId}/recipes/${Date.now()}_${imageFile.name}`);
+            await uploadBytes(imageRef, imageFile);
+            imageUrl = await getDownloadURL(imageRef);
+        } else if (importedImageUrl) {
+            imageUrl = importedImageUrl;
+        }
+
+        const linkedRecipesSelect = document.getElementById('linked-recipes-select');
+        const linkedRecipeIds = [...linkedRecipesSelect.selectedOptions].map(option => option.value);
+
+        const flavorProfile = [];
+        if (document.getElementById('flavor-sweet').checked) flavorProfile.push('Sweet');
+        if (document.getElementById('flavor-savoury').checked) flavorProfile.push('Savoury');
+        
+        // --- Process Instructions and Step Images ---
+        let rawInstructions = getInstructionsFromBuilder();
+        
+        // Recursively upload images for steps
+        for (const section of rawInstructions) {
+            if (section.items) {
+                for (const item of section.items) {
+                    if (item.imageFile) {
+                        const stepImgRef = ref(storage, `users/${userId}/recipes/steps/${Date.now()}_${item.imageFile.name}`);
+                        await uploadBytes(stepImgRef, item.imageFile);
+                        item.imageUrl = await getDownloadURL(stepImgRef);
+                        delete item.imageFile; // Don't save the file object to Firestore
                     }
-
-                    const linkedRecipesSelect = document.getElementById('linked-recipes-select');
-                    const linkedRecipeIds = [...linkedRecipesSelect.selectedOptions].map(option => option.value);
-
-                    // Add this before creating recipeData
-const flavorProfile = [];
-if (document.getElementById('flavor-sweet').checked) flavorProfile.push('Sweet');
-if (document.getElementById('flavor-savoury').checked) flavorProfile.push('Savoury');
-
-
-
-                    const recipeData = {
-                        name,
-                        description: document.getElementById('recipe-description').value,
-                        cuisine: document.getElementById('recipe-cuisine').value,
-                        sourceName: document.getElementById('recipe-source-name').value,
-                        sourceUrl: document.getElementById('recipe-source-url').value,
-                        yield: {
-                            quantity: Number(document.getElementById('recipe-yield-quantity').value) || null,
-                            unit: document.getElementById('recipe-yield-unit').value
-                        },
-                        prepTime: Number(document.getElementById('recipe-prep-time').value) || 0,
-                        cookTime: Number(document.getElementById('recipe-cook-time').value) || 0,
-                        // Inside the recipeData object definition
-                        restingTime: Number(document.getElementById('recipe-resting-time').value) || 0,
-                        totalTime: Number(document.getElementById('recipe-total-time').value) || 0,
-                        discoveredDate: document.getElementById('recipe-discovered-date').value,
-                        mealType: document.getElementById('recipe-meal-type').value,
-                        category: document.getElementById('recipe-category').value,
-                        // Add this property to the recipeData object
-                        flavorProfile: flavorProfile,
-                        ingredients: parseSections(document.getElementById('recipe-ingredients').value),
-                        instructions: getInstructionsFromBuilder(),
-                        notes: document.getElementById('recipe-notes').value,
-                        labels: document.getElementById('recipe-labels').value.split(',').map(l => l.trim()).filter(Boolean),
-                        rating: currentRating,
-                        imageUrl,
-                        linkedRecipeIds,
-                        updatedAt: serverTimestamp(),
-                        updatedBy: userId,
-                        approvals: editingRecipeId ? (recipesCache.find(r => r.id === editingRecipeId)?.approvals || []) : []
-                    };
-
-                    if (!editingRecipeId) {
-                        const discoveredDate = document.getElementById('recipe-discovered-date').value;
-                        recipeData.createdAt = discoveredDate ? new Date(discoveredDate) : serverTimestamp();
-                        recipeData.ingredientNotes = {};
-                        recipeData.instructionNotes = {};
-                        recipeData.createdBy = userId;
-                        if (importedImageUrl) {
-                            recipeData.importedFromUrl = document.getElementById('import-url-input').value;
-                            recipeData.importedAt = serverTimestamp();
-                            if (!recipeData.labels.includes('imported')) {
-                                recipeData.labels.push('imported');
-                            }
-                        }
-                    }
-
-                    if (editingRecipeId) {
-                        const recipeRef = doc(db, 'users', userId, 'recipes', editingRecipeId);
-                        await updateDoc(recipeRef, recipeData);
-                        showNotification("Recipe updated successfully!");
-                    } else {
-                        const recipesCol = collection(db, 'users', userId, 'recipes');
-                        await addDoc(recipesCol, recipeData);
-                        showNotification("Recipe added successfully!");
-                    }
-                    
-                    await loadRecipes();
-
-                    if (!editingRecipeId && fetchedRecipesCache.length > 0) {
-                        fetchedRecipesCache.shift(); // Remove the recipe we just added
-                        if (fetchedRecipesCache.length > 0) {
-                            showNextImportModal();
-                        } else {
-                            resetForm();
-                        }
-                    } else {
-                        resetForm();
-                    }
-
-                } catch (error) {
-                    console.error("Error saving recipe:", error);
-                    showNotification("Failed to save recipe.", "error");
-                } finally {
-                    addRecipeBtn.disabled = false;
-                    addRecipeBtn.textContent = editingRecipeId ? "Save Changes" : "Add Recipe";
                 }
             }
+        }
+
+        const isFoodItem = document.getElementById('is-food-item-toggle')?.checked || false;
+
+        const recipeData = {
+            name,
+            description: document.getElementById('recipe-description').value,
+            cuisine: document.getElementById('recipe-cuisine').value,
+            sourceName: document.getElementById('recipe-source-name').value,
+            sourceUrl: document.getElementById('recipe-source-url').value,
+            yield: {
+                quantity: Number(document.getElementById('recipe-yield-quantity').value) || null,
+                unit: document.getElementById('recipe-yield-unit').value
+            },
+            prepTime: Number(document.getElementById('recipe-prep-time').value) || 0,
+            cookTime: Number(document.getElementById('recipe-cook-time').value) || 0,
+            restingTime: Number(document.getElementById('recipe-resting-time').value) || 0,
+            totalTime: Number(document.getElementById('recipe-total-time').value) || 0,
+            discoveredDate: document.getElementById('recipe-discovered-date').value,
+            mealType: document.getElementById('recipe-meal-type').value,
+            category: document.getElementById('recipe-category').value,
+            flavorProfile: flavorProfile,
+            ingredients: parseSections(document.getElementById('recipe-ingredients').value),
+            instructions: rawInstructions,
+            notes: document.getElementById('recipe-notes').value,
+            labels: document.getElementById('recipe-labels').value.split(',').map(l => l.trim()).filter(Boolean),
+            rating: currentRating,
+            imageUrl,
+            linkedRecipeIds,
+            isFoodItem, // Save the Food Mode flag
+            updatedAt: serverTimestamp(),
+            updatedBy: userId,
+            approvals: editingRecipeId ? (recipesCache.find(r => r.id === editingRecipeId)?.approvals || []) : []
+        };
+
+        if (!editingRecipeId) {
+            const discoveredDate = document.getElementById('recipe-discovered-date').value;
+            recipeData.createdAt = discoveredDate ? new Date(discoveredDate) : serverTimestamp();
+            recipeData.ingredientNotes = {};
+            recipeData.instructionNotes = {};
+            recipeData.createdBy = userId;
+            if (importedImageUrl) {
+                recipeData.importedFromUrl = document.getElementById('import-url-input').value;
+                recipeData.importedAt = serverTimestamp();
+                if (!recipeData.labels.includes('imported')) {
+                    recipeData.labels.push('imported');
+                }
+            }
+        }
+
+        if (editingRecipeId) {
+            const recipeRef = doc(db, 'users', userId, 'recipes', editingRecipeId);
+            await updateDoc(recipeRef, recipeData);
+            showNotification("Recipe updated successfully!");
+        } else {
+            const recipesCol = collection(db, 'users', userId, 'recipes');
+            await addDoc(recipesCol, recipeData);
+            showNotification("Recipe added successfully!");
+        }
+        
+        await loadRecipes();
+
+        if (!editingRecipeId && fetchedRecipesCache.length > 0) {
+            fetchedRecipesCache.shift();
+            if (fetchedRecipesCache.length > 0) {
+                showNextImportModal();
+            } else {
+                resetForm();
+            }
+        } else {
+            resetForm();
+        }
+
+    } catch (error) {
+        console.error("Error saving recipe:", error);
+        showNotification("Failed to save recipe.", "error");
+    } finally {
+        addRecipeBtn.disabled = false;
+        addRecipeBtn.textContent = editingRecipeId ? "Save Changes" : "Add Recipe";
+    }
+}
 
             function resetForm() {
                 switchTab('recipes');
@@ -1216,12 +1269,14 @@ const createInstructionRow = (data = {}) => {
     const text = data.text || '';
     const timeVal = data.timer ? data.timer.val : '';
     const timeUnit = data.timer ? data.timer.unit : 'm';
+    const imageUrl = data.imageUrl || '';
 
     row.innerHTML = `
-        <div class="flex-grow w-full">
+        <div class="flex-grow w-full space-y-2">
             <textarea placeholder="Step instruction..." rows="2" class="step-text w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 resize-y">${text}</textarea>
+            ${imageUrl ? `<div class="step-image-preview relative w-fit"><img src="${imageUrl}" class="h-20 rounded border"><button type="button" class="remove-img-btn absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"><i class="fas fa-times"></i></button></div>` : ''}
         </div>
-        <div class="flex items-center gap-1 flex-shrink-0">
+        <div class="flex flex-col gap-2 flex-shrink-0">
             <div class="flex items-center border rounded dark:border-gray-600 bg-white dark:bg-gray-700 overflow-hidden">
                 <div class="px-2 text-gray-400 text-xs"><i class="fas fa-stopwatch"></i></div>
                 <input type="number" placeholder="0" value="${timeVal}" class="step-time w-12 p-1 text-sm text-center outline-none dark:bg-gray-700 border-r dark:border-gray-600 appearance-none">
@@ -1231,13 +1286,38 @@ const createInstructionRow = (data = {}) => {
                     <option value="h" ${timeUnit === 'h' ? 'selected' : ''}>h</option>
                 </select>
             </div>
-            <button type="button" class="remove-row-btn text-red-400 hover:text-red-600 p-2"><i class="fas fa-times"></i></button>
+            <label class="cursor-pointer bg-indigo-50 dark:bg-indigo-900/50 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 p-1 rounded text-xs text-center flex items-center justify-center gap-1 transition-colors">
+                <i class="fas fa-camera"></i> <span>Add Img</span>
+                <input type="file" class="step-image-input hidden" accept="image/*">
+            </label>
+            <button type="button" class="remove-row-btn text-red-400 hover:text-red-600 p-1 text-center"><i class="fas fa-trash-alt"></i></button>
         </div>
     `;
+
+    // Handle image file selection preview
+    const fileInput = row.querySelector('.step-image-input');
+    fileInput.addEventListener('change', (e) => {
+        if (fileInput.files && fileInput.files[0]) {
+             const lbl = row.querySelector('label span');
+             lbl.textContent = 'Selected';
+             lbl.parentElement.classList.add('bg-green-50', 'text-green-600', 'border-green-200');
+        }
+    });
+
+    // Handle removing existing image
+    const removeImgBtn = row.querySelector('.remove-img-btn');
+    if (removeImgBtn) {
+        removeImgBtn.addEventListener('click', () => {
+            row.dataset.removeImage = 'true';
+            row.querySelector('.step-image-preview').remove();
+        });
+    }
 
     row.querySelector('.remove-row-btn').addEventListener('click', () => row.remove());
     return row;
 };
+
+
 
 const createSectionRow = (title = '') => {
     const row = document.createElement('div');
@@ -1295,7 +1375,12 @@ const getInstructionsFromBuilder = () => {
             currentSection = { section: title, items: [] };
         } else {
             const text = row.querySelector('.step-text').value.trim();
-            if (text) {
+            // We include items even if text is empty if they have an image
+            const fileInput = row.querySelector('.step-image-input');
+            const hasFile = fileInput && fileInput.files.length > 0;
+            const existingImg = row.querySelector('.step-image-preview');
+
+            if (text || hasFile || existingImg) {
                 const item = { text };
                 const timeVal = row.querySelector('.step-time').value;
                 const timeUnit = row.querySelector('.step-unit').value;
@@ -1303,6 +1388,18 @@ const getInstructionsFromBuilder = () => {
                 if (timeVal) {
                     item.timer = { val: parseFloat(timeVal), unit: timeUnit };
                 }
+                
+                // Attach file object to item for processing in handleAddOrUpdateRecipe
+                if (hasFile) {
+                    item.imageFile = fileInput.files[0];
+                }
+                
+                // Persist existing URL unless removed
+                if (existingImg && !row.dataset.removeImage) {
+                    const imgTag = existingImg.querySelector('img');
+                    if (imgTag) item.imageUrl = imgTag.src;
+                }
+
                 currentSection.items.push(item);
             }
         }
@@ -1389,6 +1486,17 @@ const getInstructionsFromBuilder = () => {
     const ingredientsData = processData(recipe.ingredients, 'Ingredients');
     const instructionsData = processData(recipe.instructions, 'Instructions');
 
+    // Calculate Active Time from Steps
+let totalActiveMillis = 0;
+instructionsData.forEach(section => {
+    (section.items || []).forEach(item => {
+        if(item && item.timer) {
+            totalActiveMillis += parseDurationToMillis(item.timer.val, item.timer.unit);
+        }
+    });
+});
+const activeTimeMins = Math.round(totalActiveMillis / 60000);
+
     // Fetch History for "Last Cooked" block
     let lastCookedHtml = '';
     try {
@@ -1427,29 +1535,31 @@ const getInstructionsFromBuilder = () => {
     `).join('');
 
     const instructionsHtml = instructionsData.map(section => `
-        <h5 class="font-bold mt-3 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">${section.section}</h5>
-        <ol class="list-decimal list-inside space-y-3 mt-1">
-                ${(section.items || []).map(item => {
-                    const itemText = typeof item === 'object' ? item.text : item;
-                    const itemTip = (typeof item === 'object' && item.tip) ? item.tip : '';
-                    
-                    // 1. Render timers from text (backward compatibility)
-                    let contentHtml = renderTextWithTimers(itemText);
+    <h5 class="font-bold mt-3 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">${section.section}</h5>
+    <ol class="list-decimal list-inside space-y-3 mt-1">
+            ${(section.items || []).map(item => {
+                const itemText = typeof item === 'object' ? item.text : item;
+                const itemTip = (typeof item === 'object' && item.tip) ? item.tip : '';
+                const itemImg = (typeof item === 'object' && item.imageUrl) ? item.imageUrl : '';
 
-                    // 2. Render structured timer (NEW)
-                    if (typeof item === 'object' && item.timer) {
-                        const millis = parseDurationToMillis(item.timer.val, item.timer.unit);
-                        const display = `${item.timer.val}${item.timer.unit}`;
-                        contentHtml += ` <button class="timer-btn ml-2" data-original-text="${display}" data-millis="${millis}"><i class="fas fa-stopwatch"></i> ${display}</button>`;
-                    }
-                    
-                    return `<li data-type="instruction" data-key="${itemText}" class="group pl-1">
+                let contentHtml = renderTextWithTimers(itemText);
+
+                if (typeof item === 'object' && item.timer) {
+                    const millis = parseDurationToMillis(item.timer.val, item.timer.unit);
+                    const display = `${item.timer.val}${item.timer.unit}`;
+                    contentHtml += ` <button class="timer-btn ml-2" data-original-text="${display}" data-millis="${millis}"><i class="fas fa-stopwatch"></i> ${display}</button>`;
+                }
+
+                return `<li data-type="instruction" data-key="${itemText}" class="group pl-1">
+            <div class="inline-block">
                 <span class="cursor-pointer hover:text-gray-500 transition-colors">${contentHtml} ${itemTip ? `<span class="text-xs text-gray-400 italic">(${itemTip})</span>` : ''}</span>
                 <button class="add-note-btn opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500 hover:text-indigo-700 ml-2"><i class="fas fa-plus-circle"></i></button>
+                ${itemImg ? `<div class="mt-2"><img src="${itemImg}" class="max-h-48 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"></div>` : ''}
                 ${renderNote(recipe.instructionNotes[createSafeKey(itemText)])}
-            </li>`}).join('')}
-        </ol>
-    `).join('');
+            </div>
+        </li>`}).join('')}
+    </ol>
+`).join('');
     
     const yieldText = typeof recipe.yield === 'object' && recipe.yield !== null ? `${recipe.yield.quantity || ''} ${recipe.yield.unit || ''}` : recipe.yield || 'N/A';
 
@@ -1524,6 +1634,7 @@ const getInstructionsFromBuilder = () => {
                                 <p class="flex justify-between"><strong>Yield:</strong> <span>${yieldText}</span></p>
                                 <p class="flex justify-between"><strong>Prep Time:</strong> <span>${recipe.prepTime || 'N/A'} min</span></p>
                                 <p class="flex justify-between"><strong>Cook Time:</strong> <span>${recipe.cookTime || 'N/A'} min</span></p>
+                                ${activeTimeMins > 0 ? `<p class="flex justify-between text-indigo-600 dark:text-indigo-400"><strong>Active Step Time:</strong> <span>${activeTimeMins} min</span></p>` : ''}
                                 <p class="flex justify-between"><strong>Resting Time:</strong> <span>${recipe.restingTime || '0'} min</span></p>
                                 <p class="flex justify-between"><strong>Total Time:</strong> <span>${recipe.totalTime || 'N/A'} min</span></p>
                                 <p class="flex justify-between"><strong>Flavor:</strong> <span>${(recipe.flavorProfile || []).join(', ') || '-'}</span></p>
@@ -1583,7 +1694,7 @@ const getInstructionsFromBuilder = () => {
 </div>`;
     
     // --- Initial Render Logic ---
-    renderModalRating(recipe.id, recipe.rating || 0);
+    renderReadOnlyRating(recipe.rating || 0);
     renderModalLabels(recipe);
     renderApprovals(recipe.id, recipe.approvals);
     renderLinkedRecipes(recipe.id);
@@ -1782,6 +1893,19 @@ const getInstructionsFromBuilder = () => {
                                         <input type="date" id="history-date" required class="mt-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 w-full">
                                     </div>
                                     <div>
+    <label for="history-scale" class="block text-sm font-medium">Portions Cooked (Scale)</label>
+    <div class="flex items-center gap-2 mt-1">
+        <select id="history-scale" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 w-full">
+            <option value="0.5">0.5x (Half)</option>
+            <option value="1" selected>1x (Standard)</option>
+            <option value="1.5">1.5x</option>
+            <option value="2">2x (Double)</option>
+            <option value="3">3x (Triple)</option>
+            <option value="4">4x (Quadruple)</option>
+        </select>
+    </div>
+</div>
+                                    <div>
                                         <label class="block text-sm font-medium">Rating</label>
                                         <div id="history-rating-input" class="flex items-center gap-1 mt-1"></div>
                                     </div>
@@ -1884,6 +2008,7 @@ const getInstructionsFromBuilder = () => {
                             cookedAt: document.getElementById('history-date').value,
                             rating: historyRating,
                             notes: document.getElementById('history-notes').value,
+                            scaleCooked: document.getElementById('history-scale').value,
                             imageUrl,
                             applianceId: applianceId || null,
                             applianceName: applianceName || null,
@@ -2118,6 +2243,18 @@ const getInstructionsFromBuilder = () => {
                     container.innerHTML = '<p class="text-sm text-gray-500">No linked recipes.</p>';
                 }
             }
+
+function renderReadOnlyRating(rating) {
+    const container = modalContainer.querySelector('.modal-rating-stars');
+    if(!container) return;
+    container.innerHTML = '';
+    for (let i = 1; i <= 5; i++) {
+        const star = document.createElement('i');
+        // Removed 'cursor-pointer' and click listener
+        star.className = `fas fa-star text-lg ${i <= rating ? 'text-yellow-400' : 'text-gray-300'}`;
+        container.appendChild(star);
+    }
+}
 
             function renderApprovals(recipeId, approvals) {
                 const container = document.getElementById('approvals-list');
