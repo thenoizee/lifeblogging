@@ -30,6 +30,12 @@
         .nav-tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
         .nav-tab.active { color: var(--primary); background: rgba(59, 130, 246, 0.1); }
         .filter-chip.active { background-color: var(--primary); color: white; border-color: var(--primary); }
+
+        #version-display {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--text-color-secondary);
+      }
         
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade { animation: fadeIn 0.4s ease-out forwards; }
@@ -123,7 +129,7 @@
     </style>
 </head>
 <body class="antialiased flex flex-col min-h-screen">
-    <header class="sticky top-0 bg-[var(--card)] shadow-lg z-30 shrink-0">
+<div id="version-display" class="fixed top-2 right-2 text-[10px] text-gray-600 dark:text-gray-400 opacity-50 pointer-events-none z-50 font-mono"></div>    <header class="sticky top-0 bg-[var(--card)] shadow-lg z-30 shrink-0">
     <div class="container mx-auto px-4 py-2">
         <div class="flex items-center justify-between mb-2 mt-1">
             <div class="flex items-center space-x-4">
@@ -450,6 +456,13 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, addDoc, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        import { changelogData } from '/changelog-data.js';
+        // FIX: Define the variable first, THEN use it
+        const versionDisplay = document.getElementById('version-display');
+        if (versionDisplay && changelogData) {
+            versionDisplay.textContent = changelogData[0].version;
+        }
 
         const firebaseConfig = { apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8", authDomain: "sammy-7298f.firebaseapp.com", projectId: "sammy-7298f", storageBucket: "sammy-7298f.firebasestorage.app", messagingSenderId: "963185683535", appId: "1:963185683535:web:807df8941feba46c208e3a", measurementId: "G-JT1YF2ELN3" };
         const app = initializeApp(firebaseConfig);
@@ -681,8 +694,62 @@ const fetchAllData = async () => {
     window.renderProjectSidebar();
 };
 
+// Helper to ensure we only send clean, API-friendly data
+        const formatTaskPayload = (task) => {
+            const cleanDate = (d) => {
+                if (!d) return null;
+                // Ensure we use +0000 for TickTick, not Z
+                return new Date(d).toISOString().replace(/\.\d{3}Z$/, '+0000');
+            };
+
+            return {
+                title: task.title,
+                content: task.content || '',
+                projectId: task.projectId || 'inbox',
+                priority: parseInt(task.priority || 0),
+                tags: task.tags || [],
+                isAllDay: !!task.isAllDay,
+                startDate: cleanDate(task.startDate),
+                dueDate: cleanDate(task.dueDate),
+                repeatFlag: task.repeatFlag || null,
+                status: task.status || 0,
+                // CRITICAL: Sanitize checklist items to remove read-only fields
+                items: (task.items || []).map(item => ({
+                    id: item.id, // Keep ID if it exists (for updates)
+                    title: item.title,
+                    status: item.status || 0
+                }))
+            };
+        };
+
         let currentSidePaneTaskId = null;
-        window.saveSidePaneChanges = async (field) => { /* Same as previous */ if (!currentSidePaneTaskId) return; const task = taskCache.find(t => t.id === currentSidePaneTaskId); if (!task) return; let newValue; if (field === 'title') { newValue = document.getElementById('sp-title-edit').value.trim(); if (newValue === task.title) return; task.title = newValue; } else if (field === 'desc') { newValue = document.getElementById('sp-desc').innerText; if (newValue === (task.content || '')) return; task.content = newValue; } renderApp(); try { const payload = { projectId: task.projectId, title: task.title, content: task.content }; await api(`/task/${task.id}`, 'POST', payload); } catch (e) { showToast('Failed to save changes', 'error'); console.error(e); } };
+       window.saveSidePaneChanges = async (field) => {
+            if (!currentSidePaneTaskId) return;
+            const task = taskCache.find(t => t.id === currentSidePaneTaskId);
+            if (!task) return;
+            
+            let newValue;
+            if (field === 'title') {
+                newValue = document.getElementById('sp-title-edit').value.trim();
+                if (newValue === task.title) return;
+                task.title = newValue;
+            } else if (field === 'desc') {
+                newValue = document.getElementById('sp-desc').innerText;
+                if (newValue === (task.content || '')) return;
+                task.content = newValue;
+            }
+            
+            renderApp();
+            
+            try {
+                // FIX: Use helper to strictly sanitize payload
+                const payload = formatTaskPayload(task);
+                await api(`/task/${task.id}`, 'POST', payload);
+            } catch (e) {
+                showToast('Failed to save changes', 'error');
+                console.error(e);
+            }
+        };
 
         window.renderProjectSidebar = () => {
     const listEl = document.getElementById('sidebar-list');
@@ -1035,65 +1102,89 @@ const renderProjectsManager = () => {
             hideLoader(); 
         };
         window.addChecklistItem = (text = '') => { /* Same */ const container = document.getElementById('checklist-builder'); const div = document.createElement('div'); div.className = 'flex gap-2 items-center'; div.innerHTML = `<i class="fa-regular fa-square text-gray-500"></i><input type="text" value="${escapeHtml(text)}" class="checklist-input w-full bg-transparent border-b border-gray-700 focus:border-blue-500 outline-none text-sm py-1" placeholder="Subtask..."><button type="button" onclick="this.parentElement.remove()" class="text-gray-500 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>`; container.appendChild(div); div.querySelector('input').focus(); };
+
         window.submitTaskForm = async () => {
-    const id = document.getElementById('modal-task-id').value;
-    // ... (existing checklist logic) ...
-    const checklistItems = []; 
-    document.querySelectorAll('.checklist-input').forEach(input => { if(input.value.trim()) checklistItems.push({ title: input.value.trim(), status: 0 }); }); 
-    
-    // ... (existing payload construction) ...
-    const payload = { 
-        title: document.getElementById('modal-title-input').value, 
-        content: document.getElementById('modal-desc-input').value, 
-        projectId: document.getElementById('modal-project-input').value, 
-        priority: parseInt(document.getElementById('modal-priority-input').value), 
-        // We DON'T send 'source' to TickTick API, it will reject it or ignore it.
-        isAllDay: document.getElementById('modal-allday-input').checked, 
-        tags: document.getElementById('modal-tags-input').value.split(',').map(t=>t.trim()).filter(t=>t), 
-        repeatFlag: document.getElementById('modal-repeat-input').value || null, 
-        items: checklistItems 
-    }; 
-    
-    // ... (existing date logic) ...
-    const dueVal = document.getElementById('modal-due-date').value; 
-    if(dueVal) payload.dueDate = new Date(dueVal).toISOString().replace(/\.\d{3}Z$/, '+0000'); 
-    const startVal = document.getElementById('modal-start-date').value; 
-    if(startVal) payload.startDate = new Date(startVal).toISOString().replace(/\.\d{3}Z$/, '+0000'); 
-    
-    // Capture the source selected in the modal
-    const selectedSource = document.getElementById('modal-source-input').value;
+            const id = document.getElementById('modal-task-id').value;
+            
+            // 1. Build checklist from DOM
+            const checklistItems = []; 
+            document.querySelectorAll('.checklist-input').forEach(input => { 
+                if(input.value.trim()) checklistItems.push({ title: input.value.trim(), status: 0 }); 
+            }); 
+            
+            // 2. Get existing task data (if editing)
+            let existingTask = {};
+            if (id) {
+                existingTask = taskCache.find(t => t.id === id) || {};
+            }
 
-    showLoader(); 
-    try {
-        let savedTask;
-        if(id) {
-            savedTask = await api(`/task/${id}`, 'POST', payload);
-        } else {
-            savedTask = await api('/task', 'POST', payload);
-        }
-        
-        // Save Origin to Firebase
-        if (savedTask && savedTask.id && selectedSource === 'tasktrackr') {
-             await saveTaskOrigin(savedTask.id, 'tasktrackr');
-        }
+            // 3. Collect Raw Form Data
+            const rawFormData = {
+                title: document.getElementById('modal-title-input').value, 
+                content: document.getElementById('modal-desc-input').value, 
+                projectId: document.getElementById('modal-project-input').value, 
+                priority: document.getElementById('modal-priority-input').value, 
+                isAllDay: document.getElementById('modal-allday-input').checked, 
+                tags: document.getElementById('modal-tags-input').value.split(',').map(t=>t.trim()).filter(t=>t), 
+                repeatFlag: document.getElementById('modal-repeat-input').value,
+                items: checklistItems,
+                // Handle dates simply here, the helper will format them
+                dueDate: document.getElementById('modal-due-date').value || null,
+                startDate: document.getElementById('modal-start-date').value || null
+            };
 
-        showToast('Success!'); 
-        els.modal.classList.add('hidden'); 
-        window.closeSidePane(); 
-        fetchAllData(); 
-    } catch(e) { 
-        showToast('Error', 'error'); 
-    } 
-    hideLoader(); 
-};
+            // 4. Merge and Sanitize using the Helper
+            // We spread existingTask first, then overwrite with form data
+            const mergedTask = { ...existingTask, ...rawFormData };
+            const payload = formatTaskPayload(mergedTask);
+
+            const selectedSource = document.getElementById('modal-source-input').value;
+
+            showLoader(); 
+            try {
+                let savedTask;
+                if(id) {
+                    savedTask = await api(`/task/${id}`, 'POST', payload);
+                } else {
+                    savedTask = await api('/task', 'POST', payload);
+                }
+                
+                if (savedTask && savedTask.id && selectedSource === 'tasktrackr') {
+                     await saveTaskOrigin(savedTask.id, 'tasktrackr');
+                }
+
+                showToast('Success!'); 
+                els.modal.classList.add('hidden'); 
+                window.closeSidePane(); 
+                fetchAllData(); 
+            } catch(e) { 
+                showToast('Error saving task', 'error'); 
+                console.error(e);
+            } 
+            hideLoader(); 
+        };
 
         window.openModal = (isEdit, taskId = null) => { /* Same */ const modal = document.getElementById('task-modal'); const pSelect = document.getElementById('modal-project-input'); const container = document.getElementById('checklist-builder'); container.innerHTML = ''; pSelect.innerHTML = Object.entries(projectMap).map(([id, p]) => `<option value="${id}">${escapeHtml(p.name)}</option>`).join(''); if(!Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox')) { pSelect.innerHTML = `<option value="inbox">Inbox</option>` + pSelect.innerHTML; } if (isEdit && taskId) { const task = taskCache.find(t => t.id === taskId); document.getElementById('modal-title').textContent = "Edit Task"; document.getElementById('modal-task-id').value = task.id; document.getElementById('modal-title-input').value = task.title; document.getElementById('modal-desc-input').value = task.content || ''; document.getElementById('modal-tags-input').value = (task.tags || []).join(', '); 
         document.getElementById('modal-priority-input').value = task.priority || 0;
         document.getElementById('modal-source-input').value = getTaskSource(task); 
-        document.getElementById('modal-project-input').value = task.projectId; document.getElementById('modal-allday-input').checked = !!task.isAllDay; document.getElementById('modal-repeat-input').value = task.repeatFlag || ""; if (task.items) task.items.forEach(item => window.addChecklistItem(item.title)); const fmtDate = (iso) => iso ? new Date(new Date(iso) - (new Date(iso).getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : ''; document.getElementById('modal-start-date').value = fmtDate(task.startDate); document.getElementById('modal-due-date').value = fmtDate(task.dueDate); } else { document.getElementById('modal-title').textContent = "New Task"; document.getElementById('modal-task-id').value = ''; document.getElementById('modal-title-input').value = ''; document.getElementById('modal-desc-input').value = ''; document.getElementById('modal-tags-input').value = ''; document.getElementById('modal-start-date').value = ''; document.getElementById('modal-due-date').value = ''; 
+        document.getElementById('modal-project-input').value = task.projectId; document.getElementById('modal-allday-input').checked = !!task.isAllDay; document.getElementById('modal-repeat-input').value = task.repeatFlag || ""; if (task.items) task.items.forEach(item => window.addChecklistItem(item.title)); const fmtDate = (iso) => iso ? new Date(new Date(iso) - (new Date(iso).getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : ''; document.getElementById('modal-start-date').value = fmtDate(task.startDate); document.getElementById('modal-due-date').value = fmtDate(task.dueDate);
+     } else { document.getElementById('modal-title').textContent = "New Task"; 
+     document.getElementById('modal-task-id').value = ''; 
+     document.getElementById('modal-title-input').value = ''; 
+     document.getElementById('modal-desc-input').value = ''; 
+     document.getElementById('modal-tags-input').value = ''; 
+     document.getElementById('modal-start-date').value = ''; 
+     document.getElementById('modal-due-date').value = ''; 
         document.getElementById('modal-priority-input').value = 0; 
         document.getElementById('modal-source-input').value = 'ticktick';
-        document.getElementById('modal-allday-input').checked = false; document.getElementById('modal-repeat-input').value = ""; } modal.classList.remove('hidden'); };
+        document.getElementById('modal-allday-input').checked = false; 
+        document.getElementById('modal-repeat-input').value = ""; 
+        // NEW: Default to Inbox
+                const inboxId = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
+                document.getElementById('modal-project-input').value = inboxId;
+    } 
+
+    modal.classList.remove('hidden'); };
 
         /* Pomo, Keydown, Helper functions */
         let pomoInterval; let pomoSeconds = 25 * 60; let isPomoRunning = false;

@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.82.0-alpha",
+    date: "2025-12-29",
+    changes: [
+        "In TaskTrackr: Changed default project for new tasks to 'Inbox'.",
+        "In TaskTrackr: Fixed Side Pane auto-save functionality.",
+        "In TaskTrackr: Added version watermark to UI."
+    ]
+    },
+    {
     version: "v9.82.1-alpha",
     date: "2025-12-29",
     changes: [
