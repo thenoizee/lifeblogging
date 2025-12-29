@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.86.0-alpha",
+    date: "2025-12-29",
+    changes: [
+        "In RecipeManagr: Fixed critical CORS policy and storage bucket configuration errors preventing recipe image uploads.",
+        "In RecipeManagr: Added full functionality to edit and delete past cooking history logs.",
+        "In RecipeManagr: Implemented synchronization logic to ensure the 'Last Cooked' date and image on the dashboard update immediately when logs are modified or removed.",
+    ]
+    },
+    {
     version: "v9.85.0-alpha",
     date: "2025-12-29",
     changes: [
