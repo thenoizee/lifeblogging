@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.82.0-alpha",
+    date: "2025-12-29",
+    changes: [
+        "In FoodTrackr: Added a 'Composite Food Builder' (Recipe Mode) to the Search tab, allowing users to build and save custom meals from multiple ingredients.",
+        "In FoodTrackr: Implemented 'Quick Portion Buttons' (e.g., 1 Serving, 1/2 Pack) in the logging form that automatically calculate grams based on product data.",
+        "In TaskTrackr: Updated icon to double ticks instead of a single tick in-line with the rest of the TaskTrackr app.",
+
+    ]
+    },
+    {
     version: "v9.81.0-alpha",
     date: "2025-12-29",
     changes: [

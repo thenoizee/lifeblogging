@@ -758,7 +758,42 @@
         </button>
     </div>
 
-    <div id="subtab-search-view" class="subtab-content active">
+        <div id="subtab-search-view" class="subtab-content active relative">
+    <div id="builder-toggle-container" class="mb-4 flex justify-between items-center bg-indigo-50 dark:bg-indigo-900/30 p-3 rounded-lg border border-indigo-100 dark:border-indigo-800">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-100 text-indigo-600 dark:bg-indigo-800 dark:text-indigo-200 p-2 rounded-full">
+                <i class="fa-solid fa-layer-group"></i>
+            </div>
+            <div>
+                <h4 class="font-bold text-sm">Composite Food Builder</h4>
+                <p class="text-xs text-[var(--text-color-secondary)]">Create a food from multiple ingredients.</p>
+            </div>
+        </div>
+        <button id="toggle-builder-mode-btn" class="secondary-button text-xs py-2 px-4">
+            Start Building
+        </button>
+    </div>
+
+    <div id="meal-builder-panel" class="hidden mb-6 bg-white dark:bg-gray-800 border-2 border-indigo-500 rounded-xl p-4 shadow-xl">
+        <div class="flex justify-between items-center mb-3 border-b border-gray-100 dark:border-gray-700 pb-2">
+            <h3 class="font-bold text-lg text-indigo-600 dark:text-indigo-400">New Composite Food</h3>
+            <span id="builder-total-cals" class="text-sm font-mono font-bold bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">0 kcal</span>
+        </div>
+        
+        <div class="input-group mb-3">
+            <input id="builder-meal-name" type="text" placeholder="Name (e.g. My Protein Oats)" class="text-sm">
+        </div>
+
+        <div id="builder-items-list" class="space-y-2 max-h-40 overflow-y-auto mb-4 empty:text-center empty:text-gray-400 empty:text-sm">
+            <p class="text-xs italic py-2">Search and click "Add" on foods below to build your recipe.</p>
+        </div>
+
+        <div class="flex gap-2">
+            <button id="save-builder-meal-btn" class="main-button w-full py-2 text-sm">Save Food</button>
+            <button id="cancel-builder-btn" class="secondary-button w-auto py-2 text-sm">Cancel</button>
+        </div>
+    </div>
+    <div class="add-food-options border-none p-0">
         <div class="add-food-options border-none p-0">
             <div class="search-container-styled">
                 <div class="search-input-wrapper">
@@ -860,21 +895,24 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:col-span-2">
-                <div class="input-group">
-                    <label for="quantity-amount">Amount</label>
-                    <input id="quantity-amount" type="number" value="100" class="w-full">
-                </div>
-                <div class="input-group">
-                    <label for="quantity-unit">Unit</label>
-                    <select id="quantity-unit" class="w-full">
-                        <option value="g" data-grams="1">g</option>
-                        <option value="ml" data-grams="1">ml</option>
-                    </select>
-                </div>
-                <div class="input-group">
-                    <label for="quantity">Total Grams</label>
-                    <input id="quantity" type="number" value="100" readonly class="opacity-70 cursor-not-allowed bg-gray-100 dark:bg-gray-700">
-                </div>
+    <div class="input-group">
+        <label for="quantity-amount">Amount</label>
+        <input id="quantity-amount" type="number" value="100" class="w-full">
+    </div>
+    <div class="input-group">
+        <label for="quantity-unit">Unit</label>
+        <select id="quantity-unit" class="w-full">
+            <option value="g" data-grams="1">g</option>
+            <option value="ml" data-grams="1">ml</option>
+        </select>
+    </div>
+    <div class="input-group">
+        <label for="quantity">Total Grams</label>
+        <input id="quantity" type="number" value="100" readonly class="opacity-70 cursor-not-allowed bg-gray-100 dark:bg-gray-700">
+    </div>
+    
+    <div id="form-quick-qty-buttons" class="col-span-1 md:col-span-3 flex flex-wrap gap-2 mt-[-10px] mb-2"></div>
+</div>
             </div>
         </div>
 
@@ -1415,6 +1453,208 @@ const showToast = (message, type = 'info') => {
     }, 3000);
 };
 
+// --- MEAL BUILDER STATE & LOGIC ---
+let isMealBuilderMode = false;
+let builderItems = [];
+
+const toggleBuilderMode = (active) => {
+    isMealBuilderMode = active;
+    const panel = document.getElementById('meal-builder-panel');
+    const toggleBtn = document.getElementById('toggle-builder-mode-btn');
+    
+    if (active) {
+        panel.classList.remove('hidden');
+        toggleBtn.textContent = 'Stop Building';
+        toggleBtn.classList.add('bg-indigo-100', 'text-indigo-700');
+        showToast("Builder Active. Search & click foods to add.", "info");
+    } else {
+        panel.classList.add('hidden');
+        toggleBtn.textContent = 'Start Building';
+        toggleBtn.classList.remove('bg-indigo-100', 'text-indigo-700');
+        builderItems = []; 
+        renderBuilderPanel();
+    }
+    
+    // Update visual state of search results
+    document.querySelectorAll('#search-results .group').forEach(card => {
+        const actionSpan = card.querySelector('.text-xs.font-bold');
+        if(actionSpan) actionSpan.innerHTML = active ? '<i class="fa-solid fa-plus"></i> Add' : 'Select <i class="fa-solid fa-arrow-right ml-1"></i>';
+    });
+};
+
+const extractNutrients = (product) => {
+    const n = product.nutriments || {};
+    const base = {
+        calories: parseFloat(n['energy-kcal_100g'] || 0),
+        protein: parseFloat(n.proteins_100g || 0),
+        carbs: parseFloat(n.carbohydrates_100g || 0),
+        fat: parseFloat(n.fat_100g || 0)
+    };
+    for (const key in DETAILED_NUTRIENTS_MAP) base[key] = parseFloat(n[key] || 0);
+    return base;
+};
+
+const addToBuilder = (product) => {
+    let qty = 100;
+    let unit = 'g';
+    const servingGrams = parseServingToGrams(product);
+    
+    if(servingGrams) {
+        qty = 1;
+        unit = `Serving (${product.serving_size || servingGrams+'g'})`;
+    }
+
+    const item = {
+        id: Date.now().toString(),
+        name: product.product_name || 'Unknown',
+        brands: product.brands || '',
+        baseNutrients: extractNutrients(product),
+        quantity: qty,
+        unit: unit,
+        realGrams: servingGrams || 100,
+        imageUrl: product.image_front_thumb_url || PLACEHOLDER_IMG
+    };
+    
+    builderItems.push(item);
+    renderBuilderPanel();
+    showToast(`Added ${item.name}`, 'success');
+};
+
+const renderBuilderPanel = () => {
+    const list = document.getElementById('builder-items-list');
+    const totalEl = document.getElementById('builder-total-cals');
+    
+    if (builderItems.length === 0) {
+        list.innerHTML = '<p class="text-xs italic py-2 text-center text-gray-400">Search and click "Add" on foods below to build.</p>';
+        totalEl.textContent = '0 kcal';
+        return;
+    }
+    
+    list.innerHTML = '';
+    let totalCals = 0;
+    
+    builderItems.forEach((item, index) => {
+        const itemCals = (item.baseNutrients.calories * (item.realGrams / 100));
+        totalCals += itemCals;
+        
+        const row = document.createElement('div');
+        row.className = 'flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-2 rounded text-sm';
+        row.innerHTML = `
+            <div class="truncate flex-grow pr-2">
+                <span class="font-semibold block truncate">${item.name}</span>
+                <span class="text-xs text-gray-500">${item.quantity} ${item.unit} • ${Math.round(itemCals)} kcal</span>
+            </div>
+            <button class="text-red-500 hover:bg-red-100 p-1 rounded" id="remove-builder-item-${index}">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        `;
+        list.appendChild(row);
+        document.getElementById(`remove-builder-item-${index}`).addEventListener('click', () => {
+            builderItems.splice(index, 1);
+            renderBuilderPanel();
+        });
+    });
+    
+    totalEl.textContent = `${Math.round(totalCals)} kcal`;
+};
+
+// Listeners
+document.getElementById('toggle-builder-mode-btn').addEventListener('click', () => toggleBuilderMode(!isMealBuilderMode));
+document.getElementById('cancel-builder-btn').addEventListener('click', () => {
+    if(builderItems.length > 0 && !confirm("Discard current food?")) return;
+    toggleBuilderMode(false);
+});
+
+document.getElementById('save-builder-meal-btn').addEventListener('click', async () => {
+    const name = document.getElementById('builder-meal-name').value.trim();
+    if (!name) return showToast("Please name your composite food.", "error");
+    if (builderItems.length === 0) return showToast("Add ingredients first.", "error");
+    
+    const mealItems = builderItems.map(item => {
+        const multiplier = item.realGrams / 100;
+        const bn = item.baseNutrients;
+        
+        return {
+            name: item.name, quantity: item.realGrams, brands: item.brands,
+            baseNutrients: bn, imageUrl: item.imageUrl,
+            calories: bn.calories * multiplier,
+            protein: bn.protein * multiplier,
+            carbs: bn.carbs * multiplier,
+            fat: bn.fat * multiplier,
+            fiber: (bn['fiber_100g'] || 0) * multiplier,
+            sugar: (bn['sugars_100g'] || 0) * multiplier,
+            sodium: (bn['sodium_100g'] || 0) * multiplier,
+            'saturated-fat': (bn['saturated-fat_100g'] || 0) * multiplier,
+            salt: (bn['salt_100g'] || 0) * multiplier,
+            servingUnits: [] 
+        };
+    });
+
+    try {
+        await addDoc(collection(db, `users/${user.uid}/meals`), {
+            name: name,
+            imageUrl: mealItems[0].imageUrl,
+            items: mealItems,
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+            source: 'Builder'
+        });
+        showToast(`"${name}" created!`, "success");
+        toggleBuilderMode(false);
+        activateSubTab('my-meals-view'); // Switch view
+    } catch (e) {
+        console.error(e);
+        showToast("Failed to save.", "error");
+    }
+});
+
+// --- QUICK PORTION BUTTONS LOGIC ---
+const renderQuickButtons = (product, packageSize, servingSize, servingSizeStr) => {
+    const container = document.getElementById('form-quick-qty-buttons');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    const createBtn = (label, qtyGrams) => {
+        const btn = document.createElement('button');
+        btn.type = 'button'; 
+        btn.className = 'text-[10px] md:text-xs py-1 px-2 rounded border border-gray-200 bg-white hover:bg-indigo-50 hover:border-indigo-200 transition-colors text-gray-600 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300';
+        btn.textContent = label;
+        btn.addEventListener('click', () => {
+            document.getElementById('quantity-amount').value = qtyGrams;
+            document.getElementById('quantity-unit').value = 'g';
+            updateQuantityInGrams(); 
+        });
+        container.appendChild(btn);
+    };
+
+    if (servingSize) {
+        const unitSelect = document.getElementById('quantity-unit');
+        const servingOption = Array.from(unitSelect.options).find(opt => opt.dataset.custom === 'true');
+        
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'text-[10px] md:text-xs py-1 px-2 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold dark:bg-indigo-900/50 dark:border-indigo-700 dark:text-indigo-300';
+        btn.textContent = `1 Serving (${servingSizeStr || servingSize+'g'})`;
+        btn.addEventListener('click', () => {
+            if (servingOption) {
+                unitSelect.value = servingOption.value;
+                document.getElementById('quantity-amount').value = 1;
+            } else {
+                document.getElementById('quantity-amount').value = servingSize;
+                unitSelect.value = 'g';
+            }
+            updateQuantityInGrams();
+        });
+        container.appendChild(btn);
+    }
+
+    if (packageSize) {
+        createBtn('1/4 Pack', (packageSize * 0.25).toFixed(0));
+        createBtn('1/2 Pack', (packageSize * 0.5).toFixed(0));
+        createBtn('Whole Pack', packageSize);
+    }
+};
+
 
       // MODIFIED: clearLogForm
       const clearLogForm = () => {
@@ -1427,6 +1667,8 @@ const showToast = (message, type = 'info') => {
           // ADD THIS:
           document.getElementById('selected-product-display').classList.add('hidden');
           document.getElementById('back-to-search-btn').classList.add('hidden');
+
+          document.getElementById('form-quick-qty-buttons').innerHTML = '';
           
           // Restore search results so the user can search again immediately
     document.getElementById('search-results').classList.remove('hidden');
@@ -2234,21 +2476,21 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
 };
 
 const renderMyMealsQuickList = () => {
-        const listEl = document.getElementById('my-meals-list');
-        if (!listEl) return;
-        listEl.innerHTML = '';
+    const listEl = document.getElementById('my-meals-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
 
-        if (meals.length === 0) {
-            listEl.innerHTML = `
+    if (meals.length === 0) {
+        listEl.innerHTML = `
             <div class="col-span-full text-center py-8 opacity-50 select-none border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
                 <i class="fa-solid fa-utensils text-4xl mb-2 text-blue-500/50"></i>
                 <p class="font-medium text-sm">No meals saved</p>
                 <p class="text-xs">Group items in your log to create meals.</p>
             </div>`;
-            return;
-        }
+        return;
+    }
 
-        meals.sort((a, b) => a.name.localeCompare(b.name)).forEach(meal => {
+    meals.sort((a, b) => a.name.localeCompare(b.name)).forEach(meal => {
         const totalCals = meal.items.reduce((sum, item) => sum + item.calories, 0);
         const card = document.createElement('div');
         // Matches the modern card styling
@@ -2266,14 +2508,23 @@ const renderMyMealsQuickList = () => {
                 ${totalCals.toFixed(0)}
             </div>
         `;
-        card.addEventListener('click', () => {
-            if (confirm(`Do you want to log the meal "${meal.name}" now?`)) {
-                logMeal(meal.id);
+        
+        card.addEventListener('click', async () => {
+            // Meals cannot be added to the builder (only ingredients can), so we default to logging
+            if (confirm(`Log "${meal.name}"?`)) {
+                await logMeal(meal.id);
             }
         });
+        
         listEl.appendChild(card);
-        });
-};        
+    });
+};
+        
+        // Visual indicator for builder mode
+        if (isMealBuilderMode) {
+             const actionSpan = card.querySelector('.text-xs.font-bold');
+             if(actionSpan) actionSpan.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
+        }        
 
         // MODIFIED: selectFoodItem to handle new quantity/serving fields
         const selectFoodItem = (item, quantity) => {
@@ -2804,6 +3055,19 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     editingItemId = null;
     editingItemType = null;
     document.getElementById('log-food-btn').textContent = 'Log Food';
+
+    // Calculate sizes for buttons
+    const quantityStr = product.quantity || '100g';
+    const parseQty = (str) => {
+        if (!str) return null;
+        const match = str.match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
+        if(!match) return null;
+        let val = parseFloat(match[1]);
+        const unit = match[2].toLowerCase();
+        if(unit === 'kg' || unit === 'l') val *= 1000;
+        return val;
+    }
+    renderQuickButtons(product, parseQty(quantityStr), servingGrams, product.serving_size);
     
     const formSection = document.getElementById('entry-form-section');
     formSection.classList.remove('hidden');
