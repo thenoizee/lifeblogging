@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.82.1-alpha",
+    date: "2025-12-29",
+    changes: [
+        "In FoodTrackr: Bug fix.",
+    ]
+    },
+    {
     version: "v9.82.0-alpha",
     date: "2025-12-29",
     changes: [
