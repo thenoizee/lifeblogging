@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.83.0-alpha",
+    date: "2025-12-29",
+    changes: [
+        "In VidTrackr: Added a 'Rate Only' option to the logging modal, allowing users to submit a rating to Trakt without adding a history entry.",
+        "In VidTrackr: Implemented a personalized 'Welcome Back' greeting on the Dashboard using the display name from the user profile.",
+        "In VidTrackr: Added the live version number watermark to the top-right corner of the interface.",
+    ]
+    },
+    {
     version: "v9.82.0-alpha",
     date: "2025-12-29",
     changes: [

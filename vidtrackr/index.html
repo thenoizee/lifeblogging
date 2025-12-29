@@ -75,6 +75,8 @@
     </style>
 </head>
 <body class="antialiased flex flex-col min-h-screen">
+    
+    <div id="version-display" class="fixed top-2 right-2 text-[10px] text-gray-500 z-50 font-mono opacity-50 hover:opacity-100 transition pointer-events-none mix-blend-difference"></div>
 
     <header class="sticky top-0 bg-[var(--card)] shadow-lg z-30">
         <div class="container mx-auto px-4">
@@ -164,9 +166,10 @@
                 <input type="datetime-local" id="custom-date" class="w-full p-3 rounded-lg bg-[var(--bg)] border border-gray-600 focus:border-[var(--primary)] outline-none text-sm">
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-                <button id="confirm-log" class="bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-bold transition">Log Only</button>
-                <button id="confirm-rate-log" class="btn-primary py-3 rounded-lg font-bold shadow-lg shadow-red-900/30">Rate & Log</button>
+            <div class="grid grid-cols-3 gap-2">
+                <button id="confirm-log" class="bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-bold transition text-xs">Log Only</button>
+                <button id="confirm-rate-only" class="bg-yellow-600 hover:bg-yellow-500 text-white py-3 rounded-lg font-bold transition text-xs">Rate Only</button>
+                <button id="confirm-rate-log" class="btn-primary py-3 rounded-lg font-bold shadow-lg shadow-red-900/30 text-xs">Rate & Log</button>
             </div>
             <button id="close-modal" class="w-full mt-4 text-sm text-gray-500 hover:text-white">Cancel</button>
         </div>
@@ -187,6 +190,7 @@
         import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI } from './api_keys.js';
+        import { changelogData } from '../changelog-data.js';
 
         // --- Config ---
         const app = initializeApp({
@@ -234,6 +238,11 @@
             ratingValue: document.getElementById('rating-value'),
             toastContainer: document.getElementById('toast-container')
         };
+        
+        // --- Version Display ---
+        if (changelogData && changelogData.length > 0) {
+            document.getElementById('version-display').textContent = changelogData[0].version;
+        }
 
         // --- Helpers ---
         const showLoader = () => els.loader.classList.remove('hidden');
@@ -484,11 +493,19 @@
         }
 
         async function renderDashboard() {
+            let greetingName = '';
+            try {
+                const profileSnap = await getDoc(doc(db, `users/${currentUser.uid}/settings/profile`));
+                if (profileSnap.exists() && profileSnap.data().displayName) {
+                    greetingName = `, ${profileSnap.data().displayName}`;
+                }
+            } catch(e) {}
+
             els.content.innerHTML = `
                 <div class="mb-8 p-6 md:p-8 rounded-3xl bg-gradient-to-br from-[var(--primary)] to-purple-900 text-white shadow-2xl relative overflow-hidden animate-fade">
                     <div class="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                         <div>
-                            <h1 class="text-3xl md:text-4xl font-bold mb-2">Welcome Back!</h1>
+                            <h1 class="text-3xl md:text-4xl font-bold mb-2">Welcome Back${greetingName}!</h1>
                             <p class="opacity-90 text-lg">Your personal media tracking hub.</p>
                         </div>
                         <div id="quick-stats" class="flex gap-4 md:gap-6 text-center bg-black/20 p-4 rounded-xl backdrop-blur-md w-full md:w-auto justify-around md:justify-start"></div>
@@ -578,13 +595,15 @@
                 await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) });
                 showToast(`Rated ${rating}/10 & Logged!`);
                 userRatings.set(id, parseInt(rating)); 
-                loadUpNext();
+                if (document.getElementById('up-next-container')) loadUpNext(); // FIX: Safety check
             } catch(e) { showToast('Action failed', 'error'); } 
             hideLoader();
         }
         
         async function loadUpNext() {
             const container = document.getElementById('up-next-container');
+            if (!container) return; // FIX: Stop if container doesn't exist (not on dashboard)
+
             try {
                 const watchedShows = await fetchDirect('/sync/watched/shows?limit=10&extended=noseasons');
                 if (!watchedShows.length) return;
@@ -731,7 +750,7 @@
                     : `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
                 const myRatingHtml = myRating 
                     ? `<span class="bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(234,179,8,0.2)]"><i class="fa-solid fa-star mr-2"></i> ${myRating}</span>`
-                    : `<button class="bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" onclick="document.querySelector('.scrobble-btn').click()"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
+                    : `<button class="scrobble-btn bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: type}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
 
                 let historyHtml = '';
                 if (history.length > 0) {
@@ -1084,43 +1103,66 @@
             hideLoader(); 
         }
 
-        async function handleAction(shouldRate) {
+        async function handleAction(actionType) {
             const traktId = currentModalItem.item.ids.trakt;
             const type = currentModalItem.type; 
-            try {
-                const typePath = type === 'episode' ? 'episodes' : 'movies';
-                const historyUrl = `/users/me/history/${typePath}/${traktId}?limit=1`;
-                const historyData = await fetchDirect(historyUrl);
-                if (historyData && historyData.length > 0) {
-                    const lastWatched = new Date(historyData[0].watched_at).getTime();
-                    const now = Date.now();
-                    const diff = now - lastWatched;
-                    const fiveMins = 5 * 60 * 1000; 
-                    if (diff < fiveMins) {
-                        if (!confirm("⚠️ duplicate Check\n\nYou (or an app) logged this item on Trakt less than 5 minutes ago.\n\nDo you want to log it again?")) {
-                            els.modal.classList.add('hidden');
-                            return; 
+            
+            if (actionType !== 'rate-only') {
+                try {
+                    const typePath = type === 'episode' ? 'episodes' : 'movies';
+                    const historyUrl = `/users/me/history/${typePath}/${traktId}?limit=1`;
+                    const historyData = await fetchDirect(historyUrl);
+                    if (historyData && historyData.length > 0) {
+                        const lastWatched = new Date(historyData[0].watched_at).getTime();
+                        const now = Date.now();
+                        const diff = now - lastWatched;
+                        const fiveMins = 5 * 60 * 1000; 
+                        if (diff < fiveMins) {
+                            if (!confirm("⚠️ Duplicate Check\n\nYou (or an app) logged this item on Trakt less than 5 minutes ago.\n\nDo you want to log it again?")) {
+                                els.modal.classList.add('hidden');
+                                return; 
+                            }
                         }
                     }
-                }
-            } catch(e) { console.warn("Could not verify history before logging - proceeding anyway", e); }
+                } catch(e) { console.warn("Could not verify history before logging - proceeding anyway", e); }
+            }
 
             els.modal.classList.add('hidden'); 
             showLoader(); 
+            
             const dateStr = document.getElementById('custom-date').value; 
             const date = dateStr ? new Date(dateStr).toISOString() : selectedDate; 
             const rating = parseInt(els.ratingSlider.value); 
+            const ids = { ids: { trakt: traktId } }; 
+            const rootKey = type === 'episode' ? 'episodes' : 'movies'; 
+
             try { 
-                const ids = { ids: { trakt: traktId } }; 
-                const rootKey = type === 'episode' ? 'episodes' : 'movies'; 
-                const payloadLog = { [rootKey]: [{ ...ids, watched_at: date }] }; 
-                await fetch(`${TRAKT_API_URL}/sync/history`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadLog) }); 
-                if (shouldRate) { 
-                    const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; 
-                    await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); 
-                    showToast(`Logged & Rated ${rating}/10`); 
-                } else { showToast(`Logged successfully`); }
-            } catch(e) { showToast('Action failed', 'error'); } 
+                if (actionType === 'rate-only') {
+                     const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; 
+                     await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); 
+                     showToast(`Rated ${rating}/10`); 
+                     userRatings.set(traktId, rating); 
+                } else {
+                    const payloadLog = { [rootKey]: [{ ...ids, watched_at: date }] }; 
+                    await fetch(`${TRAKT_API_URL}/sync/history`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadLog) }); 
+
+                    if (actionType === 'rate-log') { 
+                        const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; 
+                        await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); 
+                        showToast(`Logged & Rated ${rating}/10`); 
+                        userRatings.set(traktId, rating);
+                    } else { 
+                        showToast(`Logged successfully`); 
+                    }
+                }
+                
+                if (location.hash.startsWith('#detail')) {
+                     const parts = location.hash.split('/');
+                     if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
+                     else renderDetail(parts[1], parts[2]);
+                }
+                if (document.getElementById('up-next-container')) loadUpNext(); // FIX: Safety check
+            } catch(e) { console.error(e); showToast('Action failed', 'error'); } 
             hideLoader(); 
         }
 
@@ -1191,8 +1233,9 @@
                 document.querySelectorAll('.date-option').forEach(b => b.classList.remove('border-[var(--primary)]', 'bg-[var(--primary)]/10'));
                 e.target.closest('.date-option').classList.add('border-[var(--primary)]', 'bg-[var(--primary)]/10');
             }
-            if(e.target.id === 'confirm-log') handleAction(false);
-            if(e.target.id === 'confirm-rate-log') handleAction(true);
+            if(e.target.id === 'confirm-log') handleAction('log-only');
+            if(e.target.id === 'confirm-rate-log') handleAction('rate-log');
+            if(e.target.id === 'confirm-rate-only') handleAction('rate-only');
             if(e.target.id === 'close-modal') els.modal.classList.add('hidden');
         });
 
