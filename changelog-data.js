@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.88.1-alpha",
+    date: "2025-12-30",
+    changes: [
+        "In TaskTrackr: Bug fix.",
+       
+    ]
+    },
+    {
     version: "v9.88.0-alpha",
     date: "2025-12-30",
     changes: [
