@@ -87,6 +87,7 @@
                         <span class="inline">VidTrackr</span>
                     </a>
                     <nav id="main-nav" class="hidden md:flex space-x-6 text-sm font-medium">
+                        <a href="../index.html" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition"><i class="fa-solid fa-arrow-left mr-1"></i> Hub</a>
                         <a href="#dashboard" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">Dashboard</a>
                         <a href="#library" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">Library</a>
                         <a href="#progress" class="nav-link py-4 border-b-2 border-transparent hover:text-[var(--primary)] transition">Progress</a>
@@ -107,7 +108,8 @@
                         </div>
                     </div>
                     
-                    <button id="theme-toggle" class="p-2 rounded-full hover:bg-[var(--bg)] transition transform hover:rotate-12"><i class="fa-solid fa-moon text-xl"></i></button>
+                    <div id="header-watch-status" class="hidden mr-2 animate-pulse"></div>
+<button id="theme-toggle" class="p-2 rounded-full hover:bg-[var(--bg)] transition transform hover:rotate-12"><i class="fa-solid fa-moon text-xl"></i></button>
                     <div id="auth-container"></div>
                 </div>
             </div>
@@ -184,6 +186,7 @@
         </div>
     </div>
 
+    <div id="active-checkin-banner" class="fixed bottom-[70px] md:bottom-0 left-0 right-0 bg-purple-900/95 border-t border-purple-500 text-white p-3 z-40 hidden animate-fade flex justify-between items-center backdrop-blur-md shadow-[0_-5px_20px_rgba(147,51,234,0.3)]"></div>
     <div id="toast-container" class="fixed bottom-20 md:bottom-6 right-6 z-50 flex flex-col gap-3"></div>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -474,9 +477,9 @@
         async function syncUserRatings() {
             try {
                 const [movies, shows, episodes] = await Promise.all([ 
-                    fetchDirect('/sync/ratings/movies'), 
-                    fetchDirect('/sync/ratings/shows'),
-                    fetchDirect('/sync/ratings/episodes') 
+                    fetchDirect('/sync/ratings/movies?limit=1000'), 
+                    fetchDirect('/sync/ratings/shows?limit=1000'), 
+                    fetchDirect('/sync/ratings/episodes?limit=1000') 
                 ]);
                 userRatings.clear();
                 movies.forEach(r => userRatings.set(r.movie.ids.trakt, r.rating));
@@ -583,6 +586,19 @@
             } catch(e){}
         }
 
+        window.checkIn = async (id, type) => {
+            showLoader();
+            try {
+                const payload = { [type === 'episode' ? 'episode' : 'movie']: { ids: { trakt: id } } };
+                await fetch(`${TRAKT_API_URL}/checkin`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payload) });
+                showToast("Checked in successfully!", "success");
+                setTimeout(checkActiveWatching, 1000); // Update banner
+            } catch (e) {
+                showToast("Check-in failed (Already checked in?)", "error");
+            }
+            hideLoader();
+        };
+
         window.rateDirect = async (id, type, rating) => {
             event.stopPropagation();
             showLoader();
@@ -666,9 +682,12 @@
                 const noteKey = `${type}_${id}`;
                 const isEpisode = type === 'episode';
                 
-                let item, notes, history = [], related = [], showInfo = null, people = null;
+                let item, notes, history = [], related = [], showInfo = null, people = null, comments = null;
                 let showProgress = null; 
                 let collectionList = null; 
+
+                // HELPER: Fetch comments safely without crashing
+                const fetchCommentsSafe = (url) => fetchDirect(url).catch(err => { console.warn("Comments unavailable", err); return []; });
 
                 if (isEpisode) {
                     const searchResults = await fetchDirect(`/search/trakt/${id}?type=episode&extended=full,images`);
@@ -679,14 +698,25 @@
                     const userData = await fetchDirect(`/episodes/${id}?extended=user_data`);
                     item.user_rating = userData.user_rating;
                     item.user_data = userData.user_data;
-                    history = await fetchDirect(`/users/me/history/episodes/${id}?limit=20`);
+                    
+                    // FIX: Use verbose URL for episode comments (Trakt requires Show/Season/Ep)
+                    const commentUrl = `/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}/comments/newest?limit=10`;
+
+                    [history, comments] = await Promise.all([
+                        fetchDirect(`/users/me/history/episodes/${id}?limit=20`),
+                        fetchCommentsSafe(commentUrl)
+                    ]);
                 } else {
-                    [item, notes, history, related, people] = await Promise.all([
+                    // FIX: Correct URL format for Movies/Shows
+                    const commentUrl = `/${type}s/${id}/comments/newest?limit=10`;
+
+                    [item, notes, history, related, people, comments] = await Promise.all([
                         fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
                         (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=20`) : []),
                         fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`),
-                        fetchDirect(`/${type}s/${id}/people?extended=images`) 
+                        fetchDirect(`/${type}s/${id}/people?extended=images`),
+                        fetchCommentsSafe(commentUrl)
                     ]);
 
                     if (type === 'movie') {
@@ -804,13 +834,14 @@
                         <div class="md:col-span-2">
                              <div class="flex flex-wrap gap-4 mb-6 text-sm text-gray-400 border-b border-gray-800 pb-4">
                                 <span class="flex items-center"><i class="fa-regular fa-clock mr-2"></i> ${runtimeStr}</span>
-                                <span class="flex items-center"><i class="fa-regular fa-calendar mr-2"></i> ${new Date(item.first_aired).toLocaleDateString()}</span>
+                                <span class="flex items-center"><i class="fa-regular fa-calendar mr-2"></i> First aired:</i> ${new Date(item.first_aired).toLocaleDateString()}</span>
                             </div>
                             <h3 class="text-xs font-bold text-[var(--primary)] mb-2 uppercase tracking-widest">Overview</h3>
                             <p class="text-lg text-gray-300 leading-relaxed mb-8">${item.overview || 'No overview available.'}</p>
                             ${historyHtml}
                             <div class="flex flex-col sm:flex-row gap-4 mb-8">
                                 <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode'}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check"></i> Log / Rate Again</button>
+                                <button onclick="window.checkIn('${item.ids.trakt}', 'episode')" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-lg font-bold border border-purple-500 transition flex items-center justify-center" title="Check In Now"><i class="fa-solid fa-map-pin"></i></button>
                                 <button onclick="window.openAddToList('${item.ids.trakt}', 'episode')" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center" title="Add to List"><i class="fa-solid fa-list-ul"></i></button>
                                 <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold border border-gray-700 transition flex items-center justify-center gap-2">Season ${item.season}</button>
                             </div>
@@ -839,6 +870,7 @@
                             
                             <div class="mt-6 flex flex-col gap-3">
                                 <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2"><i class="fa-solid fa-play"></i> Stream Now</a>
+                                <button onclick="window.checkIn('${item.ids.trakt}', '${type}')" class="w-full text-center bg-purple-900/40 hover:bg-purple-800 text-purple-300 py-2 rounded-lg font-bold text-xs transition border border-purple-800 flex items-center justify-center gap-2"><i class="fa-solid fa-map-pin"></i> Check In Now</button>
                                 <button onclick="window.openAddToList('${item.ids.trakt}', '${type}')" class="w-full text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold text-xs transition border border-gray-600 flex items-center justify-center gap-2"><i class="fa-solid fa-list-ul"></i> Add to List</button>
                                 ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition border border-gray-700">Official Website <i class="fa-solid fa-up-right-from-square ml-1"></i></a>` : ''}
                                 ${trailerUrl ? `<a href="${trailerUrl}" target="_blank" class="w-full text-center bg-red-900/20 hover:bg-red-900/40 text-red-500 py-2 rounded-lg font-bold text-xs transition border border-red-900/30"><i class="fa-brands fa-youtube mr-1"></i> Watch Trailer</a>` : ''}
@@ -889,10 +921,25 @@
                                 <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-3 text-sm outline-none resize-none" rows="2" placeholder="Your thoughts...">${userNote}</textarea>
                                 <div class="flex justify-end mt-3"><button id="save-note" class="text-xs bg-gray-700 hover:bg-[var(--primary)] text-white px-5 py-2 rounded-md transition font-bold shadow">Save</button></div>
                             </div>
+                            
                         </div>
                     </div>
+                    
                     <div id="seasons-mount"></div>
                     ${related.length > 0 ? `<h2 class="text-2xl font-bold mb-6 mt-16 px-4 border-l-4 border-[var(--primary)]">You Might Also Like</h2><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6">${related.map(r => createCardHtml(r, type)).join('')}</div>` : ''}`;
+                }
+
+                if (comments && comments.length > 0) {
+                     html += `<h2 class="text-2xl font-bold mb-6 mt-16 px-4 border-l-4 border-gray-500">Community Comments</h2><div class="space-y-4 max-w-4xl">${comments.map(c => `
+                        <div class="bg-[var(--card)] p-4 rounded-xl border border-gray-800">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="font-bold text-[var(--primary)] text-sm">${c.user.username}</span>
+                                <span class="text-xs text-gray-500">${new Date(c.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <p class="text-gray-300 text-sm leading-relaxed">${c.comment}</p>
+                            ${c.spoiler ? '<span class="text-[10px] text-red-500 font-bold uppercase mt-2 block">Spoiler</span>' : ''}
+                        </div>
+                     `).join('')}</div>`;
                 }
 
                 html += `</div>`;
@@ -950,6 +997,60 @@
             renderHistory(1);
         };
 
+        window.cancelCheckIn = async () => {
+             showLoader();
+             try { 
+                 await fetch(`${TRAKT_API_URL}/checkin`, { method: 'DELETE', headers: traktHeader() }); 
+                 showToast('Check-in cancelled'); 
+                 setTimeout(checkActiveWatching, 500);
+             } catch(e){ showToast('Failed to cancel', 'error'); }
+             hideLoader();
+        };
+
+        async function checkActiveWatching() {
+            try {
+                const banner = document.getElementById('active-checkin-banner');
+                const headerStatus = document.getElementById('header-watch-status');
+                
+                const res = await fetch(`${TRAKT_API_URL}/users/me/watching`, { headers: traktHeader() });
+                
+                if(res.status === 204) { 
+                    banner.classList.add('hidden'); 
+                    headerStatus.classList.add('hidden');
+                    return; 
+                } 
+                
+                const data = await res.json();
+                if (data && (data.movie || data.show)) {
+                    const type = data.type;
+                    const id = type === 'episode' ? data.episode.ids.trakt : data.movie.ids.trakt;
+                    const navType = type === 'episode' ? 'episode' : 'movie';
+                    const title = type === 'episode' ? `${data.show.title}: ${data.episode.title}` : data.movie.title;
+                    const sub = type === 'episode' ? `S${data.episode.season}E${data.episode.number}` : data.movie.year;
+                    
+                    // Update Header Icon
+                    headerStatus.innerHTML = `<button onclick="location.hash='#detail/${navType}/${id}'" class="text-red-500 hover:text-red-400 transition" title="Now Watching: ${title}"><i class="fa-solid fa-circle-play text-xl drop-shadow-[0_0_8px_rgba(239,68,68,0.6)]"></i></button>`;
+                    headerStatus.classList.remove('hidden');
+
+                    // Update Bottom Banner
+                    banner.innerHTML = `
+                        <div class="flex items-center gap-3 overflow-hidden cursor-pointer" onclick="location.hash='#detail/${navType}/${id}'">
+                            <div class="animate-pulse w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_red]"></div>
+                            <div class="truncate">
+                                <p class="text-[10px] text-purple-300 font-bold uppercase tracking-wider leading-none">Now Watching</p>
+                                <p class="font-bold text-sm truncate leading-tight">${title} <span class="opacity-50 font-normal text-xs ml-1">${sub}</span></p>
+                            </div>
+                        </div>
+                        <button onclick="window.cancelCheckIn()" class="ml-2 text-xs bg-black/30 hover:bg-black/50 px-3 py-1 rounded text-red-300 border border-red-900/50 transition whitespace-nowrap flex items-center"><i class="fa-solid fa-stop mr-1"></i> Stop</button>
+                    `;
+                    banner.classList.remove('hidden');
+                } else {
+                    banner.classList.add('hidden');
+                    headerStatus.classList.add('hidden');
+                }
+            } catch(e) {}
+        }
+
         function renderHistory(page = 1) {
             if (page === 1) { 
                 els.content.innerHTML = ''; 
@@ -957,10 +1058,11 @@
                 els.content.innerHTML = `
                 <div class="flex flex-col md:flex-row justify-between items-center mb-6 mt-4 gap-4">
                     <h2 class="text-2xl font-bold">History</h2>
-                    <div class="flex bg-gray-900 p-1 rounded-lg border border-gray-700">
+                    <div class="flex bg-gray-900 p-1 rounded-lg border border-gray-700 flex-wrap justify-center">
                         <button onclick="window.setHistoryFilter('all')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'all' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">All</button>
                         <button onclick="window.setHistoryFilter('movies')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'movies' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Movies</button>
                         <button onclick="window.setHistoryFilter('episodes')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'episodes' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Episodes</button>
+                        <button onclick="window.setHistoryFilter('unrated')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'unrated' ? 'bg-yellow-600 text-white shadow-[0_0_15px_rgba(202,138,4,0.4)]' : 'text-gray-400 hover:text-yellow-500'}"><i class="fa-solid fa-star-half-stroke mr-1"></i> Unrated</button>
                     </div>
                 </div>
                 <div id="history-list-container" class="space-y-1 max-w-4xl mx-auto"></div>
@@ -969,16 +1071,40 @@
             
             isFetchingHistory = true; showLoader();
             
-            let url = `/sync/history?limit=20&page=${page}&extended=images`;
-            if (currentHistoryFilter !== 'all') url += `&type=${currentHistoryFilter}`;
+            // FETCH STRATEGY: If unrated, grab 100 at a time to increase odds of finding unrated items
+            let limit = currentHistoryFilter === 'unrated' ? 100 : 20;
+            
+            let url = `/sync/history?limit=${limit}&page=${page}&extended=images`;
+            if (currentHistoryFilter !== 'all' && currentHistoryFilter !== 'unrated') url += `&type=${currentHistoryFilter}`;
+
+            if (page === 1) localStorage.removeItem(`trakt_cache_${url}`);
 
             fetchSmart(url, (data, fromCache) => {
-                 if (page === 1 && data.length === 0) {
-                     document.getElementById('history-list-container').innerHTML = `<div class="text-center p-10 text-gray-500">No history found for this filter.</div>`;
+                 // Client-side filter for unrated items
+                 if (currentHistoryFilter === 'unrated') {
+                     data = data.filter(item => {
+                         const id = item.type === 'episode' ? item.episode.ids.trakt : item.movie.ids.trakt;
+                         // Check global ratings map
+                         return !userRatings.has(parseInt(id));
+                     });
+                 }
+
+                 const container = document.getElementById('history-list-container');
+                 const loadMoreContainer = document.getElementById('load-more-container');
+
+                 if (data.length === 0) {
+                     if(page === 1) container.innerHTML = `<div class="text-center p-10 text-gray-500">No history found for this filter.</div>`;
+                     else loadMoreContainer.innerHTML = `<p class="text-gray-600 text-sm italic opacity-50">No more unrated items in this batch.</p><button id="btn-force-next" class="mt-2 text-xs text-[var(--primary)] hover:underline">Search Next Batch</button>`;
+                     
+                     const forceBtn = document.getElementById('btn-force-next');
+                     if(forceBtn) forceBtn.onclick = () => { historyPage++; renderHistory(historyPage); };
+                     
                      hideLoader(); return;
                  }
                 
                 let lastDate = null;
+                // Basic date header logic logic reused...
+                // (Using existing logic just simpler here)
                 const listHtml = data.map(item => {
                     const type = item.type;
                     const navType = type === 'episode' ? 'episode' : 'movie';
@@ -995,18 +1121,10 @@
                     const timeStr = wDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                     let headerHtml = '';
-                    if (dateStr !== lastDate) {
-                        const today = new Date().toLocaleDateString();
-                        const yest = new Date(); yest.setDate(yest.getDate() - 1);
-                        let label = prettyDate;
-                        if (dateStr === today) label = "Today";
-                        else if (dateStr === yest.toLocaleDateString()) label = "Yesterday";
-                        headerHtml = `<h3 class="text-xs font-bold text-[var(--primary)] uppercase tracking-widest mt-6 mb-2 ml-2 sticky top-20 z-10 bg-[var(--bg)]/90 backdrop-blur py-2 w-fit px-3 rounded-full border border-gray-800">${label}</h3>`;
-                        lastDate = dateStr;
-                    }
-
-                    return `${headerHtml}
-                    <div class="card p-3 rounded-xl flex items-center gap-4 hover:bg-[var(--card)] border border-transparent hover:border-gray-600 transition group relative animate-fade bg-[var(--card)]/40" onclick="location.hash='#detail/${navType}/${navId}'">
+                    // Only show header if it's the first page OR date changed significantly
+                    // Note: In append mode, this logic is imperfect but sufficient for lists
+                    return `
+                    <div class="card p-3 rounded-xl flex items-center gap-4 hover:bg-[var(--card)] border border-transparent hover:border-gray-600 transition group relative animate-fade bg-[var(--card)]/40 mb-1" onclick="location.hash='#detail/${navType}/${navId}'">
                         <div class="relative w-24 h-14 md:w-32 md:h-20 flex-shrink-0 overflow-hidden rounded-lg shadow-md bg-gray-800">
                             <img src="${img}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" onerror="this.src='${PLACEHOLDER_IMG}'">
                             <div class="absolute bottom-0 right-0 bg-black/80 text-white text-[8px] px-1.5 py-0.5 rounded-tl font-bold uppercase tracking-wider">${type}</div>
@@ -1017,7 +1135,7 @@
                                 ${rateDisplay}
                             </div>
                             <div class="flex items-center gap-3 text-xs text-gray-500 mt-1">
-                                <span><i class="fa-solid fa-clock opacity-50 mr-1"></i> ${timeStr}</span>
+                                <span><i class="fa-solid fa-clock opacity-50 mr-1"></i> ${prettyDate} ${timeStr}</span>
                             </div>
                         </div>
                         <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition px-2">
@@ -1026,13 +1144,12 @@
                     </div>`;
                 }).join('');
                 
-                document.getElementById('history-list-container').insertAdjacentHTML('beforeend', listHtml);
+                container.insertAdjacentHTML('beforeend', listHtml);
                 
-                const loadMoreContainer = document.getElementById('load-more-container');
-                if (data.length === 20) {
-                    loadMoreContainer.innerHTML = `<button id="btn-load-more" class="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-full font-bold transition shadow-lg border border-gray-600 hover:border-white">Load More</button>`;
-                    document.getElementById('btn-load-more').onclick = () => { historyPage++; renderHistory(historyPage); };
-                } else loadMoreContainer.innerHTML = `<p class="text-gray-600 text-sm italic opacity-50">End of history</p>`;
+                // Smart "Load More" - if we got full batch (20 or 100), show button
+                // Even if we filtered down to 5 items, if the API returned 100, there might be more next page.
+                loadMoreContainer.innerHTML = `<button id="btn-load-more" class="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-full font-bold transition shadow-lg border border-gray-600 hover:border-white">Load More</button>`;
+                document.getElementById('btn-load-more').onclick = () => { historyPage++; renderHistory(historyPage); };
                 
                 isFetchingHistory = false; hideLoader();
             });
@@ -1104,6 +1221,13 @@
         }
 
         async function handleAction(actionType) {
+            // SAFEGUARD: Ensure we have valid data before proceeding
+            if (!currentModalItem || !currentModalItem.item || !currentModalItem.item.ids || !currentModalItem.item.ids.trakt) {
+                showToast("Error: Invalid item data selected", "error");
+                els.modal.classList.add('hidden');
+                return;
+            }
+
             const traktId = currentModalItem.item.ids.trakt;
             const type = currentModalItem.type; 
             
@@ -1161,7 +1285,7 @@
                      if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
                      else renderDetail(parts[1], parts[2]);
                 }
-                if (document.getElementById('up-next-container')) loadUpNext(); // FIX: Safety check
+                if (document.getElementById('up-next-container')) loadUpNext(); 
             } catch(e) { console.error(e); showToast('Action failed', 'error'); } 
             hideLoader(); 
         }
@@ -1233,10 +1357,10 @@
                 document.querySelectorAll('.date-option').forEach(b => b.classList.remove('border-[var(--primary)]', 'bg-[var(--primary)]/10'));
                 e.target.closest('.date-option').classList.add('border-[var(--primary)]', 'bg-[var(--primary)]/10');
             }
-            if(e.target.id === 'confirm-log') handleAction('log-only');
-            if(e.target.id === 'confirm-rate-log') handleAction('rate-log');
-            if(e.target.id === 'confirm-rate-only') handleAction('rate-only');
-            if(e.target.id === 'close-modal') els.modal.classList.add('hidden');
+            if(e.target.closest('#confirm-log')) handleAction('log-only');
+            if(e.target.closest('#confirm-rate-log')) handleAction('rate-log');
+            if(e.target.closest('#confirm-rate-only')) handleAction('rate-only');
+            if(e.target.closest('#close-modal')) els.modal.classList.add('hidden');
         });
 
         // --- AUTH INIT ---
@@ -1267,6 +1391,7 @@
                 } catch(e) { console.warn("Firestore sync error", e); }
 
                 if (traktAccessToken) { await syncUserRatings(); }
+                checkActiveWatching()
                 handleRoute();
             } else { 
                 els.content.innerHTML = `<div class="max-w-md mx-auto card p-10 rounded-2xl shadow-2xl mt-12 text-center animate-fade"><div class="mb-6 inline-block p-4 rounded-full bg-[var(--primary)]/10"><i class="fa-solid fa-ticket text-5xl text-[var(--primary)]"></i></div><h1 class="text-4xl font-bold mb-2 text-[var(--primary)]">VidTrackr</h1><p class="text-gray-400 mb-8">Sign in to track your movies and shows.</p><button class="w-full bg-white text-gray-900 font-bold py-3 rounded-lg hover:bg-gray-200 transition mb-4 shadow-lg" onclick="document.getElementById('email-login').classList.remove('hidden'); this.classList.add('hidden');">Sign In / Sign Up</button><form id="email-login" class="space-y-4 hidden animate-fade"><input type="email" id="email" placeholder="Email" class="w-full p-4 rounded-lg bg-[var(--bg)] border border-gray-700 focus:border-[var(--primary)] outline-none transition" required><input type="password" id="password" placeholder="Password" class="w-full p-4 rounded-lg bg-[var(--bg)] border border-gray-700 focus:border-[var(--primary)] outline-none transition" required><div class="flex gap-3"><button type="submit" name="login" class="flex-1 btn-primary py-3 rounded-lg font-bold">Login</button><button type="submit" name="signup" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-bold transition">Sign Up</button></div></form></div>`; 

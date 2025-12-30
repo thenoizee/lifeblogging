@@ -2,7 +2,19 @@
 
 export const changelogData = [
     {
-    version: "v9.87.0-beta",
+    version: "v9.88.0-alpha",
+    date: "2025-12-30",
+    changes: [
+        "In VidTrackr: Added global check-in system with 'Check In Now' buttons, active watching banner, and header indicator.",
+        "In VidTrackr: Implemented 'Unrated' history filter with expanded batch fetching to easily find unrated watches.",
+        "In VidTrackr: Added community comments section to movie, show, and episode detail pages.",
+        "In VidTrackr: Added 'Back to Hub' button to main navigation.",
+        "In VidTrackr: Configured history page to auto-clear cache on load for instant updates.",
+        "In VidTrackr: Fixed 'Rate Only' modal interaction and added graceful error handling for missing API data."
+    ]
+    },
+    {
+    version: "v9.87.0-alpha",
     date: "2025-12-30",
     changes: [
         "In TaskTrackr: Introduced first version of light-mode.",
