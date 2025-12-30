@@ -328,15 +328,13 @@
                 <div><label class="text-xs font-bold text-gray-500 uppercase">Tags</label><input type="text" id="modal-tags-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm" placeholder="tag1, tag2"></div>
 
                 <div class="mt-4">
-    <label class="text-xs font-bold text-gray-500 uppercase">Source</label>
+    <label class="text-xs font-bold text-gray-500 uppercase">Save Location</label>
     <div class="relative">
-        <select id="modal-source-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm appearance-none">
-            <option value="ticktick">TickTick</option>
-            <option value="tasktrackr" disabled>TaskTrackr (Local - Pending)</option>
-            <option value="google" disabled>Google Tasks (Pending)</option>
-        </select>
+        <select id="modal-destination-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm appearance-none">
+            <option value="ticktick">TickTick (Cloud Sync)</option>
+            <option value="local">TaskTrackr Only (Local)</option> </select>
         <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
-            <i class="fa-solid fa-chevron-down text-xs"></i>
+            <i class="fa-solid fa-server text-xs"></i>
         </div>
     </div>
 </div>
@@ -455,7 +453,7 @@
         import { TICKTICK_CLIENT_ID, TICKTICK_CLIENT_SECRET, TICKTICK_REDIRECT_URI } from './api_keys.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, addDoc, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         import { changelogData } from '/changelog-data.js';
         // FIX: Define the variable first, THEN use it
@@ -619,70 +617,88 @@ const api = async (endpoint, method = 'GET', body = null) => {
 
        // ... inside <script type="module">
 
+// REPLACE your existing fetchAllData with this updated version
 const fetchAllData = async () => {
     // 1. Fetch Projects from TickTick
     const projects = await api('/project');
-    if (!projects) return;
+    if (!projects && !auth.currentUser) return; // Allow if only local user exists
 
-    // INTELLIGENT INBOX FINDER: Checks ID, Kind, then Name
-    let inboxProj = projects.find(p => (p.kind && p.kind.toLowerCase() === 'inbox') || (p.id && p.id.toString().toLowerCase().startsWith('inbox')));
-    if (!inboxProj) inboxProj = projects.find(p => p.name.toLowerCase() === 'inbox');
-    
-    // Default to 'inbox' if completely undiscoverable
+    // INTELLIGENT INBOX FINDER
+    let inboxProj = projects ? projects.find(p => (p.kind && p.kind.toLowerCase() === 'inbox') || (p.id && p.id.toString().toLowerCase().startsWith('inbox'))) : null;
+    if (projects && !inboxProj) inboxProj = projects.find(p => p.name.toLowerCase() === 'inbox');
     const inboxId = inboxProj ? inboxProj.id : 'inbox';
-    console.log("TaskTrackr identified Inbox ID as:", inboxId); // Check your console to see this!
 
-    // Build Map and set isInbox flag
-    projectMap = projects.reduce((acc, p) => ({
+    projectMap = (projects || []).reduce((acc, p) => ({
         ...acc,
-        [p.id]: { 
-            name: p.name, 
-            color: p.color, 
-            kind: p.kind,
-            isInbox: p.id === inboxId // <--- The key fix
-        }
+        [p.id]: { name: p.name, color: p.color, kind: p.kind, isInbox: p.id === inboxId }
     }), {});
-
-    // Ensure Inbox exists in map even if not found in project list (API quirk fallback)
     if (!projectMap[inboxId]) projectMap[inboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
 
-    const projectIds = new Set(projects.map(p => p.id));
-    projectIds.add(inboxId);
-    
-    // 2. Fetch Tasks from TickTick
+    // 2. Fetch TickTick Tasks
     let allActiveTasks = [];
-    await Promise.all(Array.from(projectIds).map(async (pid) => {
-        try {
-            const data = await api(`/project/${pid}/data`);
-            if (data && data.tasks) allActiveTasks.push(...data.tasks);
-        } catch (e) { console.warn(`Failed to fetch tasks for ${pid}`, e); }
-    }));
+    if (projects) {
+        const projectIds = new Set(projects.map(p => p.id));
+        projectIds.add(inboxId);
+        await Promise.all(Array.from(projectIds).map(async (pid) => {
+            try {
+                const data = await api(`/project/${pid}/data`);
+                if (data && data.tasks) allActiveTasks.push(...data.tasks);
+            } catch (e) { console.warn(`Failed to fetch tasks for ${pid}`, e); }
+        }));
+    }
 
-    // 3. Fetch "Origins" and Merge (Existing Logic)
+    // 3. Fetch Origins
     let originsMap = new Set();
     if (auth.currentUser) {
         try {
             const originsRef = collection(db, 'users', auth.currentUser.uid, 'task_origins');
             const originSnaps = await getDocs(originsRef);
             originSnaps.forEach(doc => originsMap.add(doc.id));
-        } catch (e) { console.error("Error fetching origins:", e); }
+            
+            // 4. FETCH LOCAL TASKS (AND MIRRORS)
+            const localRef = collection(db, 'users', auth.currentUser.uid, 'local_tasks');
+            const localSnaps = await getDocs(localRef);
+            
+            // Create a Set of existing IDs from TickTick to avoid duplicates
+            const apiTaskIds = new Set(allActiveTasks.map(t => t.id));
+
+            localSnaps.forEach(doc => {
+                // If this task ID was already fetched from TickTick, SKIP IT 
+                // (We display the API version, but rest assured the data is safe in Firebase)
+                if (apiTaskIds.has(doc.id)) return;
+
+                const data = doc.data();
+                const cleanDate = (d) => d && d.toDate ? d.toDate().toISOString() : d;
+                
+                allActiveTasks.push({
+                    ...data,
+                    id: doc.id,
+                    source: 'local', // It wasn't in the API, so it must be local
+                    startDate: cleanDate(data.startDate),
+                    dueDate: cleanDate(data.dueDate)
+                });
+            });
+        } catch (e) { console.error("Error fetching Firebase data:", e); }
     }
 
-    const activeMap = new Map(allActiveTasks.map(t => [t.id, t]));
     const newCache = [];
-    
     allActiveTasks.forEach(task => {
-        if (originsMap.has(task.id)) task.source = 'tasktrackr';
-        else task.source = 'ticktick'; 
+        if (task.source === 'local') { // UPDATED
+            // Already set
+        } else if (originsMap.has(task.id)) {
+            task.source = 'tasktrackr'; 
+        } else {
+            task.source = 'ticktick';
+        }
         newCache.push(task);
     });
 
-    // Retain completed tasks from history
+    // Retain completed history
     taskCache.forEach(t => {
-        if (t.status === 2 && !activeMap.has(t.id)) newCache.push(t);
+        if (t.status === 2 && !newCache.find(n => n.id === t.id)) newCache.push(t);
     });
 
-    taskCache = Array.from(new Map(newCache.map(item => [item.id, item])).values());
+    taskCache = newCache;
     localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
 
     const pSelect = document.getElementById('project-filter');
@@ -724,32 +740,43 @@ const fetchAllData = async () => {
 
         let currentSidePaneTaskId = null;
        window.saveSidePaneChanges = async (field) => {
-            if (!currentSidePaneTaskId) return;
-            const task = taskCache.find(t => t.id === currentSidePaneTaskId);
-            if (!task) return;
-            
-            let newValue;
-            if (field === 'title') {
-                newValue = document.getElementById('sp-title-edit').value.trim();
-                if (newValue === task.title) return;
-                task.title = newValue;
-            } else if (field === 'desc') {
-                newValue = document.getElementById('sp-desc').innerText;
-                if (newValue === (task.content || '')) return;
-                task.content = newValue;
-            }
-            
-            renderApp();
-            
-            try {
-                // FIX: Use helper to strictly sanitize payload
-                const payload = formatTaskPayload(task);
-                await api(`/task/${task.id}`, 'POST', payload);
-            } catch (e) {
-                showToast('Failed to save changes', 'error');
-                console.error(e);
-            }
+    if (!currentSidePaneTaskId) return;
+    const task = taskCache.find(t => t.id === currentSidePaneTaskId);
+    if (!task) return;
+    
+    let newValue;
+    if (field === 'title') {
+        newValue = document.getElementById('sp-title-edit').value.trim();
+        if (newValue === task.title) return;
+        task.title = newValue;
+    } else if (field === 'desc') {
+        newValue = document.getElementById('sp-desc').innerText;
+        if (newValue === (task.content || '')) return;
+        task.content = newValue;
+    }
+    
+    renderApp();
+    
+    try {
+        const payload = formatTaskPayload(task);
+        
+        // Always save to Firebase (Reference or Mirror)
+        const firestorePayload = { 
+            ...payload, 
+            updated: new Date(),
+            source: task.source === 'local' ? 'local' : 'ticktick'
         };
+        await updateDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), firestorePayload);
+
+        // If it's NOT local only, also send to TickTick API
+        if (task.source !== 'local') {
+            await api(`/task/${task.id}`, 'POST', payload);
+        }
+    } catch (e) {
+        showToast('Failed to save changes', 'error');
+        console.error(e);
+    }
+};
 
         window.renderProjectSidebar = () => {
     const listEl = document.getElementById('sidebar-list');
@@ -883,6 +910,20 @@ const fetchAllData = async () => {
         window.toggleCompactMode = () => { isCompactMode = !isCompactMode; localStorage.setItem('compactMode', isCompactMode); const icon = document.getElementById('compact-icon'); if(isCompactMode) { els.content.classList.add('compact-mode'); icon.className = "fa-solid fa-expand"; } else { els.content.classList.remove('compact-mode'); icon.className = "fa-solid fa-compress"; } renderApp(); };
 
         window.setView = (view) => { currentState.view = view; document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active')); document.getElementById(`tab-${view}`).classList.add('active'); const quickAdd = document.getElementById('quick-add-container'); if(view === 'eisenhower' || view === 'calendar') quickAdd.classList.add('hidden'); else quickAdd.classList.remove('hidden'); renderApp(); };
+        // Add these functions
+window.toggleTheme = () => {
+    const html = document.documentElement;
+    if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+    } else {
+        html.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+    }
+};
+
+// Add this line inside window.addEventListener('DOMContentLoaded', ...) OR at the bottom of your script
+if (localStorage.getItem('theme') === 'light') document.documentElement.classList.remove('dark');
         window.setFilter = (filter) => { currentState.filter = filter; document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active')); const btn = document.querySelector(`button[onclick="window.setFilter('${filter}')"]`); if(btn) btn.classList.add('active'); if (filter === 'completed') fetchHistory(); else renderApp(); };
         window.handleSearch = (text) => { currentState.search = text.toLowerCase(); renderApp(); };
         window.updateFilter = (key, val) => { currentState[key] = val; renderApp(); };
@@ -935,12 +976,41 @@ const getTaskSource = (task) => {
     return task.source || (task.kind === 'google' ? 'google' : 'ticktick');
 };
 
-const getSourceConfig = (source) => {
-    switch(source) {
-        case 'google': return { label: 'Google Tasks', icon: 'fa-brands fa-google', color: '#4285F4', bg: '#4285F415' };
-        case 'tasktrackr': return { label: 'TaskTrackr', icon: 'fa-solid fa-check-double', color: '#3b82f6', bg: '#8b5cf615' };
-        case 'ticktick': default: return { label: 'TickTick', icon: 'fa-solid fa-check', color: '#8b5cf6', bg: '#3b82f615' };
+const getSourceConfig = (task) => {
+    // 1. LOCAL ONLY (Origin: TaskTrackr, Storage: Device)
+    if (task.source === 'local' || task.source === 'tasktrackr_only') {
+        return { 
+            label: 'TaskTrackr', 
+            subLabel: 'Local',
+            icon: 'fa-solid fa-laptop-code', 
+            color: '#10b981', // Emerald
+            bg: 'rgba(16, 185, 129, 0.15)',
+            border: '#10b981'
+        };
     }
+    
+    // 2. SYNCED (Origin: TaskTrackr, Storage: Cloud/TickTick)
+    if (task.source === 'tasktrackr') {
+        return { 
+            label: 'TaskTrackr', 
+            subLabel: 'Synced',
+            icon: 'fa-solid fa-cloud-bolt', 
+            color: '#3b82f6', // Blue
+            bg: 'rgba(59, 130, 246, 0.15)',
+            border: '#3b82f6'
+        };
+    }
+
+    // 3. NATIVE TICKTICK (Origin: TickTick, Storage: Cloud/TickTick)
+    // Default fallback
+    return { 
+        label: 'TickTick', 
+        subLabel: 'Cloud',
+        icon: 'fa-solid fa-cloud', 
+        color: '#8b5cf6', // Purple
+        bg: 'rgba(139, 92, 246, 0.15)',
+        border: '#8b5cf6'
+    };
 };
 
         window.handleContextAction = async (action) => {
@@ -1024,8 +1094,14 @@ const getSourceConfig = (source) => {
     const projectBadge = `<span class="flex items-center text-gray-300 px-2 py-0.5 rounded border border-gray-700 whitespace-nowrap" style="background-color: ${pColor}20; border-color: ${pColor}40;"><i class="fa-solid fa-layer-group mr-1 opacity-50" style="color:${pColor}"></i> ${escapeHtml(project.name)}</span>`;
     // INSERT THIS CODE BELOW IT:
 const source = getTaskSource(task);
-const srcCfg = getSourceConfig(source);
-const sourceBadge = `<span class="flex items-center justify-center w-5 h-5 rounded-full border border-gray-700/50" style="background-color: ${srcCfg.bg};" title="Source: ${srcCfg.label}"><i class="${srcCfg.icon} text-[10px]" style="color: ${srcCfg.color}"></i></span>`;
+// Inside renderTaskCard, REPLACE the sourceBadge definition:
+const srcCfg = getSourceConfig(task);
+// Shows Label (Source) and Icon implies Destination
+const sourceBadge = `<span class="flex items-center gap-1.5 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider transition-colors" 
+    style="background-color: ${srcCfg.bg}; color: ${srcCfg.color}; border-color: ${srcCfg.border}40;" 
+    title="Origin: ${srcCfg.label} | Storage: ${srcCfg.subLabel}">
+    <i class="${srcCfg.icon}"></i> ${srcCfg.label}
+</span>`;
 
     const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); 
     
@@ -1103,88 +1179,179 @@ const renderProjectsManager = () => {
         };
         window.addChecklistItem = (text = '') => { /* Same */ const container = document.getElementById('checklist-builder'); const div = document.createElement('div'); div.className = 'flex gap-2 items-center'; div.innerHTML = `<i class="fa-regular fa-square text-gray-500"></i><input type="text" value="${escapeHtml(text)}" class="checklist-input w-full bg-transparent border-b border-gray-700 focus:border-blue-500 outline-none text-sm py-1" placeholder="Subtask..."><button type="button" onclick="this.parentElement.remove()" class="text-gray-500 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>`; container.appendChild(div); div.querySelector('input').focus(); };
 
-        window.submitTaskForm = async () => {
-            const id = document.getElementById('modal-task-id').value;
+window.submitTaskForm = async () => {
+    const id = document.getElementById('modal-task-id').value;
+    
+    // 1. Build checklist from DOM
+    const checklistItems = []; 
+    document.querySelectorAll('.checklist-input').forEach(input => { 
+        if(input.value.trim()) checklistItems.push({ title: input.value.trim(), status: 0 }); 
+    }); 
+    
+    // 2. Get existing task data (if editing)
+    let existingTask = {};
+    if (id) {
+        existingTask = taskCache.find(t => t.id === id) || {};
+    }
+
+    // 3. Get Selected Save Location
+    const destination = document.getElementById('modal-destination-input').value;
+
+    // 4. Collect Raw Form Data
+    const rawFormData = {
+        title: document.getElementById('modal-title-input').value, 
+        content: document.getElementById('modal-desc-input').value, 
+        projectId: document.getElementById('modal-project-input').value, 
+        priority: parseInt(document.getElementById('modal-priority-input').value || 0), 
+        isAllDay: document.getElementById('modal-allday-input').checked, 
+        tags: document.getElementById('modal-tags-input').value.split(',').map(t=>t.trim()).filter(t=>t), 
+        repeatFlag: document.getElementById('modal-repeat-input').value,
+        items: checklistItems,
+        dueDate: document.getElementById('modal-due-date').value || null,
+        startDate: document.getElementById('modal-start-date').value || null
+    };
+
+    // 5. Merge and Sanitize Payload
+    const mergedTask = { ...existingTask, ...rawFormData };
+    const payload = formatTaskPayload(mergedTask);
+
+    showLoader(); 
+    try {
+        if (destination === 'local') {
+            // ===========================
+            // SCENARIO A: SAVE TO LOCAL
+            // ===========================
+            if (!auth.currentUser) throw new Error("You must be logged in to save local tasks.");
             
-            // 1. Build checklist from DOM
-            const checklistItems = []; 
-            document.querySelectorAll('.checklist-input').forEach(input => { 
-                if(input.value.trim()) checklistItems.push({ title: input.value.trim(), status: 0 }); 
-            }); 
+            // Explicitly tag as 'local' source
+            const taskData = { ...payload, updated: new Date(), source: 'local' };
             
-            // 2. Get existing task data (if editing)
-            let existingTask = {};
-            if (id) {
-                existingTask = taskCache.find(t => t.id === id) || {};
+            if (id && existingTask.source === 'local') {
+                // Update existing local doc
+                await updateDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', id), taskData);
+            } else {
+                // Create new local doc
+                taskData.created = new Date();
+                taskData.status = 0; // Active
+                await addDoc(collection(db, 'users', auth.currentUser.uid, 'local_tasks'), taskData);
             }
 
-            // 3. Collect Raw Form Data
-            const rawFormData = {
-                title: document.getElementById('modal-title-input').value, 
-                content: document.getElementById('modal-desc-input').value, 
-                projectId: document.getElementById('modal-project-input').value, 
-                priority: document.getElementById('modal-priority-input').value, 
-                isAllDay: document.getElementById('modal-allday-input').checked, 
-                tags: document.getElementById('modal-tags-input').value.split(',').map(t=>t.trim()).filter(t=>t), 
-                repeatFlag: document.getElementById('modal-repeat-input').value,
-                items: checklistItems,
-                // Handle dates simply here, the helper will format them
-                dueDate: document.getElementById('modal-due-date').value || null,
-                startDate: document.getElementById('modal-start-date').value || null
-            };
+        } else {
+            // ===========================
+            // SCENARIO B: SAVE TO CLOUD (WITH FIREBASE MIRROR)
+            // ===========================
+            let savedTask;
+            
+            // 1. Send to TickTick API
+            if(id && existingTask.source !== 'local') {
+                savedTask = await api(`/task/${id}`, 'POST', payload);
+            } else {
+                savedTask = await api('/task', 'POST', payload);
+            }
+            
+            if (savedTask && savedTask.id) {
+                 // 2. Mark Origin (For the Blue "Synced" Badge)
+                 await saveTaskOrigin(savedTask.id, 'tasktrackr');
 
-            // 4. Merge and Sanitize using the Helper
-            // We spread existingTask first, then overwrite with form data
-            const mergedTask = { ...existingTask, ...rawFormData };
-            const payload = formatTaskPayload(mergedTask);
+                 // 3. MIRROR FULL DATA (For your Backup)
+                 const mirrorPayload = {
+                     ...payload,
+                     id: savedTask.id,
+                     source: 'ticktick',
+                     lastSynced: new Date(),
+                     dueDate: payload.dueDate ? new Date(payload.dueDate) : null,
+                     startDate: payload.startDate ? new Date(payload.startDate) : null
+                 };
+                 await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload);
+            }
+        }
 
-            const selectedSource = document.getElementById('modal-source-input').value;
+        showToast('Task saved successfully'); 
+        els.modal.classList.add('hidden'); 
+        window.closeSidePane(); 
+        fetchAllData(); 
+    } catch(e) { 
+        showToast('Error saving task', 'error'); 
+        console.error(e);
+    } 
+    hideLoader(); 
+};
 
-            showLoader(); 
-            try {
-                let savedTask;
-                if(id) {
-                    savedTask = await api(`/task/${id}`, 'POST', payload);
-                } else {
-                    savedTask = await api('/task', 'POST', payload);
-                }
-                
-                if (savedTask && savedTask.id && selectedSource === 'tasktrackr') {
-                     await saveTaskOrigin(savedTask.id, 'tasktrackr');
-                }
+        window.openModal = (isEdit, taskId = null) => {
+    const modal = document.getElementById('task-modal');
+    const pSelect = document.getElementById('modal-project-input');
+    const container = document.getElementById('checklist-builder');
+    
+    // 1. Reset Modal State
+    container.innerHTML = '';
+    
+    // 2. Populate Projects Dropdown
+    pSelect.innerHTML = Object.entries(projectMap).map(([id, p]) => 
+        `<option value="${id}">${escapeHtml(p.name)}</option>`
+    ).join('');
+    
+    // Ensure 'Inbox' is always an option
+    if(!Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox')) {
+        pSelect.innerHTML = `<option value="inbox">Inbox</option>` + pSelect.innerHTML;
+    }
 
-                showToast('Success!'); 
-                els.modal.classList.add('hidden'); 
-                window.closeSidePane(); 
-                fetchAllData(); 
-            } catch(e) { 
-                showToast('Error saving task', 'error'); 
-                console.error(e);
-            } 
-            hideLoader(); 
-        };
+    const destInput = document.getElementById('modal-destination-input');
 
-        window.openModal = (isEdit, taskId = null) => { /* Same */ const modal = document.getElementById('task-modal'); const pSelect = document.getElementById('modal-project-input'); const container = document.getElementById('checklist-builder'); container.innerHTML = ''; pSelect.innerHTML = Object.entries(projectMap).map(([id, p]) => `<option value="${id}">${escapeHtml(p.name)}</option>`).join(''); if(!Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox')) { pSelect.innerHTML = `<option value="inbox">Inbox</option>` + pSelect.innerHTML; } if (isEdit && taskId) { const task = taskCache.find(t => t.id === taskId); document.getElementById('modal-title').textContent = "Edit Task"; document.getElementById('modal-task-id').value = task.id; document.getElementById('modal-title-input').value = task.title; document.getElementById('modal-desc-input').value = task.content || ''; document.getElementById('modal-tags-input').value = (task.tags || []).join(', '); 
+    if (isEdit && taskId) {
+        // --- EDIT MODE ---
+        const task = taskCache.find(t => t.id === taskId);
+        
+        document.getElementById('modal-title').textContent = "Edit Task";
+        document.getElementById('modal-task-id').value = task.id;
+        document.getElementById('modal-title-input').value = task.title;
+        document.getElementById('modal-desc-input').value = task.content || '';
+        document.getElementById('modal-tags-input').value = (task.tags || []).join(', ');
         document.getElementById('modal-priority-input').value = task.priority || 0;
-        document.getElementById('modal-source-input').value = getTaskSource(task); 
-        document.getElementById('modal-project-input').value = task.projectId; document.getElementById('modal-allday-input').checked = !!task.isAllDay; document.getElementById('modal-repeat-input').value = task.repeatFlag || ""; if (task.items) task.items.forEach(item => window.addChecklistItem(item.title)); const fmtDate = (iso) => iso ? new Date(new Date(iso) - (new Date(iso).getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : ''; document.getElementById('modal-start-date').value = fmtDate(task.startDate); document.getElementById('modal-due-date').value = fmtDate(task.dueDate);
-     } else { document.getElementById('modal-title').textContent = "New Task"; 
-     document.getElementById('modal-task-id').value = ''; 
-     document.getElementById('modal-title-input').value = ''; 
-     document.getElementById('modal-desc-input').value = ''; 
-     document.getElementById('modal-tags-input').value = ''; 
-     document.getElementById('modal-start-date').value = ''; 
-     document.getElementById('modal-due-date').value = ''; 
-        document.getElementById('modal-priority-input').value = 0; 
-        document.getElementById('modal-source-input').value = 'ticktick';
-        document.getElementById('modal-allday-input').checked = false; 
-        document.getElementById('modal-repeat-input').value = ""; 
-        // NEW: Default to Inbox
-                const inboxId = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
-                document.getElementById('modal-project-input').value = inboxId;
+        document.getElementById('modal-project-input').value = task.projectId;
+        document.getElementById('modal-allday-input').checked = !!task.isAllDay;
+        document.getElementById('modal-repeat-input').value = task.repeatFlag || "";
+        
+        // Populate Checklist
+        if (task.items) task.items.forEach(item => window.addChecklistItem(item.title));
+        
+        // Populate Dates (Format for datetime-local input)
+        const fmtDate = (iso) => iso ? new Date(new Date(iso) - (new Date(iso).getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : '';
+        document.getElementById('modal-start-date').value = fmtDate(task.startDate);
+        document.getElementById('modal-due-date').value = fmtDate(task.dueDate);
+
+        // --- PRE-SELECT DESTINATION ---
+        // If source is 'local', set dropdown to Local. Otherwise default to TickTick (Cloud).
+        if (destInput) {
+            if (task.source === 'local' || task.source === 'tasktrackr_only') {
+                destInput.value = 'local';
+            } else {
+                destInput.value = 'ticktick';
+            }
+        }
+
+    } else {
+        // --- NEW TASK MODE ---
+        document.getElementById('modal-title').textContent = "New Task";
+        document.getElementById('modal-task-id').value = '';
+        document.getElementById('modal-title-input').value = '';
+        document.getElementById('modal-desc-input').value = '';
+        document.getElementById('modal-tags-input').value = '';
+        document.getElementById('modal-start-date').value = '';
+        document.getElementById('modal-due-date').value = '';
+        document.getElementById('modal-priority-input').value = 0;
+        document.getElementById('modal-allday-input').checked = false;
+        document.getElementById('modal-repeat-input').value = "";
+        
+        // Default to Inbox
+        const inboxId = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
+        document.getElementById('modal-project-input').value = inboxId;
+
+        // Default Destination to TickTick
+        if (destInput) destInput.value = 'ticktick';
     } 
 
-    modal.classList.remove('hidden'); };
+    modal.classList.remove('hidden');
+};
 
         /* Pomo, Keydown, Helper functions */
         let pomoInterval; let pomoSeconds = 25 * 60; let isPomoRunning = false;
@@ -1244,12 +1411,11 @@ window.completeTask = async (pid, tid, checkbox, event) => {
     }
 
     const oldStatus = task.status;
-    // Toggle: If 2 (completed), make 0 (active). If 0, make 2.
-    const newStatus = oldStatus === 2 ? 0 : 2;
+    const newStatus = oldStatus === 2 ? 0 : 2; // Toggle Status
 
+    // Optimistic Update
     task.status = newStatus;
 
-    // If restoring from history, move it back to active cache
     if (newStatus === 0 && task.isHistory) {
          task.isHistory = false;
          if (!taskCache.find(t => t.id === tid)) taskCache.push(task);
@@ -1259,35 +1425,48 @@ window.completeTask = async (pid, tid, checkbox, event) => {
     localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
     renderApp();
 
-    // Log to history only if completing
+    // Log history
     if(newStatus === 2 && !task.isHistory) await logTaskCompletion(task);
 
-    try {
-        if (newStatus === 2) {
-            // Mark as Completed
-            await api(`/project/${pid}/task/${tid}/complete`, 'POST');
-            
-            const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule);
-            if (isRecurring) {
-                const nextStr = calculateNextOccurrence(task.dueDate, task.repeatFlag || (task.recurrence ? task.recurrence.rule : ""));
-                showToast(`Session completed. Next: ${nextStr}`, 'success');
-            } else {
-                // Add Undo button that calls this function again
-                showToast('Task completed', 'success', 'Undo', async () => { 
-                    window.completeTask(pid, tid, checkbox, null); 
-                });
-            }
+    // --- START ERROR HANDLING BLOCK ---
+    try { 
+        // 1. ALWAYS Update Firebase Mirror (Backup)
+        if (auth.currentUser) {
+            try {
+                await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid), { 
+                    status: newStatus,
+                    updated: new Date()
+                }, { merge: true });
+            } catch(e) { console.error("Mirror update failed", e); }
+        }
+
+        // 2. Handle Source Logic
+        if (task.source === 'local') {
+            // Local Task: Already saved to Firebase above
+            if (newStatus === 2) showToast('Task completed', 'success');
+            else showToast('Task restored', 'success');
         } else {
-            // Restore Task (Un-complete)
-            await api(`/task/${tid}`, 'POST', { projectId: pid, status: 0 });
-            showToast('Task restored', 'success');
+            // Cloud Task: Call TickTick API
+            if (newStatus === 2) {
+                await api(`/project/${pid}/task/${tid}/complete`, 'POST');
+                const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule);
+                if (isRecurring) {
+                    const nextStr = calculateNextOccurrence(task.dueDate, task.repeatFlag || (task.recurrence ? task.recurrence.rule : ""));
+                    showToast(`Session completed. Next: ${nextStr}`, 'success');
+                } else {
+                    showToast('Task completed', 'success');
+                }
+            } else {
+                await api(`/task/${tid}`, 'POST', { projectId: pid, status: 0 });
+                showToast('Task restored', 'success');
+            }
         }
         
-        // Refresh data in background without freezing UI
         setTimeout(fetchAllData, 1000);
 
     } catch(e) {
         // Revert on error
+        console.error(e);
         task.status = oldStatus;
         if(checkbox) checkbox.checked = oldStatus === 2;
         renderApp();
@@ -1295,8 +1474,43 @@ window.completeTask = async (pid, tid, checkbox, event) => {
     }
 };
 
-window.stopRepeating = async (taskId) => { if(!confirm("Stop this task from repeating? It will become a regular task.")) return; const task = taskCache.find(t => t.id === taskId); if(!task) return; showLoader(); try { const payload = { ...task, recurrence: null, repeatFlag: null }; await api(`/task/${taskId}`, 'POST', payload); showToast("Recurrence removed"); window.closeSidePane(); fetchAllData(); } catch(e) { showToast("Error updating task", "error"); } hideLoader(); };
-        const renderKanban = (tasks) => { const cols = { 5: { title: 'High Priority', items: [] }, 3: { title: 'Medium Priority', items: [] }, 1: { title: 'Low Priority', items: [] }, 0: { title: 'No Priority', items: [] } }; tasks.forEach(t => { if(cols[t.priority]) cols[t.priority].items.push(t); else cols[0].items.push(t); }); let html = `<div class="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-180px)] px-2">`; [5, 3, 1, 0].forEach(p => { const col = cols[p]; html += `<div class="kanban-col"><div class="kanban-header"><span>${col.title}</span><span class="bg-gray-700 px-2 rounded-full text-xs">${col.items.length}</span></div><div class="kanban-body space-y-2" id="col-${p}" data-priority="${p}">${col.items.map(renderTaskCard).join('')}</div></div>`; }); html += `</div>`; els.content.innerHTML = html; setTimeout(() => { [5, 3, 1, 0].forEach(p => { new Sortable(document.getElementById(`col-${p}`), { group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', onEnd: async (evt) => { const taskId = evt.item.dataset.taskId; const newPriority = parseInt(evt.to.dataset.priority); if (newPriority !== parseInt(evt.from.dataset.priority)) { const task = taskCache.find(t => t.id === taskId); showLoader(); await api(`/task/${taskId}`, 'POST', { ...task, priority: newPriority }); hideLoader(); task.priority = newPriority; } } }); }); }, 100); };
+window.stopRepeating = async (taskId) => { 
+    if(!confirm("Stop this task from repeating? It will become a regular task.")) return; 
+    
+    const task = taskCache.find(t => t.id === taskId); 
+    if(!task) return; 
+    
+    showLoader(); 
+    try { 
+        task.recurrence = null;
+        task.repeatFlag = null;
+        const payload = formatTaskPayload(task);
+
+        // 1. Update Firebase (Mirror or Local)
+        if (auth.currentUser) {
+            await updateDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', taskId), {
+                recurrence: null,
+                repeatFlag: null,
+                updated: new Date()
+            });
+        }
+
+        // 2. Update API (Only if NOT local)
+        if (task.source !== 'local') {
+            await api(`/task/${taskId}`, 'POST', payload); 
+        }
+
+        showToast("Recurrence removed"); 
+        window.closeSidePane(); 
+        fetchAllData(); 
+    } catch(e) { 
+        showToast("Error updating task", "error"); 
+        console.error(e);
+    } 
+    hideLoader(); 
+}; 
+
+const renderKanban = (tasks) => { const cols = { 5: { title: 'High Priority', items: [] }, 3: { title: 'Medium Priority', items: [] }, 1: { title: 'Low Priority', items: [] }, 0: { title: 'No Priority', items: [] } }; tasks.forEach(t => { if(cols[t.priority]) cols[t.priority].items.push(t); else cols[0].items.push(t); }); let html = `<div class="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-180px)] px-2">`; [5, 3, 1, 0].forEach(p => { const col = cols[p]; html += `<div class="kanban-col"><div class="kanban-header"><span>${col.title}</span><span class="bg-gray-700 px-2 rounded-full text-xs">${col.items.length}</span></div><div class="kanban-body space-y-2" id="col-${p}" data-priority="${p}">${col.items.map(renderTaskCard).join('')}</div></div>`; }); html += `</div>`; els.content.innerHTML = html; setTimeout(() => { [5, 3, 1, 0].forEach(p => { new Sortable(document.getElementById(`col-${p}`), { group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', onEnd: async (evt) => { const taskId = evt.item.dataset.taskId; const newPriority = parseInt(evt.to.dataset.priority); if (newPriority !== parseInt(evt.from.dataset.priority)) { const task = taskCache.find(t => t.id === taskId); showLoader(); await api(`/task/${taskId}`, 'POST', { ...task, priority: newPriority }); hideLoader(); task.priority = newPriority; } } }); }); }, 100); };
         const renderCalendar = (tasks) => { const date = currentCalendarDate; const year = date.getFullYear(); const month = date.getMonth(); const monthName = date.toLocaleString('default', { month: 'long' }); const tasksByDate = {}; tasks.forEach(t => { if(!t.dueDate) return; const dateKey = t.dueDate.split('T')[0]; if(!tasksByDate[dateKey]) tasksByDate[dateKey] = []; tasksByDate[dateKey].push(t); }); const firstDay = new Date(year, month, 1).getDay(); const daysInMonth = new Date(year, month + 1, 0).getDate(); const todayKey = new Date().toISOString().split('T')[0]; let html = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">${monthName} ${year}</h2><div class="flex gap-2"><button onclick="window.jumpToToday()" class="p-2 px-3 bg-gray-800 rounded hover:bg-gray-700 text-xs font-bold mr-2">Today</button><button onclick="window.changeMonth(-1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-left"></i></button><button onclick="window.changeMonth(1)" class="p-2 bg-gray-800 rounded hover:bg-gray-700"><i class="fa-solid fa-chevron-right"></i></button></div></div><div class="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-bold text-gray-500 uppercase"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div><div class="calendar-grid">`; for(let i=0; i<firstDay; i++) html += `<div class="calendar-day bg-gray-900/50 pointer-events-none"></div>`; for(let d=1; d<=daysInMonth; d++) { const dateKey = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const dayTasks = tasksByDate[dateKey] || []; const dots = dayTasks.slice(0, 5).map(t => { let color = t.status===2 ? 'bg-green-500' : (t.priority===5 ? 'bg-red-500' : 'bg-blue-500'); return `<span class="calendar-dot ${color}" title="${escapeHtml(t.title)}"></span>`; }).join(''); html += `<div class="calendar-day ${dateKey === todayKey ? 'today' : ''}" onclick="window.showDayTasks('${dateKey}')" data-date="${dateKey}"><div class="flex justify-between items-start mb-1 pointer-events-none day-label"><span class="text-sm font-bold ${dateKey === todayKey ? 'text-[var(--primary)]' : 'text-gray-400'}">${d}</span>${dayTasks.length > 0 ? `<span class="text-[10px] text-gray-500 font-mono">${dayTasks.length}</span>` : ''}</div><div class="flex flex-wrap content-start h-full pb-4 pointer-events-none task-dots-container">${dots}</div></div>`; } html += `</div>`; els.content.innerHTML = html; window.dayTasksCache = tasksByDate; document.querySelectorAll('.calendar-day[data-date]').forEach(el => { el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag-over'); }); el.addEventListener('dragleave', () => el.classList.remove('drag-over')); el.addEventListener('drop', (e) => { e.preventDefault(); el.classList.remove('drag-over'); window.bulkAction('specific', el.dataset.date); }); }); };
         window.jumpToToday = () => { currentCalendarDate = new Date(); renderApp(); }; 
         window.openSidePane = (taskId, isFromHistory = false) => { currentSidePaneTaskId = taskId; const task = isFromHistory ? historyCache.find(t => t.id === taskId) : taskCache.find(t => t.id === taskId); if (!task) return; const titleEl = document.getElementById('sp-title-edit'); titleEl.value = task.title; titleEl.style.height = 'auto'; titleEl.style.height = titleEl.scrollHeight + 'px'; const descEl = document.getElementById('sp-desc'); descEl.textContent = task.content || ""; const pName = projectMap[task.projectId]?.name || 'Unknown'; const spProj = document.getElementById('sp-project'); spProj.textContent = pName; spProj.className = "text-[10px] font-bold uppercase tracking-widest mb-1 block"; spProj.style.color = getProjectColor(task.projectId); document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date'; 
@@ -1307,10 +1521,196 @@ const src = getTaskSource(task);
 const srcCfg = getSourceConfig(src);
 spSource.innerHTML = `<i class="${srcCfg.icon}" style="color: ${srcCfg.color}"></i> ${srcCfg.label}`;
         if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; else pCont.textContent = "None"; const tCont = document.getElementById('sp-tags-container'); tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); const compBtn = document.getElementById('sp-complete-btn'); const stopBtn = document.getElementById('sp-stop-repeat-btn'); if(isRecurring) { document.getElementById('sp-recurring-container').classList.remove('hidden'); stopBtn.classList.remove('hidden'); stopBtn.onclick = () => window.stopRepeating(task.id); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; } else { compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } else { document.getElementById('sp-recurring-container').classList.add('hidden'); stopBtn.classList.add('hidden'); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; compBtn.onclick = null; } else { compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } const spCheck = document.getElementById('sp-checkbox'); spCheck.checked = task.status === 2; spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); window.renderSidePaneChecklist(task); document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); }; document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); const overlay = document.getElementById('side-pane-overlay'); const pane = document.getElementById('side-pane'); pane.classList.remove('hidden'); if (window.innerWidth >= 1024) { pane.classList.add('open'); } else { overlay.classList.remove('hidden'); void overlay.offsetWidth; overlay.classList.remove('opacity-0'); pane.classList.add('open'); } };
-        window.renderSidePaneChecklist = (task) => { const listEl = document.getElementById('sp-checklist-items'); if(!listEl) return; listEl.innerHTML = ''; if(task.items && task.items.length > 0) { task.items.forEach((item, idx) => { const icon = item.status === 1 ? 'fa-square-check text-green-500' : 'fa-square text-gray-500'; const textClass = item.status === 1 ? 'line-through text-gray-600' : 'text-gray-300'; listEl.innerHTML += `<div class="flex items-center gap-3 p-2 bg-gray-800/40 rounded-lg cursor-pointer hover:bg-gray-800 transition" onclick="window.toggleSubtask('${task.id}', ${idx})"><i class="fa-regular ${icon}"></i><span class="text-sm ${textClass}">${escapeHtml(item.title)}</span></div>`; }); } else { listEl.innerHTML = '<div class="text-xs text-gray-600 italic">No subtasks</div>'; } };
-        window.toggleSubtask = async (taskId, itemIndex) => { const task = taskCache.find(t => t.id === taskId); if(!task || !task.items) return; const item = task.items[itemIndex]; const oldStatus = item.status; item.status = oldStatus === 1 ? 0 : 1; window.renderSidePaneChecklist(task); renderApp(); try { await api(`/task/${taskId}`, 'POST', { title: task.title, projectId: task.projectId, items: task.items }); } catch(e) { item.status = oldStatus; window.renderSidePaneChecklist(task); showToast('Subtask update failed', 'error'); } };
+
+window.openSidePane = (taskId, isFromHistory = false) => { 
+    currentSidePaneTaskId = taskId; 
+    const task = isFromHistory ? historyCache.find(t => t.id === taskId) : taskCache.find(t => t.id === taskId); 
+    if (!task) return; 
+
+    // --- Basic Fields ---
+    const titleEl = document.getElementById('sp-title-edit'); 
+    titleEl.value = task.title; 
+    titleEl.style.height = 'auto'; 
+    titleEl.style.height = titleEl.scrollHeight + 'px'; 
+    
+    const descEl = document.getElementById('sp-desc'); 
+    descEl.textContent = task.content || ""; 
+    
+    const pName = projectMap[task.projectId]?.name || 'Unknown'; 
+    const spProj = document.getElementById('sp-project'); 
+    spProj.textContent = pName; 
+    spProj.className = "text-[10px] font-bold uppercase tracking-widest mb-1 block"; 
+    spProj.style.color = getProjectColor(task.projectId); 
+    
+    document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date'; 
+    
+    const pCont = document.getElementById('sp-priority-container'); 
+    
+    // --- SOURCE BADGE FIX ---
+    const spSource = document.getElementById('sp-source');
+    // We pass the full 'task' object here so getSourceConfig can read task.source correctly
+    const srcCfg = getSourceConfig(task); 
+    spSource.innerHTML = `<i class="${srcCfg.icon}" style="color: ${srcCfg.color}"></i> ${srcCfg.label}`;
+
+    // --- Priority Display ---
+    if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; 
+    else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; 
+    else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; 
+    else pCont.textContent = "None"; 
+
+    // --- Tags ---
+    const tCont = document.getElementById('sp-tags-container'); 
+    tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); 
+
+    // --- Recurrence & Buttons ---
+    const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); 
+    const compBtn = document.getElementById('sp-complete-btn'); 
+    const stopBtn = document.getElementById('sp-stop-repeat-btn'); 
+
+    if(isRecurring) { 
+        document.getElementById('sp-recurring-container').classList.remove('hidden'); 
+        stopBtn.classList.remove('hidden'); 
+        stopBtn.onclick = () => window.stopRepeating(task.id); 
+        
+        if (task.status === 2) { 
+            compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
+            compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; 
+        } else { 
+            compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
+            compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; 
+            compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
+        } 
+    } else { 
+        document.getElementById('sp-recurring-container').classList.add('hidden'); 
+        stopBtn.classList.add('hidden'); 
+        
+        if (task.status === 2) { 
+            compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
+            compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; 
+            compBtn.onclick = null; 
+        } else { 
+            compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
+            compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; 
+            compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
+        } 
+    } 
+
+    // --- Checkbox & Actions ---
+    const spCheck = document.getElementById('sp-checkbox'); 
+    spCheck.checked = task.status === 2; 
+    spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); 
+    
+    window.renderSidePaneChecklist(task); 
+    
+    document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); }; 
+    document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); 
+    
+    const overlay = document.getElementById('side-pane-overlay'); 
+    const pane = document.getElementById('side-pane'); 
+    pane.classList.remove('hidden'); 
+    if (window.innerWidth >= 1024) { 
+        pane.classList.add('open'); 
+    } else { 
+        overlay.classList.remove('hidden'); 
+        void overlay.offsetWidth; 
+        overlay.classList.remove('opacity-0'); 
+        pane.classList.add('open'); 
+    } 
+};
+
+
+window.renderSidePaneChecklist = (task) => { 
+    const listEl = document.getElementById('sp-checklist-items'); 
+    if(!listEl) return; 
+    
+    listEl.innerHTML = ''; 
+    
+    if(task.items && task.items.length > 0) { 
+        task.items.forEach((item, idx) => { 
+            const icon = item.status === 1 ? 'fa-square-check text-green-500' : 'fa-square text-gray-500'; 
+            const textClass = item.status === 1 ? 'line-through text-gray-600' : 'text-gray-300'; 
+            
+            listEl.innerHTML += `
+                <div class="flex items-center gap-3 p-2 bg-gray-800/40 rounded-lg cursor-pointer hover:bg-gray-800 transition" onclick="window.toggleSubtask('${task.id}', ${idx})">
+                    <i class="fa-regular ${icon}"></i>
+                    <span class="text-sm ${textClass}">${escapeHtml(item.title)}</span>
+                </div>`; 
+        }); 
+    } else { 
+        listEl.innerHTML = '<div class="text-xs text-gray-600 italic">No subtasks</div>'; 
+    } 
+};
+
+        // REPLACE window.toggleSubtask
+window.toggleSubtask = async (taskId, itemIndex) => {
+    const task = taskCache.find(t => t.id === taskId);
+    if(!task || !task.items) return;
+
+    const item = task.items[itemIndex];
+    const oldStatus = item.status;
+    
+    // Optimistic Update
+    item.status = oldStatus === 1 ? 0 : 1;
+    window.renderSidePaneChecklist(task);
+    renderApp();
+
+    try {
+        const payload = formatTaskPayload(task);
+
+        // 1. Always Update Firebase (Mirror or Local)
+        if (auth.currentUser) {
+            await updateDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), {
+                items: payload.items,
+                updated: new Date()
+            });
+        }
+
+        // 2. Update API (Only if NOT local)
+        if (task.source !== 'local') {
+            await api(`/task/${taskId}`, 'POST', { 
+                title: task.title, 
+                projectId: task.projectId, 
+                items: task.items 
+            });
+        }
+    } catch(e) {
+        item.status = oldStatus;
+        window.renderSidePaneChecklist(task);
+        showToast('Subtask update failed', 'error');
+        console.error(e);
+    }
+};
+        
         window.closeSidePane = () => { const pane = document.getElementById('side-pane'); pane.classList.remove('open'); document.getElementById('side-pane-overlay').classList.add('opacity-0'); setTimeout(() => document.getElementById('side-pane-overlay').classList.add('hidden'), 300); };
-        window.openAddTaskModal = () => window.openModal(false); window.openProjectModal = (id = null, name = '') => { document.getElementById('project-modal-id').value = id || ''; document.getElementById('project-name-input').value = name; document.getElementById('project-modal-title').textContent = id ? 'Edit Project' : 'New Project'; document.getElementById('project-modal').classList.remove('hidden'); }; window.submitProjectForm = async () => { const id = document.getElementById('project-modal-id').value; const name = document.getElementById('project-name-input').value; if(!name) return showToast('Name required', 'error'); showLoader(); try { if(id) await api(`/project/${id}`, 'POST', { name }); else await api('/project', 'POST', { name }); showToast('Project saved'); document.getElementById('project-modal').classList.add('hidden'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); }; window.deleteProject = async (id) => { if(confirm("Delete this project and all its tasks?")) { showLoader(); try { await api(`/project/${id}`, 'DELETE'); showToast('Project deleted'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); } }; window.deleteTask = async (pid, tid) => { if(confirm("Are you sure?")) { showLoader(); await api(`/project/${pid}/task/${tid}`, 'DELETE'); showToast('Deleted'); window.closeSidePane(); fetchAllData(); } }; window.refreshData = () => fetchAllData(); window.changeMonth = (o) => { currentCalendarDate.setMonth(currentCalendarDate.getMonth()+o); renderApp(); }; window.showDayTasks = (k) => { const tasks = window.dayTasksCache[k] || []; els.content.innerHTML = `<div class="flex items-center gap-4 mb-6"><button onclick="renderApp()" class="bg-gray-800 p-2 rounded-lg"><i class="fa-solid fa-arrow-left"></i> Back</button><h1 class="text-2xl font-bold">Tasks for ${k}</h1></div>` + tasks.map(renderTaskCard).join(''); }; 
+        window.openAddTaskModal = () => window.openModal(false); window.openProjectModal = (id = null, name = '') => { document.getElementById('project-modal-id').value = id || ''; document.getElementById('project-name-input').value = name; document.getElementById('project-modal-title').textContent = id ? 'Edit Project' : 'New Project'; document.getElementById('project-modal').classList.remove('hidden'); }; window.submitProjectForm = async () => { const id = document.getElementById('project-modal-id').value; const name = document.getElementById('project-name-input').value; if(!name) return showToast('Name required', 'error'); showLoader(); try { if(id) await api(`/project/${id}`, 'POST', { name }); else await api('/project', 'POST', { name }); showToast('Project saved'); document.getElementById('project-modal').classList.add('hidden'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); }; window.deleteProject = async (id) => { if(confirm("Delete this project and all its tasks?")) { showLoader(); try { await api(`/project/${id}`, 'DELETE'); showToast('Project deleted'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); } }; 
+window.deleteTask = async (pid, tid) => { 
+    if(confirm("Permanently delete this task?")) { 
+        showLoader(); 
+        const task = taskCache.find(t => t.id === tid);
+        
+        // 1. Try to delete the Firebase Mirror/Doc regardless of source
+        // This prevents "ghosts" appearing if you delete a synced task
+        try {
+            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid));
+        } catch(e) { console.log("No local mirror to delete or error:", e); }
+
+        // 2. Handle API Deletion if it's not purely local
+        if (!task || task.source !== 'local') {
+            try {
+                await api(`/project/${pid}/task/${tid}`, 'DELETE'); 
+                showToast('Deleted from Cloud'); 
+            } catch(e) {
+                showToast('Error deleting from Cloud', 'error');
+            }
+        } else {
+            showToast('Deleted locally');
+        }
+        
+        window.closeSidePane(); 
+        fetchAllData(); 
+    } 
+};
+        window.refreshData = () => fetchAllData(); window.changeMonth = (o) => { currentCalendarDate.setMonth(currentCalendarDate.getMonth()+o); renderApp(); }; window.showDayTasks = (k) => { const tasks = window.dayTasksCache[k] || []; els.content.innerHTML = `<div class="flex items-center gap-4 mb-6"><button onclick="renderApp()" class="bg-gray-800 p-2 rounded-lg"><i class="fa-solid fa-arrow-left"></i> Back</button><h1 class="text-2xl font-bold">Tasks for ${k}</h1></div>` + tasks.map(renderTaskCard).join(''); }; 
         window.addEventListener('click', (e) => {
             if (!e.target.closest('.card') && !e.target.closest('#context-menu')) {
                 document.getElementById('context-menu').classList.add('hidden');

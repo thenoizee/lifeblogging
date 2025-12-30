@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.87.0-beta",
+    date: "2025-12-30",
+    changes: [
+        "In TaskTrackr: Introduced first version of light-mode.",
+        "In TaskTrackr: Introduced 'Local-Only' mode allowing tasks to be stored solely on the device/Firebase without syncing to TickTick.",
+        "In TaskTrackr: Implemented 'Data Mirroring' so all TickTick tasks are automatically backed up to Firebase for future independence.",
+        "In TaskTrackr: Added 'Save Location' selector to the task modal and distinct badges (Local/Synced) to task cards.",
+    ]
+    },
+    {
     version: "v9.86.0-alpha",
     date: "2025-12-29",
     changes: [
