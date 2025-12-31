@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.92.0-alpha",
+    date: "2025-12-31",
+    changes: [
+        "In VehicleManagr: Updated logging forms (Fuel, Service, Expense, etc.) to support specific times via 'datetime-local' inputs.",
+        "In VehicleManagr: Implemented validation to prevent selecting future dates/times in logging forms.",
+    ]
+    },
+    {
     version: "v9.91.0-alpha",
     date: "2025-12-31",
     changes: [
