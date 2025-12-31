@@ -78,7 +78,7 @@
     
     <div id="version-display" class="fixed top-2 right-2 text-[10px] text-gray-500 z-50 font-mono opacity-50 hover:opacity-100 transition pointer-events-none mix-blend-difference"></div>
 
-    <header class="sticky top-0 bg-[var(--card)] shadow-lg z-30">
+    <header class="hidden md:block sticky top-0 bg-[var(--card)] shadow-lg z-30">
         <div class="container mx-auto px-4">
             <div class="flex items-center justify-between py-3">
                 <div class="flex items-center space-x-6">
@@ -109,14 +109,14 @@
                     </div>
                     
                     <div id="header-watch-status" class="hidden mr-2 animate-pulse"></div>
-<button id="theme-toggle" class="p-2 rounded-full hover:bg-[var(--bg)] transition transform hover:rotate-12"><i class="fa-solid fa-moon text-xl"></i></button>
+                    <button id="theme-toggle" class="p-2 rounded-full hover:bg-[var(--bg)] transition transform hover:rotate-12"><i class="fa-solid fa-moon text-xl"></i></button>
                     <div id="auth-container"></div>
                 </div>
             </div>
         </div>
     </header>
 
-    <div class="sm:hidden px-4 py-2 bg-[var(--card)] border-b border-gray-800">
+    <div class="hidden px-4 py-2 bg-[var(--card)] border-b border-gray-800">
         <div class="flex items-center bg-[var(--bg)] rounded-lg px-3 py-2">
              <i class="fa-solid fa-magnifying-glass text-gray-400"></i>
              <input type="search" id="mobile-search-input" placeholder="Search movies & shows..." class="bg-transparent border-none text-sm w-full focus:ring-0 text-[var(--text)] ml-2 outline-none">
@@ -127,11 +127,11 @@
         <div id="content" class="min-h-[50vh]"></div>
     </main>
 
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--card)] border-t border-gray-800 z-50 flex justify-around py-3 pb-safe">
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--card)] border-t border-gray-800 z-50 flex justify-around py-3 pb-safe shadow-[0_-5px_15px_rgba(0,0,0,0.5)]">
+        <a href="../index.html" class="mobile-nav-link"><i class="fa-solid fa-arrow-left"></i><span>Hub</span></a>
         <a href="#dashboard" class="mobile-nav-link active"><i class="fa-solid fa-house"></i><span>Home</span></a>
         <a href="#library" class="mobile-nav-link"><i class="fa-solid fa-layer-group"></i><span>Library</span></a>
         <a href="#progress" class="mobile-nav-link"><i class="fa-solid fa-chart-pie"></i><span>Progress</span></a>
-        <a href="#history" class="mobile-nav-link"><i class="fa-solid fa-clock-rotate-left"></i><span>History</span></a>
         <a href="#settings" class="mobile-nav-link"><i class="fa-solid fa-user"></i><span>Settings</span></a>
     </nav>
 
@@ -543,12 +543,22 @@
                 const grid = history.map(h => {
                     const type = h.type;
                     const data = h[type];
+                    
+                    // FIX: Extract ID to look up local rating
+                    const id = type === 'episode' ? h.episode.ids.trakt : h.movie.ids.trakt;
+                    
                     const img = getImage(data, type === 'episode' ? 'episode' : 'movie', true);
                     const title = type === 'episode' ? `${h.show.title}: ${h.episode.title}` : h.movie.title;
                     const subTitle = type === 'episode' ? `S${h.episode.season}E${h.episode.number}` : h.movie.year;
                     const targetHash = type === 'episode' ? `#detail/episode/${h.episode.ids.trakt}` : `#detail/movie/${h.movie.ids.trakt}`;
                     const dateObj = new Date(h.watched_at);
                     const dateTimeDisplay = `${dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})} @ ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+                    // FIX: Generate Rating HTML if it exists in memory
+                    const myRating = userRatings.get(parseInt(id));
+                    const ratingHtml = myRating 
+                        ? `<span class="text-green-400 font-bold flex items-center gap-1 text-[10px] ml-2 bg-black/50 px-1.5 rounded"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` 
+                        : '';
 
                     return `
                         <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer" onclick="location.hash='${targetHash}'">
@@ -558,8 +568,11 @@
                                 <div class="absolute bottom-0 left-0 p-4 w-full">
                                     <h4 class="text-white font-bold truncate shadow-black drop-shadow-md text-sm md:text-base">${title}</h4>
                                     <div class="flex items-center justify-between mt-1">
-                                        <span class="text-xs text-gray-300 font-mono">${subTitle}</span>
-                                        <span class="text-[10px] bg-[var(--primary)] text-white px-1.5 py-0.5 rounded font-bold uppercase">${type}</span>
+                                        <div class="flex items-center overflow-hidden">
+                                            <span class="text-xs text-gray-300 font-mono truncate">${subTitle}</span>
+                                            ${ratingHtml}
+                                        </div>
+                                        <span class="text-[10px] bg-[var(--primary)] text-white px-1.5 py-0.5 rounded font-bold uppercase flex-shrink-0 ml-2">${type}</span>
                                     </div>
                                     <div class="mt-2 text-[10px] text-gray-400 font-montserrat border-t border-gray-700 pt-1 flex items-center">
                                         <i class="fa-regular fa-clock mr-1 text-[var(--primary)]"></i> ${dateTimeDisplay}
@@ -612,6 +625,7 @@
                 showToast(`Rated ${rating}/10 & Logged!`);
                 userRatings.set(id, parseInt(rating)); 
                 if (document.getElementById('up-next-container')) loadUpNext(); // FIX: Safety check
+                if (document.getElementById('last-watched-container')) loadLastWatched();
             } catch(e) { showToast('Action failed', 'error'); } 
             hideLoader();
         }
@@ -752,8 +766,9 @@
                 }
 
                 const userNote = notes.exists() ? notes.data().text : '';
-                const myRating = item.user_rating;
-                const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
+// FIX: Check local cache first/fallback so immediate ratings show up instantly
+const myRating = item.user_rating || userRatings.get(parseInt(id)); 
+const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                 const titleText = isEpisode ? `${item.season}x${item.number}: ${item.title}` : item.title;
                 const fullTitle = isEpisode ? `${showInfo.title}: ${item.title}` : item.title;
                 const runtimeStr = item.runtime ? `${Math.floor(item.runtime/60)}h ${item.runtime%60}m` : 'N/A';
@@ -1229,7 +1244,7 @@
             }
 
             const traktId = currentModalItem.item.ids.trakt;
-            const type = currentModalItem.type; 
+            const type = currentModalItem.type;
             
             if (actionType !== 'rate-only') {
                 try {
@@ -1258,7 +1273,9 @@
             const date = dateStr ? new Date(dateStr).toISOString() : selectedDate; 
             const rating = parseInt(els.ratingSlider.value); 
             const ids = { ids: { trakt: traktId } }; 
-            const rootKey = type === 'episode' ? 'episodes' : 'movies'; 
+            
+            // FIX: Handle 'shows' correctly so we don't rate them as movies
+            const rootKey = type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies'); 
 
             try { 
                 if (actionType === 'rate-only') {
@@ -1286,6 +1303,7 @@
                      else renderDetail(parts[1], parts[2]);
                 }
                 if (document.getElementById('up-next-container')) loadUpNext(); 
+                if (document.getElementById('last-watched-container')) loadLastWatched();
             } catch(e) { console.error(e); showToast('Action failed', 'error'); } 
             hideLoader(); 
         }
@@ -1343,13 +1361,18 @@
             const btn = e.target.closest('.scrobble-btn');
             if (btn) {
                 const data = JSON.parse(btn.dataset.json);
-                currentModalItem = { item: data, type: btn.dataset.type === 'show' ? 'episode' : 'movie' };
+                // FIX: Trust the type in the JSON data first. 
+                // Only fall back to dataset logic if data.type is missing.
+                const itemType = data.type || (btn.dataset.type === 'show' ? 'episode' : 'movie');
+                
+                currentModalItem = { item: data, type: itemType };
                 document.getElementById('modal-title').innerText = data.title;
                 els.modal.classList.remove('hidden');
                 const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
                 document.getElementById('custom-date').value = now.toISOString().slice(0, 16);
                 selectedDate = new Date().toISOString();
             }
+            // ... (keep existing listeners for closing modal etc if you have them, otherwise just close the block)
             if(e.target.closest('.date-option')) {
                 const type = e.target.closest('.date-option').dataset.date;
                 const d = new Date(); if(type === 'yesterday') d.setDate(d.getDate()-1);

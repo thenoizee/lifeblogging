@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.91.0-alpha",
+    date: "2025-12-31",
+    changes: [
+        "In VidTrackr: Optimized mobile layout by removing the top header/search and adding a sticky bottom navigation bar with a 'Hub' button.",
+        "In VidTrackr: Fixed a critical bug where TV Shows were incorrectly logged and rated as Movies.",
+        "In VidTrackr: Updated the Dashboard 'Recently Watched' section to display user ratings and auto-refresh after logging.",
+    ]
+    },
+    {
     version: "v9.90.0-alpha",
     date: "2025-12-31",
     changes: [
