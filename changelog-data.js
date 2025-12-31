@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.89.0-alpha",
+    date: "2025-12-31",
+    changes: [
+        "In TaskTrackr: Fixed infinite loading spinner when deleting tasks.",
+        "In TaskTrackr: Major Light Mode overhaul (fixed invisible text, card contrast, and background colors).",
+        "In TaskTrackr: Improved visual styling for Task Source badges."
+    ]
+    },
+    {
     version: "v9.88.1-alpha",
     date: "2025-12-30",
     changes: [
