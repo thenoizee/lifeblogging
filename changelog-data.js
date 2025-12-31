@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.90.0-alpha",
+    date: "2025-12-31",
+    changes: [
+        "In FoodTrackr: Added a new Source/Type Selector for manual entries (Brand, Generic, Restaurant, Home Cooked) to better categorize logs.",
+        "In FoodTrackr: Implemented a 'Half Eaten' system to split logs (e.g., Eat 50%, Save 50%) with automatic calculation.",
+        "In FoodTrackr: Added a 'Leftovers' tab to quickly manage, log, and auto-cleanup saved food portions.",
+        "In FoodTrackr: Fixed UI bugs including duplicate sub-tab navigation and 'Today's Log' visibility issues on History pages.",
+    ]
+    },
+    {
     version: "v9.89.0-alpha",
     date: "2025-12-31",
     changes: [
