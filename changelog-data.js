@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.92.1-alpha",
+    date: "2025-12-31",
+    changes: [
+        "In VehicleManagr: Bug fix.",
+    ]
+    },
+    {
     version: "v9.92.0-alpha",
     date: "2025-12-31",
     changes: [
