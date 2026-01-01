@@ -6,6 +6,11 @@
     <title>RecipeManagr</title>
     <link rel="icon" href="/favicons/utensils.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+      }
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="style.css">
     <style>
@@ -529,7 +534,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, getDocs, doc, query, orderBy, serverTimestamp, updateDoc, deleteDoc, limit, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, query, orderBy, serverTimestamp, updateDoc, deleteDoc, limit, writeBatch, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
         
         const firebaseConfig = {
@@ -3505,11 +3510,22 @@ function renderReadOnlyRating(rating) {
                 resetForm();
             });
             
-            themeToggle.addEventListener('click', () => {
-                const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
-                applyTheme(newTheme);
-                localStorage.setItem('theme', newTheme);
-            });
+            themeToggle.addEventListener('click', async () => {
+    const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
+    applyTheme(newTheme);
+
+    // Save to local storage for immediate future loads
+    localStorage.setItem('theme', newTheme);
+
+    // NEW: Save to Firestore if logged in
+    if (userId) {
+        try {
+            await setDoc(doc(db, 'users', userId, 'settings', 'theme'), { theme: newTheme }, { merge: true });
+        } catch (e) {
+            console.error("Error saving theme:", e);
+        }
+    }
+});
             optionsBtn.addEventListener('click', (e) => { e.stopPropagation(); optionsPanel.classList.toggle('hidden'); });
             manageAppliancesBtn.addEventListener('click', () => {
                 optionsPanel.classList.add('hidden');
@@ -3611,12 +3627,19 @@ function renderReadOnlyRating(rating) {
 
             // FIX: Wrap authentication logic in the observer
             onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    userId = user.uid;
-                    loadRecipes();
-                    loadAppliances();
-                    loadBooks(); 
-                } else { 
+    if (user) {
+        userId = user.uid;
+
+        // NEW: Load saved theme preference
+        getDoc(doc(db, 'users', userId, 'settings', 'theme')).then(snap => {
+            const savedTheme = snap.exists() ? snap.data().theme : 'dark';
+            applyTheme(savedTheme);
+        });
+
+        loadRecipes();
+        loadAppliances();
+        loadBooks(); 
+    } else {
                     userId = null; 
                     recipesCache = [];
                     appliancesCache = [];

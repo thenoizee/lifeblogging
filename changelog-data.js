@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.98.0-alpha",
+    date: "2026-01-01",
+    changes: [
+        "In RecipeManagr: Added basic functions for light-mode compatibility.",
+    ]
+    },
+    {
     version: "v9.97.0-alpha",
     date: "2026-01-01",
     changes: [
