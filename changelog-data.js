@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.93.0-alpha",
+    date: "2026-01-01",
+    changes: [
+        "In FoodTrackr: Fixed critical UI bugs including duplicate IDs for the 'Foods & Meals' tab and missing History tab HTML.",
+        "In FoodTrackr: Implemented hashed navigation (e.g., #dashboard, #history) to preserve state on refresh and allow deep linking.",
+        "In FoodTrackr: Relocated the Composite Food Builder to the 'Foods & Meals' tab while keeping a quick-access status bar in the Search view.",
+    ]
+    },
+    {
     version: "v9.92.1-alpha",
     date: "2025-12-31",
     changes: [
