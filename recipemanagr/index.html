@@ -173,6 +173,11 @@
                                 <i class="fas fa-blender"></i> Manage Appliances
                             </button>
                         </div>
+                        <div class="border-t dark:border-gray-700 pt-4">
+    <button id="manage-books-btn" class="w-full bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 text-sm">
+        <i class="fas fa-book"></i> Manage Books
+    </button>
+</div>
                     </div>
                 </div>
                 
@@ -322,10 +327,37 @@
                     <h2 id="form-summary" class="text-2xl font-bold">Add a New Recipe</h2>
                     <form id="add-recipe-form" class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div class="lg:col-span-3 bg-indigo-50 dark:bg-indigo-900/30 p-3 rounded-lg border border-indigo-100 dark:border-indigo-800 mb-2">
-    <label class="flex items-center space-x-2 cursor-pointer">
-        <input type="checkbox" id="is-food-item-toggle" class="rounded text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 w-5 h-5">
-        <span class="font-bold text-indigo-900 dark:text-indigo-200">Ingredient/Food Mode</span>
-    </label>
+    <label class="block text-sm font-bold text-indigo-900 dark:text-indigo-200 mb-2">Recipe Type</label>
+    <div class="flex flex-wrap gap-4">
+        <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="radio" name="recipe-type" value="standard" checked class="text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+            <span class="text-sm font-medium">Standard Recipe</span>
+        </label>
+        <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="radio" name="recipe-type" value="food_item" class="text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+            <span class="text-sm font-medium">Ingredient / Food Item</span>
+        </label>
+        <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="radio" name="recipe-type" value="howto" class="text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+            <span class="text-sm font-medium">How-to / Guide</span>
+        </label>
+    </div>
+    <p id="type-description" class="text-xs text-indigo-700 dark:text-indigo-300 mt-2">Standard cooking recipe with ingredients and steps.</p>
+</div>
+
+<div>
+    <label for="recipe-book-select" class="block text-sm font-medium mb-1">Recipe Book / Collection</label>
+    <select id="recipe-book-select" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 w-full">
+        <option value="">Unassigned</option>
+        </select>
+</div>
+
+<div class="lg:col-span-3">
+    <label for="adapted-from-select" class="block text-sm font-medium mb-1">Adapted From (Parent Recipe)</label>
+    <select id="adapted-from-select" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 w-full">
+        <option value="">None (Original)</option>
+        </select>
+</div>
     <p class="text-xs text-indigo-700 dark:text-indigo-300 ml-7 mt-1">Enable this to create a food item (made of specific quantities of ingredients) without instructions or cooking times.</p>
 </div>
                         <div class="lg:col-span-3">
@@ -477,6 +509,7 @@
     <div id="recipe-detail-modal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden items-center justify-center p-4"></div>
     <div id="history-modal-container" class="fixed inset-0 bg-black bg-opacity-75 z-[60] hidden items-center justify-center p-4"></div>
     <div id="appliances-modal-container" class="fixed inset-0 bg-black bg-opacity-75 z-[60] hidden items-center justify-center p-4"></div>
+    <div id="books-modal-container" class="fixed inset-0 bg-black bg-opacity-75 z-[60] hidden items-center justify-center p-4"></div>
     <div id="next-import-modal" class="fixed inset-0 bg-black bg-opacity-75 z-[60] hidden items-center justify-center p-4">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-md p-6">
             <h3 class="text-xl font-bold mb-4">Recipe Saved!</h3>
@@ -539,6 +572,7 @@
         };
         let isMultiSelectMode = false;
         let isShoppingListMode = false;
+        let booksCache = [];
         let selectedRecipeIds = new Set();
         
         document.addEventListener('DOMContentLoaded', () => {
@@ -576,34 +610,57 @@
             const timelineContainer = document.getElementById('timeline-container');
             const mobileFilterToggle = document.getElementById('mobile-filter-toggle');
             const filterContainer = document.getElementById('filter-container');
+            const manageBooksBtn = document.getElementById('manage-books-btn');
+manageBooksBtn.addEventListener('click', () => {
+    document.getElementById('options-panel').classList.add('hidden');
+    showBooksModal();
+});
 
-const foodModeToggle = document.getElementById('is-food-item-toggle');
-foodModeToggle.addEventListener('change', (e) => {
-    const isFood = e.target.checked;
-    const fieldsToHide = [
-        'recipe-prep-time', 'recipe-cook-time', 'recipe-resting-time', 'recipe-total-time',
-        'instructions-builder', 'add-step-btn', 'add-section-btn'
-    ];
+// UPDATE: Replace existing foodModeToggle event listener with this
+const handleTypeChange = () => {
+    const type = document.querySelector('input[name="recipe-type"]:checked').value;
+    const descEl = document.getElementById('type-description');
     
-    fieldsToHide.forEach(id => {
+    // Visibility mapping
+    const visibility = {
+        'standard': { times: 'block', instr: 'block', yield: 'block', ingredientsLabel: 'Ingredients' },
+        'food_item': { times: 'none', instr: 'none', yield: 'block', ingredientsLabel: 'Components/Ingredients' },
+        'howto': { times: 'none', instr: 'block', yield: 'none', ingredientsLabel: 'Tools & Requirements' }
+    };
+
+    const settings = visibility[type];
+    
+    // Toggle Time Fields
+    ['recipe-prep-time', 'recipe-cook-time', 'recipe-resting-time', 'recipe-total-time'].forEach(id => {
         const el = document.getElementById(id);
-        if(el) {
-            // Hide the input and its parent label/container if possible, or just the input
-            const container = el.closest('div'); 
-            if(container && !container.classList.contains('lg:col-span-3')) {
-                 // Hide specific time inputs containers
-                 container.style.display = isFood ? 'none' : 'block';
-            } else if (id === 'instructions-builder' || id.includes('btn')) {
-                 // Hide instructions area buttons
-                 el.parentElement.style.display = isFood ? 'none' : 'block';
-            }
-        }
+        if(el) el.closest('div').style.display = settings.times;
     });
-    
-    // Explicitly handle instructions label
-    const instrLabel = document.querySelector('label[for="instructions-builder"]') || 
-                       [...document.querySelectorAll('label')].find(l => l.textContent.includes('Instructions'));
-    if(instrLabel) instrLabel.parentElement.style.display = isFood ? 'none' : 'block';
+
+    // Toggle Instructions
+    const instrBuilder = document.getElementById('instructions-builder');
+    if(instrBuilder) {
+        instrBuilder.parentElement.style.display = settings.instr;
+        // Also hide the label for instructions
+        const label = instrBuilder.parentElement.querySelector('label');
+        if(label) label.style.display = settings.instr;
+    }
+
+    // Toggle Yield
+    const yieldInput = document.getElementById('recipe-yield-quantity');
+    if(yieldInput) yieldInput.closest('div').parentElement.style.display = settings.yield;
+
+    // Update Ingredients Label
+    const ingLabel = document.querySelector('label[for="recipe-ingredients"]');
+    if(ingLabel) ingLabel.innerHTML = `${settings.ingredientsLabel} <i class="fas fa-info-circle text-gray-400"></i>`;
+
+    // Update Description Text
+    if (type === 'standard') descEl.textContent = "Standard cooking recipe with ingredients and steps.";
+    else if (type === 'food_item') descEl.textContent = "A component (e.g., 'Cooked Rice') used in other recipes. No instructions.";
+    else if (type === 'howto') descEl.textContent = "General advice, technique guide, or manual. 'Ingredients' list becomes Tools/Requirements.";
+};
+
+document.querySelectorAll('input[name="recipe-type"]').forEach(radio => {
+    radio.addEventListener('change', handleTypeChange);
 });
 
 
@@ -1020,6 +1077,10 @@ async function handleAddOrUpdateRecipe() {
     if (!name) {
         return showNotification("Please fill out the Title.", "error");
     }
+
+    const recipeType = document.querySelector('input[name="recipe-type"]:checked').value;
+const bookId = document.getElementById('recipe-book-select').value;
+const adaptedFromId = document.getElementById('adapted-from-select').value;
     
     addRecipeBtn.disabled = true;
     addRecipeBtn.textContent = "Saving...";
@@ -1087,7 +1148,10 @@ async function handleAddOrUpdateRecipe() {
             rating: currentRating,
             imageUrl,
             linkedRecipeIds,
-            isFoodItem, // Save the Food Mode flag
+            type: recipeType, // Replaces isFoodItem logic (though you can keep isFoodItem for legacy compat if needed)
+    isFoodItem: recipeType === 'food_item', // Keep for backward compatibility
+    bookId: bookId || null,
+    adaptedFromId: adaptedFromId || null,
             updatedAt: serverTimestamp(),
             updatedBy: userId,
             approvals: editingRecipeId ? (recipesCache.find(r => r.id === editingRecipeId)?.approvals || []) : []
@@ -1167,6 +1231,25 @@ async function handleAddOrUpdateRecipe() {
                 const recipe = isEditing
                     ? recipesCache.find(r => r.id === recipeOrId)
                     : recipeOrId;
+                
+                if (!recipe) return;
+
+                // --- NEW CODE STARTS HERE (After recipe is defined) ---
+                // Set Type
+                const type = recipe.type || (recipe.isFoodItem ? 'food_item' : 'standard');
+                const radio = document.querySelector(`input[name="recipe-type"][value="${type}"]`);
+                if(radio) radio.checked = true;
+                handleTypeChange(); 
+
+                // Set Books
+                populateBooksSelect(recipe.bookId);
+
+                // Set Adapted From
+                populateAdaptedFromSelect(recipe.id, recipe.adaptedFromId);
+                // --- NEW CODE ENDS ---
+
+                editingRecipeId = isEditing ? recipeOrId : null;
+                // ... rest of the function ...
                 
                 if (!recipe) return;
 
@@ -1595,6 +1678,13 @@ const activeTimeMins = Math.round(totalActiveMillis / 60000);
             </div>`;
         }
     } catch(e) { console.error("Could not fetch last cooked history", e); }
+
+    // 1. Get Book Name
+const book = booksCache.find(b => b.id === recipe.bookId);
+const bookName = book ? book.name : null;
+
+// 2. Get Adapted Parent Name
+const parentRecipe = recipesCache.find(r => r.id === recipe.adaptedFromId);
     
     // HTML Generators (Ingredients & Instructions)
     const ingredientsHtml = ingredientsData.map(section => `
@@ -1717,6 +1807,8 @@ const activeTimeMins = Math.round(totalActiveMillis / 60000);
                                 <p class="flex justify-between"><strong>Flavor:</strong> <span>${(recipe.flavorProfile || []).join(', ') || '-'}</span></p>
                                 <p class="flex justify-between"><strong>Meal Type:</strong> <span>${recipe.mealType || '-'}</span></p>
                                 <p class="flex justify-between"><strong>Category:</strong> <span>${recipe.category || '-'}</span></p>
+                                ${bookName ? `<p class="flex justify-between"><strong>Collection:</strong> <span class="text-orange-600 dark:text-orange-400 font-semibold"><i class="fas fa-book mr-1"></i>${bookName}</span></p>` : ''}
+                                ${parentRecipe ? `<p class="flex justify-between"><strong>Adapted from:</strong> <span class="cursor-pointer text-blue-500 hover:underline" onclick="document.querySelector('.modal-close-btn').click(); setTimeout(() => document.querySelector('[data-recipe-id=\\'${parentRecipe.id}\\']').click(), 100);">${parentRecipe.name}</span></p>` : ''}
                                 
                                 <p class="flex justify-between"><strong>Discovered:</strong> <span>${recipe.discoveredDate || '-'}</span></p>
                                 ${recipe.sourceName ? `
@@ -2414,6 +2506,125 @@ const activeTimeMins = Math.round(totalActiveMillis / 60000);
                 appliancesModalContainer.classList.remove('hidden');
                 appliancesModalContainer.classList.add('flex');
             }
+
+            // UPDATE: Add to existing load functions
+async function loadBooks() {
+    if (!userId) return;
+    try {
+        const booksCol = collection(db, 'users', userId, 'books');
+        const q = query(booksCol, orderBy("name", "asc"));
+        const snapshot = await getDocs(q);
+        booksCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        populateBooksSelect();
+    } catch (error) {
+        console.error("Error loading books:", error);
+    }
+}
+
+// UPDATE: Add helper to populate the select dropdown
+function populateBooksSelect(selectedId = null) {
+    const select = document.getElementById('recipe-book-select');
+    if (!select) return;
+    select.innerHTML = '<option value="">Unassigned</option>';
+    booksCache.forEach(book => {
+        const option = document.createElement('option');
+        option.value = book.id;
+        option.textContent = book.name;
+        if (book.id === selectedId) option.selected = true;
+        select.appendChild(option);
+    });
+}
+
+// UPDATE: Add helper to populate 'Adapted From' (exclude current recipe to avoid loops)
+function populateAdaptedFromSelect(currentId = null, selectedParentId = null) {
+    const select = document.getElementById('adapted-from-select');
+    if (!select) return;
+    select.innerHTML = '<option value="">None (Original)</option>';
+    
+    // Sort recipes alphabetically
+    const sortedRecipes = [...recipesCache].sort((a, b) => a.name.localeCompare(b.name));
+    
+    sortedRecipes.forEach(r => {
+        if (r.id === currentId) return; // Don't link to self
+        const option = document.createElement('option');
+        option.value = r.id;
+        option.textContent = r.name;
+        if (r.id === selectedParentId) option.selected = true;
+        select.appendChild(option);
+    });
+}
+
+// UPDATE: New Modal Logic for Books
+function showBooksModal() {
+    const container = document.getElementById('books-modal-container');
+    container.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-none md:rounded-lg shadow-2xl w-full h-full md:h-auto md:max-h-[90vh] max-w-lg flex flex-col">
+            <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center">
+                <h3 class="text-2xl font-bold">Manage Recipe Books</h3>
+                <button id="close-books-modal-btn" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="p-6 flex-grow overflow-y-auto">
+                <form id="add-book-form" class="space-y-4 mb-6">
+                    <input type="text" id="book-name-input" placeholder="Collection Name (e.g. Grandma's Favorites)" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600" required>
+                    <input type="text" id="book-desc-input" placeholder="Description (Optional)" class="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600">
+                    <button type="submit" class="w-full bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700">Add Collection</button>
+                </form>
+                <h4 class="text-xl font-bold mb-2">Your Collections</h4>
+                <div id="book-list" class="space-y-2"></div>
+            </div>
+        </div>
+    `;
+
+    const listEl = container.querySelector('#book-list');
+
+    function renderBooksList() {
+        if (booksCache.length === 0) {
+            listEl.innerHTML = '<p class="text-gray-500">No collections created.</p>';
+            return;
+        }
+        listEl.innerHTML = booksCache.map(book => `
+            <div class="flex justify-between items-center p-3 bg-gray-100 dark:bg-gray-900 rounded-lg">
+                <div>
+                    <p class="font-semibold">${book.name}</p>
+                    <p class="text-sm text-gray-500">${book.description || ''}</p>
+                </div>
+                <button data-id="${book.id}" class="delete-book-btn text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+            </div>
+        `).join('');
+        
+        listEl.querySelectorAll('.delete-book-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                if (confirm('Delete this collection? Recipes will not be deleted.')) {
+                    await deleteDoc(doc(db, 'users', userId, 'books', e.currentTarget.dataset.id));
+                    await loadBooks();
+                    renderBooksList();
+                }
+            });
+        });
+    }
+
+    renderBooksList();
+
+    container.querySelector('#add-book-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('book-name-input').value.trim();
+        const description = document.getElementById('book-desc-input').value.trim();
+        if (name) {
+            await addDoc(collection(db, 'users', userId, 'books'), { name, description, createdAt: serverTimestamp() });
+            e.target.reset();
+            await loadBooks();
+            renderBooksList();
+        }
+    });
+
+    container.querySelector('#close-books-modal-btn').addEventListener('click', () => {
+        container.classList.add('hidden');
+        container.classList.remove('flex');
+    });
+
+    container.classList.remove('hidden');
+    container.classList.add('flex');
+}
 
             function renderModalRating(recipeId, rating) {
                 const container = modalContainer.querySelector('.modal-rating-stars');
@@ -3397,20 +3608,24 @@ function renderReadOnlyRating(rating) {
 
 
             loadPreferences();
-            onAuthStateChanged(auth, user => {
-                if (user) { 
-                    userId = user.uid; 
-                    loadRecipes(); 
+
+            // FIX: Wrap authentication logic in the observer
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    loadRecipes();
                     loadAppliances();
-                } 
-                else { 
+                    loadBooks(); 
+                } else { 
                     userId = null; 
                     recipesCache = [];
                     appliancesCache = [];
+                    booksCache = [];
                     recipeList.innerHTML = '<p class="text-center col-span-full">Please log in to see your recipes.</p>'; 
                 }
             });
-        });
+        }); // End of DOMContentLoaded
+        
     </script>
 </body>
 </html>

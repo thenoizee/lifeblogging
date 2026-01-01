@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.95.0-alpha",
+    date: "2026-01-01",
+    changes: [
+        "In RecipeManagr: Added 'Recipe Books & Collections', enabling users to create named collections and assign recipes to them via a new management modal.",
+        "In RecipeManagr: Implemented 'Recipe Lineage' to track adaptations, allowing users to link a recipe to its original 'Parent' source.",
+        "In RecipeManagr: Introduced 'Recipe Types' (Standard, Ingredient/Food Item, How-to/Guide) to categorize entries and dynamically adjust available fields (e.g. hiding cooking times for Guides).",
+    ]
+    },
+    {
     version: "v9.94.0-alpha",
     date: "2026-01-01",
     changes: [
