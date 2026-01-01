@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.94.0-alpha",
+    date: "2026-01-01",
+    changes: [
+        "In Logger: Converted Manual Entry, Quick Log, Daily Plan, Calendar, and Triage sections into collapsible panes.",
+        "In Logger: Implemented Firebase sync for UI state to persist open/closed pane preferences.",
+    ]
+    },
+    {
     version: "v9.93.1-alpha",
     date: "2026-01-01",
     changes: [
