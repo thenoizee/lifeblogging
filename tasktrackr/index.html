@@ -418,6 +418,20 @@
         </div>
     </div>
 
+    <div id="confirm-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] hidden backdrop-blur-sm px-4">
+        <div class="card p-6 rounded-2xl shadow-2xl max-w-sm w-full border border-gray-700 animate-fade text-center">
+            <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-900/30 text-red-500 mb-4">
+                <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+            </div>
+            <h3 class="text-xl font-bold mb-2 text-white" id="confirm-title">Are you sure?</h3>
+            <p class="text-gray-400 text-sm mb-6" id="confirm-desc">This action cannot be undone.</p>
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('confirm-modal').classList.add('hidden')" class="w-full py-2.5 rounded-lg font-bold text-sm bg-gray-700 hover:bg-gray-600 text-white transition">Cancel</button>
+                <button id="confirm-yes-btn" class="w-full py-2.5 rounded-lg font-bold text-sm bg-red-600 hover:bg-red-700 text-white shadow-lg transition">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <div id="login-overlay" class="fixed inset-0 bg-[var(--bg)] z-40 hidden flex flex-col items-center justify-center p-6 text-center">
         <div class="p-6 rounded-full bg-blue-500/10 mb-6"><i class="fa-solid fa-check-double text-6xl text-[var(--primary)]"></i></div>
         <h1 class="text-4xl font-bold mb-2">TaskTrackr</h1>
@@ -1031,21 +1045,63 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
         // --- Context Menu Logic (UPDATED) ---
         let contextMenuTaskId = null;
 
+        // --- NEW: Custom Modal Helper ---
+        window.openConfirmModal = (title, desc, onConfirm) => {
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-desc').textContent = desc;
+            
+            const btn = document.getElementById('confirm-yes-btn');
+            // Clone button to remove old event listeners
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+            
+            newBtn.onclick = () => {
+                document.getElementById('confirm-modal').classList.add('hidden');
+                onConfirm();
+            };
+            
+            document.getElementById('confirm-modal').classList.remove('hidden');
+        };
+
+        // --- UPDATED: Context Menu with Boundary Detection ---
         window.handleContextMenu = (e, taskId) => {
             e.preventDefault();
             contextMenuTaskId = taskId;
             const menu = document.getElementById('context-menu');
             
-            // Boundary check
+            // 1. Make visible but transparent to measure dimensions
+            menu.style.opacity = '0';
+            menu.classList.remove('hidden');
+            menu.classList.add('flex');
+            
+            const rect = menu.getBoundingClientRect();
             const winW = window.innerWidth;
             const winH = window.innerHeight;
-            const menuW = 200; 
-            const menuH = 320; // Estimated height with new options
             
-            const x = Math.min(e.clientX, winW - menuW - 10);
-            const y = Math.min(e.clientY, winH - menuH - 10);
+            let x = e.clientX;
+            let y = e.clientY;
             
-            // RECURRENCE CHECK FOR CONTEXT MENU
+            // X Axis: Flip to left if not enough space on right
+            if (x + rect.width > winW) {
+                x -= rect.width;
+            }
+            
+            // Y Axis: Flip up if not enough space on bottom
+            if (y + rect.height > winH) {
+                y -= rect.height;
+            }
+            
+            // Safety clamp to ensure it's never off-screen (top/left edges)
+            x = Math.max(0, x);
+            y = Math.max(0, y);
+
+            menu.style.left = `${x}px`;
+            menu.style.top = `${y}px`;
+            
+            // 2. Restore Opacity
+            menu.style.opacity = '1';
+
+            // Recurrence Button Logic
             const task = taskCache.find(t => t.id === taskId);
             if (task) {
                 const completeBtn = menu.querySelector('button[onclick*="complete"]');
@@ -1053,17 +1109,10 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
                 
                 if (isRecurring) {
                     completeBtn.innerHTML = '<i class="fa-solid fa-rotate-right text-xs w-4 text-blue-400"></i> Mark Session as Done';
-                    completeBtn.title = "Mark current recurring session as done";
                 } else {
                     completeBtn.innerHTML = '<i class="fa-solid fa-check text-xs w-4 text-green-400"></i> Mark Task as Complete';
-                    completeBtn.title = "Mark task as completed";
                 }
             }
-            
-            menu.style.left = `${x}px`;
-            menu.style.top = `${y}px`;
-            menu.classList.remove('hidden');
-            menu.classList.add('flex');
         };
 
         // --- ADD THESE NEW FUNCTIONS ---
@@ -1661,101 +1710,97 @@ const srcCfg = getSourceConfig(src);
 spSource.innerHTML = `<i class="${srcCfg.icon}" style="color: ${srcCfg.color}"></i> ${srcCfg.label}`;
         if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; else pCont.textContent = "None"; const tCont = document.getElementById('sp-tags-container'); tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); const compBtn = document.getElementById('sp-complete-btn'); const stopBtn = document.getElementById('sp-stop-repeat-btn'); if(isRecurring) { document.getElementById('sp-recurring-container').classList.remove('hidden'); stopBtn.classList.remove('hidden'); stopBtn.onclick = () => window.stopRepeating(task.id); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; } else { compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } else { document.getElementById('sp-recurring-container').classList.add('hidden'); stopBtn.classList.add('hidden'); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; compBtn.onclick = null; } else { compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } const spCheck = document.getElementById('sp-checkbox'); spCheck.checked = task.status === 2; spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); window.renderSidePaneChecklist(task); document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); }; document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); const overlay = document.getElementById('side-pane-overlay'); const pane = document.getElementById('side-pane'); pane.classList.remove('hidden'); if (window.innerWidth >= 1024) { pane.classList.add('open'); } else { overlay.classList.remove('hidden'); void overlay.offsetWidth; overlay.classList.remove('opacity-0'); pane.classList.add('open'); } };
 
-window.openSidePane = (taskId, isFromHistory = false) => { 
-    currentSidePaneTaskId = taskId; 
-    const task = isFromHistory ? historyCache.find(t => t.id === taskId) : taskCache.find(t => t.id === taskId); 
-    if (!task) return; 
+// --- UPDATED: Open Side Pane (Removed native confirm() on trash button) ---
+        window.openSidePane = (taskId, isFromHistory = false) => { 
+            currentSidePaneTaskId = taskId; 
+            const task = isFromHistory ? historyCache.find(t => t.id === taskId) : taskCache.find(t => t.id === taskId); 
+            if (!task) return; 
 
-    // --- Basic Fields ---
-    const titleEl = document.getElementById('sp-title-edit'); 
-    titleEl.value = task.title; 
-    titleEl.style.height = 'auto'; 
-    titleEl.style.height = titleEl.scrollHeight + 'px'; 
-    
-    const descEl = document.getElementById('sp-desc'); 
-    descEl.textContent = task.content || ""; 
-    
-    const pName = projectMap[task.projectId]?.name || 'Unknown'; 
-    const spProj = document.getElementById('sp-project'); 
-    spProj.textContent = pName; 
-    spProj.className = "text-[10px] font-bold uppercase tracking-widest mb-1 block"; 
-    spProj.style.color = getProjectColor(task.projectId); 
-    
-    document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date'; 
-    
-    const pCont = document.getElementById('sp-priority-container'); 
-    
-    // --- SOURCE BADGE FIX ---
-    const spSource = document.getElementById('sp-source');
-    // We pass the full 'task' object here so getSourceConfig can read task.source correctly
-    const srcCfg = getSourceConfig(task); 
-    spSource.innerHTML = `<i class="${srcCfg.icon}" style="color: ${srcCfg.color}"></i> ${srcCfg.label}`;
+            // Fields
+            const titleEl = document.getElementById('sp-title-edit'); 
+            titleEl.value = task.title; 
+            titleEl.style.height = 'auto'; 
+            titleEl.style.height = titleEl.scrollHeight + 'px'; 
+            document.getElementById('sp-desc').textContent = task.content || ""; 
+            
+            const pName = projectMap[task.projectId]?.name || 'Unknown'; 
+            const spProj = document.getElementById('sp-project'); 
+            spProj.textContent = pName; 
+            spProj.style.color = getProjectColor(task.projectId); 
+            document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date'; 
 
-    // --- Priority Display ---
-    if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; 
-    else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; 
-    else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; 
-    else pCont.textContent = "None"; 
+            // Source Badge
+            const spSource = document.getElementById('sp-source');
+            const srcCfg = getSourceConfig(task); 
+            spSource.innerHTML = `<i class="${srcCfg.icon}" style="color: ${srcCfg.color}"></i> ${srcCfg.label}`;
 
-    // --- Tags ---
-    const tCont = document.getElementById('sp-tags-container'); 
-    tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); 
+            // Priority
+            const pCont = document.getElementById('sp-priority-container'); 
+            if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; 
+            else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; 
+            else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; 
+            else pCont.textContent = "None"; 
 
-    // --- Recurrence & Buttons ---
-    const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); 
-    const compBtn = document.getElementById('sp-complete-btn'); 
-    const stopBtn = document.getElementById('sp-stop-repeat-btn'); 
+            // Tags
+            document.getElementById('sp-tags-container').innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); 
 
-    if(isRecurring) { 
-        document.getElementById('sp-recurring-container').classList.remove('hidden'); 
-        stopBtn.classList.remove('hidden'); 
-        stopBtn.onclick = () => window.stopRepeating(task.id); 
-        
-        if (task.status === 2) { 
-            compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
-            compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; 
-        } else { 
-            compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
-            compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; 
-            compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
-        } 
-    } else { 
-        document.getElementById('sp-recurring-container').classList.add('hidden'); 
-        stopBtn.classList.add('hidden'); 
-        
-        if (task.status === 2) { 
-            compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
-            compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; 
-            compBtn.onclick = null; 
-        } else { 
-            compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
-            compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; 
-            compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
-        } 
-    } 
+            // Recurrence & Action Button
+            const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); 
+            const compBtn = document.getElementById('sp-complete-btn'); 
+            const stopBtn = document.getElementById('sp-stop-repeat-btn'); 
 
-    // --- Checkbox & Actions ---
-    const spCheck = document.getElementById('sp-checkbox'); 
-    spCheck.checked = task.status === 2; 
-    spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); 
-    
-    window.renderSidePaneChecklist(task); 
-    
-    document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); }; 
-    document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); 
-    
-    const overlay = document.getElementById('side-pane-overlay'); 
-    const pane = document.getElementById('side-pane'); 
-    pane.classList.remove('hidden'); 
-    if (window.innerWidth >= 1024) { 
-        pane.classList.add('open'); 
-    } else { 
-        overlay.classList.remove('hidden'); 
-        void overlay.offsetWidth; 
-        overlay.classList.remove('opacity-0'); 
-        pane.classList.add('open'); 
-    } 
-};
+            if(isRecurring) { 
+                document.getElementById('sp-recurring-container').classList.remove('hidden'); 
+                stopBtn.classList.remove('hidden'); 
+                stopBtn.onclick = () => window.stopRepeating(task.id); 
+                
+                if (task.status === 2) { 
+                    compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
+                    compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; 
+                } else { 
+                    compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
+                    compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; 
+                    compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
+                } 
+            } else { 
+                document.getElementById('sp-recurring-container').classList.add('hidden'); 
+                stopBtn.classList.add('hidden'); 
+                
+                if (task.status === 2) { 
+                    compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
+                    compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; 
+                    compBtn.onclick = null; 
+                } else { 
+                    compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
+                    compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; 
+                    compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
+                } 
+            } 
+
+            // Checkbox & Actions
+            const spCheck = document.getElementById('sp-checkbox'); 
+            spCheck.checked = task.status === 2; 
+            spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); 
+            
+            window.renderSidePaneChecklist(task); 
+            
+            // FIX: Removed confirm() here so deleteTask's custom modal handles it
+            document.getElementById('sp-trash-btn').onclick = () => window.deleteTask(task.projectId, task.id);
+            
+            document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); 
+            
+            const overlay = document.getElementById('side-pane-overlay'); 
+            const pane = document.getElementById('side-pane'); 
+            pane.classList.remove('hidden'); 
+            if (window.innerWidth >= 1024) { 
+                pane.classList.add('open'); 
+            } else { 
+                overlay.classList.remove('hidden'); 
+                void overlay.offsetWidth; 
+                overlay.classList.remove('opacity-0'); 
+                pane.classList.add('open'); 
+            } 
+        };
 
 
 window.renderSidePaneChecklist = (task) => { 
@@ -1823,34 +1868,36 @@ window.toggleSubtask = async (taskId, itemIndex) => {
         
         window.closeSidePane = () => { const pane = document.getElementById('side-pane'); pane.classList.remove('open'); document.getElementById('side-pane-overlay').classList.add('opacity-0'); setTimeout(() => document.getElementById('side-pane-overlay').classList.add('hidden'), 300); };
         window.openAddTaskModal = () => window.openModal(false); window.openProjectModal = (id = null, name = '') => { document.getElementById('project-modal-id').value = id || ''; document.getElementById('project-name-input').value = name; document.getElementById('project-modal-title').textContent = id ? 'Edit Project' : 'New Project'; document.getElementById('project-modal').classList.remove('hidden'); }; window.submitProjectForm = async () => { const id = document.getElementById('project-modal-id').value; const name = document.getElementById('project-name-input').value; if(!name) return showToast('Name required', 'error'); showLoader(); try { if(id) await api(`/project/${id}`, 'POST', { name }); else await api('/project', 'POST', { name }); showToast('Project saved'); document.getElementById('project-modal').classList.add('hidden'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); }; window.deleteProject = async (id) => { if(confirm("Delete this project and all its tasks?")) { showLoader(); try { await api(`/project/${id}`, 'DELETE'); showToast('Project deleted'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); } }; 
-window.deleteTask = async (pid, tid) => { 
-    if(confirm("Permanently delete this task?")) { 
-        showLoader(); 
-        const task = taskCache.find(t => t.id === tid);
-        
-        // 1. Try to delete the Firebase Mirror/Doc regardless of source
-        // This prevents "ghosts" appearing if you delete a synced task
-        try {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid));
-        } catch(e) { console.log("No local mirror to delete or error:", e); }
+// --- UPDATED: Delete Task (Uses Custom Modal) ---
+        window.deleteTask = (pid, tid) => {
+            window.openConfirmModal(
+                "Delete Task?", 
+                "This will permanently delete the task. This action cannot be undone.",
+                async () => {
+                    showLoader();
+                    const task = taskCache.find(t => t.id === tid);
 
-        // 2. Handle API Deletion if it's not purely local
-        if (!task || task.source !== 'local') {
-            try {
-                await api(`/project/${pid}/task/${tid}`, 'DELETE'); 
-                showToast('Deleted from Cloud'); 
-            } catch(e) {
-                showToast('Error deleting from Cloud', 'error');
-            }
-        } else {
-            showToast('Deleted locally');
-        }
-        
-        window.closeSidePane(); 
-        fetchAllData();
-        hideLoader();
-    } 
-};
+                    try {
+                        await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid));
+                    } catch(e) { console.log("No local mirror or error:", e); }
+
+                    if (!task || task.source !== 'local') {
+                        try {
+                            await api(`/project/${pid}/task/${tid}`, 'DELETE');
+                            showToast('Deleted from Cloud');
+                        } catch(e) {
+                            showToast('Error deleting from Cloud', 'error');
+                        }
+                    } else {
+                        showToast('Deleted locally');
+                    }
+
+                    window.closeSidePane();
+                    fetchAllData();
+                    hideLoader();
+                }
+            );
+        };
         window.refreshData = () => fetchAllData(); window.changeMonth = (o) => { currentCalendarDate.setMonth(currentCalendarDate.getMonth()+o); renderApp(); }; window.showDayTasks = (k) => { const tasks = window.dayTasksCache[k] || []; els.content.innerHTML = `<div class="flex items-center gap-4 mb-6"><button onclick="renderApp()" class="bg-gray-800 p-2 rounded-lg"><i class="fa-solid fa-arrow-left"></i> Back</button><h1 class="text-2xl font-bold">Tasks for ${k}</h1></div>` + tasks.map(renderTaskCard).join(''); }; 
         window.addEventListener('click', (e) => {
             if (!e.target.closest('.card') && !e.target.closest('#context-menu')) {

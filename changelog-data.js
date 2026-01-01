@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.99.0-alpha",
+    date: "2026-01-01",
+    changes: [
+        "In TaskTrackr: Introduced custom delete button.",
+        "In TaskTrackr: Custom right-click menu will no longer initiate with portions off-screen.",
+    ]
+    },
+    {
     version: "v9.98.0-alpha",
     date: "2026-01-01",
     changes: [
