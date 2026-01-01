@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.100.0-alpha",
+    date: "2026-01-01",
+    changes: [
+        "In TaskTrackr: Overhauled recurrence UI to support custom frequencies and intervals (e.g., Every 2 Weeks).",
+        "In TaskTrackr: Added automatic Due Date assignment (set to 'Today') for recurring tasks if left empty.",
+        "In TaskTrackr: Corrected local 'Next Occurrence' calculation logic to respect custom intervals."
+    ]
+    },
+    {
     version: "v9.99.0-alpha",
     date: "2026-01-01",
     changes: [

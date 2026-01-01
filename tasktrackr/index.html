@@ -350,6 +350,15 @@
             
             <div class="space-y-4 flex-grow overflow-y-auto pr-2">
                 <div><label class="text-xs font-bold text-gray-500 uppercase">Title</label><input type="text" id="modal-title-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm" placeholder="What needs to be done?"></div>
+                <div>
+    <label class="text-xs font-bold text-gray-500 uppercase">Priority (0-9)</label>
+    <select id="modal-priority-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm">
+        <option value="0">None</option>
+        <option value="1">Low</option>
+        <option value="3">Medium</option>
+        <option value="5">High</option>
+    </select>
+</div>
                 <div><label class="text-xs font-bold text-gray-500 uppercase">Description</label><textarea id="modal-desc-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm resize-none" rows="2" placeholder="Details..."></textarea></div>
                 
                 <div class="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -382,10 +391,33 @@
                     <div><label class="text-xs font-bold text-gray-500 uppercase">Due Date</label><input type="datetime-local" id="modal-due-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm"></div>
                 </div>
                 
-                <div class="grid grid-cols-2 gap-4">
-                    <div><label class="text-xs font-bold text-gray-500 uppercase">Priority</label><select id="modal-priority-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm"><option value="0">None</option><option value="1">Low</option><option value="3">Medium</option><option value="5">High</option></select></div>
-                    <div><label class="text-xs font-bold text-gray-500 uppercase">Repeat</label><select id="modal-repeat-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm"><option value="">None</option><option value="RRULE:FREQ=DAILY;INTERVAL=1">Daily</option><option value="RRULE:FREQ=WEEKLY;INTERVAL=1">Weekly</option><option value="RRULE:FREQ=MONTHLY;INTERVAL=1">Monthly</option><option value="RRULE:FREQ=YEARLY;INTERVAL=1">Yearly</option></select></div>
-                </div>
+                <div class="col-span-2 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div class="flex justify-between items-center mb-2">
+        <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="checkbox" id="modal-repeat-toggle" class="task-checkbox" onchange="window.toggleRepeatOptions()">
+            <span class="text-xs font-bold text-gray-500 uppercase">Recurring Task</span>
+        </label>
+    </div>
+    
+    <div id="repeat-options-container" class="hidden grid grid-cols-2 gap-3 mt-2 border-t border-gray-200 dark:border-gray-700 pt-2 transition-all">
+        <div>
+            <label class="text-[10px] font-bold text-gray-500 uppercase block mb-1">Frequency</label>
+            <select id="modal-repeat-freq" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-2 outline-none focus:border-[var(--primary)] text-sm">
+                <option value="DAILY">Daily</option>
+                <option value="WEEKLY">Weekly</option>
+                <option value="MONTHLY">Monthly</option>
+                <option value="YEARLY">Yearly</option>
+            </select>
+        </div>
+        <div>
+            <label class="text-[10px] font-bold text-gray-500 uppercase block mb-1">Interval (Every X)</label>
+            <div class="flex items-center gap-2">
+                <input type="number" id="modal-repeat-interval" min="1" value="1" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-2 outline-none focus:border-[var(--primary)] text-sm">
+                <span class="text-xs text-gray-500" id="repeat-unit-label">Days</span>
+            </div>
+        </div>
+    </div>
+</div>
                 <div class="flex items-center"><label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" id="modal-allday-input" class="task-checkbox"><span class="text-sm">All Day</span></label></div>
             </div>
             <div class="flex gap-3 mt-6 pt-4 border-t border-gray-700">
@@ -763,26 +795,30 @@ const fetchAllData = async () => {
 };
 
 // Helper to ensure we only send clean, API-friendly data
-        const formatTaskPayload = (task) => {
-            const cleanDate = (d) => {
-                if (!d) return null;
-                // Ensure we use +0000 for TickTick, not Z
-                return new Date(d).toISOString().replace(/\.\d{3}Z$/, '+0000');
-            };
+       const formatTaskPayload = (task) => {
+    const cleanDate = (d) => {
+        if (!d) return null;
+        // Ensure we use +0000 for TickTick, not Z
+        return new Date(d).toISOString().replace(/\.\d{3}Z$/, '+0000');
+    };
 
-            return {
-                title: task.title,
-                content: task.content || '',
-                projectId: task.projectId || 'inbox',
-                priority: parseInt(task.priority || 0),
-                tags: task.tags || [],
-                isAllDay: !!task.isAllDay,
-                startDate: cleanDate(task.startDate),
-                dueDate: cleanDate(task.dueDate),
-                repeatFlag: task.repeatFlag || null,
-                status: task.status || 0,
-        // CRITICAL FIX: Only include ID if it exists. 
-        // Previously sends { id: undefined } which broke new items.
+    // DEBUG: See exactly what we are preparing to send
+    console.log("[TaskTrackr] Formatting Payload. Repeat Rule:", task.repeatFlag);
+
+    return {
+        title: task.title,
+        content: task.content || '',
+        projectId: task.projectId || 'inbox',
+        priority: parseInt(task.priority || 0),
+        tags: task.tags || [],
+        isAllDay: !!task.isAllDay,
+        startDate: cleanDate(task.startDate),
+        dueDate: cleanDate(task.dueDate),
+        
+        // CRITICAL FIX: The API expects 'repeatFlag'. 
+        repeatFlag: task.repeatFlag || null, 
+        
+        status: task.status || 0,
         items: (task.items || []).map(item => {
             const i = { title: item.title, status: item.status || 0 };
             if (item.id) i.id = item.id;
@@ -1159,6 +1195,28 @@ const getSourceConfig = (task) => {
     };
 };
 
+window.toggleRepeatOptions = () => {
+    const isChecked = document.getElementById('modal-repeat-toggle').checked;
+    const container = document.getElementById('repeat-options-container');
+    const freqSelect = document.getElementById('modal-repeat-freq');
+    const unitLabel = document.getElementById('repeat-unit-label');
+    
+    if (isChecked) {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+
+    // Dynamic Label Update
+    freqSelect.onchange = () => {
+        const val = freqSelect.value;
+        const map = { 'DAILY': 'Days', 'WEEKLY': 'Weeks', 'MONTHLY': 'Months', 'YEARLY': 'Years' };
+        unitLabel.textContent = map[val] || '';
+    };
+    // Trigger once to set initial state
+    freqSelect.onchange();
+};
+
         window.handleContextAction = async (action) => {
             if (!contextMenuTaskId) return;
             const taskId = contextMenuTaskId;
@@ -1365,20 +1423,48 @@ const renderProjectsManager = () => {
 window.submitTaskForm = async () => {
     const id = document.getElementById('modal-task-id').value;
     
-    // 1. Build checklist from DOM
-    const checklistItems = []; 
-    document.querySelectorAll('.checklist-input').forEach(input => { 
-        if(input.value.trim()) checklistItems.push({ title: input.value.trim(), status: 0 }); 
-    }); 
+    // 1. Build checklist
+    const checklistItems = [];
+    document.querySelectorAll('.checklist-input').forEach(input => {
+        if(input.value.trim()) checklistItems.push({ title: input.value.trim(), status: 0 });
+    });
     
-    // 2. Get existing task data (if editing)
+    // 2. Get existing task data
     let existingTask = {};
     if (id) {
         existingTask = taskCache.find(t => t.id === id) || {};
     }
 
-    // 3. Get Selected Save Location
+    // 3. Get Save Location
     const destination = document.getElementById('modal-destination-input').value;
+
+    // --- GENERATE RRULE STRING ---
+    let finalRepeatString = "";
+    const isRecurring = document.getElementById('modal-repeat-toggle').checked;
+    
+    if (isRecurring) {
+        const freq = document.getElementById('modal-repeat-freq').value;
+        const interval = document.getElementById('modal-repeat-interval').value || 1;
+        finalRepeatString = `RRULE:FREQ=${freq};INTERVAL=${interval}`;
+    }
+    
+    // --- DATE VALIDATION FIX ---
+    let rawDueDate = document.getElementById('modal-due-date').value;
+    let rawStartDate = document.getElementById('modal-start-date').value;
+
+    // CRITICAL: If recurring but no date set, force "Today"
+    if (isRecurring && !rawDueDate) {
+        const now = new Date();
+        // Adjust to local ISO string for the input value
+        const localIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
+        rawDueDate = localIso;
+        
+        // Visual feedback to user
+        document.getElementById('modal-due-date').value = localIso;
+        showToast('Recurring tasks require a date. Set to Today.', 'success'); // Orange/Info warning ideally, but success works
+    }
+
+    console.log("[TaskTrackr] Generated RRULE:", finalRepeatString);
 
     // 4. Collect Raw Form Data
     const rawFormData = {
@@ -1388,44 +1474,37 @@ window.submitTaskForm = async () => {
         priority: parseInt(document.getElementById('modal-priority-input').value || 0), 
         isAllDay: document.getElementById('modal-allday-input').checked, 
         tags: document.getElementById('modal-tags-input').value.split(',').map(t=>t.trim()).filter(t=>t), 
-        repeatFlag: document.getElementById('modal-repeat-input').value,
+        
+        repeatFlag: finalRepeatString, 
+        
         items: checklistItems,
-        dueDate: document.getElementById('modal-due-date').value || null,
-        startDate: document.getElementById('modal-start-date').value || null
+        dueDate: rawDueDate || null,
+        startDate: rawStartDate || null
     };
 
-    // 5. Merge and Sanitize Payload
+    // 5. Merge and Sanitize
     const mergedTask = { ...existingTask, ...rawFormData };
     const payload = formatTaskPayload(mergedTask);
+
+    console.log("[TaskTrackr] Final API Payload:", JSON.stringify(payload, null, 2));
 
     showLoader(); 
     try {
         if (destination === 'local') {
-            // ===========================
-            // SCENARIO A: SAVE TO LOCAL
-            // ===========================
+            // Local Save Logic
             if (!auth.currentUser) throw new Error("You must be logged in to save local tasks.");
-            
-            // Explicitly tag as 'local' source
             const taskData = { ...payload, updated: new Date(), source: 'local' };
             
             if (id && existingTask.source === 'local') {
-                // Update existing local doc
                 await updateDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', id), taskData);
             } else {
-                // Create new local doc
                 taskData.created = new Date();
-                taskData.status = 0; // Active
+                taskData.status = 0; 
                 await addDoc(collection(db, 'users', auth.currentUser.uid, 'local_tasks'), taskData);
             }
-
         } else {
-            // ===========================
-            // SCENARIO B: SAVE TO CLOUD (WITH FIREBASE MIRROR)
-            // ===========================
+            // Cloud Sync Logic
             let savedTask;
-            
-            // 1. Send to TickTick API
             if(id && existingTask.source !== 'local') {
                 savedTask = await api(`/task/${id}`, 'POST', payload);
             } else {
@@ -1433,10 +1512,7 @@ window.submitTaskForm = async () => {
             }
             
             if (savedTask && savedTask.id) {
-                 // 2. Mark Origin (For the Blue "Synced" Badge)
                  await saveTaskOrigin(savedTask.id, 'tasktrackr');
-
-                 // 3. MIRROR FULL DATA (For your Backup)
                  const mirrorPayload = {
                      ...payload,
                      id: savedTask.id,
@@ -1449,10 +1525,10 @@ window.submitTaskForm = async () => {
             }
         }
 
-        showToast('Task saved successfully'); 
-        els.modal.classList.add('hidden'); 
-        window.closeSidePane(); 
-        fetchAllData(); 
+        showToast('Task saved successfully');
+        document.getElementById('task-modal').classList.add('hidden');
+        window.closeSidePane();
+        fetchAllData();
     } catch(e) { 
         showToast('Error saving task', 'error'); 
         console.error(e);
@@ -1460,28 +1536,49 @@ window.submitTaskForm = async () => {
     hideLoader(); 
 };
 
-        window.openModal = (isEdit, taskId = null) => {
+window.openModal = (isEdit, taskId = null) => {
     const modal = document.getElementById('task-modal');
     const pSelect = document.getElementById('modal-project-input');
     const container = document.getElementById('checklist-builder');
     
-    // 1. Reset Modal State
+    // 1. Reset Modal
     container.innerHTML = '';
     
-    // 2. Populate Projects Dropdown
+    // 2. Populate Projects
     pSelect.innerHTML = Object.entries(projectMap).map(([id, p]) => 
         `<option value="${id}">${escapeHtml(p.name)}</option>`
     ).join('');
     
-    // Ensure 'Inbox' is always an option
     if(!Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox')) {
         pSelect.innerHTML = `<option value="inbox">Inbox</option>` + pSelect.innerHTML;
     }
 
     const destInput = document.getElementById('modal-destination-input');
 
+    // --- HELPER: RRULE PARSER ---
+    const setRepeatUI = (rruleString) => {
+        const toggle = document.getElementById('modal-repeat-toggle');
+        const freqInput = document.getElementById('modal-repeat-freq');
+        const intervalInput = document.getElementById('modal-repeat-interval');
+        
+        if (!rruleString) {
+            toggle.checked = false;
+            freqInput.value = 'DAILY';
+            intervalInput.value = 1;
+        } else {
+            toggle.checked = true;
+            // Parse "RRULE:FREQ=WEEKLY;INTERVAL=2"
+            const freqMatch = rruleString.match(/FREQ=([^;]+)/);
+            const intervalMatch = rruleString.match(/INTERVAL=([^;]+)/);
+            
+            if (freqMatch) freqInput.value = freqMatch[1];
+            if (intervalMatch) intervalInput.value = intervalMatch[1];
+            else intervalInput.value = 1; 
+        }
+        window.toggleRepeatOptions(); // Refresh UI
+    };
+
     if (isEdit && taskId) {
-        // --- EDIT MODE ---
         const task = taskCache.find(t => t.id === taskId);
         
         document.getElementById('modal-title').textContent = "Edit Task";
@@ -1492,28 +1589,22 @@ window.submitTaskForm = async () => {
         document.getElementById('modal-priority-input').value = task.priority || 0;
         document.getElementById('modal-project-input').value = task.projectId;
         document.getElementById('modal-allday-input').checked = !!task.isAllDay;
-        document.getElementById('modal-repeat-input').value = task.repeatFlag || "";
         
-        // Populate Checklist
+        // --- SET REPEAT UI ---
+        setRepeatUI(task.repeatFlag || "");
+        
         if (task.items) task.items.forEach(item => window.addChecklistItem(item.title));
         
-        // Populate Dates (Format for datetime-local input)
         const fmtDate = (iso) => iso ? new Date(new Date(iso) - (new Date(iso).getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : '';
         document.getElementById('modal-start-date').value = fmtDate(task.startDate);
         document.getElementById('modal-due-date').value = fmtDate(task.dueDate);
 
-        // --- PRE-SELECT DESTINATION ---
-        // If source is 'local', set dropdown to Local. Otherwise default to TickTick (Cloud).
         if (destInput) {
-            if (task.source === 'local' || task.source === 'tasktrackr_only') {
-                destInput.value = 'local';
-            } else {
-                destInput.value = 'ticktick';
-            }
+            if (task.source === 'local' || task.source === 'tasktrackr_only') destInput.value = 'local';
+            else destInput.value = 'ticktick';
         }
 
     } else {
-        // --- NEW TASK MODE ---
         document.getElementById('modal-title').textContent = "New Task";
         document.getElementById('modal-task-id').value = '';
         document.getElementById('modal-title-input').value = '';
@@ -1523,13 +1614,12 @@ window.submitTaskForm = async () => {
         document.getElementById('modal-due-date').value = '';
         document.getElementById('modal-priority-input').value = 0;
         document.getElementById('modal-allday-input').checked = false;
-        document.getElementById('modal-repeat-input').value = "";
         
-        // Default to Inbox
+        // --- RESET REPEAT UI ---
+        setRepeatUI("");
+        
         const inboxId = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
         document.getElementById('modal-project-input').value = inboxId;
-
-        // Default Destination to TickTick
         if (destInput) destInput.value = 'ticktick';
     } 
 
@@ -1546,20 +1636,22 @@ window.submitTaskForm = async () => {
         window.resetPomo = (e) => { e.stopPropagation(); clearInterval(pomoInterval); isPomoRunning = false; pomoSeconds = 25 * 60; document.getElementById('pomo-toggle').textContent = "Start"; window.updatePomoDisplay(); };
 
         document.addEventListener('keydown', (e) => { if (e.target.matches('input, textarea, select')) { if(e.key === 'Escape') e.target.blur(); return; } if (e.key.toLowerCase() === 'n') { e.preventDefault(); window.openAddTaskModal(); } if (e.key === '/') { e.preventDefault(); document.getElementById('quick-add-input').focus(); } if (e.key === 'Escape') { document.getElementById('task-modal').classList.add('hidden'); document.getElementById('project-modal').classList.add('hidden'); window.closeSidePane(); window.clearSelection(); } if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey) { window.refreshData(); } if (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'k') { const tasks = getFilteredTasks(); if(tasks.length === 0) return; let idx = -1; if(lastSelectedId) idx = tasks.findIndex(t => t.id === lastSelectedId); let newIdx = idx; if (e.key.toLowerCase() === 'j') newIdx = Math.min(tasks.length - 1, idx + 1); if (e.key.toLowerCase() === 'k') newIdx = Math.max(0, idx - 1); if(newIdx !== idx && tasks[newIdx]) { window.clearSelection(); const id = tasks[newIdx].id; selectedTasks.add(id); lastSelectedId = id; renderApp(); const el = document.querySelector(`[data-task-id="${id}"]`); if(el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } } });
-        const calculateNextOccurrence = (dueDate, repeatFlag) => {
-    let nextDate = new Date();
-    if (dueDate) nextDate = new Date(dueDate);
+       const calculateNextOccurrence = (dueDate, rrule) => {
+    if (!dueDate || !rrule) return '';
+    let nextDate = new Date(dueDate);
     
-    // REMOVED: if (nextDate < new Date()) nextDate = new Date();
-    // Removing the line above ensures we calculate from the scheduled Due Date,
-    // not the current moment. This fixes the issue where an overdue task (e.g., due yesterday)
-    // would skip "today" and jump straight to "tomorrow".
+    // Parse Interval (Default to 1 if missing)
+    const intervalMatch = rrule.match(/INTERVAL=([0-9]+)/);
+    const interval = intervalMatch ? parseInt(intervalMatch[1]) : 1;
 
-    if (repeatFlag) {
-        if (repeatFlag.includes('DAILY')) nextDate.setDate(nextDate.getDate() + 1);
-        else if (repeatFlag.includes('WEEKLY')) nextDate.setDate(nextDate.getDate() + 7);
-        else if (repeatFlag.includes('MONTHLY')) nextDate.setMonth(nextDate.getMonth() + 1);
-        else if (repeatFlag.includes('YEARLY')) nextDate.setFullYear(nextDate.getFullYear() + 1);
+    if (rrule.includes('DAILY')) {
+        nextDate.setDate(nextDate.getDate() + interval);
+    } else if (rrule.includes('WEEKLY')) {
+        nextDate.setDate(nextDate.getDate() + (7 * interval));
+    } else if (rrule.includes('MONTHLY')) {
+        nextDate.setMonth(nextDate.getMonth() + interval);
+    } else if (rrule.includes('YEARLY')) {
+        nextDate.setFullYear(nextDate.getFullYear() + interval);
     }
     
     const diffTime = nextDate - new Date();
