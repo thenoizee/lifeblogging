@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.96.0-alpha",
+    date: "2026-01-01",
+    changes: [
+        "In TaskTrackr: Fixed a visual flicker when syncing completed tasks by removing redundant data fetching and relying on optimistic updates.",
+        "In TaskTrackr: Fixed a critical bug where adding new subtasks would fail due to malformed payload IDs.",
+        "In TaskTrackr: Fixed Light Mode styling issues, specifically resolving invisible text in the 'Quick Add' and 'Subtask' inputs.",
+    ]
+    },
+    {
     version: "v9.95.0-alpha",
     date: "2026-01-01",
     changes: [
