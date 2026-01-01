@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.97.0-alpha",
+    date: "2026-01-01",
+    changes: [
+        "In PodTrackr: Unified the application header design with the Hub standard, introducing pill-shaped navigation tabs and a consistent 'Back to Hub' button.",
+        "In PodTrackr: Added the version number watermark to the top-right corner.",
+        "In VidTrackr: Updated the desktop header layout to match the unified Hub design while preserving the unique 'watch status' indicator.",
+    ]
+    },
+    {
     version: "v9.96.1-alpha",
     date: "2026-01-01",
     changes: [
