@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.93.1-alpha",
+    date: "2026-01-01",
+    changes: [
+        "In Dashboard: Fixed ISO 8601 date bug fix.",
+    ]
+    },
+    {
     version: "v9.93.0-alpha",
     date: "2026-01-01",
     changes: [
