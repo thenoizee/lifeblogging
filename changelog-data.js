@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.104.0-alpha",
+    date: "2026-01-02",
+    changes: [
+        "In HydrationTrackr: Overhauled the header and navigation, introducing a sticky top header and a dedicated mobile bottom navigation bar.",
+    ]
+    },
+    {
     version: "v9.103.0-alpha",
     date: "2026-01-02",
     changes: [
