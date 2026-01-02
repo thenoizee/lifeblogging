@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.103.0-alpha",
+    date: "2026-01-02",
+    changes: [
+        "In FoodTrackr: Changed the 'Hub' button color to Orange to match the application theme.",
+        "In FoodTrackr: Relocated the Search input and Barcode scanner buttons to sit immediately below the sub-tabs for better accessibility.",
+        "In FoodTrackr: Fixed a bug where the search results container would remain hidden on subsequent searches.",
+        "In FoodTrackr: Added the version number display to the top-right corner of the screen.",
+    ]
+    },
+    {
     version: "v9.102.0-alpha",
     date: "2026-01-02",
     changes: [
