@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.102.0-alpha",
+    date: "2026-01-02",
+    changes: [
+        "In FoodTrackr: Updated the Main Navigation Header to use a full-width background with centered content (max-w-7xl), matching the VidTrackr layout style.",
+        "In FoodTrackr: Refined the 'Log Food' Search and Scan buttons to be 'pill-shaped' (reduced height to 40px, increased border-radius to 20px) to match the navigation tabs.",
+    ]
+    },
+    {
   version: "v9.101.0-alpha",
   date: "2026-01-02",
   changes: [
