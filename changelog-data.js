@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+  version: "v9.101.0-alpha",
+  date: "2026-01-02",
+  changes: [
+    "In FoodTrackr: Overhauled banner UI to match VidTrackr/PodTrackr visual style while retaining original color scheme.",
+    "In FoodTrackr: Added 'Takeaway' toggle and conditional 'Restaurant Name' input field to the Add Entry form.",
+    "In FoodTrackr: Updated History list items to be clickable, opening the product detail modal."
+    ]
+    },
+    {
     version: "v9.100.0-alpha",
     date: "2026-01-01",
     changes: [
