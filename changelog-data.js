@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.106.0-alpha", 
+    date: "2026-01-03",
+    changes: [
+        "In FoodTrackr: Fixed Product Modal positioning in History tab to ensure it centers on screen regardless of scroll.",
+        "In FoodTrackr: Updated 'Smart Copy' logic to preserve the original source (Brand/Restaurant) instead of overwriting it.",
+        "In FoodTrackr: Added persistence for Ingredients and Allergens; these are now saved to the Log and Favorites.",
+        "In FoodTrackr: Fixed UI bug in Search tab where placeholder text overlapped the magnifying glass icon."
+    ]
+    },
+    {
     version: "v9.105.0-alpha",
     date: "2026-01-03",
     changes: [
