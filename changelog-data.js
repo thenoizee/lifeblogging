@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.107.0-alpha",
+    date: "2026-01-03",
+    changes: [
+        "In VidTrackr: Added 'Resume Watching' functionality; users can now log specific minutes watched, and a progress bar with percentage is displayed on Movie and Episode detail pages.",
+        "In VidTrackr: Updated the browser favicon to a Red-to-Purple gradient ticket icon, matching the specific style of the header banner.",
+    ]
+    },
+    {
     version: "v9.106.0-alpha", 
     date: "2026-01-03",
     changes: [

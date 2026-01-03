@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>VidTrackr</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512' fill='%23ed2224'%3E%3Cpath d='M0 128C0 92.7 28.7 64 64 64H512c35.3 0 64 28.7 64 64v96h-8c-26.5 0-48 21.5-48 48s21.5 48 48 48h8v96c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V320h8c26.5 0 48-21.5 48-48s-21.5-48-48-48H0V128z'/%3E%3C/svg%3E">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%23ed2224;stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%234c1d95;stop-opacity:1' /%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' d='M0 128C0 92.7 28.7 64 64 64H512c35.3 0 64 28.7 64 64v96h-8c-26.5 0-48 21.5-48 48s21.5 48 48 48h8v96c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V320h8c26.5 0 48-21.5 48-48s-21.5-48-48-48H0V128z'/%3E%3C/svg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -193,6 +193,10 @@
                         <span class="block text-xs text-gray-400">Yesterday</span>
                     </button>
                 </div>
+                <label class="text-sm font-bold text-gray-300">Progress</label>
+<div class="flex gap-2 mb-2">
+    <input type="number" id="custom-progress" placeholder="Minutes Watched (Optional)" class="w-full p-3 rounded-lg bg-[var(--bg)] border border-gray-600 focus:border-[var(--primary)] outline-none text-sm" min="1">
+</div>
                 <input type="datetime-local" id="custom-date" class="w-full p-3 rounded-lg bg-[var(--bg)] border border-gray-600 focus:border-[var(--primary)] outline-none text-sm">
             </div>
 
@@ -217,9 +221,10 @@
     <div id="active-checkin-banner" class="fixed bottom-[70px] md:bottom-0 left-0 right-0 bg-purple-900/95 border-t border-purple-500 text-white p-3 z-40 hidden animate-fade flex justify-between items-center backdrop-blur-md shadow-[0_-5px_20px_rgba(147,51,234,0.3)]"></div>
     <div id="toast-container" class="fixed bottom-20 md:bottom-6 right-6 z-50 flex flex-col gap-3"></div>
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // --- 1. Use Stable Firebase Version (10.13.1) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
         import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI } from './api_keys.js';
         import { changelogData } from '../changelog-data.js';
 
@@ -239,7 +244,6 @@
         const PLACEHOLDER_IMG = 'https://placehold.co/400x600/1f2937/FFF?text=No+Image';
 
         // --- AUTH & TOKEN HANDLING ---
-        // Clean URL if we somehow get redirected here with a token hash (fallback)
         const REDIRECT_URI = window.location.href.split('#')[0].split('?')[0];
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         if (hashParams.has('access_token')) {
@@ -251,7 +255,24 @@
         let traktAccessToken = localStorage.getItem('trakt_token');
         let currentModalItem = null;
         let selectedDate = new Date().toISOString();
-        let userRatings = new Map();
+        
+        // --- 2. Add the missing userRatings definition here ---
+        let userRatings = new Map(); 
+        let userPlayback = new Map();
+
+        // --- Add this function near syncUserRatings() ---
+        async function syncPlayback() {
+            try {
+                const [movies, episodes] = await Promise.all([
+                    fetchDirect('/sync/playback/movies?limit=50'),
+                    fetchDirect('/sync/playback/episodes?limit=50')
+                ]);
+                userPlayback.clear();
+                movies.forEach(p => userPlayback.set(p.movie.ids.trakt, p));
+                episodes.forEach(p => userPlayback.set(p.episode.ids.trakt, p));
+            } catch(e) { console.warn("Could not sync playback", e); }
+        }
+        
         let historyPage = 1;
         let isFetchingHistory = false;
         let progressChartInstance = null;
@@ -728,7 +749,6 @@
                 let showProgress = null; 
                 let collectionList = null; 
 
-                // HELPER: Fetch comments safely without crashing
                 const fetchCommentsSafe = (url) => fetchDirect(url).catch(err => { console.warn("Comments unavailable", err); return []; });
 
                 if (isEpisode) {
@@ -741,17 +761,13 @@
                     item.user_rating = userData.user_rating;
                     item.user_data = userData.user_data;
                     
-                    // FIX: Use verbose URL for episode comments (Trakt requires Show/Season/Ep)
                     const commentUrl = `/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}/comments/newest?limit=10`;
-
                     [history, comments] = await Promise.all([
                         fetchDirect(`/users/me/history/episodes/${id}?limit=20`),
                         fetchCommentsSafe(commentUrl)
                     ]);
                 } else {
-                    // FIX: Correct URL format for Movies/Shows
                     const commentUrl = `/${type}s/${id}/comments/newest?limit=10`;
-
                     [item, notes, history, related, people, comments] = await Promise.all([
                         fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
@@ -794,9 +810,27 @@
                 }
 
                 const userNote = notes.exists() ? notes.data().text : '';
-// FIX: Check local cache first/fallback so immediate ratings show up instantly
-const myRating = item.user_rating || userRatings.get(parseInt(id)); 
-const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
+
+                // --- Shared Playback Logic ---
+                const playback = userPlayback.get(parseInt(id));
+                const progressHtml = playback 
+                    ? `<div class="mb-6 bg-gray-800 rounded-lg p-4 border border-blue-500/50 flex items-center gap-4 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
+                         <div class="bg-blue-900/30 p-3 rounded-full text-blue-400"><i class="fa-solid fa-play"></i></div>
+                         <div class="flex-grow">
+                             <p class="text-xs text-blue-300 font-bold uppercase mb-1">Resume Watching</p>
+                             <div class="flex justify-between text-sm mb-1">
+                                 <span class="font-bold text-white">${Math.round(playback.progress)}% Watched</span>
+                                 <span class="text-gray-400">${Math.round((playback.progress/100) * item.runtime)}m / ${item.runtime}m</span>
+                             </div>
+                             <div class="w-full bg-gray-700 rounded-full h-1.5">
+                                 <div class="bg-blue-500 h-1.5 rounded-full shadow-[0_0_10px_#3b82f6]" style="width: ${playback.progress}%"></div>
+                             </div>
+                         </div>
+                       </div>` 
+                    : '';
+
+                const myRating = item.user_rating || userRatings.get(parseInt(id)); 
+                const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                 const titleText = isEpisode ? `${item.season}x${item.number}: ${item.title}` : item.title;
                 const fullTitle = isEpisode ? `${showInfo.title}: ${item.title}` : item.title;
                 const runtimeStr = item.runtime ? `${Math.floor(item.runtime/60)}h ${item.runtime%60}m` : 'N/A';
@@ -823,7 +857,7 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                     : `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
                 const myRatingHtml = myRating 
                     ? `<span class="bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(234,179,8,0.2)]"><i class="fa-solid fa-star mr-2"></i> ${myRating}</span>`
-                    : `<button class="scrobble-btn bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: type}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
+                    : `<button class="scrobble-btn bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: type, runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
 
                 let historyHtml = '';
                 if (history.length > 0) {
@@ -881,9 +915,10 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                             </div>
                             <h3 class="text-xs font-bold text-[var(--primary)] mb-2 uppercase tracking-widest">Overview</h3>
                             <p class="text-lg text-gray-300 leading-relaxed mb-8">${item.overview || 'No overview available.'}</p>
+                            ${progressHtml}
                             ${historyHtml}
                             <div class="flex flex-col sm:flex-row gap-4 mb-8">
-                                <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode'}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check"></i> Log / Rate Again</button>
+                                <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode', runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check"></i> Log / Rate Again</button>
                                 <button onclick="window.checkIn('${item.ids.trakt}', 'episode')" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-lg font-bold border border-purple-500 transition flex items-center justify-center" title="Check In Now"><i class="fa-solid fa-map-pin"></i></button>
                                 <button onclick="window.openAddToList('${item.ids.trakt}', 'episode')" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center" title="Add to List"><i class="fa-solid fa-list-ul"></i></button>
                                 <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold border border-gray-700 transition flex items-center justify-center gap-2">Season ${item.season}</button>
@@ -905,7 +940,7 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                         <div class="md:w-1/3 lg:w-1/4 flex-shrink-0">
                             <div class="rounded-2xl overflow-hidden shadow-2xl relative group border border-gray-800">
                                 <img src="${img}" class="w-full object-cover">
-                                ${type === 'movie' ? `<div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm"><button class="scrobble-btn ${getBgColor(type)} text-white px-8 py-3 rounded-full font-bold transform scale-90 group-hover:scale-100 transition shadow-xl" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-check mr-2"></i> Log Movie</button></div>` : ''}
+                                ${type === 'movie' ? `<div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm"><button class="scrobble-btn ${getBgColor(type)} text-white px-8 py-3 rounded-full font-bold transform scale-90 group-hover:scale-100 transition shadow-xl" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-check mr-2"></i> Log Movie</button></div>` : ''}
                                 
                                 ${navPrev ? `<div class="nav-btn nav-prev" onclick="location.hash='#detail/movie/${navPrev.ids.trakt}'" title="Previous: ${navPrev.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-left"></i></div>` : ''}
                                 ${navNext ? `<div class="nav-btn nav-next" onclick="location.hash='#detail/movie/${navNext.ids.trakt}'" title="Next: ${navNext.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-right"></i></div>` : ''}
@@ -958,6 +993,7 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                             <h3 class="text-xs font-bold ${getTypeColor(type)} mb-2 uppercase tracking-widest">Overview</h3>
                             <p class="text-gray-300 text-lg leading-relaxed mb-6 max-w-3xl">${item.overview || 'No overview available.'}</p>
                             ${castHtml}
+                            ${progressHtml}
                             ${historyHtml}
                              <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8 mt-8">
                                 <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
@@ -973,7 +1009,7 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                 }
 
                 if (comments && comments.length > 0) {
-                     html += `<h2 class="text-2xl font-bold mb-6 mt-16 px-4 border-l-4 border-gray-500">Community Comments</h2><div class="space-y-4 max-w-4xl">${comments.map(c => `
+                      html += `<h2 class="text-2xl font-bold mb-6 mt-16 px-4 border-l-4 border-gray-500">Community Comments</h2><div class="space-y-4 max-w-4xl">${comments.map(c => `
                         <div class="bg-[var(--card)] p-4 rounded-xl border border-gray-800">
                             <div class="flex justify-between items-start mb-2">
                                 <span class="font-bold text-[var(--primary)] text-sm">${c.user.username}</span>
@@ -982,7 +1018,7 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                             <p class="text-gray-300 text-sm leading-relaxed">${c.comment}</p>
                             ${c.spoiler ? '<span class="text-[10px] text-red-500 font-bold uppercase mt-2 block">Spoiler</span>' : ''}
                         </div>
-                     `).join('')}</div>`;
+                      `).join('')}</div>`;
                 }
 
                 html += `</div>`;
@@ -1012,7 +1048,7 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                                 }
                                 const styleClasses = isFullyWatched ? "opacity-50 grayscale blur-[1px] hover:blur-0 hover:grayscale-0 hover:opacity-100 border-transparent" : "hover:border-yellow-500 border-transparent";
                                 const checkIcon = isFullyWatched ? `<div class="absolute top-2 left-2 bg-green-500 text-black w-6 h-6 flex items-center justify-center rounded-full shadow-lg z-10"><i class="fa-solid fa-check text-xs"></i></div>` : '';
-                                return `<div class="card rounded-xl overflow-hidden cursor-pointer border transition-all duration-300 group relative ${styleClasses}" onclick="window.loadEpisodes('${id}', '${s.number}')"><div class="aspect-[2/3] relative"><img src="${sImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">${checkIcon}<div class="absolute top-2 right-2 bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded shadow">S${s.number}</div><div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center font-bold text-sm">View Episodes</div></div><div class="p-3 text-center"><h4 class="font-bold text-sm truncate">${s.title}</h4><p class="text-xs text-gray-500">${s.episode_count} Eps</p></div></div>`;
+                                return `<div class="card rounded-xl overflow-hidden cursor-pointer border transition-all duration-300 group relative ${styleClasses}" onclick="window.loadEpisodes('${id}', '${s.number}')"><div class="aspect-[2/3] relative"><img src="${sImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">${checkIcon}<div class="absolute top-2 right-2 bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded shadow">S${s.number}</div><div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center font-bold text-sm">View Episodes</div></div><div class="p-3 text-center"><h4 class="font-bold text-sm truncate">${s.title}</h4><p class="text-xs text-gray-500">${s.episode_count} Eps</p></div></div>`; 
                             }).join('')}</div>`; 
                         };
                         window.renderSeasonsGrid();
@@ -1021,7 +1057,9 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                             const episodes = await fetchDirect(`/shows/${showId}/seasons/${seasonNum}/episodes?extended=full,images,user_data`);
                             mount.innerHTML = `<div class="flex items-center justify-between mb-6"><h2 class="text-2xl font-bold border-l-4 border-yellow-500 px-4">Season ${seasonNum}</h2><button onclick="window.renderSeasonsGrid()" class="text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition"><i class="fa-solid fa-arrow-left"></i> Back to Seasons</button></div><div class="space-y-4">${episodes.map(ep => {
                                 const epRating = ep.user_rating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded">You: ${ep.user_rating}</span>` : '';
-                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='#detail/episode/${ep.ids.trakt}'"><img src="${getImage(ep, 'episode')}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><h4 class="font-bold text-lg text-gray-100 truncate hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='#detail/episode/${ep.ids.trakt}'">${ep.title || 'Episode ' + ep.number}</h4><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p></div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}</div><button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, type: 'episode'}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check mr-2"></i> Log</button></div></div></div>`;
+                                const epPlayback = userPlayback.get(parseInt(ep.ids.trakt));
+                                const pbHtml = epPlayback ? `<div class="mt-2 w-full bg-gray-800 rounded-full h-1"><div class="bg-blue-500 h-1 rounded-full" style="width: ${epPlayback.progress}%"></div></div><p class="text-[10px] text-blue-400 mt-1">${Math.round(epPlayback.progress)}% resumed</p>` : '';
+                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='#detail/episode/${ep.ids.trakt}'"><img src="${getImage(ep, 'episode')}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><h4 class="font-bold text-lg text-gray-100 truncate hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='#detail/episode/${ep.ids.trakt}'">${ep.title || 'Episode ' + ep.number}</h4><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}</div><button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, type: 'episode', runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check mr-2"></i> Log</button></div></div></div>`;
                             }).join('')}</div>`;
                             mount.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         };
@@ -1408,67 +1446,53 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
         }
 
         async function handleAction(actionType) {
-            // SAFEGUARD: Ensure we have valid data before proceeding
             if (!currentModalItem || !currentModalItem.item || !currentModalItem.item.ids || !currentModalItem.item.ids.trakt) {
-                showToast("Error: Invalid item data selected", "error");
+                showToast("Error: Invalid item data", "error");
                 els.modal.classList.add('hidden');
                 return;
-            }
-
-            const traktId = currentModalItem.item.ids.trakt;
-            const type = currentModalItem.type;
-            
-            if (actionType !== 'rate-only') {
-                try {
-                    const typePath = type === 'episode' ? 'episodes' : 'movies';
-                    const historyUrl = `/users/me/history/${typePath}/${traktId}?limit=1`;
-                    const historyData = await fetchDirect(historyUrl);
-                    if (historyData && historyData.length > 0) {
-                        const lastWatched = new Date(historyData[0].watched_at).getTime();
-                        const now = Date.now();
-                        const diff = now - lastWatched;
-                        const fiveMins = 5 * 60 * 1000; 
-                        if (diff < fiveMins) {
-                            if (!confirm("⚠️ Duplicate Check\n\nYou (or an app) logged this item on Trakt less than 5 minutes ago.\n\nDo you want to log it again?")) {
-                                els.modal.classList.add('hidden');
-                                return; 
-                            }
-                        }
-                    }
-                } catch(e) { console.warn("Could not verify history before logging - proceeding anyway", e); }
             }
 
             els.modal.classList.add('hidden'); 
             showLoader(); 
             
+            const traktId = currentModalItem.item.ids.trakt;
+            const type = currentModalItem.type;
+            const rootKey = type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies'); 
+            const ids = { ids: { trakt: traktId } }; 
+            
+            // Get inputs
             const dateStr = document.getElementById('custom-date').value; 
             const date = dateStr ? new Date(dateStr).toISOString() : selectedDate; 
             const rating = parseInt(els.ratingSlider.value); 
-            const ids = { ids: { trakt: traktId } }; 
-            
-            // FIX: Handle 'shows' correctly so we don't rate them as movies
-            const rootKey = type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies'); 
+            const minutes = parseInt(document.getElementById('custom-progress').value);
+            const runtime = currentModalItem.item.runtime;
 
             try { 
-                if (actionType === 'rate-only') {
+                // 1. Handle Rating
+                if (actionType === 'rate-only' || actionType === 'rate-log') {
                      const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; 
                      await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); 
-                     showToast(`Rated ${rating}/10`); 
                      userRatings.set(traktId, rating); 
-                } else {
-                    const payloadLog = { [rootKey]: [{ ...ids, watched_at: date }] }; 
-                    await fetch(`${TRAKT_API_URL}/sync/history`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadLog) }); 
+                     if(actionType === 'rate-only') showToast(`Rated ${rating}/10`);
+                }
 
-                    if (actionType === 'rate-log') { 
-                        const payloadRate = { [rootKey]: [{ ...ids, rating: rating, rated_at: new Date().toISOString() }] }; 
-                        await fetch(`${TRAKT_API_URL}/sync/ratings`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadRate) }); 
-                        showToast(`Logged & Rated ${rating}/10`); 
-                        userRatings.set(traktId, rating);
-                    } else { 
-                        showToast(`Logged successfully`); 
+                // 2. Handle Logging vs Scrobbling (Partial Watch)
+                if (actionType !== 'rate-only') {
+                    if (minutes > 0 && runtime > 0 && minutes < runtime) {
+                        // Partial Watch: Use Scrobble Stop to set progress
+                        const progress = Math.min(100, (minutes / runtime) * 100);
+                        const payloadScrobble = { [type === 'episode' ? 'episode' : 'movie']: { ...ids }, progress: progress, app_version: "1.0" };
+                        await fetch(`${TRAKT_API_URL}/scrobble/stop`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadScrobble) });
+                        showToast(`Progress updated to ${Math.round(progress)}%`);
+                    } else {
+                        // Full Watch: Add to History
+                        const payloadLog = { [rootKey]: [{ ...ids, watched_at: date }] }; 
+                        await fetch(`${TRAKT_API_URL}/sync/history`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payloadLog) }); 
+                        showToast(`Logged as Watched`); 
                     }
                 }
                 
+                // Refresh Views
                 if (location.hash.startsWith('#detail')) {
                      const parts = location.hash.split('/');
                      if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
@@ -1476,6 +1500,7 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                 }
                 if (document.getElementById('up-next-container')) loadUpNext(); 
                 if (document.getElementById('last-watched-container')) loadLastWatched();
+
             } catch(e) { console.error(e); showToast('Action failed', 'error'); } 
             hideLoader(); 
         }
@@ -1568,7 +1593,8 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                 const itemType = data.type || (btn.dataset.type === 'show' ? 'episode' : 'movie');
                 
                 currentModalItem = { item: data, type: itemType };
-                document.getElementById('modal-title').innerText = data.title;
+                document.getElementById('custom-progress').value = ''; // Add this line
+document.getElementById('modal-title').innerText = data.title;
                 els.modal.classList.remove('hidden');
                 const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
                 document.getElementById('custom-date').value = now.toISOString().slice(0, 16);
@@ -1615,7 +1641,9 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                     }
                 } catch(e) { console.warn("Firestore sync error", e); }
 
-                if (traktAccessToken) { await syncUserRatings(); }
+                if (traktAccessToken) { 
+    await Promise.all([syncUserRatings(), syncPlayback()]); // Updated line
+}
                 checkActiveWatching()
                 handleRoute();
             } else { 
