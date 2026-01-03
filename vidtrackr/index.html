@@ -1231,6 +1231,150 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
             else renderLists('lib-target');
         }
 
+        async function renderProgress() {
+            showLoader();
+            els.content.innerHTML = '';
+            
+            try {
+                // 1. Fetch Global Stats & Recent Activity in parallel
+                const [stats, watchedShows, watchedMovies] = await Promise.all([
+                    fetchDirect('/users/me/stats'),
+                    fetchDirect('/sync/watched/shows?limit=12&extended=noseasons'), // Get last 12 active shows
+                    fetchDirect('/sync/history/movies?limit=10&extended=images')     // Get last 10 movies
+                ]);
+
+                // 2. Fetch detailed progress for the shows (to get aired counts)
+                // We map over the shows to get specific progress data for the bars
+                const showProgressData = await Promise.all(watchedShows.map(async (item) => {
+                    try {
+                        const prog = await fetchDirect(`/shows/${item.show.ids.trakt}/progress/watched?hidden=false&specials=false&count_specials=false`);
+                        return { ...item, stats: prog };
+                    } catch(e) { return null; }
+                }));
+                const validShows = showProgressData.filter(s => s !== null);
+
+                // 3. Build HTML
+                els.content.innerHTML = `
+                    <div class="animate-fade space-y-8">
+                        
+                        <div>
+                            <h2 class="text-2xl font-bold mb-6 border-l-4 border-[var(--primary)] px-3">Lifetime Stats</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="card p-6 rounded-xl border border-gray-800 flex items-center gap-4">
+                                    <div class="w-12 h-12 rounded-full bg-[var(--primary)]/20 flex items-center justify-center text-[var(--primary)]"><i class="fa-solid fa-clock text-xl"></i></div>
+                                    <div>
+                                        <p class="text-xs text-gray-500 font-bold uppercase">Total Watch Time</p>
+                                        <p class="text-2xl font-bold text-white">${Math.round((stats.movies.minutes + stats.episodes.minutes) / 60).toLocaleString()} <span class="text-sm font-normal text-gray-500">hours</span></p>
+                                    </div>
+                                </div>
+                                <div class="card p-6 rounded-xl border border-gray-800 flex items-center gap-4">
+                                    <div class="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500"><i class="fa-solid fa-film text-xl"></i></div>
+                                    <div>
+                                        <p class="text-xs text-gray-500 font-bold uppercase">Movies</p>
+                                        <p class="text-2xl font-bold text-white">${stats.movies.watched.toLocaleString()}</p>
+                                    </div>
+                                </div>
+                                <div class="card p-6 rounded-xl border border-gray-800 flex items-center gap-4">
+                                    <div class="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-500"><i class="fa-solid fa-tv text-xl"></i></div>
+                                    <div>
+                                        <p class="text-xs text-gray-500 font-bold uppercase">Episodes</p>
+                                        <p class="text-2xl font-bold text-white">${stats.episodes.watched.toLocaleString()}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            <div class="lg:col-span-2">
+                                <h3 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-bars-progress mr-2 text-yellow-500"></i> Series Progress</h3>
+                                <div class="space-y-4">
+                                    ${validShows.map(item => {
+                                        const aired = item.stats.aired;
+                                        const completed = item.stats.completed;
+                                        const percent = aired > 0 ? Math.round((completed / aired) * 100) : 0;
+                                        const nextEp = item.stats.next_episode ? `Next: S${item.stats.next_episode.season}E${item.stats.next_episode.number}` : '<span class="text-green-500"><i class="fa-solid fa-check"></i> Up to date</span>';
+                                        
+                                        return `
+                                        <div class="card p-4 rounded-xl border border-gray-800 hover:border-yellow-500 transition cursor-pointer group" onclick="location.hash='#detail/show/${item.show.ids.trakt}'">
+                                            <div class="flex justify-between items-end mb-2">
+                                                <h4 class="font-bold truncate text-gray-200 group-hover:text-yellow-500 transition">${item.show.title}</h4>
+                                                <span class="text-xs text-gray-500">${completed} / ${aired} eps</span>
+                                            </div>
+                                            <div class="w-full bg-gray-900 rounded-full h-2.5 mb-2 overflow-hidden">
+                                                <div class="bg-gradient-to-r from-yellow-600 to-yellow-400 h-2.5 rounded-full" style="width: ${percent}%"></div>
+                                            </div>
+                                            <div class="flex justify-between items-center text-xs">
+                                                <span class="text-gray-400 font-mono">${percent}% Complete</span>
+                                                <span class="text-gray-500">${nextEp}</span>
+                                            </div>
+                                        </div>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+
+                            <div class="space-y-8">
+                                <div>
+                                    <h3 class="text-xl font-bold mb-4">Format Split</h3>
+                                    <div class="card p-4 rounded-xl border border-gray-800 h-64">
+                                        <canvas id="progress-chart"></canvas>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h3 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-ticket mr-2 text-[var(--primary)]"></i> Recent Films</h3>
+                                    <div class="space-y-3">
+                                        ${watchedMovies.map(h => {
+                                            const myRating = userRatings.get(parseInt(h.movie.ids.trakt));
+                                            const ratingDisplay = myRating 
+                                                ? `<span class="text-green-400 text-xs font-bold"><i class="fa-solid fa-star"></i> ${myRating}</span>` 
+                                                : `<span class="text-gray-600 text-xs">-</span>`;
+                                            
+                                            return `
+                                            <div class="flex gap-3 items-center card p-2 pr-4 rounded-lg border border-transparent hover:border-gray-700 transition cursor-pointer" onclick="location.hash='#detail/movie/${h.movie.ids.trakt}'">
+                                                <img src="${getImage(h.movie, 'movie')}" class="w-10 h-14 object-cover rounded bg-gray-800">
+                                                <div class="min-w-0 flex-1">
+                                                    <p class="font-bold text-sm truncate text-gray-200">${h.movie.title}</p>
+                                                    <p class="text-xs text-gray-500">${h.movie.year}</p>
+                                                </div>
+                                                ${ratingDisplay}
+                                            </div>`;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+
+                // Render Chart
+                if (progressChartInstance) progressChartInstance.destroy();
+                const ctx = document.getElementById('progress-chart').getContext('2d');
+                progressChartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Movies', 'Episodes'],
+                        datasets: [{
+                            data: [stats.movies.minutes, stats.episodes.minutes],
+                            backgroundColor: ['#ed2224', '#eab308'],
+                            borderWidth: 0,
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: '#9ca3af', font: { size: 10 } } }
+                        }
+                    }
+                });
+
+            } catch(e) {
+                console.error(e);
+                showToast('Failed to load details', 'error');
+            }
+            hideLoader();
+        }
+
         function renderWatchlist(sort = 'added', containerId = 'content') { 
             const container = document.getElementById(containerId) || els.content;
             container.innerHTML = `<div class="flex justify-end mb-6 animate-fade"><select id="wl-sort" class="bg-gray-800 border border-gray-700 text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)]"><option value="added" ${sort==='added'?'selected':''}>Recently Added</option><option value="rank" ${sort==='rank'?'selected':''}>Rank</option><option value="title" ${sort==='title'?'selected':''}>Title</option><option value="released" ${sort==='released'?'selected':''}>Release Date</option><option value="runtime" ${sort==='runtime'?'selected':''}>Runtime</option></select></div><div id="wl-grid"></div>`; 
@@ -1336,7 +1480,37 @@ const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
             hideLoader(); 
         }
 
-        async function loadSearch(query) { if (!query) return; showLoader(); els.content.innerHTML = ''; try { const data = await fetchDirect(`/search/movie,show?query=${encodeURIComponent(query)}&extended=images`); if (data.length === 0) els.content.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-magnifying-glass text-6xl mb-4 opacity-50"></i><p>No results found.</p></div>`; else renderGrid(`Results: "${decodeURIComponent(query)}"`, data); } catch (e) { showToast('Search failed', 'error'); } hideLoader(); }
+        async function loadSearch(rawQuery) {
+            if (!rawQuery) return;
+            showLoader();
+            els.content.innerHTML = '';
+            
+            // Fix: Decode the query first to avoid double-encoding spaces (e.g., %20 -> %2520)
+            const query = decodeURIComponent(rawQuery);
+
+            try {
+                // Fix: Use URLSearchParams to handle encoding correctly (spaces become + or %20 automatically)
+                const searchParams = new URLSearchParams({ query: query, extended: 'images' });
+                
+                // Fix: Split into two valid API calls
+                const [movies, shows] = await Promise.all([
+                    fetchDirect(`/search/movie?${searchParams.toString()}`),
+                    fetchDirect(`/search/show?${searchParams.toString()}`)
+                ]);
+
+                const data = [...movies, ...shows].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+                if (data.length === 0) {
+                    els.content.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-magnifying-glass text-6xl mb-4 opacity-50"></i><p>No results found.</p></div>`;
+                } else {
+                    renderGrid(`Results: "${query}"`, data);
+                }
+            } catch (e) {
+                console.error(e);
+                showToast('Search failed', 'error');
+            }
+            hideLoader();
+        }
         async function renderListItems(listId) { els.content.innerHTML = ''; showLoader(); try { const [listInfo, items] = await Promise.all([fetchDirect(`/users/me/lists/${listId}`), fetchDirect(`/users/me/lists/${listId}/items?extended=images`)]); els.content.innerHTML = `<div class="flex items-center justify-between mb-6"><div><h2 class="text-3xl font-bold">${listInfo.name}</h2><p class="text-gray-400 text-sm mt-1">${listInfo.item_count} items</p></div><button onclick="location.hash='#library'" class="text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg transition"><i class="fa-solid fa-arrow-left mr-2"></i> Back to Lists</button></div><div id="list-grid"></div>`; if (items.length > 0) renderGrid('', items, false, 'list-grid'); else document.getElementById('list-grid').innerHTML = `<p class="text-gray-500 italic">This list is empty.</p>`; } catch (e) { showToast('Could not load list items', 'error'); } hideLoader(); }
 
         function handleRoute() {

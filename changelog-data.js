@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.105.0-alpha",
+    date: "2026-01-03",
+    changes: [
+        "In VidTrackr: Fixed critical bug in Search function where multi-word queries failed; split API calls for reliable movie/show results.",
+        "In VidTrackr: Updated the 'Progress' dashboard with global lifetime stats.",
+    ]
+    },
+    {
     version: "v9.104.0-alpha",
     date: "2026-01-02",
     changes: [
