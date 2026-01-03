@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.109.0-alpha",
+    date: "2026-01-03",
+    changes: [
+        "In RecipeManagr: Merged navigation tabs into the main header bar, removing the separate navigation row for a more compact UI.",
+        "In RecipeManagr: Refactored the search bar to be permanently sticky at the top of the view, ensuring visibility on all devices.",
+        "In RecipeManagr: Implemented state persistence to retain the active tab and open recipe when switching apps or reloading.",
+        "In RecipeManagr: Optimized mobile spacing by reducing padding in the main container and header."
+    ]
+    },
+    {
     version: "v9.108.0-alpha",
     date: "2026-01-03",
     changes: [
