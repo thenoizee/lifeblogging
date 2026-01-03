@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.108.0-alpha",
+    date: "2026-01-03",
+    changes: [
+        "In VehicleManagr: Merged navigation tabs into the main header bar, removing the separate navigation row for a more compact UI.",
+        "In VehicleManagr: Refactored the top banner to match VidTrackr's full-width, sticky design style.",
+    ]
+    },
+    {
     version: "v9.107.0-alpha",
     date: "2026-01-03",
     changes: [
