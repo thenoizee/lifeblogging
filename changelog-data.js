@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.111.0-alpha",
+    date: "2026-01-04",
+    changes: [
+        "In WarrantyTrackr: Added the ability to mark items as 'Registered Online', including fields for who registered the device and a URL link to the registration portal.",
+        "In WarrantyTrackr: Updated the dashboard cards to visually display registration status, providing a direct link to the manufacturer's portal if available."
+    ]
+    },
+    {
     version: "v9.110.0-alpha",
     date: "2026-01-04",
     changes: [
