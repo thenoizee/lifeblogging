@@ -2,7 +2,18 @@
 
 export const changelogData = [
     {
-    version: "v9.115.0-alpha",
+    version: "v9.117.0-alpha",
+    date: "2026-01-04",
+    changes: [
+        "In Text Generator: Overhauled the template selection list into a responsive grid of cards, featuring color-coded 'Target Audience' tags and hover effects.",
+        "In Text Generator: Redesigned the 'Step 3' preview area to simulate a realistic email client window for better visualization of the generated output.",
+        "In Text Generator: Added a mobile-specific toggle for the 'Manage Templates' sidebar to prevent layout stacking issues on smaller screens.",
+        "In Text Generator: Implemented functional real-time search filtering in the Template Manager to allow finding templates by name.",
+        "In Text Generator: Added a 'Generating...' loading state with a spinner to the main action button for better user feedback.",
+    ]
+    },
+    {
+    version: "v9.116.0-alpha",
     date: "2026-01-04",
     changes: [
         "In VidTrackr: Major overhaul of the 'Continue Watching' logic in the Dashboard. It now prioritizes 'Paused' items over 'Up Next' episodes and merges them into a single, cohesive list.",
