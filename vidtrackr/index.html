@@ -587,30 +587,24 @@
         async function loadLastWatched() {
             const container = document.getElementById('last-watched-container');
             try {
-                const history = await fetchDirect('/sync/history?limit=6&extended=images');
+                const history = await fetchDirect('/sync/history?limit=12&extended=images');
                 if (!history.length) return;
-                const grid = history.map(h => {
+
+                const createCard = (h) => {
                     const type = h.type;
                     const data = h[type];
-                    
-                    // FIX: Extract ID to look up local rating
                     const id = type === 'episode' ? h.episode.ids.trakt : h.movie.ids.trakt;
-                    
                     const img = getImage(data, type === 'episode' ? 'episode' : 'movie', true);
                     const title = type === 'episode' ? `${h.show.title}: ${h.episode.title}` : h.movie.title;
                     const subTitle = type === 'episode' ? `S${h.episode.season}E${h.episode.number}` : h.movie.year;
                     const targetHash = type === 'episode' ? `#detail/episode/${h.episode.ids.trakt}` : `#detail/movie/${h.movie.ids.trakt}`;
                     const dateObj = new Date(h.watched_at);
                     const dateTimeDisplay = `${dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})} @ ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-
-                    // FIX: Generate Rating HTML if it exists in memory
                     const myRating = userRatings.get(parseInt(id));
-                    const ratingHtml = myRating 
-                        ? `<span class="text-green-400 font-bold flex items-center gap-1 text-[10px] ml-2 bg-black/50 px-1.5 rounded"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` 
-                        : '';
+                    const ratingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 text-[10px] ml-2 bg-black/50 px-1.5 rounded"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
 
                     return `
-                        <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer" onclick="location.hash='${targetHash}'">
+                        <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer animate-fade" onclick="location.hash='${targetHash}'">
                             <div class="aspect-video relative">
                                 <img src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:scale-110" onerror="this.src='${PLACEHOLDER_IMG}'">
                                 <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
@@ -630,8 +624,29 @@
                             </div>
                         </div>
                     `;
-                }).join('');
-                container.innerHTML = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-purple-500">Recently Watched</h2><div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">${grid}</div>`;
+                };
+
+                const top3 = history.slice(0, 3).map(createCard).join('');
+                const rest = history.slice(3).map(createCard).join('');
+
+                let html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-purple-500">Recently Watched</h2>`;
+                html += `<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">${top3}</div>`;
+
+                if (rest) {
+                    html += `
+                        <div id="hidden-history" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-6 hidden transition-all">
+                            ${rest}
+                        </div>
+                        <div class="mt-6 flex justify-center">
+                            <button onclick="const el = document.getElementById('hidden-history'); el.classList.toggle('hidden'); this.innerHTML = el.classList.contains('hidden') ? 'Show More <i class=&quot;fa-solid fa-chevron-down ml-2&quot;></i>' : 'Show Less <i class=&quot;fa-solid fa-chevron-up ml-2&quot;></i>'" 
+                                class="bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold py-2 px-6 rounded-full transition border border-gray-700 shadow-lg">
+                                Show More <i class="fa-solid fa-chevron-down ml-2"></i>
+                            </button>
+                        </div>
+                    `;
+                }
+
+                container.innerHTML = html;
                 container.classList.remove('hidden');
             } catch (e) { console.error("Last Watched Error", e); }
         }
@@ -681,13 +696,18 @@
         
         async function loadUpNext() {
             const container = document.getElementById('up-next-container');
-            if (!container) return; // FIX: Stop if container doesn't exist (not on dashboard)
+            if (!container) return;
 
             try {
-                const watchedShows = await fetchDirect('/sync/watched/shows?limit=10&extended=noseasons');
+                // Fetch a larger batch of watched shows (50) to ensure we find enough active ones
+                const watchedShows = await fetchDirect('/sync/watched/shows?limit=50&extended=noseasons');
                 if (!watchedShows.length) return;
-                const uniqueShowIds = watchedShows.slice(0, 3).map(s => s.show.ids.trakt);
+                
+                // Check progress for the top 40 recently watched shows to find "Up Next" candidates
+                // (We check more than 15 because some shows in the history might be fully completed)
+                const uniqueShowIds = watchedShows.slice(0, 40).map(s => s.show.ids.trakt);
                 const nextEpisodes = [];
+                
                 await Promise.all(uniqueShowIds.map(async (id) => {
                     try {
                         const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=false&count_specials=false&extended=full`);
@@ -697,21 +717,23 @@
                         }
                     } catch (err) {}
                 }));
+                
+                // Sort by recency (matching the original watchedShows order)
                 nextEpisodes.sort((a, b) => uniqueShowIds.indexOf(a.show.ids.trakt) - uniqueShowIds.indexOf(b.show.ids.trakt));
 
-                if (nextEpisodes.length > 0) {
-                    container.innerHTML = `
-                    <h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    ${nextEpisodes.map(ep => {
-                        const rateBtns = Array.from({length: 10}, (_, i) => 10 - i).map(n => 
+                // Limit the final list to 15 items
+                const finalEpisodes = nextEpisodes.slice(0, 15);
+
+                if (finalEpisodes.length > 0) {
+                    const createCard = (ep) => {
+                         const rateBtns = Array.from({length: 10}, (_, i) => 10 - i).map(n => 
                             `<button onclick="rateDirect(${ep.ids.trakt}, 'episode', ${n})" class="block w-full text-left px-4 py-4 h-12 hover:bg-[var(--primary)] text-sm font-bold text-gray-300 hover:text-white transition flex justify-between items-center border-b border-gray-700 last:border-0 active:bg-[var(--primary)]">
                                 <span>${n}</span> <i class="fa-solid fa-star text-[10px] text-yellow-500"></i>
                              </button>`
                         ).join('');
 
                         return `
-                        <div class="card p-0 rounded-xl flex overflow-visible border border-gray-700 hover:border-blue-500 transition cursor-pointer shadow-lg group relative" onclick="location.hash='#detail/episode/${ep.ids.trakt}'">
+                        <div class="card p-0 rounded-xl flex overflow-visible border border-gray-700 hover:border-blue-500 transition cursor-pointer shadow-lg group relative animate-fade" onclick="location.hash='#detail/episode/${ep.ids.trakt}'">
                             <div class="w-1/3 relative overflow-hidden rounded-l-xl">
                                 <img src="${getImage(ep, 'episode')}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">
                                 <div class="absolute inset-0 bg-black/30 group-hover:bg-transparent transition"></div>
@@ -723,7 +745,7 @@
                                 <div class="mt-auto">
                                     <div class="relative group/rate w-full" onclick="event.stopPropagation()">
                                         <button class="w-full bg-[var(--primary)] hover:bg-red-700 text-white font-bold py-2 rounded-lg transition shadow-md flex items-center justify-center gap-2">
-                                            <i class="fa-solid fa-star text-yellow-300"></i> Rate & Mark Watched Now
+                                            <i class="fa-solid fa-star text-yellow-300"></i> Rate & Mark
                                         </button>
                                         <div class="absolute bottom-full left-0 right-0 mb-2 hidden group-hover/rate:flex flex-col bg-gray-900 border border-gray-700 rounded-lg shadow-2xl z-50 max-h-64 overflow-y-auto hide-scroll">
                                             ${rateBtns}
@@ -732,8 +754,30 @@
                                 </div>
                             </div>
                         </div>`;
-                    }).join('')}
-                    </div>`;
+                    };
+
+                    // Split into Top 3 and The Rest (up to 12 more)
+                    const top3 = finalEpisodes.slice(0, 3).map(createCard).join('');
+                    const rest = finalEpisodes.slice(3).map(createCard).join('');
+
+                    let html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2>`;
+                    html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${top3}</div>`;
+
+                    // Render "Show More" section if there are more than 3 items
+                    if (rest) {
+                        html += `
+                        <div id="hidden-upnext" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 hidden transition-all">
+                            ${rest}
+                        </div>
+                        <div class="mt-6 flex justify-center">
+                            <button onclick="const el = document.getElementById('hidden-upnext'); el.classList.toggle('hidden'); this.innerHTML = el.classList.contains('hidden') ? 'Show More <i class=&quot;fa-solid fa-chevron-down ml-2&quot;></i>' : 'Show Less <i class=&quot;fa-solid fa-chevron-up ml-2&quot;></i>'" 
+                                class="bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold py-2 px-6 rounded-full transition border border-gray-700 shadow-lg">
+                                Show More <i class="fa-solid fa-chevron-down ml-2"></i>
+                            </button>
+                        </div>`;
+                    }
+
+                    container.innerHTML = html;
                     container.classList.remove('hidden');
                 }
             } catch (e) { console.error("Up Next Error", e); }

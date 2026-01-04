@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.114.0-alpha",
+    date: "2026-01-04",
+    changes: [
+        "In VidTrackr: Updated the 'Recently Watched' dashboard section to display the 3 most recent items by default, with a 'Show More' toggle to reveal the full history.",
+        "In VidTrackr: Implemented a 'Show More' expansion feature for the 'Continue Watching' list to maintain a compact dashboard layout.",
+        "In VidTrackr: Expanded the 'Continue Watching' logic to fetch and display up to 15 active shows (previously limited), ensuring a comprehensive list of in-progress content."
+    ]
+    },
+    {
     version: "v9.113.0-alpha",
     date: "2026-01-04",
     changes: [
