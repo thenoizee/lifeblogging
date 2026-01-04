@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.110.0-alpha",
+    date: "2026-01-04",
+    changes: [
+        "In Text Generator: Renamed the tool from 'Work / Email Generator' to 'Text Generator' and overhauled the UI to match the standard dashboard style, merging navigation tabs into the sticky header.",
+        "In Text Generator: Redesigned the 'Manage Templates' tab with a split-pane layout featuring a sidebar for template selection and a real-time live preview editor.",
+    ]
+    },
+    {
     version: "v9.109.0-alpha",
     date: "2026-01-03",
     changes: [
