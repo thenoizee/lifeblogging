@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.119.0-alpha",
+    date: "2026-01-04",
+    changes: [
+        "In Analyser: Fixed a layout bug where the data table expanded the page width instead of scrolling horizontally by properly constraining fieldset containers.",
+        "In Analyser: Enhanced the data table with zebra-striped rows for better readability and a sticky first column to keep selection checkboxes visible during horizontal scrolling.",
+        "In Analyser: Added dual Y-axis support to charts, enabling the comparison of two datasets with vastly different scales (e.g., step count vs. hours slept) on a single graph.",
+    ]
+    },
+    {
     version: "v9.118.0-alpha",
     date: "2026-01-04",
     changes: [
