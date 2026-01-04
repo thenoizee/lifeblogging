@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.118.0-alpha",
+    date: "2026-01-04",
+    changes: [
+        "In RecipeManagr: Implemented a 'Quick Access' tab bar within the recipe details modal, allowing users to keep multiple recipes open simultaneously and switch between them instantly.",
+        "In RecipeManagr: Updated the recipe details sidebar to be sticky (pinned to the viewport), ensuring key stats like prep time and yields remain visible while scrolling through long instructions.",
+        "In RecipeManagr: Enhanced the multi-select toolbar to include new bulk actions for 'Add Label' and 'Assign to Collection' (Book), replacing the delete-only restriction.",
+    ]
+    },
+    {
     version: "v9.117.0-alpha",
     date: "2026-01-04",
     changes: [
