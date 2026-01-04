@@ -183,22 +183,34 @@
             </div>
 
             <div class="space-y-3 mb-6">
-                <label class="text-sm font-bold text-gray-300">Watched On</label>
-                <div class="grid grid-cols-2 gap-3">
-                    <button class="date-option p-3 rounded-lg border border-gray-600 hover:border-[var(--primary)] hover:bg-[var(--bg)] transition text-center group bg-[var(--bg)]" data-date="now">
-                        <span class="block text-xs text-gray-400">Today</span>
-                        <i class="fa-solid fa-clock text-[var(--primary)]"></i>
-                    </button>
-                    <button class="date-option p-3 rounded-lg border border-gray-600 hover:border-[var(--primary)] hover:bg-[var(--bg)] transition text-center group bg-[var(--bg)]" data-date="yesterday">
-                        <span class="block text-xs text-gray-400">Yesterday</span>
-                    </button>
-                </div>
-                <label class="text-sm font-bold text-gray-300">Progress</label>
-<div class="flex gap-2 mb-2">
-    <input type="number" id="custom-progress" placeholder="Minutes Watched (Optional)" class="w-full p-3 rounded-lg bg-[var(--bg)] border border-gray-600 focus:border-[var(--primary)] outline-none text-sm" min="1">
+    <label class="text-sm font-bold text-gray-300">Watched On</label>
+    <div class="grid grid-cols-2 gap-3">
+        <button class="date-option p-3 rounded-lg border border-gray-600 hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 transition text-center group bg-[var(--bg)]" data-date="now">
+            <span class="block text-xs text-gray-400">Today</span>
+            <i class="fa-solid fa-clock text-[var(--primary)]"></i>
+        </button>
+        <button class="date-option p-3 rounded-lg border border-gray-600 hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 transition text-center group bg-[var(--bg)]" data-date="yesterday">
+            <span class="block text-xs text-gray-400">Yesterday</span>
+        </button>
+    </div>
+
+    <label class="text-sm font-bold text-gray-300">Progress</label>
+    <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+        <div class="flex justify-between text-xs text-gray-400 mb-2">
+            <span>0%</span>
+            <span id="progress-percent-display" class="text-[var(--primary)] font-bold">0%</span>
+            <span>100%</span>
+        </div>
+        <input type="range" id="progress-slider" min="0" max="100" value="0" class="w-full mb-3 accent-[var(--primary)]">
+        <div class="flex gap-2">
+            <input type="number" id="custom-progress" placeholder="Mins" class="w-1/3 p-2 rounded bg-[var(--bg)] border border-gray-600 text-xs focus:border-[var(--primary)] outline-none">
+            <button id="btn-mark-watched" class="flex-grow bg-green-700 hover:bg-green-600 text-white text-xs font-bold rounded transition shadow-lg flex items-center justify-center gap-2">
+                <i class="fa-solid fa-check"></i> Mark 100% Watched
+            </button>
+        </div>
+    </div>
+    <input type="datetime-local" id="custom-date" class="w-full p-3 rounded-lg bg-[var(--bg)] border border-gray-600 focus:border-[var(--primary)] outline-none text-sm mt-2">
 </div>
-                <input type="datetime-local" id="custom-date" class="w-full p-3 rounded-lg bg-[var(--bg)] border border-gray-600 focus:border-[var(--primary)] outline-none text-sm">
-            </div>
 
             <div class="grid grid-cols-3 gap-2">
                 <button id="confirm-log" class="bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-bold transition text-xs">Log Only</button>
@@ -403,6 +415,69 @@
             }
         };
 
+        // --- New Helper Functions ---
+
+// 1. Standalone function to open the modal (fixes the click propagation issue)
+window.openScrobbleModal = (data) => {
+    // Handle data if passed as string from HTML attribute
+    const item = typeof data === 'string' ? JSON.parse(data) : data;
+    const itemType = item.type || 'movie'; 
+    
+    currentModalItem = { item: item, type: itemType };
+    document.getElementById('custom-progress').value = ''; 
+    document.getElementById('modal-title').innerText = item.title;
+    els.modal.classList.remove('hidden');
+    
+    // Auto-set date
+    const now = new Date(); 
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    document.getElementById('custom-date').value = now.toISOString().slice(0, 16);
+    selectedDate = new Date().toISOString();
+
+    // Auto-fill slider if Resume data exists
+    if(item.runtime) {
+         const existing = userPlayback.get(parseInt(item.ids.trakt));
+         if(existing) {
+             const currentPct = existing.progress;
+             const slider = document.getElementById('progress-slider');
+             if(slider) {
+                 slider.value = Math.round(currentPct);
+                 document.getElementById('progress-percent-display').innerText = `${Math.round(currentPct)}%`;
+                 document.getElementById('custom-progress').value = Math.round((currentPct/100) * item.runtime);
+             }
+         }
+    }
+};
+
+// Add/Update this global function
+window.removeProgress = async (playbackId) => {
+    if(!confirm('Drop this item from your "Continue Watching" list?')) return;
+    
+    // Find the button that was clicked to show a loading state
+    const btn = document.querySelector(`button[onclick*="${playbackId}"]`);
+    if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+    try {
+        // Use the Playback ID (e.g., 6530568), NOT the Trakt ID
+        await fetch(`${TRAKT_API_URL}/sync/playback/${playbackId}`, { 
+            method: 'DELETE', 
+            headers: traktHeader() 
+        });
+        
+        showToast('Item dropped successfully');
+        
+        // Remove from local map and refresh
+        // We can't easily find the Trakt ID from just Playback ID here without a lookup, 
+        // but reloading the list is safest to ensure UI consistency.
+        loadUpNext(); 
+        if(document.getElementById('history-resume-section')) renderHistory(1);
+    } catch(e) {
+        console.error(e);
+        showToast('Failed to remove item', 'error');
+        if(btn) btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    }
+};
+
         window.navigateEpisode = async (showId, currentSeason, targetNumber) => {
             showLoader();
             try {
@@ -544,45 +619,53 @@
             if (append) container.insertAdjacentHTML('beforeend', gridHtml); else container.innerHTML = gridHtml;
         }
 
-        async function renderDashboard() {
-            let greetingName = '';
-            try {
-                const profileSnap = await getDoc(doc(db, `users/${currentUser.uid}/settings/profile`));
-                if (profileSnap.exists() && profileSnap.data().displayName) {
-                    greetingName = `, ${profileSnap.data().displayName}`;
-                }
-            } catch(e) {}
-
-            els.content.innerHTML = `
-                <div class="mb-8 p-6 md:p-8 rounded-3xl bg-gradient-to-br from-[var(--primary)] to-purple-900 text-white shadow-2xl relative overflow-hidden animate-fade">
-                    <div class="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-                        <div>
-                            <h1 class="text-3xl md:text-4xl font-bold mb-2">Welcome Back${greetingName}!</h1>
-                            <p class="opacity-90 text-lg">Your personal media tracking hub.</p>
-                        </div>
-                        <div id="quick-stats" class="flex gap-4 md:gap-6 text-center bg-black/20 p-4 rounded-xl backdrop-blur-md w-full md:w-auto justify-around md:justify-start"></div>
-                    </div>
-                    <i class="fa-solid fa-chart-line absolute -bottom-6 -right-6 text-[8rem] md:text-[10rem] opacity-10 rotate-12"></i>
-                </div>
-                <div id="up-next-container" class="mb-12 hidden animate-fade"></div>
-                <div id="last-watched-container" class="mb-12 hidden animate-fade"></div>
-                <div id="calendar-container" class="mb-12 hidden animate-fade"></div>
-                <div id="trending-container"></div>
-            `;
-            loadUpNext();
-            loadLastWatched();
-            loadCalendar();
-            fetchSmart('/movies/trending?extended=images', (movies) => {
-                fetchSmart('/shows/trending?extended=images', (shows) => {
-                    const combined = [...movies.map(m=>({...m, type:'movie'})), ...shows.map(s=>({...s, type:'show'}))].sort(()=>0.5-Math.random());
-                    renderGrid('Trending Now', combined, false, 'trending-container');
-                }, 'cache_shows_trending');
-            }, 'cache_movies_trending');
-            try {
-                const stats = await fetchDirect('/users/me/stats');
-                document.getElementById('quick-stats').innerHTML = `<div><p class="text-2xl font-bold">${stats.movies.watched}</p><p class="text-xs uppercase opacity-75">Movies</p></div><div><p class="text-2xl font-bold">${stats.episodes.watched}</p><p class="text-xs uppercase opacity-75">Episodes</p></div><div><p class="text-2xl font-bold">${Math.round(stats.network.friends)}</p><p class="text-xs uppercase opacity-75">Mutuals</p></div>`;
-            } catch(e){}
+async function renderDashboard() {
+    let greetingName = '';
+    try {
+        const profileSnap = await getDoc(doc(db, `users/${currentUser.uid}/settings/profile`));
+        if (profileSnap.exists() && profileSnap.data().displayName) {
+            greetingName = `, ${profileSnap.data().displayName}`;
         }
+    } catch(e) {}
+
+    els.content.innerHTML = `
+        <div class="mb-8 p-6 md:p-8 rounded-3xl bg-gradient-to-br from-[var(--primary)] to-purple-900 text-white shadow-2xl relative overflow-hidden animate-fade">
+            <div class="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-2">Welcome Back${greetingName}!</h1>
+                    <p class="opacity-90 text-lg">Your personal media tracking hub.</p>
+                </div>
+                <div id="quick-stats" class="flex gap-4 md:gap-6 text-center bg-black/20 p-4 rounded-xl backdrop-blur-md w-full md:w-auto justify-around md:justify-start"></div>
+            </div>
+            <i class="fa-solid fa-chart-line absolute -bottom-6 -right-6 text-[8rem] md:text-[10rem] opacity-10 rotate-12"></i>
+        </div>
+
+        <div id="up-next-container" class="mb-12 hidden animate-fade"></div>
+        <div id="last-watched-container" class="mb-12 hidden animate-fade"></div>
+        <div id="calendar-container" class="mb-12 hidden animate-fade"></div>
+        <div id="trending-container"></div>
+    `;
+
+    // Call this FIRST to prioritize the network request
+    loadUpNext();
+    
+    // Then load the rest
+    loadLastWatched();
+    loadCalendar();
+    
+    // (Existing stats & trending logic...)
+    fetchSmart('/movies/trending?extended=images', (movies) => {
+        fetchSmart('/shows/trending?extended=images', (shows) => {
+            const combined = [...movies.map(m=>({...m, type:'movie'})), ...shows.map(s=>({...s, type:'show'}))].sort(()=>0.5-Math.random());
+            renderGrid('Trending Now', combined, false, 'trending-container');
+        }, 'cache_shows_trending');
+    }, 'cache_movies_trending');
+    
+    try {
+        const stats = await fetchDirect('/users/me/stats');
+        document.getElementById('quick-stats').innerHTML = `<div><p class="text-2xl font-bold">${stats.movies.watched}</p><p class="text-xs uppercase opacity-75">Movies</p></div><div><p class="text-2xl font-bold">${stats.episodes.watched}</p><p class="text-xs uppercase opacity-75">Episodes</p></div><div><p class="text-2xl font-bold">${Math.round(stats.network.friends)}</p><p class="text-xs uppercase opacity-75">Mutuals</p></div>`;
+    } catch(e){}
+}
 
         async function loadLastWatched() {
             const container = document.getElementById('last-watched-container');
@@ -694,94 +777,124 @@
             hideLoader();
         }
         
-        async function loadUpNext() {
-            const container = document.getElementById('up-next-container');
-            if (!container) return;
+async function loadUpNext() {
+    const container = document.getElementById('up-next-container');
+    if (!container) return;
 
+    try {
+        // 1. Get Resumable Items (Paused)
+        const [resumeMovies, resumeEpisodes] = await Promise.all([
+            fetchDirect('/sync/playback/movies?limit=10&extended=full,images'),
+            fetchDirect('/sync/playback/episodes?limit=10&extended=full,images')
+        ]);
+        
+        const resumeItems = [
+            ...resumeMovies.map(m => ({...m, type: 'movie', isResume: true, playbackId: m.id})),
+            ...resumeEpisodes.map(e => ({...e, type: 'episode', isResume: true, playbackId: e.id}))
+        ].sort((a, b) => new Date(b.paused_at) - new Date(a.paused_at));
+
+        // 2. Get "Up Next" (Next Episodes)
+        const watchedShows = await fetchDirect('/sync/watched/shows?limit=50&extended=noseasons');
+        const nextEpisodes = [];
+        const uniqueShowIds = watchedShows.slice(0, 20).map(s => s.show.ids.trakt);
+        
+        await Promise.all(uniqueShowIds.map(async (id) => {
             try {
-                // Fetch a larger batch of watched shows (50) to ensure we find enough active ones
-                const watchedShows = await fetchDirect('/sync/watched/shows?limit=50&extended=noseasons');
-                if (!watchedShows.length) return;
-                
-                // Check progress for the top 40 recently watched shows to find "Up Next" candidates
-                // (We check more than 15 because some shows in the history might be fully completed)
-                const uniqueShowIds = watchedShows.slice(0, 40).map(s => s.show.ids.trakt);
-                const nextEpisodes = [];
-                
-                await Promise.all(uniqueShowIds.map(async (id) => {
-                    try {
-                        const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=false&count_specials=false&extended=full`);
-                        if (progress.next_episode) {
-                            const showTitle = watchedShows.find(s => s.show.ids.trakt == id).show.title;
-                            nextEpisodes.push({ type: 'episode', show: { title: showTitle, ids: { trakt: id } }, episode: progress.next_episode, ids: progress.next_episode.ids, title: `${progress.next_episode.season}x${progress.next_episode.number}: ${progress.next_episode.title}`, images: progress.next_episode.images });
-                        }
-                    } catch (err) {}
-                }));
-                
-                // Sort by recency (matching the original watchedShows order)
-                nextEpisodes.sort((a, b) => uniqueShowIds.indexOf(a.show.ids.trakt) - uniqueShowIds.indexOf(b.show.ids.trakt));
+                if(resumeItems.find(r => r.type === 'episode' && r.show.ids.trakt == id)) return;
+                const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=false&count_specials=false&extended=full`);
+                if (progress.next_episode) {
+                     nextEpisodes.push({ 
+                         type: 'episode', isResume: false,
+                         show: { title: watchedShows.find(s => s.show.ids.trakt == id).show.title, ids: { trakt: id } }, 
+                         episode: progress.next_episode, ids: progress.next_episode.ids, 
+                         title: progress.next_episode.title, images: progress.next_episode.images 
+                     });
+                }
+            } catch (err) {}
+        }));
+        nextEpisodes.sort((a, b) => uniqueShowIds.indexOf(a.show.ids.trakt) - uniqueShowIds.indexOf(b.show.ids.trakt));
+        
+        const combined = [...resumeItems, ...nextEpisodes].slice(0, 18);
 
-                // Limit the final list to 15 items
-                const finalEpisodes = nextEpisodes.slice(0, 15);
+        if (combined.length > 0) {
+            const createCard = (item) => {
+                const isMovie = item.type === 'movie';
+                const data = isMovie ? (item.movie || item) : (item.episode || item.episode);
+                const showTitle = !isMovie ? item.show.title : null;
+                const title = isMovie ? (item.movie?.title || item.title) : data.title;
+                const sub = isMovie ? (item.movie?.year || item.year) : `S${data.season} E${data.number}`;
+                const img = getImage(item, null, true);
+                const progress = item.progress || 0;
+                
+                const jsonStr = JSON.stringify({
+                    ids: data.ids, 
+                    title: isMovie ? title : `${showTitle}: ${title}`, 
+                    type: item.type, 
+                    runtime: data.runtime
+                }).replace(/'/g, "&apos;");
 
-                if (finalEpisodes.length > 0) {
-                    const createCard = (ep) => {
-                         const rateBtns = Array.from({length: 10}, (_, i) => 10 - i).map(n => 
-                            `<button onclick="rateDirect(${ep.ids.trakt}, 'episode', ${n})" class="block w-full text-left px-4 py-4 h-12 hover:bg-[var(--primary)] text-sm font-bold text-gray-300 hover:text-white transition flex justify-between items-center border-b border-gray-700 last:border-0 active:bg-[var(--primary)]">
-                                <span>${n}</span> <i class="fa-solid fa-star text-[10px] text-yellow-500"></i>
-                             </button>`
-                        ).join('');
+                let actionBtns = '';
+                
+                if (item.isResume) {
+                    // --- RESUME ITEMS ---
+                    actionBtns = `
+                    <div class="flex gap-2 w-full h-10">
+                        <button onclick="event.stopPropagation(); window.rateDirect(${data.ids.trakt}, '${item.type}', 10)" class="h-full bg-gray-700 hover:bg-green-600 text-white text-xs px-3 rounded-lg transition font-bold shadow flex items-center justify-center" title="Mark Fully Watched"><i class="fa-solid fa-check"></i></button>
+                        
+                        <button onclick='event.stopPropagation(); window.openScrobbleModal(${jsonStr})' class="flex-grow h-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white text-xs font-bold rounded-lg border border-blue-600/30 transition flex items-center justify-center gap-2"><i class="fa-solid fa-sliders"></i> Update</button>
+                        
+                        <button onclick="event.stopPropagation(); window.removeProgress(${item.playbackId})" class="h-full bg-gray-700 hover:bg-red-600 text-white text-xs px-3 rounded-lg transition font-bold shadow flex items-center justify-center" title="Drop / Remove Progress"><i class="fa-solid fa-xmark"></i></button>
+                    </div>`;
+                } else {
+                    // --- UP NEXT ITEMS ---
+                    // Horizontal 1-10 Scale
+                    const rateButtons = Array.from({length: 10}, (_, i) => i + 1).map(n => 
+                        `<button onclick="event.stopPropagation(); window.rateDirect(${data.ids.trakt}, '${item.type}', ${n})" 
+                                 class="w-8 h-full hover:bg-[var(--primary)] text-xs font-bold text-gray-400 hover:text-white transition flex items-center justify-center border-r border-gray-700 last:border-0 hover:scale-110 z-10" title="Rate ${n}/10">
+                            ${n}
+                         </button>`
+                    ).join('');
 
-                        return `
-                        <div class="card p-0 rounded-xl flex overflow-visible border border-gray-700 hover:border-blue-500 transition cursor-pointer shadow-lg group relative animate-fade" onclick="location.hash='#detail/episode/${ep.ids.trakt}'">
-                            <div class="w-1/3 relative overflow-hidden rounded-l-xl">
-                                <img src="${getImage(ep, 'episode')}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">
-                                <div class="absolute inset-0 bg-black/30 group-hover:bg-transparent transition"></div>
-                            </div>
-                            <div class="w-2/3 p-4 flex flex-col justify-center bg-[var(--card)] rounded-r-xl">
-                                <h4 class="text-xs text-blue-400 font-bold uppercase tracking-wider mb-1">Up Next</h4>
-                                <h3 class="font-bold text-lg leading-tight mb-1 line-clamp-1 text-white">${ep.show.title}</h3>
-                                <p class="text-gray-400 text-sm mb-4">S${ep.episode.season} E${ep.episode.number} - ${ep.episode.title}</p>
-                                <div class="mt-auto">
-                                    <div class="relative group/rate w-full" onclick="event.stopPropagation()">
-                                        <button class="w-full bg-[var(--primary)] hover:bg-red-700 text-white font-bold py-2 rounded-lg transition shadow-md flex items-center justify-center gap-2">
-                                            <i class="fa-solid fa-star text-yellow-300"></i> Rate & Mark
-                                        </button>
-                                        <div class="absolute bottom-full left-0 right-0 mb-2 hidden group-hover/rate:flex flex-col bg-gray-900 border border-gray-700 rounded-lg shadow-2xl z-50 max-h-64 overflow-y-auto hide-scroll">
-                                            ${rateBtns}
-                                        </div>
-                                    </div>
+                    actionBtns = `
+                    <div class="flex gap-2 w-full relative z-20 h-10">
+                         <button onclick='event.stopPropagation(); window.openScrobbleModal(${jsonStr})' class="flex-grow h-10 bg-[var(--primary)] hover:bg-red-700 text-white text-xs font-bold rounded-lg transition shadow-md flex items-center justify-center"><i class="fa-solid fa-play mr-1"></i> Log Watch</button>
+                         
+                         <div class="relative group/rate h-10">
+                            <button class="h-full bg-gray-700 hover:bg-gray-600 text-white px-3 rounded-lg font-bold transition shadow-md flex items-center border border-gray-600"><i class="fa-solid fa-star text-yellow-400"></i></button>
+                            
+                            <div class="absolute right-0 bottom-full pb-2 hidden group-hover/rate:block z-50 w-[320px]">
+                                <div class="bg-gray-900 border border-gray-600 rounded-lg shadow-2xl h-10 flex items-center overflow-hidden">
+                                    ${rateButtons}
                                 </div>
                             </div>
-                        </div>`;
-                    };
-
-                    // Split into Top 3 and The Rest (up to 12 more)
-                    const top3 = finalEpisodes.slice(0, 3).map(createCard).join('');
-                    const rest = finalEpisodes.slice(3).map(createCard).join('');
-
-                    let html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2>`;
-                    html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${top3}</div>`;
-
-                    // Render "Show More" section if there are more than 3 items
-                    if (rest) {
-                        html += `
-                        <div id="hidden-upnext" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6 hidden transition-all">
-                            ${rest}
-                        </div>
-                        <div class="mt-6 flex justify-center">
-                            <button onclick="const el = document.getElementById('hidden-upnext'); el.classList.toggle('hidden'); this.innerHTML = el.classList.contains('hidden') ? 'Show More <i class=&quot;fa-solid fa-chevron-down ml-2&quot;></i>' : 'Show Less <i class=&quot;fa-solid fa-chevron-up ml-2&quot;></i>'" 
-                                class="bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold py-2 px-6 rounded-full transition border border-gray-700 shadow-lg">
-                                Show More <i class="fa-solid fa-chevron-down ml-2"></i>
-                            </button>
-                        </div>`;
-                    }
-
-                    container.innerHTML = html;
-                    container.classList.remove('hidden');
+                         </div>
+                    </div>`;
                 }
-            } catch (e) { console.error("Up Next Error", e); }
+
+                return `
+                <div class="card p-0 rounded-xl flex overflow-hidden border ${item.isResume ? 'border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.15)]' : 'border-gray-800'} hover:border-[var(--primary)] transition cursor-pointer shadow-lg group relative animate-fade" onclick="location.hash='#detail/${item.type}/${data.ids.trakt}'">
+                    <div class="w-1/3 relative bg-gray-900">
+                        <img src="${img}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition" onerror="this.src='${PLACEHOLDER_IMG}'">
+                        ${item.isResume ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-700"><div class="bg-blue-500 h-full shadow-[0_0_5px_#3b82f6]" style="width: ${progress}%"></div></div>` : ''}
+                        <div class="absolute top-2 left-2 ${item.isResume ? 'bg-blue-600' : 'bg-black/70'} text-white px-1.5 py-0.5 rounded text-[10px] font-bold shadow uppercase tracking-wider">${item.isResume ? 'Resume' : 'Up Next'}</div>
+                    </div>
+                    <div class="w-2/3 p-3 flex flex-col justify-center bg-[var(--card)] relative">
+                        ${showTitle ? `<h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5 truncate">${showTitle}</h4>` : ''}
+                        <h3 class="font-bold text-sm leading-tight mb-1 line-clamp-1 text-gray-200 group-hover:text-white transition">${title}</h3>
+                        <p class="text-gray-500 text-xs mb-3">${sub} ${item.isResume ? `<span class="text-blue-400 ml-1">(${Math.round(progress)}%)</span>` : ''}</p>
+                        <div class="mt-auto relative z-10">
+                             ${actionBtns}
+                        </div>
+                    </div>
+                </div>`;
+            };
+
+            const html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${combined.map(createCard).join('')}</div>`;
+            container.innerHTML = html;
+            container.classList.remove('hidden');
         }
+    } catch (e) { console.error("Up Next Error", e); }
+}
 
         async function renderDetail(type, id, initialSeason = null) {
             showLoader(); els.content.innerHTML = '';
@@ -855,23 +968,47 @@
 
                 const userNote = notes.exists() ? notes.data().text : '';
 
-                // --- Shared Playback Logic ---
-                const playback = userPlayback.get(parseInt(id));
-                const progressHtml = playback 
-                    ? `<div class="mb-6 bg-gray-800 rounded-lg p-4 border border-blue-500/50 flex items-center gap-4 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
-                         <div class="bg-blue-900/30 p-3 rounded-full text-blue-400"><i class="fa-solid fa-play"></i></div>
-                         <div class="flex-grow">
-                             <p class="text-xs text-blue-300 font-bold uppercase mb-1">Resume Watching</p>
-                             <div class="flex justify-between text-sm mb-1">
-                                 <span class="font-bold text-white">${Math.round(playback.progress)}% Watched</span>
-                                 <span class="text-gray-400">${Math.round((playback.progress/100) * item.runtime)}m / ${item.runtime}m</span>
-                             </div>
-                             <div class="w-full bg-gray-700 rounded-full h-1.5">
-                                 <div class="bg-blue-500 h-1.5 rounded-full shadow-[0_0_10px_#3b82f6]" style="width: ${playback.progress}%"></div>
-                             </div>
-                         </div>
-                       </div>` 
-                    : '';
+                // --- Shared Playback Logic (Detail Page) ---
+const playback = userPlayback.get(parseInt(id));
+let progressHtml = '';
+
+if (playback) {
+    // Prepare data for the Update Modal
+    const jsonStr = JSON.stringify({
+        ids: item.ids, 
+        title: isEpisode ? `${showInfo.title}: ${item.title}` : item.title, 
+        type: type, 
+        runtime: item.runtime
+    }).replace(/'/g, "&apos;");
+
+    progressHtml = `
+    <div class="mb-6 bg-gray-800/50 rounded-xl p-4 border border-blue-500/30 flex flex-col gap-3 shadow-[0_0_20px_rgba(59,130,246,0.1)] backdrop-blur-sm">
+         <div class="flex items-center gap-4">
+             <div class="bg-blue-900/30 p-3 rounded-full text-blue-400 shrink-0"><i class="fa-solid fa-play"></i></div>
+             <div class="flex-grow min-w-0">
+                 <div class="flex justify-between items-center mb-1">
+                     <p class="text-xs text-blue-300 font-bold uppercase tracking-wider">Resume Watching</p>
+                     <span class="text-xs text-gray-400 font-mono">${Math.round((playback.progress/100) * item.runtime)}m / ${item.runtime}m</span>
+                 </div>
+                 <div class="w-full bg-gray-700 rounded-full h-2">
+                     <div class="bg-blue-500 h-2 rounded-full shadow-[0_0_10px_#3b82f6]" style="width: ${playback.progress}%"></div>
+                 </div>
+             </div>
+         </div>
+         
+         <div class="flex gap-2 justify-end pt-2 border-t border-gray-700/50">
+             <button onclick="window.rateDirect(${item.ids.trakt}, '${type}', 10)" class="bg-gray-700 hover:bg-green-600 text-white text-xs px-4 py-2 rounded-lg transition font-bold shadow flex items-center gap-2" title="Mark Fully Watched">
+                <i class="fa-solid fa-check"></i> Finish
+             </button>
+             <button onclick='window.openScrobbleModal(${jsonStr})' class="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white text-xs font-bold px-4 py-2 rounded-lg border border-blue-600/30 transition flex items-center gap-2">
+                <i class="fa-solid fa-sliders"></i> Update Progress
+             </button>
+             <button onclick="window.removeProgress(${playback.id})" class="bg-gray-700 hover:bg-red-600 text-white text-xs px-3 py-2 rounded-lg transition font-bold shadow" title="Drop / Remove">
+                <i class="fa-solid fa-xmark"></i>
+             </button>
+         </div>
+    </div>`;
+}
 
                 const myRating = item.user_rating || userRatings.get(parseInt(id)); 
                 const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
@@ -1178,21 +1315,55 @@
 
         function renderHistory(page = 1) {
             if (page === 1) { 
-                els.content.innerHTML = ''; 
-                historyPage = 1; 
-                els.content.innerHTML = `
-                <div class="flex flex-col md:flex-row justify-between items-center mb-6 mt-4 gap-4">
-                    <h2 class="text-2xl font-bold">History</h2>
-                    <div class="flex bg-gray-900 p-1 rounded-lg border border-gray-700 flex-wrap justify-center">
-                        <button onclick="window.setHistoryFilter('all')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'all' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">All</button>
-                        <button onclick="window.setHistoryFilter('movies')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'movies' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Movies</button>
-                        <button onclick="window.setHistoryFilter('episodes')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'episodes' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Episodes</button>
-                        <button onclick="window.setHistoryFilter('unrated')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'unrated' ? 'bg-yellow-600 text-white shadow-[0_0_15px_rgba(202,138,4,0.4)]' : 'text-gray-400 hover:text-yellow-500'}"><i class="fa-solid fa-star-half-stroke mr-1"></i> Unrated</button>
-                    </div>
-                </div>
-                <div id="history-list-container" class="space-y-1 max-w-4xl mx-auto"></div>
-                <div id="load-more-container" class="text-center mt-8 pb-8"></div>`;
-            }
+    els.content.innerHTML = `
+    <div class="flex flex-col md:flex-row justify-between items-center mb-6 mt-4 gap-4">
+        <h2 class="text-2xl font-bold">History</h2>
+        <div class="flex bg-gray-900 p-1 rounded-lg border border-gray-700 flex-wrap justify-center">
+            <button onclick="window.setHistoryFilter('all')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'all' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">All</button>
+            <button onclick="window.setHistoryFilter('movies')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'movies' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Movies</button>
+            <button onclick="window.setHistoryFilter('episodes')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'episodes' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Episodes</button>
+            <button onclick="window.setHistoryFilter('unrated')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'unrated' ? 'bg-yellow-600 text-white' : 'text-gray-400 hover:text-yellow-500'}"><i class="fa-solid fa-star-half-stroke mr-1"></i> Unrated</button>
+        </div>
+    </div>
+    
+    <div id="history-resume-section" class="mb-10 hidden animate-fade"></div>
+    <div id="history-list-container" class="space-y-1 max-w-4xl mx-auto"></div>
+    <div id="load-more-container" class="text-center mt-8 pb-8"></div>`;
+    
+    // Logic to populate resume section
+    if (userPlayback.size > 0) {
+        const resumeContainer = document.getElementById('history-resume-section');
+        const items = Array.from(userPlayback.values()).sort((a,b) => new Date(b.paused_at) - new Date(a.paused_at));
+        
+        if (items.length > 0) {
+            resumeContainer.innerHTML = `
+                <h3 class="font-bold text-gray-500 text-xs uppercase mb-4 tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-circle-pause"></i> In Progress / Paused
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${items.map(item => {
+                            const isMovie = item.type === 'movie';
+                            const data = isMovie ? item.movie : item.episode;
+                            const title = isMovie ? data.title : `${item.show.title}: ${data.title}`;
+                            const img = getImage(item, null, true);
+                            return `
+                            <div class="card p-3 rounded-xl flex items-center gap-4 border border-blue-900/30 bg-gradient-to-r from-blue-900/10 to-transparent cursor-pointer hover:border-blue-500/50 transition group" onclick="location.hash='#detail/${item.type}/${data.ids.trakt}'">
+                                <div class="w-20 h-12 rounded-lg overflow-hidden relative flex-shrink-0 bg-gray-900 shadow-lg">
+                                    <img src="${img}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition">
+                                    <div class="absolute bottom-0 w-full h-1 bg-gray-700"><div class="bg-blue-500 h-full shadow-[0_0_5px_#3b82f6]" style="width: ${item.progress}%"></div></div>
+                                </div>
+                                <div class="min-w-0 flex-grow">
+                                    <p class="font-bold text-sm truncate text-blue-100 group-hover:text-white transition">${title}</p>
+                                    <p class="text-xs text-blue-400 font-mono">${Math.round(item.progress)}% Watched</p>
+                                </div>
+                                <button class="scrobble-btn text-xs bg-gray-800 hover:bg-white hover:text-black px-3 py-2 rounded-lg font-bold transition shadow-md border border-gray-700" onclick="event.stopPropagation()" data-json='${JSON.stringify({ids: data.ids, title: title, type: item.type, runtime: data.runtime}).replace(/'/g, "&apos;")}' data-type="${item.type}">Update</button>
+                            </div>`
+                    }).join('')}
+                </div>`;
+            resumeContainer.classList.remove('hidden');
+        }
+    }
+}
             
             isFetchingHistory = true; showLoader();
             
@@ -1620,6 +1791,39 @@
             }
         });
 
+        // --- Progress Slider Logic ---
+const slider = document.getElementById('progress-slider');
+const numInput = document.getElementById('custom-progress');
+const percentDisplay = document.getElementById('progress-percent-display');
+
+// Sync Slider -> Number Input
+slider.addEventListener('input', (e) => {
+    const pct = parseInt(e.target.value);
+    percentDisplay.innerText = `${pct}%`;
+    if(currentModalItem && currentModalItem.item.runtime) {
+        numInput.value = Math.round((pct / 100) * currentModalItem.item.runtime);
+    }
+});
+
+// Sync Number Input -> Slider
+numInput.addEventListener('input', (e) => {
+    if(currentModalItem && currentModalItem.item.runtime) {
+        const val = parseInt(e.target.value) || 0;
+        const pct = Math.min(100, Math.round((val / currentModalItem.item.runtime) * 100));
+        slider.value = pct;
+        percentDisplay.innerText = `${pct}%`;
+    }
+});
+
+// "Mark 100% Watched" Button Handler
+document.getElementById('btn-mark-watched').onclick = () => {
+    if(currentModalItem && currentModalItem.item.runtime) {
+        slider.value = 100;
+        numInput.value = currentModalItem.item.runtime;
+        handleAction('log-only'); // This will trigger the "Full Watch" logic in handleAction
+    }
+};
+
         els.ratingSlider.oninput = (e) => els.ratingValue.innerText = e.target.value;
         const searchHandler = debounce((e) => {
             const val = e.target.value.trim();
@@ -1640,6 +1844,15 @@
                 document.getElementById('custom-progress').value = ''; // Add this line
 document.getElementById('modal-title').innerText = data.title;
                 els.modal.classList.remove('hidden');
+                if(data.runtime) {
+        // Check if we have existing progress in userPlayback map
+        const existing = userPlayback.get(parseInt(data.ids.trakt));
+        const currentPct = existing ? existing.progress : 0;
+        
+        slider.value = Math.round(currentPct);
+        percentDisplay.innerText = `${Math.round(currentPct)}%`;
+        numInput.value = Math.round((currentPct/100) * data.runtime);
+    }
                 const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
                 document.getElementById('custom-date').value = now.toISOString().slice(0, 16);
                 selectedDate = new Date().toISOString();

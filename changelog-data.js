@@ -5,6 +5,18 @@ export const changelogData = [
     version: "v9.115.0-alpha",
     date: "2026-01-04",
     changes: [
+        "In VidTrackr: Major overhaul of the 'Continue Watching' logic in the Dashboard. It now prioritizes 'Paused' items over 'Up Next' episodes and merges them into a single, cohesive list.",
+        "In VidTrackr: Added precise progress tracking to the logging modal, featuring a synced percentage slider and minute input, plus a 'Mark 100% Watched' shortcut.",
+        "In VidTrackr: Added a 'Drop / Remove Progress' button to resumable items, allowing users to clear 'Paused' status without deleting history.",
+        "In VidTrackr: Updated the 'Up Next' cards with a new horizontal 1-10 rating bar that appears on hover, replacing the vertical dropdown for faster one-click rating.",
+        "In VidTrackr: Added a dedicated 'In Progress / Paused' section to the top of the History tab.",
+        "In VidTrackr: Enhanced the Detail View metadata to include interactive 'Finish', 'Update', and 'Drop' buttons directly within the Resume Watching status box.",
+    ]
+    },
+    {
+    version: "v9.115.0-alpha",
+    date: "2026-01-04",
+    changes: [
         "In FoodTrackr: Added a 'Move/Copy' button (clone icon) directly to items in the 'Today's Log' list, enabling quick date or section changes without navigating to the History tab.",
         "In FoodTrackr: Implemented 'Now', 'Today', and 'Yesterday' quick-action buttons in the Move/Copy modal to instantly set the target date/time.",
         "In FoodTrackr: Updated the 'Leftovers' sub-tab icon to a cookie symbol to match the 'Eat Portion' action and improve visual consistency."
