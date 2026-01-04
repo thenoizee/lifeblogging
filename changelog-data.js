@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.115.0-alpha",
+    date: "2026-01-04",
+    changes: [
+        "In FoodTrackr: Added a 'Move/Copy' button (clone icon) directly to items in the 'Today's Log' list, enabling quick date or section changes without navigating to the History tab.",
+        "In FoodTrackr: Implemented 'Now', 'Today', and 'Yesterday' quick-action buttons in the Move/Copy modal to instantly set the target date/time.",
+        "In FoodTrackr: Updated the 'Leftovers' sub-tab icon to a cookie symbol to match the 'Eat Portion' action and improve visual consistency."
+    ]
+    },
+    {
     version: "v9.114.0-alpha",
     date: "2026-01-04",
     changes: [
