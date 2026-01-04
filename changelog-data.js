@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.112.0-alpha",
+    date: "2026-01-04",
+    changes: [
+        "In RecipeManagr: Enabled 'Screen Awake' (Wake Lock) by default when opening a recipe to prevent the device from sleeping while cooking.",
+        "In RecipeManagr: Added the ability to close the recipe details modal by clicking the background overlay.",
+        "In RecipeManagr: Made the Ingredients and Recipe Details sections collapsible (open by default) to allow for better screen space management.",
+        "In RecipeManagr: Updated the 'Log Cook' button styling to be less visually prominent."
+    ]
+    },
+    {
     version: "v9.111.0-alpha",
     date: "2026-01-04",
     changes: [
