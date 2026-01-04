@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.113.0-alpha",
+    date: "2026-01-04",
+    changes: [
+        "In TaskTrackr: Improved the subtask creation workflow; users can now press 'Enter' within an input field to immediately create a new subtask.",
+        "In TaskTrackr: Renamed the 'Process Inbox' button to 'Review Tasks' in the project sidebar to better reflect its functionality."
+    ]
+    },
+    {
     version: "v9.112.0-alpha",
     date: "2026-01-04",
     changes: [
