@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.120.0-alpha",
+    date: "2026-01-05",
+    changes: [
+        "In RecipeManagr: Redesigned the header and navigation bar to strictly follow the VidTrackr layout style while maintaining the unique Teal branding.",
+    ]
+    },
+    {
     version: "v9.119.0-alpha",
     date: "2026-01-04",
     changes: [
