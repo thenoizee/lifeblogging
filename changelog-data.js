@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.121.0-alpha",
+    date: "2026-01-05",
+    changes: [
+        "In VidTrackr: Implemented a new 'Person Detail' view displaying actor biographies and a combined timeline of their movie and TV credits.",
+        "In VidTrackr: Made cast lists interactive, linking directly to the new Person Detail view for full filmography exploration.",
+        "In VidTrackr: Added an embedded video player for trailers, allowing users to watch YouTube clips directly within the app without leaving.",
+        "In VidTrackr: Added 'Open in Stremio' deep links to Movie, Show, and Episode detail views for quick external playback."
+    ]
+    },
+    {
     version: "v9.120.0-alpha",
     date: "2026-01-05",
     changes: [
