@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.122.0-alpha",
+    date: "2026-01-05",
+    changes: [
+        "In RecipeManagr: Implemented deep linking with hashed URLs (e.g., #recipe/id), enabling direct recipe sharing and proper browser back-button navigation.",
+        "In RecipeManagr: Added 'Have vs. Need' status toggles to ingredients, allowing users to mark items for the shopping list directly within the recipe view.",
+        "In RecipeManagr: Implemented smart auto-cross-out logic; marking an instruction step as done automatically detects and marks the used ingredients as 'Have'.",
+        "In RecipeManagr: Introduced a dedicated 'Shopping Planner' modal that aggregates ingredients from multiple selected recipes, consolidates duplicates, and features a high-visibility 'Shop Mode' for in-store use.",
+    ]
+    },
+    {
     version: "v9.121.0-alpha",
     date: "2026-01-05",
     changes: [
