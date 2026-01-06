@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.123.0-alpha",
+    date: "2026-01-06",
+    changes: [
+        "In MediManagr: Redesigned the application header to include navigation tabs directly within the top bar, creating a more unified and compact layout.",
+        "In MediManagr: Updated the application title branding to use the specific Pink (#db2777) color from the Hub index.",
+    ]
+    },
+    {
     version: "v9.122.0-alpha",
     date: "2026-01-05",
     changes: [
