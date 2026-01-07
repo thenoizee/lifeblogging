@@ -1256,6 +1256,7 @@ window.toggleRepeatOptions = () => {
 
         /* Render App, Cards, Etc (Standard logic) */
         const renderApp = () => { /*...*/ if(!document.getElementById('content')) return; window.renderProjectSidebar(); const icon = document.getElementById('compact-icon'); if(isCompactMode) { els.content.classList.add('compact-mode'); icon.className = "fa-solid fa-expand"; } else { els.content.classList.remove('compact-mode'); icon.className = "fa-solid fa-compress"; } if (currentState.filter === 'projects') { renderProjectsManager(); els.taskCounter.textContent = '-'; return; } const tasks = getFilteredTasks(); els.taskCounter.textContent = tasks.length; if (currentState.view === 'eisenhower') renderEisenhower(tasks); else if (currentState.view === 'classic') renderClassic(tasks); else if (currentState.view === 'calendar') renderCalendar(tasks); else if (currentState.view === 'kanban') renderKanban(tasks); else if (currentState.view === 'timeline') renderTimeline(tasks); };
+        window.renderApp = renderApp;
 
         const renderTaskCard = (task) => {
     const isSelected = selectedTasks.has(task.id); 
@@ -1751,41 +1752,45 @@ window.completeTask = async (pid, tid, checkbox, event) => {
     }
 };
 
-window.stopRepeating = async (taskId) => { 
-    if(!confirm("Stop this task from repeating? It will become a regular task.")) return; 
-    
-    const task = taskCache.find(t => t.id === taskId); 
-    if(!task) return; 
-    
-    showLoader(); 
-    try { 
-        task.recurrence = null;
-        task.repeatFlag = null;
-        const payload = formatTaskPayload(task);
+window.stopRepeating = (taskId) => { 
+    window.openConfirmModal(
+        "Stop Repeating?",
+        "This task will become a regular, one-time task.",
+        async () => {
+            const task = taskCache.find(t => t.id === taskId); 
+            if(!task) return; 
+            
+            showLoader(); 
+            try { 
+                task.recurrence = null;
+                task.repeatFlag = null;
+                const payload = formatTaskPayload(task);
 
-        // 1. Update Firebase (Mirror or Local)
-        if (auth.currentUser) {
-            await updateDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', taskId), {
-                recurrence: null,
-                repeatFlag: null,
-                updated: new Date()
-            });
+                // 1. Update Firebase (Mirror or Local)
+                if (auth.currentUser) {
+                    await updateDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', taskId), {
+                        recurrence: null,
+                        repeatFlag: null,
+                        updated: new Date()
+                    });
+                }
+
+                // 2. Update API (Only if NOT local)
+                if (task.source !== 'local') {
+                    await api(`/task/${taskId}`, 'POST', payload); 
+                }
+
+                showToast("Recurrence removed"); 
+                window.closeSidePane(); 
+                fetchAllData(); 
+            } catch(e) { 
+                showToast("Error updating task", "error"); 
+                console.error(e);
+            } 
+            hideLoader(); 
         }
-
-        // 2. Update API (Only if NOT local)
-        if (task.source !== 'local') {
-            await api(`/task/${taskId}`, 'POST', payload); 
-        }
-
-        showToast("Recurrence removed"); 
-        window.closeSidePane(); 
-        fetchAllData(); 
-    } catch(e) { 
-        showToast("Error updating task", "error"); 
-        console.error(e);
-    } 
-    hideLoader(); 
-}; 
+    );
+};
 
 const renderKanban = (tasks) => { const cols = { 5: { title: 'High Priority', items: [] }, 3: { title: 'Medium Priority', items: [] }, 1: { title: 'Low Priority', items: [] }, 0: { title: 'No Priority', items: [] } }; tasks.forEach(t => { if(cols[t.priority]) cols[t.priority].items.push(t); else cols[0].items.push(t); }); let html = `<div class="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-180px)] px-2">`; [5, 3, 1, 0].forEach(p => { const col = cols[p]; html += `<div class="kanban-col"><div class="kanban-header"><span>${col.title}</span><span class="bg-gray-700 px-2 rounded-full text-xs">${col.items.length}</span></div><div class="kanban-body space-y-2" id="col-${p}" data-priority="${p}">${col.items.map(renderTaskCard).join('')}</div></div>`; }); html += `</div>`; els.content.innerHTML = html; setTimeout(() => { [5, 3, 1, 0].forEach(p => { new Sortable(document.getElementById(`col-${p}`), { group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', onEnd: async (evt) => { const taskId = evt.item.dataset.taskId; const newPriority = parseInt(evt.to.dataset.priority); if (newPriority !== parseInt(evt.from.dataset.priority)) { const task = taskCache.find(t => t.id === taskId); showLoader(); await api(`/task/${taskId}`, 'POST', { ...task, priority: newPriority }); hideLoader(); task.priority = newPriority; } } }); }); }, 100); };
         const renderCalendar = (tasks) => { const date = currentCalendarDate; const year = date.getFullYear(); const month = date.getMonth(); const monthName = date.toLocaleString('default', { month: 'long' }); const tasksByDate = {}; tasks.forEach(t => { if(!t.dueDate) return; const dateKey = t.dueDate.split('T')[0]; if(!tasksByDate[dateKey]) tasksByDate[dateKey] = []; tasksByDate[dateKey].push(t); }); const firstDay = new Date(year, month, 1).getDay(); const daysInMonth = new Date(year, month + 1, 0).getDate(); const todayKey = new Date().toISOString().split('T')[0]; 
@@ -1968,7 +1973,24 @@ window.toggleSubtask = async (taskId, itemIndex) => {
 };
         
         window.closeSidePane = () => { const pane = document.getElementById('side-pane'); pane.classList.remove('open'); document.getElementById('side-pane-overlay').classList.add('opacity-0'); setTimeout(() => document.getElementById('side-pane-overlay').classList.add('hidden'), 300); };
-        window.openAddTaskModal = () => window.openModal(false); window.openProjectModal = (id = null, name = '') => { document.getElementById('project-modal-id').value = id || ''; document.getElementById('project-name-input').value = name; document.getElementById('project-modal-title').textContent = id ? 'Edit Project' : 'New Project'; document.getElementById('project-modal').classList.remove('hidden'); }; window.submitProjectForm = async () => { const id = document.getElementById('project-modal-id').value; const name = document.getElementById('project-name-input').value; if(!name) return showToast('Name required', 'error'); showLoader(); try { if(id) await api(`/project/${id}`, 'POST', { name }); else await api('/project', 'POST', { name }); showToast('Project saved'); document.getElementById('project-modal').classList.add('hidden'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); }; window.deleteProject = async (id) => { if(confirm("Delete this project and all its tasks?")) { showLoader(); try { await api(`/project/${id}`, 'DELETE'); showToast('Project deleted'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); } }; 
+        window.openAddTaskModal = () => window.openModal(false); window.openProjectModal = (id = null, name = '') => { document.getElementById('project-modal-id').value = id || ''; document.getElementById('project-name-input').value = name; document.getElementById('project-modal-title').textContent = id ? 'Edit Project' : 'New Project'; document.getElementById('project-modal').classList.remove('hidden'); }; window.submitProjectForm = async () => { const id = document.getElementById('project-modal-id').value; const name = document.getElementById('project-name-input').value; if(!name) return showToast('Name required', 'error'); showLoader(); try { if(id) await api(`/project/${id}`, 'POST', { name }); else await api('/project', 'POST', { name }); showToast('Project saved'); document.getElementById('project-modal').classList.add('hidden'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); }; 
+        window.deleteProject = (id) => { 
+    window.openConfirmModal(
+        "Delete Project?", 
+        "This will delete the project and all tasks within it. This cannot be undone.",
+        async () => {
+            showLoader(); 
+            try { 
+                await api(`/project/${id}`, 'DELETE'); 
+                showToast('Project deleted'); 
+                fetchAllData(); 
+            } catch(e) { 
+                showToast('Error deleting project', 'error'); 
+            } 
+            hideLoader(); 
+        }
+    );
+};
 // --- UPDATED: Delete Task (Uses Custom Modal) ---
         window.deleteTask = (pid, tid) => {
             window.openConfirmModal(
@@ -1999,7 +2021,18 @@ window.toggleSubtask = async (taskId, itemIndex) => {
                 }
             );
         };
-        window.refreshData = () => fetchAllData(); window.changeMonth = (o) => { currentCalendarDate.setMonth(currentCalendarDate.getMonth()+o); renderApp(); }; window.showDayTasks = (k) => { const tasks = window.dayTasksCache[k] || []; els.content.innerHTML = `<div class="flex items-center gap-4 mb-6"><button onclick="renderApp()" class="bg-gray-800 p-2 rounded-lg"><i class="fa-solid fa-arrow-left"></i> Back</button><h1 class="text-2xl font-bold">Tasks for ${k}</h1></div>` + tasks.map(renderTaskCard).join(''); }; 
+        window.refreshData = () => fetchAllData(); window.changeMonth = (o) => { currentCalendarDate.setMonth(currentCalendarDate.getMonth()+o); renderApp(); }; 
+        window.showDayTasks = (k) => { 
+    const tasks = window.dayTasksCache[k] || []; 
+    // Uses window.renderApp() and adaptive colors (gray-200 for light, gray-800 for dark)
+    els.content.innerHTML = `
+    <div class="flex items-center gap-4 mb-6">
+        <button onclick="window.renderApp()" class="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-bold transition shadow-sm">
+            <i class="fa-solid fa-arrow-left"></i> Back
+        </button>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Tasks for ${k}</h1>
+    </div>` + tasks.map(renderTaskCard).join(''); 
+};
         window.addEventListener('click', (e) => {
             if (!e.target.closest('.card') && !e.target.closest('#context-menu')) {
                 document.getElementById('context-menu').classList.add('hidden');

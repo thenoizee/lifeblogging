@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.124.0-alpha",
+    date: "2026-01-07",
+    changes: [
+        "In TaskTrackr: Fixed the Calendar 'Back' button functionality and updated the styling for improved contrast in Light Mode.",
+        "In TaskTrackr: Replaced the native browser alert with a custom dark-mode confirmation modal for the 'Delete Project' action.",
+        "In TaskTrackr: Updated the 'Stop Repeating' workflow to use the standard custom confirmation modal instead of a browser popup."
+    ]
+    },
+    {
     version: "v9.123.0-alpha",
     date: "2026-01-06",
     changes: [
