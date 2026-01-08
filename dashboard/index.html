@@ -219,6 +219,26 @@
                 </div>
             </div>
 
+            <div class="dashboard-card col-span-1" id="card-warranties">
+    <div class="card-header">
+        <span>Warranties</span>
+        <a href="/warrantytrackr" class="text-xs text-green-600 hover:underline">WarrantyTrackr</a>
+    </div>
+    <div id="warranty-list-container" class="flex-grow custom-scroll overflow-y-auto space-y-2 pr-1 max-h-[140px]">
+        <p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">Loading...</p>
+    </div>
+</div>
+
+<div class="dashboard-card col-span-1" id="card-vehicles">
+    <div class="card-header">
+        <span>Garage</span>
+        <a href="/vehiclemanagr" class="text-xs text-blue-600 hover:underline">VehicleManagr</a>
+    </div>
+    <div id="vehicle-list-container" class="flex-grow custom-scroll overflow-y-auto space-y-2 pr-1 max-h-[140px]">
+        <p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">Loading...</p>
+    </div>
+</div>
+
             <div class="dashboard-card col-span-1" id="card-watched">
                 <div class="card-header">
                     <span>Watched</span>
@@ -370,7 +390,9 @@
             dailiesProgText: document.getElementById('dailies-progress-text'),
             dailiesProgBar: document.getElementById('dailies-progress-bar'),
             waterVal: document.getElementById('water-value'),
-            waterGoalText: document.getElementById('water-goal-text')
+            waterGoalText: document.getElementById('water-goal-text'),
+            warrantyList: document.getElementById('warranty-list-container'),
+            vehicleList: document.getElementById('vehicle-list-container'),
         };
 
         // --- Clock Logic ---
@@ -842,6 +864,18 @@
             }
         }
 
+        // --- Helper for Warranty Dates ---
+const calculateWarrantyExpiry = (start, len, unit) => {
+    if (!start || unit === 'lifetime') return null;
+    const d = new Date(start);
+    const n = parseInt(len);
+    if (unit === 'days') d.setDate(d.getDate() + n);
+    if (unit === 'weeks') d.setDate(d.getDate() + n * 7);
+    if (unit === 'months') d.setMonth(d.getMonth() + n);
+    if (unit === 'years') d.setFullYear(d.getFullYear() + n);
+    return d;
+};
+
         // --- Real-time Listeners ---
         const setupListeners = (uid) => {
             const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -884,6 +918,101 @@
                 ui.waterGoalText.textContent = `Goal: ${waterGoal}ml`;
                 updateWaterChart(waterTotal, waterGoal);
             }));
+
+            // --- Inside setupListeners(uid) ---
+
+    // 1. WarrantyTrackr Listener
+    unsubscribers.push(onSnapshot(collection(db, `users/${uid}/warranties`), (snap) => {
+        const now = new Date();
+        now.setHours(0,0,0,0);
+        
+        const warranties = snap.docs.map(d => {
+            const w = d.data();
+            return {
+                name: w.productName,
+                date: calculateWarrantyExpiry(w.purchaseDate, w.warrantyLength, w.warrantyUnit),
+                isLifetime: w.warrantyUnit === 'lifetime'
+            };
+        })
+        .filter(w => w.isLifetime || (w.date && w.date >= now)) // Filter out expired
+        .sort((a, b) => {
+            if(a.isLifetime) return 1;
+            if(b.isLifetime) return -1;
+            return a.date - b.date;
+        })
+        .slice(0, 5); // Show top 5 soonest expiring
+
+        ui.warrantyList.innerHTML = '';
+        if (warranties.length === 0) {
+            ui.warrantyList.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">No active warranties.</p>`;
+        } else {
+            warranties.forEach(w => {
+                const isLife = w.isLifetime;
+                const daysLeft = isLife ? Infinity : Math.ceil((w.date - now) / (1000 * 60 * 60 * 24));
+                const colorClass = !isLife && daysLeft < 30 ? 'text-orange-600 bg-orange-50 dark:bg-orange-900/20' : 'text-gray-600 bg-gray-50 dark:bg-gray-800 dark:text-gray-300';
+                
+                const div = document.createElement('div');
+                div.className = `flex justify-between items-center p-2 rounded-lg text-xs ${colorClass}`;
+                div.innerHTML = `
+                    <span class="font-medium truncate mr-2">${w.name}</span>
+                    <span class="whitespace-nowrap font-mono text-[10px] opacity-80">${isLife ? 'Lifetime' : w.date.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'2-digit'})}</span>
+                `;
+                ui.warrantyList.appendChild(div);
+            });
+        }
+    }));
+
+    // 2. VehicleManagr Listener
+    // Note: We filter out archived vehicles directly in the code for simplicity, 
+    // or you can add a composite index for where('isArchived', '==', false) if preferred.
+    unsubscribers.push(onSnapshot(collection(db, `users/${uid}/vehicles`), (snap) => {
+        let events = [];
+        const today = new Date();
+        today.setHours(0,0,0,0);
+
+        snap.forEach(d => {
+            const v = d.data();
+            if (v.isArchived) return;
+
+            if(v.motExpiry) events.push({ label: 'MOT', vehicle: v.name, date: new Date(v.motExpiry), icon: 'fa-screwdriver-wrench' });
+            if(v.taxExpiry) events.push({ label: 'Tax', vehicle: v.name, date: new Date(v.taxExpiry), icon: 'fa-sterling-sign' });
+            if(v.insuranceExpiry) events.push({ label: 'Ins', vehicle: v.name, date: new Date(v.insuranceExpiry), icon: 'fa-shield-halved' });
+        });
+
+        // Sort by date (ascending) and filter out past events if desired, or keep to show expired status
+        events.sort((a, b) => a.date - b.date);
+        
+        ui.vehicleList.innerHTML = '';
+        if (events.length === 0) {
+            ui.vehicleList.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">No upcoming vehicle dates.</p>`;
+        } else {
+            events.slice(0, 5).forEach(e => {
+                const daysDiff = Math.ceil((e.date - today) / (1000 * 60 * 60 * 24));
+                let statusColor = 'bg-gray-50 dark:bg-gray-800';
+                let iconColor = 'text-blue-400';
+                
+                if (daysDiff < 0) { statusColor = 'bg-red-50 dark:bg-red-900/20 text-red-700'; iconColor = 'text-red-500'; }
+                else if (daysDiff < 30) { statusColor = 'bg-orange-50 dark:bg-orange-900/20 text-orange-700'; iconColor = 'text-orange-500'; }
+
+                const div = document.createElement('div');
+                div.className = `flex justify-between items-center p-2 rounded-lg text-xs ${statusColor} mb-1`;
+                div.innerHTML = `
+                    <div class="flex items-center gap-2 min-w-0">
+                        <i class="fas ${e.icon} ${iconColor} w-3 text-center"></i>
+                        <div class="flex flex-col min-w-0">
+                            <span class="font-bold truncate">${e.label}</span>
+                            <span class="text-[10px] opacity-75 truncate">${e.vehicle}</span>
+                        </div>
+                    </div>
+                    <div class="text-right whitespace-nowrap ml-2">
+                        <div class="font-mono font-bold">${e.date.toLocaleDateString(undefined, {month:'short', day:'numeric'})}</div>
+                        <div class="text-[9px] opacity-75">${daysDiff < 0 ? 'Expired' : daysDiff + ' days'}</div>
+                    </div>
+                `;
+                ui.vehicleList.appendChild(div);
+            });
+        }
+    }));
 
             const podQ = query(collection(db, `users/${uid}/history`), orderBy('listenedAt', 'desc'), limit(1));
             unsubscribers.push(onSnapshot(podQ, (snap) => {

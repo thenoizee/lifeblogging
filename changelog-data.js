@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.126.0-alpha",
+    date: "2026-01-08",
+    changes: [
+        "In Dashboard: Added a new 'Warranties' widget to display the top 5 soonest expiring or lifetime warranties from WarrantyTrackr.",
+        "In Dashboard: Added a new 'Garage' widget to show upcoming vehicle events (MOT, Tax, Insurance) from VehicleManagr.",
+    ]
+    },
+    {
     version: "v9.125.0-alpha",
     date: "2026-01-08",
     changes: [
