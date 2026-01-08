@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.125.0-alpha",
+    date: "2026-01-08",
+    changes: [
+        "In Hub: Reordered application shortcuts for better workflow. The new order is: Dashboard, TaskTrackr, Analyser, Logger, MediManagr, FoodTrackr, HydrationTrackr, VidTrackr, PodTrackr, RecipeManagr, VehicleManagr, WarrantyTrackr.",
+        "In Analyser: Removed the 'Account & Data' menu from the navigation bar.",
+        "In Analyser: Added a dedicated 'Import / Export' dropdown menu in the top right for quick data management.",
+        "In Analyser: Removed user profile details (User ID, Member Since) and Sign Out controls; these are now centralized on the Account page.",
+        "In Account Page: Added a 'Member Since' display below the user email to show account creation date.",
+    ]
+    },
+    {
     version: "v9.124.0-alpha",
     date: "2026-01-07",
     changes: [
