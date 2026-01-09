@@ -1416,6 +1416,45 @@
           return;
         }
 
+        // --- DUPLICATE CHECK START ---
+        const DUPLICATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+        const newLogDate = new Date(logDatetimeString);
+
+        // Helper to check a list of logs for duplicates
+        const checkDuplicate = (logs) => {
+            return logs.some(log => {
+                // 1. Check if name and value match
+                if (log.attributeName !== attributeName || String(log.attributeValue) !== String(attributeValue)) {
+                    return false;
+                }
+                
+                // 2. Check if time is within the window
+                const logDate = new Date(log.date); // Parses "YYYY-MM-DD HH:mm"
+                const diff = Math.abs(newLogDate - logDate);
+                return diff < DUPLICATE_WINDOW_MS;
+            });
+        };
+
+        // Check 1: Session Logs (Most recent, instant check)
+        if (checkDuplicate(sessionLogs)) {
+            showMessage("Data not logged - Duplicate entry was detected within last 5 minutes.", "error");
+            return;
+        }
+
+        // Check 2: Historical Logs (appState.logs)
+        // We generate the key using toISOString to match the storage format in appState
+        try {
+            const dateKey = newLogDate.toISOString().split('T')[0];
+            const historicalLogs = appState.logs.get(dateKey) || [];
+            if (checkDuplicate(historicalLogs)) {
+                showMessage("Data not logged - Duplicate entry was detected within last 5 minutes.", "error");
+                return;
+            }
+        } catch (e) {
+            console.warn("Skipping historical duplicate check due to date parsing error:", e);
+        }
+        // --- DUPLICATE CHECK END ---
+
         const newCollectionWasCreated = await ensureCollectionExists(userId, collectionName);
         if (newCollectionWasCreated) {
             await fetchAndPopulateCollections(userId);

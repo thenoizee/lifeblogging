@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.128.0-alpha",
+    date: "2026-01-09",
+    changes: [
+        "In Logger: Implemented a duplicate detection system to prevent adding identical entries (same attribute and value) within a 5-minute window.",
+    ]
+    },
+    {
     version: "v9.127.0-alpha",
     date: "2026-01-09",
     changes: [
