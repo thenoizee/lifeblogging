@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.129.0-alpha",
+    date: "2026-01-09",
+    changes: [
+        "In FoodTrackr: Added a new 'Recent' sub-tab to the 'Log Food' section, giving users quick access to their 20 most recently logged items.",
+        "In FoodTrackr: Implemented a search bar in the History tab, allowing users to filter past logs by food name, brand, or restaurant."
+    ]
+    },
+    {
     version: "v9.128.0-alpha",
     date: "2026-01-09",
     changes: [
