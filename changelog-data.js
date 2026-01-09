@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.127.0-alpha",
+    date: "2026-01-09",
+    changes: [
+        "In TaskTrackr: Integrated Google Tasks API to allow read-only tasks alongside TickTick and Local tasks.",
+        "In TaskTrackr: Added a 'Connections' modal to manage Google and TickTick authentications independently.",
+        "In TaskTrackr: Implemented sidebar 'Data Source' toggles to filter the view by 'Google', 'TickTick', or 'TaskTrackr'.",
+        "In TaskTrackr: Added distinct source badges to task cards with specific branding (Google Blue, TaskTrackr Green, TickTick Purple).",
+        "In TaskTrackr: Added a 'Disconnect / Reset' button to the sidebar for full session clearing and logout.",
+    ]
+    },
+    {
     version: "v9.126.0-alpha",
     date: "2026-01-08",
     changes: [
