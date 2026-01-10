@@ -850,16 +850,18 @@ const api = async (endpoint, method = 'GET', body = null) => {
 // --- GOOGLE TASKS INTEGRATION ---
 
 // 1. Auth & Connection
+// Replace your existing connectGoogle function with this:
 window.connectGoogle = async () => {
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/tasks');
+    // Optional: Forces account selection if you have multiple
+    // provider.setCustomParameters({ prompt: 'select_account' }); 
     
     try {
         const result = await signInWithPopup(auth, provider);
         const credential = GoogleAuthProvider.credentialFromResult(result);
         const token = credential.accessToken;
         
-        // Save token to Firestore for persistence
         if (auth.currentUser && token) {
             await setDoc(doc(db, 'users', auth.currentUser.uid, 'services', 'google'), {
                 token: token,
@@ -867,8 +869,10 @@ window.connectGoogle = async () => {
             }, { merge: true });
             
             localStorage.setItem('google_token', token);
-            showToast('Google Tasks Connected', 'success');
-            setTimeout(() => location.reload(), 1000); // Reload to fetch fresh data
+            showToast('Google Connection Refreshed', 'success');
+            
+            // Refresh data immediately without page reload
+            await fetchAllData();
         }
     } catch (error) {
         console.error(error);
@@ -877,6 +881,7 @@ window.connectGoogle = async () => {
 };
 
 // 2. Google API Helper
+// Replace your existing googleApi function with this:
 const googleApi = async (endpoint, method = 'GET', body = null) => {
     const token = localStorage.getItem('google_token');
     if (!token) return null;
@@ -892,25 +897,28 @@ const googleApi = async (endpoint, method = 'GET', body = null) => {
 
     try {
         const res = await fetch(`https://tasks.googleapis.com/tasks/v1/${endpoint}`, opts);
+        
+        // Handle Token Expiry (401)
         if (res.status === 401) {
-            console.warn("Google Token Expired"); 
-            // Optional: Auto-logout or prompt refresh
+            console.warn("Google Token Expired");
+            localStorage.removeItem('google_token');
+            
+            // Show a toast with a "Reconnect" button that triggers the popup
+            showToast(
+                'Google session expired.', 
+                'error', 
+                'Reconnect', 
+                () => window.connectGoogle()
+            );
             return null;
         }
+
         if (method === 'DELETE' || res.status === 204) return true;
         return await res.json();
     } catch (e) {
         console.error("Google API Error:", e);
         return null;
     }
-
-    if (res.status === 401) {
-    console.warn("Google Token Expired");
-    localStorage.removeItem('google_token'); // Clear the bad token
-    showToast('Google session expired. Please reload.', 'error');
-    // Optional: window.disconnectAll(); // capable of nuclear option if you prefer
-    return null;
-}
 };
 
 // 3. Fetcher Logic

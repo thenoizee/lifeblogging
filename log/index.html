@@ -1419,6 +1419,7 @@
         // --- DUPLICATE CHECK START ---
         const DUPLICATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
         const newLogDate = new Date(logDatetimeString);
+        let isDuplicate = false;
 
         // Helper to check a list of logs for duplicates
         const checkDuplicate = (logs) => {
@@ -1437,21 +1438,27 @@
 
         // Check 1: Session Logs (Most recent, instant check)
         if (checkDuplicate(sessionLogs)) {
-            showMessage("Data not logged - Duplicate entry was detected within last 5 minutes.", "error");
-            return;
+            isDuplicate = true;
+        } 
+        // Check 2: Historical Logs (appState.logs) if not already found
+        else {
+            try {
+                const dateKey = newLogDate.toISOString().split('T')[0];
+                const historicalLogs = appState.logs.get(dateKey) || [];
+                if (checkDuplicate(historicalLogs)) {
+                    isDuplicate = true;
+                }
+            } catch (e) {
+                console.warn("Skipping historical duplicate check due to date parsing error:", e);
+            }
         }
 
-        // Check 2: Historical Logs (appState.logs)
-        // We generate the key using toISOString to match the storage format in appState
-        try {
-            const dateKey = newLogDate.toISOString().split('T')[0];
-            const historicalLogs = appState.logs.get(dateKey) || [];
-            if (checkDuplicate(historicalLogs)) {
-                showMessage("Data not logged - Duplicate entry was detected within last 5 minutes.", "error");
-                return;
+        if (isDuplicate) {
+            // Ask the user if they want to proceed despite the duplicate
+            const confirmOverride = confirm(`Duplicate entry detected for "${attributeName}" within the last 5 minutes.\n\nDo you want to log it anyway?`);
+            if (!confirmOverride) {
+                return; // User cancelled, stop here.
             }
-        } catch (e) {
-            console.warn("Skipping historical duplicate check due to date parsing error:", e);
         }
         // --- DUPLICATE CHECK END ---
 

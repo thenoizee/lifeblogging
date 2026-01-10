@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.132.0-alpha",
+    date: "2026-01-10",
+    changes: [
+        "In TaskTrackr: Fixed a bug where the Google Token expiration check was unreachable, and added a 'Reconnect' button to the error toast for seamless, in-place session renewal.",
+        "In Logger: Replaced the strict duplicate entry prevention with a confirmation dialog, allowing users to override the check and log duplicate data if desired."
+    ]
+    },
+    {
     version: "v9.131.0-alpha",
     date: "2026-01-10",
     changes: [
