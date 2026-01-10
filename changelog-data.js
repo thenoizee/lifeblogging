@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v9.131.0-alpha",
+    date: "2026-01-10",
+    changes: [
+        "In TaskTrackr: Streamlined the project sidebar by moving the 'Data Sources' toggles and 'Disconnect' button into a dedicated 'Connections' modal.",
+        "In Hub: Implemented a Service Health Monitor that automatically checks for expired tokens or connection errors (Google Tasks, Trakt) and displays a notification badge on the Account button.",
+        "In Account Page: Added full Google Tasks integration controls, allowing users to Connect and Disconnect directly from settings.",
+        "In Account Page: Implemented smart re-authentication logic that flags Google tokens older than 55 minutes or error states, transforming the button into a 'Reconnect' action.",
+        "In Account Page: Updated the Google sign-in flow to force the 'Select Account' prompt, ensuring a fresh token is retrieved during re-authentication."
+    ]
+    },
+    {
     version: "v9.130.0-alpha",
     date: "2026-01-10",
     changes: [

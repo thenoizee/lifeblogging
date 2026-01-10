@@ -262,9 +262,13 @@
             <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
             <svg class="theme-icon moon-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
         </button>
-        <a href="/account" id="account-link" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg" style="display: none;">
+        <a href="/account" id="account-link" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg relative" style="display: none;">
             <i class="fa-solid fa-user-gear"></i>
             Account
+            <span id="account-badge" class="absolute -top-1 -right-1 flex h-3 w-3 hidden">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+            </span>
         </a>
     </div>
 
@@ -491,6 +495,40 @@
                     applyTheme('light');
                 });
                 checkChangelog();
+                
+                // --- ADDED: Service Health Monitor (MOVED INSIDE IF BLOCK) ---
+                const services = ['google', 'trakt'];
+                const serviceStates = {};
+
+                const updateAccountBadge = () => {
+                    const hasError = Object.values(serviceStates).some(s => s === true);
+                    const badge = document.getElementById('account-badge');
+                    if (hasError) badge.classList.remove('hidden');
+                    else badge.classList.add('hidden');
+                };
+
+                services.forEach(service => {
+                    onSnapshot(doc(db, 'users', userId, 'services', service), (doc) => {
+                        let isError = false;
+                        if (doc.exists()) {
+                            const data = doc.data();
+                            
+                            // 1. Check explicit error flag
+                            if (data.status === 'error') isError = true;
+                            
+                            // 2. Check Google Token Expiry (1 hour limit)
+                            if (service === 'google' && data.token && data.updatedAt) {
+                                const lastUpdate = data.updatedAt.toDate();
+                                const diffMins = (new Date() - lastUpdate) / 1000 / 60;
+                                if (diffMins > 55) isError = true;
+                            }
+                        }
+                        serviceStates[service] = isError;
+                        updateAccountBadge();
+                    });
+                });
+                // ----------------------------------------
+
             } else {
                 userId = null;
                 themeDocRef = null;

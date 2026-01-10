@@ -139,6 +139,20 @@
                         <p class="text-[10px] text-gray-500 mt-1 italic">Link your TickTick account to use TaskTrackr across devices.</p>
                     </div>
 
+                    <div class="border-t border-[var(--text-color-secondary)] pt-4 mb-4">
+                        <label class="block text-sm font-semibold mb-1">Google Tasks Integration</label>
+                        <div class="flex justify-between items-center bg-[var(--input-bg-color)] p-3 rounded-lg">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-brands fa-google text-blue-500"></i>
+                                <span id="google-tasks-status" class="text-sm font-medium">Not Connected</span>
+                            </div>
+                            <button id="google-tasks-auth-btn" class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm">
+                                Connect
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-gray-500 mt-1 italic">Sync your Google Tasks with TaskTrackr.</p>
+                    </div>
+
                     <div class="border-t border-[var(--text-color-secondary)] pt-4">
                         <label class="block text-sm font-semibold mb-1">Trakt Integration</label>
                         <div class="flex justify-between items-center bg-[var(--input-bg-color)] p-3 rounded-lg">
@@ -202,9 +216,10 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { 
-            getAuth, onAuthStateChanged, signOut,
-            updatePassword, updateEmail, GoogleAuthProvider, linkWithPopup, unlink, deleteUser
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    getAuth, onAuthStateChanged, signOut,
+    updatePassword, updateEmail, GoogleAuthProvider, linkWithPopup, unlink, deleteUser,
+    signInWithPopup
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, onSnapshot, setDoc, getDocs, collection, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         import { TICKTICK_CLIENT_ID, TICKTICK_REDIRECT_URI } from '../tasktrackr/api_keys.js';
@@ -327,21 +342,64 @@
             }
         }
 
+        // 1. Add definitions
+        const googleTasksStatus = document.getElementById('google-tasks-status');
+        const googleTasksBtn = document.getElementById('google-tasks-auth-btn');
+
+        // Helper to check if Google Token is older than 55 mins
+        const isGoogleExpired = (data) => {
+            if (!data.updatedAt) return true;
+            const diffMins = (new Date() - data.updatedAt.toDate()) / 1000 / 60;
+            return diffMins > 55; 
+        };
+
+        // 2. Update loadSettings()
         async function loadSettings(user) {
             try {
-                // Load Profile Name
+                // --- Profile & Last.fm (No Changes) ---
                 const profileDoc = await getDoc(doc(db, 'users', user.uid, 'settings', 'profile'));
-                if (profileDoc.exists()) {
-                    displayNameInput.value = profileDoc.data().displayName || '';
-                }
+                if (profileDoc.exists()) displayNameInput.value = profileDoc.data().displayName || '';
 
-                // Load Last.fm
                 const lastfmDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'lastfm'));
-                if (lastfmDoc.exists()) {
-                    lastfmInput.value = lastfmDoc.data().username || '';
+                if (lastfmDoc.exists()) lastfmInput.value = lastfmDoc.data().username || '';
+
+                // --- GOOGLE TASKS LOGIC (UPDATED) ---
+                const googleDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'google'));
+                const gData = googleDoc.exists() ? googleDoc.data() : null;
+
+                if (gData && gData.token) {
+                    // Check for error flag OR expiration
+                    const isError = gData.status === 'error' || isGoogleExpired(gData);
+                    
+                    if (isError) {
+                        googleTasksStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Re-auth Needed';
+                        googleTasksStatus.className = "text-sm font-bold text-red-500 flex items-center gap-2";
+                        googleTasksBtn.textContent = "Reconnect";
+                        googleTasksBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm animate-pulse";
+                        googleTasksBtn.onclick = connectGoogleTasks; 
+                    } else {
+                        googleTasksStatus.textContent = "Connected";
+                        googleTasksStatus.className = "text-sm font-bold text-green-600";
+                        googleTasksBtn.textContent = "Disconnect";
+                        googleTasksBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
+                        googleTasksBtn.onclick = async () => {
+                            if(confirm("Disconnect Google Tasks?")) {
+                                await setDoc(doc(db, 'users', user.uid, 'services', 'google'), { token: deleteField() }, { merge: true });
+                                localStorage.removeItem('google_token');
+                                showMessage("Google Tasks disconnected.");
+                                loadSettings(user);
+                            }
+                        };
+                    }
+                } else {
+                    googleTasksStatus.textContent = "Not Connected";
+                    googleTasksStatus.className = "text-sm font-medium text-gray-500";
+                    googleTasksBtn.textContent = "Connect";
+                    googleTasksBtn.className = "text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
+                    googleTasksBtn.onclick = connectGoogleTasks;
                 }
 
-                // Load TickTick
+                // --- TICKTICK LOGIC (No Changes) ---
                 const ticktickDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'ticktick'));
                 if (ticktickDoc.exists() && ticktickDoc.data().token) {
                     ticktickStatus.textContent = "Connected";
@@ -367,21 +425,36 @@
                     };
                 }
 
-                // Load Trakt (VIDTRACKR)
+                // --- TRAKT LOGIC (UPDATED) ---
                 const traktDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'trakt'));
-                if (traktDoc.exists() && traktDoc.data().accessToken) {
-                    traktStatus.textContent = "Connected";
-                    traktStatus.className = "text-sm font-bold text-green-600";
-                    traktBtn.textContent = "Disconnect";
-                    traktBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
-                    traktBtn.onclick = async () => {
-                        if(confirm("Disconnect Trakt from account? This will sign you out of VidTrackr on all devices.")) {
-                            await setDoc(doc(db, 'users', user.uid, 'services', 'trakt'), { accessToken: deleteField() }, { merge: true });
-                            localStorage.removeItem('trakt_token');
-                            showMessage("Trakt disconnected.");
-                            loadSettings(user);
-                        }
-                    };
+                const tData = traktDoc.exists() ? traktDoc.data() : null;
+
+                if (tData && tData.accessToken) {
+                    // Check for explicit error flag
+                    if (tData.status === 'error') {
+                        traktStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Error';
+                        traktStatus.className = "text-sm font-bold text-red-500 flex items-center gap-2";
+                        traktBtn.textContent = "Reconnect";
+                        traktBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm animate-pulse";
+                        // Re-use the connect logic
+                        traktBtn.onclick = () => {
+                            const state = encodeURIComponent(window.location.pathname);
+                            window.location.href = `https://trakt.tv/oauth/authorize?response_type=token&client_id=${TRAKT_CLIENT_ID}&redirect_uri=${encodeURIComponent(TRAKT_REDIRECT_URI)}&state=${state}`;
+                        };
+                    } else {
+                        traktStatus.textContent = "Connected";
+                        traktStatus.className = "text-sm font-bold text-green-600";
+                        traktBtn.textContent = "Disconnect";
+                        traktBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
+                        traktBtn.onclick = async () => {
+                            if(confirm("Disconnect Trakt?")) {
+                                await setDoc(doc(db, 'users', user.uid, 'services', 'trakt'), { accessToken: deleteField(), status: deleteField() }, { merge: true });
+                                localStorage.removeItem('trakt_token');
+                                showMessage("Trakt disconnected.");
+                                loadSettings(user);
+                            }
+                        };
+                    }
                 } else {
                     traktStatus.textContent = "Not Connected";
                     traktStatus.className = "text-sm font-medium text-gray-500";
@@ -389,7 +462,6 @@
                     traktBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm";
                     traktBtn.onclick = () => {
                         const state = encodeURIComponent(window.location.pathname);
-                        // Using implicit flow (token) for client-side app, redirecting to callback handler
                         window.location.href = `https://trakt.tv/oauth/authorize?response_type=token&client_id=${TRAKT_CLIENT_ID}&redirect_uri=${encodeURIComponent(TRAKT_REDIRECT_URI)}&state=${state}`;
                     };
                 }
@@ -398,6 +470,35 @@
                 console.error("Error loading settings:", error);
             }
         }
+
+        // 3. Add Connection Function
+        const connectGoogleTasks = async () => {
+            const provider = new GoogleAuthProvider();
+            provider.addScope('https://www.googleapis.com/auth/tasks');
+            // Force account selection to ensure fresh token for re-auth
+            provider.setCustomParameters({ prompt: 'select_account' }); 
+            
+            try {
+                const result = await signInWithPopup(auth, provider);
+                const credential = GoogleAuthProvider.credentialFromResult(result);
+                const token = credential.accessToken;
+                
+                if (auth.currentUser && token) {
+                    await setDoc(doc(db, 'users', auth.currentUser.uid, 'services', 'google'), {
+                        token: token,
+                        updatedAt: new Date(),
+                        status: 'connected' // Clear any error flags
+                    }, { merge: true });
+                    
+                    localStorage.setItem('google_token', token);
+                    showMessage("Google Tasks Connected!", 'success');
+                    loadSettings(auth.currentUser);
+                }
+            } catch (error) {
+                console.error(error);
+                showMessage('Google Connection Failed: ' + error.message, 'error');
+            }
+        };
 
         async function loadExportSources(user) {
              exportSourcesList.innerHTML = '<div class="animate-pulse flex space-x-4 p-2"><div class="h-2 bg-gray-400 rounded w-full opacity-20"></div></div>';
