@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.133.0-alpha",
+    date: "2026-01-10",
+    changes: [
+        "In MediManagr: Overhauled the UI with a new Pink (#db2777) color scheme and adopted the 'VidTrackr' layout style, featuring a sticky desktop header and a fixed bottom navigation bar for mobile.",
+        "In MediManagr: Refactored CSS structure by renaming the main container to '.app-wrapper' and removing conflicting visibility classes to fix layout alignment and navigation display issues.",
+        "In MediManagr: Added logic to automatically unregister stale Service Workers to prevent 'content length mismatch' errors during development updates."
+    ]
+    },
+    {
     version: "v9.132.0-alpha",
     date: "2026-01-10",
     changes: [
