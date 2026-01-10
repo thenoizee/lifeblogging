@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.130.0-alpha",
+    date: "2026-01-10",
+    changes: [
+        "In VehicleManagr: Added 'Driver' and 'Volume Estimated' fields to the fuel logging form for better record-keeping.",
+        "In VehicleManagr: Split the single date-time input into separate Date and Time fields across all logging sections, making the time selection optional.",
+        "In VehicleManagr: Implemented a 'Standard Price' comparison tool that automatically detects and flags 'Loyalty Used' if the calculated price per unit is lower than the standard market rate.",
+        "In VehicleManagr: Enhanced the History tab to display fuel volume and unit cost details, and fixed a visual bug where empty odometer readings appeared as 'NaNmi'."
+    ]
+    },
+    {
     version: "v9.129.0-alpha",
     date: "2026-01-09",
     changes: [
