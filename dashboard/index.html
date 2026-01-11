@@ -478,7 +478,8 @@
             manualLogs: [],
             dailyPlan: [],
             todayDoses: [],
-            medsSchedule: []
+            medsSchedule: [],
+            recentMedLogs: [] // <--- ADD THIS
         };
 
         // --- Theme Logic ---
@@ -623,6 +624,7 @@
             const dayName = new Date().toLocaleDateString('en-US', {weekday: 'long'});
             ui.medsList.innerHTML = '';
             
+            // --- 1. Schedule Section ---
             let scheduledDoses = [];
             state.medsSchedule.forEach(med => {
                 if (med.isArchived) return;
@@ -632,6 +634,8 @@
                         scheduledDoses.push({
                             medId: med.id,
                             name: med.name,
+                            dosage: med.dosage,
+                            tags: med.tags || [],
                             icon: med.icon || 'fas fa-pills',
                             color: med.color || '#666',
                             time: time,
@@ -653,21 +657,62 @@
             });
 
             if (scheduledDoses.length === 0) {
-                ui.medsList.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">No meds scheduled for today.</p>`;
+                ui.medsList.innerHTML = `<p class="text-[10px] text-[var(--text-secondary)] italic text-center mb-2">No meds scheduled today.</p>`;
             } else {
                 scheduledDoses.forEach(dose => {
                     const isTaken = dose.status === 'taken';
+                    const tagsHtml = dose.tags.slice(0, 2).map(tag => 
+                        `<span class="px-1 py-0.5 rounded-[3px] text-[8px] bg-gray-200 dark:bg-gray-700 text-[var(--text-secondary)]">${tag}</span>`
+                    ).join('');
+
                     const div = document.createElement('div');
-                    div.className = `flex justify-between items-center p-2 rounded-lg text-xs ${isTaken ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-800'}`;
+                    div.className = `flex justify-between items-center p-1.5 rounded-lg text-xs mb-1 ${isTaken ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-800'}`;
+                    
                     div.innerHTML = `
-                        <div class="flex items-center gap-3">
-                            <span class="font-mono text-[var(--text-secondary)] w-10 text-right">${dose.time}</span>
-                            <div class="flex items-center gap-2">
-                                <i class="${dose.icon}" style="color: ${dose.color}"></i>
-                                <span class="${isTaken ? 'line-through opacity-60' : 'font-medium'} truncate max-w-[90px]">${dose.name}</span>
+                        <div class="flex items-start gap-2 min-w-0 flex-grow">
+                            <span class="font-mono text-[var(--text-secondary)] w-8 text-right flex-shrink-0 pt-0.5">${dose.time}</span>
+                            <div class="flex flex-col min-w-0 gap-0.5">
+                                <div class="flex items-center gap-1.5">
+                                    <i class="${dose.icon}" style="color: ${dose.color}"></i>
+                                    <span class="${isTaken ? 'line-through opacity-60' : 'font-bold'} truncate text-xs" title="${dose.name}">${dose.name}</span>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+                                    ${dose.dosage ? `<span class="text-[9px] text-[var(--text-secondary)] opacity-90">${dose.dosage}</span>` : ''}
+                                    ${tagsHtml}
+                                </div>
                             </div>
                         </div>
-                        <i class="fas ${isTaken ? 'fa-check text-green-500' : 'fa-hourglass-half text-gray-300'}"></i>
+                        <i class="fas ${isTaken ? 'fa-check text-green-500' : 'fa-hourglass-half text-gray-300'} ml-1 text-[10px] flex-shrink-0"></i>
+                    `;
+                    ui.medsList.appendChild(div);
+                });
+            }
+
+            // --- 2. Recent History Section ---
+            if (state.recentMedLogs && state.recentMedLogs.length > 0) {
+                const historyHeader = document.createElement('div');
+                historyHeader.className = "text-[9px] font-bold uppercase tracking-wider text-[var(--text-secondary)] mt-3 mb-1 pl-1 border-t border-[var(--border-color)] pt-2";
+                historyHeader.textContent = "Latest Logs";
+                ui.medsList.appendChild(historyHeader);
+
+                state.recentMedLogs.forEach(log => {
+                    const div = document.createElement('div');
+                    div.className = "flex justify-between items-center p-1.5 rounded-lg text-xs mb-1 bg-gray-50 dark:bg-gray-800 border border-[var(--border-color)]";
+                    const timeStr = new Date(log.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    const dateStr = new Date(log.date).toLocaleDateString([], {month: 'short', day: 'numeric'});
+                    
+                    div.innerHTML = `
+                        <div class="flex items-center gap-2 min-w-0">
+                            <i class="fas fa-history text-[9px] text-gray-400"></i>
+                            <div class="flex flex-col min-w-0">
+                                <span class="font-bold truncate text-[11px]">${log.medicineName}</span>
+                                <span class="text-[9px] text-[var(--text-secondary)]">${log.dosage || ''}</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-mono text-[10px]">${timeStr}</div>
+                            <div class="text-[8px] text-[var(--text-secondary)]">${dateStr}</div>
+                        </div>
                     `;
                     ui.medsList.appendChild(div);
                 });
@@ -1098,6 +1143,13 @@ const calculateWarrantyExpiry = (start, len, unit) => {
                         state.todayDoses.push({id: d.id, ...data});
                     }
                 });
+                renderMeds();
+            }));
+
+            // --- ADD THIS BLOCK BELOW ---
+            const recentDosesQ = query(collection(db, `users/${uid}/doses`), orderBy('date', 'desc'), limit(3));
+            unsubscribers.push(onSnapshot(recentDosesQ, (snap) => {
+                state.recentMedLogs = snap.docs.map(d => ({id: d.id, ...d.data()}));
                 renderMeds();
             }));
         };

@@ -2,12 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v9.134.0-alpha",
+    date: "2026-01-11",
+    changes: [
+        "In Dashboard: Enhanced the MediManagr widget to display dosage information and up to two tags (e.g., 'Take with food') for each scheduled medication.",
+        "In Dashboard: Added a 'Latest Logs' section to the MediManagr widget, showing the two most recent history entries with timestamps for quick reference.",
+    ]
+    },
+    {
     version: "v9.133.0-alpha",
     date: "2026-01-10",
     changes: [
         "In MediManagr: Overhauled the UI with a new Pink (#db2777) color scheme and adopted the 'VidTrackr' layout style, featuring a sticky desktop header and a fixed bottom navigation bar for mobile.",
         "In MediManagr: Refactored CSS structure by renaming the main container to '.app-wrapper' and removing conflicting visibility classes to fix layout alignment and navigation display issues.",
-        "In MediManagr: Added logic to automatically unregister stale Service Workers to prevent 'content length mismatch' errors during development updates."
     ]
     },
     {
