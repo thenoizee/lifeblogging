@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.135.0-alpha",
+    date: "2026-01-11",
+    changes: [
+        "In Hub: Added SEO metadata to drive traffic increases.",
+        "In RecipeManagr: Introduced 'Cook Mode', a distraction-free step-by-step cooking interface featuring wake lock, integrated text-to-timers, and step navigation previews.",
+        "In RecipeManagr: Implemented 'Smart Ingredients' in Cook Mode, utilizing a sidebar (desktop) or slide-up drawer (mobile) to automatically highlight and cross off items mentioned in the active step.",
+        "In RecipeManagr: Fixed critical navigation bugs and ensured portion scaling and unit conversions correctly synchronize from the details view to Cook Mode."
+    ]
+    },
+    {
     version: "v9.134.0-alpha",
     date: "2026-01-11",
     changes: [
