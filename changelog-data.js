@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.136.0-alpha",
+    date: "2026-01-11",
+    changes: [
+        "In VehicleManagr: Overhauled Dashboard layout for better hierarchy and introduced a new 'Miles Driven' ownership statistic.",
+        "In VehicleManagr: Implemented 'Include Purchase Cost' toggle, dynamically updating Total Cost, Daily Cost, and Monthly Spending charts to reflect vehicle acquisition price.",
+        "In VehicleManagr: Updated 'Projected Annual Mileage' logic to calculate based on total ownership duration rather than just the logging window.",
+    ]
+    },
+    {
     version: "v9.135.0-alpha",
     date: "2026-01-11",
     changes: [
