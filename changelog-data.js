@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.138.0-alpha",
+    date: "2026-01-12",
+    changes: [
+        "In FoodTrackr: Replaced the manual 'Origin' text filter with a dropdown selector containing common countries for easier filtering.",
+        "In FoodTrackr: Implemented local storage persistence for search filters, ensuring Brand and Origin preferences are remembered between sessions.",
+        "In FoodTrackr: Updated the logging form to respect the currently viewed Dashboard date, defaulting new entries to the active day (e.g., Yesterday) instead of always resetting to 'Now'."
+    ]
+    },
+    {
     version: "v9.137.0-alpha",
     date: "2026-01-12",
     changes: [
