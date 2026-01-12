@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.137.0-alpha",
+    date: "2026-01-12",
+    changes: [
+        "In VidTrackr: Replaced the compact hover rating menu with a large, touch-friendly 1x10 full-screen modal for easier quick logging.",
+        "In VidTrackr: Fixed a UI bug where toast notifications would stack on top of each other; they now list vertically in a dedicated container.",
+    ]
+    },
+    {
     version: "v9.136.0-alpha",
     date: "2026-01-11",
     changes: [
