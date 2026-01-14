@@ -189,8 +189,8 @@
                         <div class="text-xl font-bold text-gray-700 dark:text-gray-200 mt-1" id="stat-daily-cost">--</div>
                     </div>
                     <div class="card p-4 flex flex-col justify-center border-b-4 border-blue-500">
-                        <p class="text-[10px] font-bold uppercase text-gray-400">Avg MPG</p>
-                        <div class="text-xl font-bold text-gray-700 dark:text-gray-200 mt-1" id="avg-mpg-display">--</div>
+                        <p class="text-[10px] font-bold uppercase text-gray-400">Avg MPL</p>
+<div class="text-xl font-bold text-gray-700 dark:text-gray-200 mt-1" id="avg-mpg-display">--</div>
                     </div>
                 </div>
             </div>
@@ -599,8 +599,8 @@
                                 <input id="meta-date" type="date" disabled />
                             </div>
                             <div>
-                                <label class="text-[10px] font-bold uppercase text-gray-400">Tank Size (Gal)</label>
-                                <input id="meta-tank" type="number" step="0.1" placeholder="e.g. 12.5" disabled />
+                                <label class="text-[10px] font-bold uppercase text-gray-400">Tank Size (L)</label>
+<input id="meta-tank" type="number" step="0.1" placeholder="e.g. 50" disabled />
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold uppercase text-gray-400">Start Mileage</label>
@@ -685,6 +685,16 @@
     </div>
     
     <div class="flex-1 flex flex-col gap-5 max-w-md mx-auto w-full">
+        <div class="grid grid-cols-2 gap-3">
+    <div class="space-y-1">
+        <label class="text-blue-100 text-xs font-bold uppercase tracking-wider">Date</label>
+        <input id="qf-date" type="date" class="w-full bg-blue-700/30 border border-blue-400/50 focus:border-white rounded-xl p-3 text-lg font-medium outline-none transition-all text-white" />
+    </div>
+    <div class="space-y-1">
+        <label class="text-blue-100 text-xs font-bold uppercase tracking-wider">Time</label>
+        <input id="qf-time" type="time" class="w-full bg-blue-700/30 border border-blue-400/50 focus:border-white rounded-xl p-3 text-lg font-medium outline-none transition-all text-white" />
+    </div>
+</div>
         <div class="space-y-1">
             <label class="text-blue-100 text-xs font-bold uppercase tracking-wider">Total Paid</label>
             <div class="relative group">
@@ -1035,64 +1045,59 @@ const setDefaults = () => {
             const totalSpent = costs.fuel + costs.service + costs.expense + costs.consumable + purchaseCost;
             document.getElementById('total-cost-display').textContent = `£${totalSpent.toLocaleString('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
 
-            // 3. LIFETIME MPG CALCULATION (UK GALLONS)
-            let avgMpg = 0;
-            let chartPts = [];
-            const UK_GAL_CONVERSION = 4.54609; // Liters to UK Gallons
+            // REPLACE the 'LIFETIME MPG CALCULATION' block with this:
 
-            if (fuelLogs.length > 0) {
-                const firstLog = fuelLogs[0];
-                const lastLog = fuelLogs[fuelLogs.length - 1];
-                const startOdo = getNum(v.startOdometer);
+// 3. LIFETIME MPL CALCULATION (MILES PER LITRE)
+let avgMpl = 0;
+let chartPts = [];
+// const UK_GAL_CONVERSION = 4.54609; // REMOVED
 
-                // A. Determine Distance
-                // Use Glovebox mileage if it's valid and lower than the first log
-                // Otherwise, use the first log as the start point.
-                let effectiveStartOdo = (startOdo > 0 && startOdo < getNum(firstLog.odometer)) 
-                                        ? startOdo 
-                                        : getNum(firstLog.odometer);
+if (fuelLogs.length > 0) {
+    const firstLog = fuelLogs[0];
+    const lastLog = fuelLogs[fuelLogs.length - 1];
+    const startOdo = getNum(v.startOdometer);
 
-                const totalDist = getNum(lastLog.odometer) - effectiveStartOdo;
-                
-                // B. Determine Fuel Used
-                // If we used the Glovebox start, we include ALL fuel logs (because the first log replaced fuel used since purchase).
-                // If we used the First Log start, we skip the first log (because that fuel replaced miles driven BEFORE tracking started).
-                const startIndex = (effectiveStartOdo === startOdo) ? 0 : 1;
-                const totalLiters = fuelLogs.slice(startIndex).reduce((acc, d) => acc + getNum(d.fuelQuantity), 0);
-                
-                // C. Convert to Gallons & Calculate
-                const totalGallons = totalLiters / UK_GAL_CONVERSION;
+    let effectiveStartOdo = (startOdo > 0 && startOdo < getNum(firstLog.odometer)) 
+                            ? startOdo 
+                            : getNum(firstLog.odometer);
 
-                if (totalDist > 0 && totalGallons > 0) {
-                    avgMpg = totalDist / totalGallons;
+    const totalDist = getNum(lastLog.odometer) - effectiveStartOdo;
+    const startIndex = (effectiveStartOdo === startOdo) ? 0 : 1;
+    
+    // Sum Liters directly
+    const totalLiters = fuelLogs.slice(startIndex).reduce((acc, d) => acc + getNum(d.fuelQuantity), 0);
+    
+    // Calculate MPL (Dist / Liters)
+    if (totalDist > 0 && totalLiters > 0) {
+        avgMpl = totalDist / totalLiters;
+    }
+    
+    // Chart: Trend Line
+    let runOdo = effectiveStartOdo;
+    let runLiters = 0;
+    fuelLogs.forEach(d => {
+        runLiters += getNum(d.fuelQuantity);
+        if(!d.isPartial) {
+                const dist = getNum(d.odometer) - runOdo;
+                // Calculate Segment MPL using Liters
+                if(dist > 0 && runLiters > 0) {
+                    chartPts.push({ x: new Date(d.date), y: (dist/runLiters) });
                 }
-                
-                // Chart: Trend Line
-                let runOdo = effectiveStartOdo;
-                let runLiters = 0;
-                fuelLogs.forEach(d => {
-                    runLiters += getNum(d.fuelQuantity);
-                    if(!d.isPartial) {
-                         const dist = getNum(d.odometer) - runOdo;
-                         // Calculate Segment MPG
-                         const segmentGal = runLiters / UK_GAL_CONVERSION;
-                         
-                         if(dist > 0 && segmentGal > 0) {
-                             chartPts.push({ x: new Date(d.date), y: (dist/segmentGal) });
-                         }
-                         runOdo = getNum(d.odometer);
-                         runLiters = 0;
-                    }
-                });
-            }
-            
-            // Display Result
-            if(avgMpg === 0 && fuelLogs.length > 0) {
-                 // Still 0? Probably missing volume data (Import Bug)
-                 document.getElementById('avg-mpg-display').innerHTML = '<span class="text-xs text-red-500">Data Err</span>';
-            } else {
-                 document.getElementById('avg-mpg-display').textContent = avgMpg ? avgMpg.toFixed(1) : '--';
-            }
+                runOdo = getNum(d.odometer);
+                runLiters = 0;
+        }
+    });
+}
+
+// Display Result
+if(avgMpl === 0 && fuelLogs.length > 0) {
+        document.getElementById('avg-mpg-display').innerHTML = '<span class="text-xs text-red-500">Data Err</span>';
+} else {
+        document.getElementById('avg-mpg-display').textContent = avgMpl ? avgMpl.toFixed(1) : '--';
+}
+
+// Update Range Calculation (Line ~1168)
+if(v && v.tankSize && avgMpl > 0) document.getElementById('stat-range').textContent = Math.round(avgMpl * getNum(v.tankSize));
 
             // 4. Cost Per Mile
             let minOdo = (fuelLogs.length > 0) ? getNum(fuelLogs[0].odometer) : 0;
@@ -1359,15 +1364,15 @@ const setDefaults = () => {
         document.getElementById('fab-main').onclick = () => document.getElementById('fab-container').classList.toggle('open');
         // Add this helper function inside the module
 const transferQuickData = () => {
-    // 1. Transfer values to the main hidden form
+    // ... existing map logic ...
     const map = {
         'qf-cost': 'fuel-cost',
         'qf-litres': 'fuel-quantity',
         'qf-odo': 'odometer',
         'qf-company': 'fuel-company',
-        'qf-location': 'fuel-location',     // New
-        'qf-price-std': 'fuel-price-standard', // New
-        'qf-driver': 'fuel-driver'          // New
+        'qf-location': 'fuel-location',
+        'qf-price-std': 'fuel-price-standard',
+        'qf-driver': 'fuel-driver'
     };
 
     for (const [qId, mainId] of Object.entries(map)) {
@@ -1375,13 +1380,11 @@ const transferQuickData = () => {
         if(val) document.getElementById(mainId).value = val;
     }
 
-    // 2. Set Time to now
-    const now = new Date();
-    document.getElementById('fuel-date').value = now.toISOString().slice(0,10);
-    document.getElementById('fuel-time').value = now.toTimeString().slice(0,5);
+    // UPDATED: Set Date/Time from the Quick Log inputs
+    document.getElementById('fuel-date').value = document.getElementById('qf-date').value;
+    document.getElementById('fuel-time').value = document.getElementById('qf-time').value;
 
-    // 3. Trigger calculation logic (Total / Volume = Unit Price) AND Loyalty Check
-    // We trigger input on all relevant fields to ensure the loyalty checkbox updates
+    // ... existing trigger logic ...
     ['fuel-quantity', 'fuel-cost', 'fuel-price-standard'].forEach(id => {
         document.getElementById(id).dispatchEvent(new Event('input'));
     });
@@ -1415,6 +1418,13 @@ window.quickLog = (type) => {
         ['qf-cost', 'qf-litres', 'qf-company', 'qf-location', 'qf-price-std', 'qf-driver'].forEach(id => {
             document.getElementById(id).value = '';
         });
+
+        // NEW: Default Date/Time to Now
+        const now = new Date();
+        document.getElementById('qf-date').value = now.toISOString().slice(0, 10);
+        document.getElementById('qf-time').value = now.toTimeString().slice(0, 5);
+
+        // ... existing smart odometer / driver logic ...
 
         // Smart Odometer: Find highest
         const validOdos = appState.history.map(h => parseFloat(h.odometer)).filter(o => !isNaN(o) && o > 0);

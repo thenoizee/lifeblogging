@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v9.140.0-alpha",
+    date: "2026-01-14",
+    changes: [
+        "In VehicleManagr: Replaced Miles Per Gallon (MPG) with Miles Per Litre (MPL) as the primary efficiency metric across the Dashboard, charts, and statistics.",
+        "In VehicleManagr: Updated the 'Quick Fuel Mode' interface to include dedicated Date and Time selectors, defaulting to 'Now' for instant logging while allowing manual adjustments.",
+        "In VehicleManagr: Updated the Virtual Glovebox settings to define Tank Size in Litres (L) instead of Gallons, ensuring accurate Real Range projections."
+    ]
+    },
+    {
     version: "v9.139.0-alpha",
     date: "2026-01-14",
     changes: [
