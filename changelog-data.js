@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.139.0-alpha",
+    date: "2026-01-14",
+    changes: [
+        "In VehicleManagr: Introduced 'Quick Fuel Mode', a streamlined, full-screen interface designed for rapid logging at the pump with large, touch-friendly inputs.",
+    ]
+    },
+    {
     version: "v9.138.0-alpha",
     date: "2026-01-12",
     changes: [
