@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.141.0-alpha",
+    date: "2026-01-15",
+    changes: [
+        "In FoodTrackr: Added 'Bulk Manage' mode to the Dashboard, enabling multi-select for moving or copying log entries to different dates.",
+    ]
+    },
+    {
     version: "v9.140.0-alpha",
     date: "2026-01-14",
     changes: [
