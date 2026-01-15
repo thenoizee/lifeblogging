@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v9.142.0-alpha",
+    date: "2026-01-15",
+    changes: [
+        "In MediManagr: Fixed a crash when saving edited doses by updating the tab detection logic to check the `tab-content-history` container instead of the deprecated `.tab-button` class.",
+    ]
+    },
+    {
     version: "v9.141.0-alpha",
     date: "2026-01-15",
     changes: [
