@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.143.0-alpha",
+    date: "2026-01-16",
+    changes: [
+        "In PDFTools: Fixed the 'Re-create Scanned Book' tool which was outputting blank pages; implemented logic to correctly copy, split landscape pages into two portrait pages, and re-order them from booklet format (e.g., 20-1) to linear order.",
+        "In PDFTools: Implemented the previously missing 'Flatten PDF' functionality to merge form fields and annotations into the document content.",
+        "In PDFTools: Implemented the 'PDF to Images' tool, allowing users to render and download PDF pages as high-quality images using PDF.js.",
+        "In PDFTools: Refined the 'ADF Tablet to Booklet Scan Fixer' to specifically rotate every second page by 180 degrees to correct common ADF scanning errors."
+    ]
+    },
+    {
     version: "v9.142.0-alpha",
     date: "2026-01-15",
     changes: [

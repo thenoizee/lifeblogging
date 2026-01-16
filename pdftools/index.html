@@ -1339,42 +1339,69 @@
     };
     window.handleRecreate = async () => {
         const tool = document.getElementById('recreate-tool');
-        toggleButtonLoading(tool, true); showStatus(tool, 'Re-creating book...');
+        toggleButtonLoading(tool, true); 
+        showStatus(tool, 'Re-creating book...');
+        
         try {
             const file = toolState.recreate.files[0];
             const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
-            const pageCount = pdfDoc.getPageCount();
-            const tempDoc = await PDFDocument.create();
-            const copiedPages = await tempDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
-            const splitPages = [];
-            for(const copiedPage of copiedPages) {
-                const { width, height } = copiedPage.getMediaBox();
-                copiedPage.setCropBox(0, 0, width/2, height);
-                splitPages.push(await tempDoc.embedPage(copiedPage));
-                copiedPage.setCropBox(width/2, 0, width/2, height);
-                splitPages.push(await tempDoc.embedPage(copiedPage));
-            }
+            const numScans = pdfDoc.getPageCount();
+            const totalPages = numScans * 2;
+            
+            // Create the final document
             const finalPdf = await PDFDocument.create();
-            const orderedPages = [];
-            for (let i = 0; i < pageCount; i++) {
-                orderedPages.push(splitPages[i * 2 + 1]);
-                orderedPages.push(splitPages[(pageCount - 1 - i) * 2]);
+            
+            // Pre-allocate array to hold pages in the correct 1..20 order
+            const orderedPages = new Array(totalPages);
+
+            for (let k = 0; k < numScans; k++) {
+                // Copy the scan page TWICE. 
+                // This creates two distinct page objects in 'finalPdf' that we can crop independently.
+                const [pageL, pageR] = await finalPdf.copyPages(pdfDoc, [k, k]);
+                
+                const { width, height } = pageL.getMediaBox();
+                
+                // Set Crop for Left Half
+                pageL.setCropBox(0, 0, width / 2, height);
+                
+                // Set Crop for Right Half
+                pageR.setCropBox(width / 2, 0, width / 2, height);
+                
+                // --- SORTING LOGIC ---
+                // Scan 0 (Even): [20 | 1]  -> Left is High (20), Right is Low (1)
+                // Scan 1 (Odd):  [2 | 19]  -> Left is Low (2), Right is High (19)
+                // Scan 2 (Even): [18 | 3]  -> Left is High (18), Right is Low (3)
+                // ...
+                
+                const lowIndex = k;                 // e.g., 0, 1, 2...
+                const highIndex = totalPages - 1 - k; // e.g., 19, 18, 17...
+
+                if (k % 2 === 0) {
+                    // Even scans: Right is Low, Left is High
+                    orderedPages[lowIndex] = pageR;
+                    orderedPages[highIndex] = pageL;
+                } else {
+                    // Odd scans: Left is Low, Right is High
+                    orderedPages[lowIndex] = pageL;
+                    orderedPages[highIndex] = pageR;
+                }
             }
-            const finalOrder = [];
-            for (let i = 0; i < pageCount; i++) {
-                finalOrder.push(orderedPages[i]);
-                finalOrder.push(orderedPages[orderedPages.length - 1 - i]);
+
+            // Add the pages to the document in the correct order
+            for (const page of orderedPages) {
+                if (page) finalPdf.addPage(page);
             }
-            const uniqueFinalOrder = finalOrder.slice(0, pageCount * 2);
-            for (const embeddedPage of uniqueFinalOrder) {
-                const { width, height } = embeddedPage;
-                const page = finalPdf.addPage([width, height]);
-                page.drawPage(embeddedPage, { x: 0, y: 0, width, height });
-            }
+            
             const bytes = await finalPdf.save();
             createDownloadLink(tool, bytes, `recreated_${file.name}`);
             showStatus(tool, 'Book re-created successfully!');
-        } catch (e) { showStatus(tool, e.message, true); console.error(e); } finally { toggleButtonLoading(tool, false); }
+            
+        } catch (e) { 
+            showStatus(tool, e.message, true); 
+            console.error(e); 
+        } finally { 
+            toggleButtonLoading(tool, false); 
+        }
     };
     window.handleExtract = async () => {
         const tool = document.getElementById('extract-tool');
@@ -1665,12 +1692,14 @@
             const pages = pdfDoc.getPages();
 
             for (let i = 0; i < pages.length; i++) {
-                if (i % 2 !== 0) { 
-                    const page = pages[i];
-                    const currentRotation = page.getRotation().angle;
-                    page.setRotation(degrees(currentRotation + 180));
-                }
-            }
+    // Check if the page index is odd (i.e., page 2, 4, 6...)
+    if (i % 2 !== 0) { 
+        const page = pages[i];
+        const currentRotation = page.getRotation().angle;
+        // Rotate 180 degrees
+        page.setRotation(degrees((currentRotation + 180) % 360));
+    }
+}
 
             const fixedBytes = await pdfDoc.save();
             createDownloadLink(tool, fixedBytes, `fixed_${file.name}`);
@@ -1685,8 +1714,84 @@
 
 
     // --- Placeholder Handlers ---
-    window.handlePdftoimages = async () => { alert('This feature is not yet implemented.'); };
-    window.handleFlatten = async () => { alert('This feature is not yet implemented.'); };
+    window.handlePdftoimages = async () => {
+    const tool = document.getElementById('pdftoimages-tool');
+    toggleButtonLoading(tool, true);
+    showStatus(tool, 'Converting pages to images...');
+    
+    const linksContainer = document.getElementById('pdftoimages-links');
+    linksContainer.innerHTML = ''; // Clear previous results
+
+    try {
+        const file = toolState.pdftoimages.files[0];
+        if (!file) throw new Error("No file selected.");
+
+        const format = tool.querySelector('.pdftoimages-format').value; // 'image/png' or 'image/jpeg'
+        const fileExt = format === 'image/jpeg' ? 'jpg' : 'png';
+        
+        // Use PDF.js to render the pages
+        const arrayBuffer = await file.arrayBuffer();
+        const pdfJsDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+        
+        for (let i = 1; i <= pdfJsDoc.numPages; i++) {
+            const page = await pdfJsDoc.getPage(i);
+            // Scale: 2.0 provides better quality (Retina-like) output
+            const viewport = page.getViewport({ scale: 2.0 }); 
+            
+            const canvas = document.createElement('canvas');
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            
+            await page.render({
+                canvasContext: canvas.getContext('2d'),
+                viewport: viewport
+            }).promise;
+            
+            // Convert canvas to blob and create link
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, format));
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${file.name.replace('.pdf', '')}_page_${i}.${fileExt}`;
+            link.className = "flex flex-col items-center justify-center p-3 bg-gray-100 border rounded hover:bg-indigo-50 dark:bg-gray-700 dark:hover:bg-gray-600 transition";
+            link.innerHTML = `<i class="fas fa-download mb-2 text-indigo-500"></i><span class="text-xs font-bold">Page ${i}</span>`;
+            
+            linksContainer.appendChild(link);
+        }
+        
+        showStatus(tool, `Success! Created ${pdfJsDoc.numPages} images below.`);
+    } catch (e) {
+        showStatus(tool, `Error: ${e.message}`, true);
+        console.error(e);
+    } finally {
+        toggleButtonLoading(tool, false);
+    }
+};
+    window.handleFlatten = async () => {
+    const tool = document.getElementById('flatten-tool');
+    toggleButtonLoading(tool, true);
+    showStatus(tool, 'Flattening PDF...');
+    try {
+        const file = toolState.flatten.files[0];
+        if (!file) throw new Error("No file selected.");
+
+        const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
+        const form = pdfDoc.getForm();
+        
+        // This collapses all form fields into standard page content
+        form.flatten();
+        
+        const bytes = await pdfDoc.save();
+        createDownloadLink(tool, bytes, `flattened_${file.name}`);
+        showStatus(tool, 'PDF flattened successfully!');
+    } catch (e) {
+        showStatus(tool, e.message, true);
+        console.error(e);
+    } finally {
+        toggleButtonLoading(tool, false);
+    }
+};
     window.handleSign = async () => { alert('This feature is not yet implemented.'); };
     const onAddSignature = () => { alert('This feature is not yet implemented.'); };
     window.handleAddtext = async () => { alert('This feature is not yet implemented.'); };
