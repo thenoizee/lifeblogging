@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v9.144.0-alpha",
+    date: "2026-01-16",
+    changes: [
+        "In Text Generator: Overhauled 'Manage' tab layout: Implemented a responsive split-pane design with a collapsible sidebar and toggleable live preview for better editing screen UX.",
+        "In Text Generator: Overhauled 'Use' tab layout: Replaced accordion steps with a modern split-pane workspace, featuring a searchable sidebar list and instant template selection.",
+        "In Text Generator: Implemented Real-Time Preview: Removed the 'Generate' button in the Use tab; templates now update instantly as fields are modified.",
+        "In Text Generator: Enhanced Placeholder System: Fixed missing pronouns, updated placeholder tags to be compact and draggable, and moved the toolbar to full-width above the editor.",
+        "In Text Generator: UI Improvements: Added 'Target Audience' and 'Purpose' metadata badges to both the Template Header and the Sidebar list for easier identification.",
+        "In Text Generator: Refined Navigation: Added pill-style folder filtering and consolidated the Pronoun/Time/Version controls into a unified toolbar."
+    ]
+    },
+    {
     version: "v9.143.0-alpha",
     date: "2026-01-16",
     changes: [
