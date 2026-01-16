@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v9.145.0-alpha",
+    date: "2026-01-16",
+    changes: [
+        "In FoodTrackr: Fixed critical layout bug where History and Foods/Meals tabs were rendering empty or hidden due to a premature closing div in the Entry Form section.",
+        "In FoodTrackr: Fixed Search Bar visibility: The search interface now correctly hides when switching to Frequent, Recent, or My Meals sub-tabs.",
+    ]
+    },
+    {
     version: "v9.144.0-alpha",
     date: "2026-01-16",
     changes: [
