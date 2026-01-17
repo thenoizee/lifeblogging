@@ -3140,8 +3140,11 @@ const renderRecentFoods = () => {
         const name = product.product_name || 'Unknown Food';
         const brands = product.brands || '';
         const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
-        const imageUrl = product.image_front_small_url || product.image_front_thumb_url || PLACEHOLDER_IMG;
+        const imageUrl = product.image_front_small_url || product.image_front_thumb_url || 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png';
         
+        // Check for serving size existence
+        const hasServing = product.serving_size || product.serving_quantity;
+
         card.innerHTML = `
             <div class="w-20 h-20 flex-shrink-0 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-100 dark:border-gray-600 p-1 overflow-hidden relative">
                 <div class="absolute inset-0 flex items-center justify-center text-gray-300 dark:text-gray-500">
@@ -3152,7 +3155,7 @@ const renderRecentFoods = () => {
                      loading="lazy" 
                      class="w-full h-full object-contain relative z-10 opacity-0 transition-opacity duration-300 ease-in"
                      onload="this.classList.remove('opacity-0'); this.previousElementSibling.remove()" 
-                     onerror="this.src='${PLACEHOLDER_IMG}'; this.classList.remove('opacity-0');">
+                     onerror="this.src='https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png'; this.classList.remove('opacity-0');">
             </div>
             
             <div class="flex-grow min-w-0">
@@ -3162,17 +3165,20 @@ const renderRecentFoods = () => {
                 </div>
                 <p class="text-sm text-gray-500 dark:text-gray-400 truncate mb-2" title="${brands}">${brands}</p>
                 
-                <div class="flex items-center justify-between mt-1">
-                     <div class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300">
-                        ${product.nutriments?.['energy-kcal_100g'] ? Math.round(product.nutriments['energy-kcal_100g']) + ' kcal' : 'N/A'}
+                <div class="flex items-center justify-between mt-1 gap-2">
+                     <div class="flex items-center gap-2">
+                         <div class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300">
+                            ${product.nutriments?.['energy-kcal_100g'] ? Math.round(product.nutriments['energy-kcal_100g']) + ' kcal' : 'N/A'}
+                         </div>
+                         ${!hasServing ? '<span class="text-[10px] text-red-600 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-800 flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation"></i> No Serving</span>' : ''}
                      </div>
-                     <span class="text-xs font-bold text-orange-600 dark:text-orange-400 group-hover:underline">Select <i class="fa-solid fa-arrow-right ml-1"></i></span>
+                     <span class="text-xs font-bold text-orange-600 dark:text-orange-400 group-hover:underline whitespace-nowrap">View <i class="fa-solid fa-arrow-right ml-1"></i></span>
                 </div>
             </div>
         `;
         
         card.addEventListener('click', () => {
-            selectProductFromSearch(product, 100);
+            showProductDetailsModal(product);
         });
         searchResultsDiv.appendChild(card);
     });
@@ -3498,6 +3504,90 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     formSection.scrollIntoView({ behavior: 'smooth' });
 };
 
+// --- FIX: Missing selectFoodItem function ---
+      const selectFoodItem = (item, qty = 100) => {
+          // 1. Prepare UI: Hide lists, show form
+          document.querySelectorAll('.subtab-content').forEach(el => el.classList.add('hidden'));
+          document.getElementById('search-results').classList.add('hidden');
+          document.getElementById('search-controls').classList.add('hidden');
+          document.getElementById('entry-form-section').classList.remove('hidden');
+          document.getElementById('back-to-search-btn').classList.remove('hidden');
+          document.getElementById('selected-product-display').classList.add('hidden'); // Hide the "Currently Logging" banner for local items to keep it clean
+
+          // 2. Populate Basic Info
+          document.getElementById('food-name').value = item.name || '';
+          
+          // 3. Handle Quantity & Units
+          const unitSelect = document.getElementById('quantity-unit');
+          // Clear old custom units
+          unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
+          
+          let defaultUnit = 'g';
+          let defaultAmount = qty; // Expecting grams passed in
+
+          // If the saved item has custom serving units, restore them
+          if (item.servingUnits && Array.isArray(item.servingUnits)) {
+              item.servingUnits.forEach(u => {
+                   const option = document.createElement('option');
+                   option.value = u.name;
+                   option.textContent = u.name;
+                   option.dataset.grams = u.grams;
+                   option.dataset.custom = 'true';
+                   unitSelect.appendChild(option);
+              });
+          }
+
+          document.getElementById('quantity-amount').value = defaultAmount;
+          unitSelect.value = defaultUnit;
+          
+          // 4. Set State
+          // Ensure we have a valid baseNutrients object. If it's a legacy item without baseNutrients, reconstruct it from the flat values.
+          const baseNutrients = item.baseNutrients || {
+              calories: item.calories, 
+              protein: item.protein, 
+              carbs: item.carbs, 
+              fat: item.fat,
+              fiber: item.fiber || 0, 
+              sugar: item.sugar || 0, 
+              sodium: item.sodium || 0, 
+              'saturated-fat': item['saturated-fat'] || 0, 
+              salt: item.salt || 0
+          };
+
+          currentFoodItem = {
+              baseNutrients: baseNutrients,
+              source: item.source || 'Manual Entry',
+              brands: item.brands || '',
+              imageUrl: item.imageUrl || null,
+              servingUnits: item.servingUnits || [],
+              ingredients: item.ingredients || '',
+              allergens: item.allergens || ''
+          };
+
+          // 5. Populate Input Fields
+          // Put the total grams into the hidden calculator field so updateNutrientFieldsFromBase works correctly
+          document.getElementById('quantity').value = defaultAmount;
+          
+          // Update inputs based on the base nutrients and quantity
+          updateNutrientFieldsFromBase(); 
+          
+          // Lock fields if it was originally from a verified source (has baseNutrients), otherwise allow editing
+          setNutrientFieldsReadOnly(!!item.baseNutrients);
+
+          // 6. Reset Form State (Log Mode)
+          editingItemId = null;
+          editingItemType = null;
+          document.getElementById('log-food-btn').textContent = 'Log Food';
+          document.getElementById('save-favorite-btn').textContent = 'Save as Favorite';
+          
+          // 7. Scroll user to form
+          document.getElementById('entry-form-section').scrollIntoView({ behavior: 'smooth' });
+          
+          // 8. Restore Quick Buttons (Optional: generic pack sizes)
+          const btnContainer = document.getElementById('form-quick-qty-buttons');
+          if(btnContainer) btnContainer.innerHTML = ''; 
+      };
+
 window.openProductModalFromLog = (itemId) => {
     if (event.target.type === 'checkbox') return;
 
@@ -3647,151 +3737,194 @@ document.getElementById('bulk-move-btn').addEventListener('click', () => execute
 document.getElementById('bulk-copy-btn').addEventListener('click', () => executeBulkAction('copy'));
 
         const showProductDetailsModal = (product) => {
-            const modal = document.getElementById('product-modal');
-            const name = product.product_name || 'Unknown';
-            const brands = product.brands || '';
-            const quantityStr = product.quantity || '100g';
-            const servingSizeStr = product.serving_size || '';
-            const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
+    const modal = document.getElementById('product-modal');
+    const name = product.product_name || 'Unknown';
+    const brands = product.brands || '';
+    const quantityStr = product.quantity || '100g';
+    const servingSizeStr = product.serving_size || '';
+    const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
 
-            const parseQuantity = (str) => {
-                if (!str) return null;
-                const match = str.match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
-                if(!match) return null;
-                let val = parseFloat(match[1]);
-                const unit = match[2].toLowerCase();
-                if(unit === 'kg' || unit === 'l') val *= 1000;
-                return val;
-            }
+    const parseQuantity = (str) => {
+        if (!str) return null;
+        const match = str.match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
+        if(!match) return null;
+        let val = parseFloat(match[1]);
+        const unit = match[2].toLowerCase();
+        if(unit === 'kg' || unit === 'l') val *= 1000;
+        return val;
+    }
 
-            const packageSize = parseQuantity(quantityStr) || 100;
-            const servingSize = parseQuantity(servingSizeStr) || null;
+    const packageSize = parseQuantity(quantityStr) || 100;
+    const servingSize = parseQuantity(servingSizeStr) || null;
 
-            const nutriments = product.nutriments || {};
-            
-            const baseNutrients = {
-                calories: parseFloat(nutriments['energy-kcal_100g'] || nutriments['energy-kcal_100ml'] || 0),
-                protein: parseFloat(nutriments.proteins_100g || nutriments.proteins_100ml || 0),
-                carbs: parseFloat(nutriments.carbohydrates_100g || nutriments.carbohydrates_100ml || 0),
-                fat: parseFloat(nutriments.fat_100g || nutriments.fat_100ml || 0),
-            };
-            
-            for (const key in DETAILED_NUTRIENTS_MAP) {
-                baseNutrients[key] = parseFloat(nutriments[key] || 0);
-            }
-            
-            const packageMultiplier = packageSize / 100;
+    const nutriments = product.nutriments || {};
+    
+    const baseNutrients = {
+        calories: parseFloat(nutriments['energy-kcal_100g'] || nutriments['energy-kcal_100ml'] || 0),
+        protein: parseFloat(nutriments.proteins_100g || nutriments.proteins_100ml || 0),
+        carbs: parseFloat(nutriments.carbohydrates_100g || nutriments.carbohydrates_100ml || 0),
+        fat: parseFloat(nutriments.fat_100g || nutriments.fat_100ml || 0),
+    };
+    
+    for (const key in DETAILED_NUTRIENTS_MAP) {
+        baseNutrients[key] = parseFloat(nutriments[key] || 0);
+    }
+    
+    const packageMultiplier = packageSize / 100;
 
-            const ingredients = product.ingredients_text_en || product.ingredients_text || 'Not available.';
-            const allergens = product.allergens_from_ingredients || 'None listed.';
-            
-            const mainImageUrl = product.image_front_thumb_url;
-            let otherImages = Object.values(product.images || {})
-                .map(img => img.display_url || img.thumb_url)
-                .filter(url => url && url.startsWith('http'));
+    const ingredients = product.ingredients_text_en || product.ingredients_text || 'Not available.';
+    const allergens = product.allergens_from_ingredients || 'None listed.';
+    
+    // --- DATA QUALITY CHECK ---
+    const missingFields = [];
+    if (!product.serving_size && !product.serving_quantity) missingFields.push('Serving Size');
+    if (typeof nutriments['energy-kcal_100g'] === 'undefined') missingFields.push('Calories');
+    if (typeof nutriments['proteins_100g'] === 'undefined') missingFields.push('Protein');
+    if (typeof nutriments['carbohydrates_100g'] === 'undefined') missingFields.push('Carbs');
+    if (typeof nutriments['fat_100g'] === 'undefined') missingFields.push('Fat');
+    if (typeof nutriments['fiber_100g'] === 'undefined') missingFields.push('Fiber');
+    if (typeof nutriments['sodium_100g'] === 'undefined' && typeof nutriments['salt_100g'] === 'undefined') missingFields.push('Salt');
+    if (typeof nutriments['sugars_100g'] === 'undefined') missingFields.push('Sugar');
 
-            const allImagesSet = new Set();
-            if (mainImageUrl && mainImageUrl.startsWith('http')) {
-                allImagesSet.add(mainImageUrl);
-            }
-            otherImages.forEach(url => allImagesSet.add(url));
-            let allImages = Array.from(allImagesSet);
-            if (allImages.length === 0) allImages.push(PLACEHOLDER_IMG);
-
-            const categories = product.categories || 'N/A';
-            const labels = product.labels || 'N/A';
-            const countries = product.countries || 'N/A';
-            const novaGroup = product.nova_group ? `NOVA ${product.nova_group}` : 'N/A';
-            const nutriscore = product.nutriscore_grade ? `Nutri-Score ${product.nutriscore_grade.toUpperCase()}` : 'N/A';
-            const ecoscore = product.ecoscore_grade ? `Eco-Score ${product.ecoscore_grade.toUpperCase()}` : 'N/A';
-
-
-            modal.innerHTML = `
-                <div class="modal-container text-left">
-                    <div class="flex justify-between items-start">
-                        <h2 class="text-2xl font-bold mb-4">${name} ${isFavorite ? '<i class="fas fa-star text-yellow-500"></i>' : ''}</h2>
-                        <button id="close-modal-btn" class="text-2xl font-bold text-[var(--text-color-secondary)] hover:text-[var(--text-color-primary)]">&times;</button>
+    const states = product.states_tags || [];
+    const isNutritionIncomplete = states.includes('en:nutrition-facts-to-be-completed');
+    
+    let dataWarningHTML = '';
+    if (isNutritionIncomplete || missingFields.length > 0) {
+        const missingText = missingFields.length > 0 ? `Missing: <strong>${missingFields.join(', ')}</strong>.` : 'Nutrition facts may be incomplete.';
+        dataWarningHTML = `
+            <div class="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 p-3 rounded-lg mb-4 text-sm">
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-triangle-exclamation text-yellow-600 dark:text-yellow-400 mt-0.5"></i>
+                    <div>
+                        <p class="font-bold text-yellow-800 dark:text-yellow-200">More Information Recommended</p>
+                        <p class="text-yellow-700 dark:text-yellow-300 mb-2">${missingText}</p>
+                        <p class="text-xs text-yellow-600 dark:text-yellow-400">
+                            You can still log this item, but adding this data to the database helps everyone.
+                        </p>
                     </div>
-                    <p class="text-lg text-[var(--text-color-secondary)] mb-4">${brands}</p>
-
-                    <div class="image-scroll-container">
-                        ${allImages.map(url => `<img src="${url}" alt="${name}" style="background-color: white;">`).join('')}
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <h3 class="font-bold mb-2">Nutrition Facts</h3>
-                            <p class="text-sm mb-2">Serving: ${servingSizeStr || 'N/A'} | Package: ${quantityStr}</p>
-                            <table class="w-full text-sm">
-                                <thead><tr class="border-b"><th class="text-left">Nutrient</th><th class="text-right">Per 100g/ml</th><th class="text-right">Per Package (${packageSize.toFixed(0)}g/ml)</th></tr></thead>
-                                <tbody>
-                                    <tr class="border-b"><td>Calories</td><td class="text-right">${baseNutrients.calories.toFixed(0)}</td><td class="text-right">${(baseNutrients.calories * packageMultiplier).toFixed(0)}</td></tr>
-                                    <tr class="border-b"><td>Protein</td><td class="text-right">${baseNutrients.protein.toFixed(1)}g</td><td class="text-right">${(baseNutrients.protein * packageMultiplier).toFixed(1)}g</td></tr>
-                                    <tr class="border-b"><td>Carbs</td><td class="text-right">${baseNutrients.carbs.toFixed(1)}g</td><td class="text-right">${(baseNutrients.carbs * packageMultiplier).toFixed(1)}g</td></tr>
-                                    <tr class="border-b"><td>Fat</td><td class="text-right">${baseNutrients.fat.toFixed(1)}g</td><td class="text-right">${(baseNutrients.fat * packageMultiplier).toFixed(1)}g</td></tr>
-                                    ${Object.keys(DETAILED_NUTRIENTS_MAP).map(key => `
-                                        <tr class="border-b">
-                                            <td>${DETAILED_NUTRIENTS_MAP[key].replace(' (g)', '')}</td>
-                                            <td class="text-right">${(baseNutrients[key] || 0).toFixed(1)}g</td>
-                                            <td class="text-right">${((baseNutrients[key] || 0) * packageMultiplier).toFixed(1)}g</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div>
-                            <h3 class="font-bold mb-2">Quick Quantity</h3>
-                            <div id="quantity-buttons" class="flex flex-wrap gap-2">
-                                ${servingSize ? `<button class="secondary-button text-xs" data-qty="${servingSize}">Serving (${servingSizeStr})</button>` : ''}
-                                <button class="secondary-button text-xs" data-qty="${packageSize * 0.25}">1/4</button>
-                                <button class="secondary-button text-xs" data-qty="${packageSize / 3}">1/3</button>
-                                <button class="secondary-button text-xs" data-qty="${packageSize / 2}">Half</button>
-                                <button class="secondary-button text-xs" data-qty="${packageSize * 0.75}">3/4</button>
-                                <button class="secondary-button text-xs" data-qty="${packageSize}">Whole</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mt-4">
-                        <h3 class="font-bold mb-2">Additional Information</h3>
-                        <div class="flex flex-wrap gap-2 text-xs">
-                             <span class="badge bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">${nutriscore}</span>
-                             <span class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">${ecoscore}</span>
-                             <span class="badge bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">${novaGroup}</span>
-                        </div>
-                        <p class="text-xs mt-2"><strong>Categories:</strong> ${categories}</p>
-                        <p class="text-xs mt-2"><strong>Labels:</strong> ${labels}</p>
-                        <p class="text-xs mt-2"><strong>Sold in:</strong> ${countries}</p>
-                    </div>
-                    <div class="mt-4">
-                        <h3 class="font-bold mb-2">Ingredients & Allergens</h3>
-                        <p class="text-xs p-2 bg-[var(--input-bg-color)] rounded">${ingredients}</p>
-                        <p class="text-xs mt-2"><strong>Allergens:</strong> ${allergens}</p>
-                    </div>
-                    <div class="button-group">
-                        <button id="select-product-btn" class="main-button">Select This Product</button>
-                        <a href="https://world.openfoodfacts.org/product/${product.code}" target="_blank" class="secondary-button text-center flex-grow py-3 px-4 rounded-lg" style="padding-top: 12px; padding-bottom: 12px;">Edit on Open Food Facts</a>
-                    </div>
-                    <p class="text-xs text-center mt-2 text-[var(--text-color-secondary)]">Changes submitted to Open Food Facts are reviewed and may not appear immediately.</p>
                 </div>
-            `;
-            modal.classList.remove('hidden');
+            </div>
+        `;
+    }
+    // ---------------------------
 
-            document.getElementById('close-modal-btn').addEventListener('click', () => modal.classList.add('hidden'));
+    const mainImageUrl = product.image_front_thumb_url;
+    let otherImages = Object.values(product.images || {})
+        .map(img => img.display_url || img.thumb_url)
+        .filter(url => url && url.startsWith('http'));
 
-            const selectAndClose = (qty) => {
-                selectProductFromSearch(product, qty);
-                modal.classList.add('hidden');
-            };
+    const allImagesSet = new Set();
+    if (mainImageUrl && mainImageUrl.startsWith('http')) {
+        allImagesSet.add(mainImageUrl);
+    }
+    otherImages.forEach(url => allImagesSet.add(url));
+    let allImages = Array.from(allImagesSet);
+    if (allImages.length === 0) allImages.push('https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png');
 
-            document.getElementById('select-product-btn').addEventListener('click', () => selectAndClose(100));
+    const categories = product.categories || 'N/A';
+    const labels = product.labels || 'N/A';
+    const countries = product.countries || 'N/A';
+    const novaGroup = product.nova_group ? `NOVA ${product.nova_group}` : 'N/A';
+    const nutriscore = product.nutriscore_grade ? `Nutri-Score ${product.nutriscore_grade.toUpperCase()}` : 'N/A';
+    const ecoscore = product.ecoscore_grade ? `Eco-Score ${product.ecoscore_grade.toUpperCase()}` : 'N/A';
 
-            modal.addEventListener('click', (e) => {
-                const button = e.target.closest('#quantity-buttons button');
-                if (button) {
-                    selectAndClose(parseFloat(button.dataset.qty));
-                }
-            });
-        };
+
+    modal.innerHTML = `
+        <div class="modal-container text-left">
+            <div class="flex justify-between items-start">
+                <h2 class="text-2xl font-bold mb-4 pr-8">${name} ${isFavorite ? '<i class="fas fa-star text-yellow-500"></i>' : ''}</h2>
+                <button id="close-modal-btn" class="text-2xl font-bold text-[var(--text-color-secondary)] hover:text-[var(--text-color-primary)]">&times;</button>
+            </div>
+            <p class="text-lg text-[var(--text-color-secondary)] mb-4">${brands}</p>
+            
+            ${dataWarningHTML}
+
+            <div class="image-scroll-container">
+                ${allImages.map(url => `<img src="${url}" alt="${name}" style="background-color: white;">`).join('')}
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <h3 class="font-bold mb-2">Nutrition Facts</h3>
+                    <p class="text-sm mb-2">Serving: ${servingSizeStr || '<span class="text-red-500">Unknown</span>'} | Package: ${quantityStr}</p>
+                    <table class="w-full text-sm">
+                        <thead><tr class="border-b"><th class="text-left">Nutrient</th><th class="text-right">Per 100g/ml</th><th class="text-right">Per Package (${packageSize.toFixed(0)}g/ml)</th></tr></thead>
+                        <tbody>
+                            <tr class="border-b"><td>Calories</td><td class="text-right">${baseNutrients.calories.toFixed(0)}</td><td class="text-right">${(baseNutrients.calories * packageMultiplier).toFixed(0)}</td></tr>
+                            <tr class="border-b"><td>Protein</td><td class="text-right">${baseNutrients.protein.toFixed(1)}g</td><td class="text-right">${(baseNutrients.protein * packageMultiplier).toFixed(1)}g</td></tr>
+                            <tr class="border-b"><td>Carbs</td><td class="text-right">${baseNutrients.carbs.toFixed(1)}g</td><td class="text-right">${(baseNutrients.carbs * packageMultiplier).toFixed(1)}g</td></tr>
+                            <tr class="border-b"><td>Fat</td><td class="text-right">${baseNutrients.fat.toFixed(1)}g</td><td class="text-right">${(baseNutrients.fat * packageMultiplier).toFixed(1)}g</td></tr>
+                            ${Object.keys(DETAILED_NUTRIENTS_MAP).map(key => `
+                                <tr class="border-b">
+                                    <td>${DETAILED_NUTRIENTS_MAP[key].replace(' (g)', '')}</td>
+                                    <td class="text-right">${(baseNutrients[key] || 0).toFixed(1)}g</td>
+                                    <td class="text-right">${((baseNutrients[key] || 0) * packageMultiplier).toFixed(1)}g</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h3 class="font-bold mb-2">Quick Quantity</h3>
+                    <div id="quantity-buttons" class="flex flex-wrap gap-2">
+                        ${servingSize ? `<button class="secondary-button text-xs" data-qty="${servingSize}">Serving (${servingSizeStr})</button>` : ''}
+                        <button class="secondary-button text-xs" data-qty="${packageSize * 0.25}">1/4</button>
+                        <button class="secondary-button text-xs" data-qty="${packageSize / 3}">1/3</button>
+                        <button class="secondary-button text-xs" data-qty="${packageSize / 2}">Half</button>
+                        <button class="secondary-button text-xs" data-qty="${packageSize * 0.75}">3/4</button>
+                        <button class="secondary-button text-xs" data-qty="${packageSize}">Whole</button>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4">
+                <h3 class="font-bold mb-2">Additional Information</h3>
+                <div class="flex flex-wrap gap-2 text-xs">
+                     <span class="badge bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">${nutriscore}</span>
+                     <span class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">${ecoscore}</span>
+                     <span class="badge bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">${novaGroup}</span>
+                </div>
+                <p class="text-xs mt-2"><strong>Categories:</strong> ${categories}</p>
+                <p class="text-xs mt-2"><strong>Labels:</strong> ${labels}</p>
+                <p class="text-xs mt-2"><strong>Sold in:</strong> ${countries}</p>
+            </div>
+            <div class="mt-4">
+                <h3 class="font-bold mb-2">Ingredients & Allergens</h3>
+                <p class="text-xs p-2 bg-[var(--input-bg-color)] rounded">${ingredients}</p>
+                <p class="text-xs mt-2"><strong>Allergens:</strong> ${allergens}</p>
+            </div>
+            <div class="button-group">
+                <button id="select-product-btn" class="main-button">Select This Product</button>
+                <a href="https://world.openfoodfacts.org/product/${product.code}" target="_blank" class="secondary-button text-center flex-grow py-3 px-4 rounded-lg flex items-center justify-center gap-2" style="padding-top: 12px; padding-bottom: 12px;">
+                   <i class="fa-solid fa-pen-to-square"></i> Edit on Open Food Facts
+                </a>
+            </div>
+            <p class="text-xs text-center mt-2 text-[var(--text-color-secondary)]">Changes submitted to Open Food Facts are reviewed and may not appear immediately.</p>
+        </div>
+    `;
+    modal.classList.remove('hidden');
+
+    document.getElementById('close-modal-btn').addEventListener('click', () => modal.classList.add('hidden'));
+
+    const selectAndClose = (qty) => {
+        selectProductFromSearch(product, qty);
+        modal.classList.add('hidden');
+    };
+
+    document.getElementById('select-product-btn').addEventListener('click', () => selectAndClose(100));
+
+    modal.addEventListener('click', (e) => {
+        // CLOSE MODAL IF CLICK IS ON THE OVERLAY
+        if (e.target === modal) {
+            modal.classList.add('hidden');
+        }
+
+        const button = e.target.closest('#quantity-buttons button');
+        if (button) {
+            selectAndClose(parseFloat(button.dataset.qty));
+        }
+    });
+};
 
         const applyTheme = (theme) => {
             if (theme === 'dark') document.body.classList.add('dark-mode');

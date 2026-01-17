@@ -5,6 +5,17 @@ export const changelogData = [
     version: "v9.146.0-alpha",
     date: "2026-01-17",
     changes: [
+        "In FoodTrackr: Fixed a critical bug where clicking items in 'Recent', 'Frequent', or 'My Foods' lists would fail to load the item.",
+        "In FoodTrackr: Updated search results to open a detailed product modal upon click, preventing accidental immediate selection.",
+        "In FoodTrackr: Added a visual 'No Serving' warning badge directly to search result cards to quickly identify incomplete data.",
+        "In FoodTrackr: Enhanced the Product Details modal to display a 'More Information Recommended' warning if key data (Serving Size, Macros, Fiber, Salt) is missing.",
+        "In FoodTrackr: Improved modal usability by allowing the background overlay to be clicked to close the window."
+    ]
+    },
+    {
+    version: "v9.146.0-alpha",
+    date: "2026-01-17",
+    changes: [
         "In VehicleManagr: Added 'Direct Debit' / 'Auto-Renew' scheduling checkboxes and specific Cost input fields for Road Tax and Insurance in the Virtual Glovebox.",
         "In VehicleManagr: Updated Dashboard Compliance cards to display a blue 'Scheduled' status instead of expiry warnings when items are set to auto-renew.",
         "In VehicleManagr: Implemented 'Virtual' pending history entries that automatically appear for future scheduled payments based on Glovebox dates and costs.",
