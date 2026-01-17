@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v9.146.0-alpha",
+    date: "2026-01-17",
+    changes: [
+        "In VehicleManagr: Added 'Direct Debit' / 'Auto-Renew' scheduling checkboxes and specific Cost input fields for Road Tax and Insurance in the Virtual Glovebox.",
+        "In VehicleManagr: Updated Dashboard Compliance cards to display a blue 'Scheduled' status instead of expiry warnings when items are set to auto-renew.",
+        "In VehicleManagr: Implemented 'Virtual' pending history entries that automatically appear for future scheduled payments based on Glovebox dates and costs.",
+        "In VehicleManagr: Added 'Direct Debit' as a selectable payment method for Expenses, and added a visual 'DD' badge to relevant history rows."
+    ]
+    },
+    {
     version: "v9.145.0-alpha",
     date: "2026-01-16",
     changes: [
