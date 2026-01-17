@@ -2,7 +2,17 @@
 
 export const changelogData = [
     {
-    version: "v9.146.0-alpha",
+    version: "v9.148.0-alpha",
+    date: "2026-01-17",
+    changes: [
+        "In TaskTrackr: Implemented full Create and Edit functionality for Google Tasks, allowing users to add or modify tasks directly via the Google API.",
+        "In TaskTrackr: Added 'Google Tasks' as a specific option in the 'Save Location' dropdown, enabling explicit task assignment.",
+        "In TaskTrackr: Implemented automatic data mirroring for Google Tasks; all Google items are now strictly backed up to Firebase for permanent records.",
+        "In TaskTrackr: Enabled Side Pane quick-editing for Google Tasks, allowing title and description updates to sync immediately."
+    ]
+    },
+    {
+    version: "v9.147.0-alpha",
     date: "2026-01-17",
     changes: [
         "In FoodTrackr: Fixed a critical bug where clicking items in 'Recent', 'Frequent', or 'My Foods' lists would fail to load the item.",

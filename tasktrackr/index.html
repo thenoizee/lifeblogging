@@ -386,8 +386,9 @@
     <label class="text-xs font-bold text-gray-500 uppercase">Save Location</label>
     <div class="relative">
         <select id="modal-destination-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm appearance-none">
-            <option value="ticktick">TickTick (Cloud Sync)</option>
-            <option value="local">TaskTrackr Only (Local)</option> </select>
+    <option value="ticktick">TickTick (Cloud Sync)</option>
+    <option value="google">Google Tasks</option> <option value="local">TaskTrackr Only (Local)</option> 
+</select>
         <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
             <i class="fa-solid fa-server text-xs"></i>
         </div>
@@ -1011,6 +1012,20 @@ const fetchAllData = async () => {
         projectMap[p.id] = p;
     });
 
+    // Mirror Google Tasks to Firebase for Records
+    if (auth.currentUser && googleData.tasks.length > 0) {
+        // We don't await this so it happens in background
+        Promise.all(googleData.tasks.map(t => {
+            return setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', t.id), {
+                ...t,
+                source: 'google',
+                lastSeen: new Date(),
+                // Convert dates to Firestore timestamps or keep as strings depending on preference
+                dueDate: t.dueDate ? new Date(t.dueDate) : null
+            }, { merge: true });
+        })).catch(e => console.error("Error mirroring Google tasks:", e));
+    }
+
     // 2. Fetch TickTick Tasks
     let allActiveTasks = [];
     if (projects) {
@@ -1149,16 +1164,26 @@ const fetchAllData = async () => {
     try {
         const payload = formatTaskPayload(task);
         
-        // Always save to Firebase (Reference or Mirror)
+        // 1. Always save to Firebase (Mirror)
         const firestorePayload = { 
             ...payload, 
             updated: new Date(),
-            source: task.source === 'local' ? 'local' : 'ticktick'
+            source: task.source || 'ticktick'
         };
         await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), firestorePayload, { merge: true });
 
-        // If it's NOT local only, also send to TickTick API
-        if (task.source !== 'local') {
+        // 2. API Update
+        if (task.source === 'local') {
+            // Already handled by setDoc above
+        } else if (task.source === 'google' || task.kind === 'google') {
+            // GOOGLE API UPDATE
+            const gPayload = {};
+            if (field === 'title') gPayload.title = task.title;
+            if (field === 'desc') gPayload.notes = task.content;
+            
+            await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'PATCH', gPayload);
+        } else {
+            // TICKTICK API UPDATE
             await api(`/task/${task.id}`, 'POST', payload);
         }
     } catch (e) {
@@ -1781,6 +1806,7 @@ window.submitTaskForm = async () => {
 
     // 3. Get Save Location
     const destination = document.getElementById('modal-destination-input').value;
+    const isGoogle = destination === 'google' || existingTask.source === 'google';
 
     // --- GENERATE RRULE STRING ---
     let finalRepeatString = "";
@@ -1792,23 +1818,16 @@ window.submitTaskForm = async () => {
         finalRepeatString = `RRULE:FREQ=${freq};INTERVAL=${interval}`;
     }
     
-    // --- DATE VALIDATION FIX ---
     let rawDueDate = document.getElementById('modal-due-date').value;
     let rawStartDate = document.getElementById('modal-start-date').value;
 
-    // CRITICAL: If recurring but no date set, force "Today"
     if (isRecurring && !rawDueDate) {
         const now = new Date();
-        // Adjust to local ISO string for the input value
         const localIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
         rawDueDate = localIso;
-        
-        // Visual feedback to user
         document.getElementById('modal-due-date').value = localIso;
-        showToast('Recurring tasks require a date. Set to Today.', 'success'); // Orange/Info warning ideally, but success works
+        showToast('Recurring tasks require a date. Set to Today.', 'success');
     }
-
-    console.log("[TaskTrackr] Generated RRULE:", finalRepeatString);
 
     // 4. Collect Raw Form Data
     const rawFormData = {
@@ -1818,24 +1837,19 @@ window.submitTaskForm = async () => {
         priority: parseInt(document.getElementById('modal-priority-input').value || 0), 
         isAllDay: document.getElementById('modal-allday-input').checked, 
         tags: document.getElementById('modal-tags-input').value.split(',').map(t=>t.trim()).filter(t=>t), 
-        
         repeatFlag: finalRepeatString, 
-        
         items: checklistItems,
         dueDate: rawDueDate || null,
         startDate: rawStartDate || null
     };
 
-    // 5. Merge and Sanitize
     const mergedTask = { ...existingTask, ...rawFormData };
     const payload = formatTaskPayload(mergedTask);
-
-    console.log("[TaskTrackr] Final API Payload:", JSON.stringify(payload, null, 2));
 
     showLoader(); 
     try {
         if (destination === 'local') {
-            // Local Save Logic
+            // --- LOCAL LOGIC ---
             if (!auth.currentUser) throw new Error("You must be logged in to save local tasks.");
             const taskData = { ...payload, updated: new Date(), source: 'local' };
             
@@ -1846,8 +1860,41 @@ window.submitTaskForm = async () => {
                 taskData.status = 0; 
                 await addDoc(collection(db, 'users', auth.currentUser.uid, 'local_tasks'), taskData);
             }
+        } else if (isGoogle) {
+            // --- GOOGLE TASKS LOGIC ---
+            // 1. Prepare Google Payload
+            const gListId = mergedTask.projectId === 'inbox' ? '@default' : mergedTask.projectId;
+            const gPayload = {
+                title: mergedTask.title,
+                notes: mergedTask.content
+            };
+            if (mergedTask.dueDate) gPayload.due = new Date(mergedTask.dueDate).toISOString();
+
+            // 2. Send to Google API
+            let savedTask;
+            if (id && existingTask.source === 'google') {
+                savedTask = await googleApi(`lists/${gListId}/tasks/${id}`, 'PATCH', gPayload);
+                // If PATCH returns nothing, assume success and use existing ID
+                if(!savedTask) savedTask = { id: id };
+            } else {
+                savedTask = await googleApi(`lists/${gListId}/tasks`, 'POST', gPayload);
+            }
+
+            // 3. Mirror to Firebase
+            if (savedTask && savedTask.id) {
+                const mirrorPayload = {
+                    ...mergedTask,
+                    id: savedTask.id, // Ensure we use the Google ID
+                    source: 'google',
+                    lastSynced: new Date(),
+                    dueDate: payload.dueDate ? new Date(payload.dueDate) : null
+                };
+                // Force save to local_tasks for record keeping
+                await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload, { merge: true });
+            }
+
         } else {
-            // Cloud Sync Logic
+            // --- TICKTICK LOGIC ---
             let savedTask;
             if(id && existingTask.source !== 'local') {
                 savedTask = await api(`/task/${id}`, 'POST', payload);
@@ -1945,6 +1992,7 @@ window.openModal = (isEdit, taskId = null) => {
 
         if (destInput) {
             if (task.source === 'local' || task.source === 'tasktrackr_only') destInput.value = 'local';
+            else if (task.source === 'google' || task.kind === 'google') destInput.value = 'google'; // Add this
             else destInput.value = 'ticktick';
         }
 
