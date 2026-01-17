@@ -118,7 +118,7 @@
             </div>
 
             <nav id="main-nav" class="hidden md:flex space-x-1 bg-gray-100 dark:bg-gray-800/30 p-1 rounded-lg">
-                <a href="#dashboard" class="nav-tab text-xs sm:text-sm active"><i class="fa-solid fa-house mr-1"></i> Dashboard</a>
+                <a href="#dashboard" class="nav-tab text-xs sm:text-sm active"><i class="fa-solid fa-border-all mr-1"></i> Dashboard</a>
                 <a href="#library" class="nav-tab text-xs sm:text-sm"><i class="fa-solid fa-layer-group mr-1"></i> Library</a>
                 <a href="#progress" class="nav-tab text-xs sm:text-sm"><i class="fa-solid fa-chart-pie mr-1"></i> Progress</a>
                 <a href="#history" class="nav-tab text-xs sm:text-sm"><i class="fa-solid fa-clock-rotate-left mr-1"></i> History</a>
@@ -718,6 +718,7 @@ async function renderDashboard() {
         </div>
 
         <div id="up-next-container" class="mb-12 hidden animate-fade"></div>
+<div id="friends-feed-container" class="mb-12 hidden animate-fade"></div>
         <div id="last-watched-container" class="mb-12 hidden animate-fade"></div>
         <div id="calendar-container" class="mb-12 hidden animate-fade"></div>
         <div id="trending-container"></div>
@@ -727,8 +728,9 @@ async function renderDashboard() {
     loadUpNext();
     
     // Then load the rest
-    loadLastWatched();
-    loadCalendar();
+loadLastWatched();
+loadFriendsFeed(); // <--- Add this
+loadCalendar();
     
     // (Existing stats & trending logic...)
     fetchSmart('/movies/trending?extended=images', (movies) => {
@@ -957,6 +959,56 @@ async function loadUpNext() {
     } catch (e) { console.error("Up Next Error", e); }
 }
 
+async function loadFriendsFeed() {
+    const container = document.getElementById('friends-feed-container');
+    if (!container) return;
+    try {
+        // Fetch activity feed (watches and checkins)
+        const feed = await fetchDirect('/users/me/feed/friends?types=watch,checkin&limit=10&extended=images');
+        
+        if (feed.length > 0) {
+            const html = `
+                <h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-purple-500">Friends Recently Watched</h2>
+                <div class="flex gap-4 overflow-x-auto pb-4 hide-scroll">
+                    ${feed.map(item => {
+                        const user = item.user;
+                        const type = item.type; // 'watch' or 'checkin'
+                        const action = item.action; // 'watch' or 'checkin'
+                        // The item object structure depends on activity type, usually item.movie or item.episode
+                        const mediaType = item.movie ? 'movie' : 'episode';
+                        const media = item[mediaType];
+                        const show = item.show; // exists if episode
+                        
+                        const title = mediaType === 'movie' ? media.title : show.title;
+                        const sub = mediaType === 'movie' ? media.year : `S${media.season}E${media.number}`;
+                        const img = getImage(media, mediaType);
+                        const userImg = user.images?.avatar?.full || PLACEHOLDER_IMG;
+                        
+                        return `
+                        <div class="flex-shrink-0 w-64 card p-3 rounded-xl border border-gray-800 hover:border-purple-500 transition cursor-pointer relative group" onclick="location.hash='#detail/${mediaType}/${media.ids.trakt}'">
+                            <div class="flex items-center gap-3 mb-3 border-b border-gray-800 pb-2">
+                                <img src="${userImg}" class="w-8 h-8 rounded-full border border-gray-600">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-bold text-gray-300 truncate">${user.name || user.username}</p>
+                                    <p class="text-[10px] text-gray-500">${new Date(item.joined_at || item.posted_at).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <div class="flex gap-3">
+                                <img src="${img}" class="w-12 h-16 object-cover rounded shadow bg-gray-900" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                <div class="min-w-0 flex-1">
+                                    <p class="font-bold text-sm leading-tight line-clamp-2 text-purple-100 mb-1">${title}</p>
+                                    <p class="text-xs text-gray-500">${sub}</p>
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>`;
+            container.innerHTML = html;
+            container.classList.remove('hidden');
+        }
+    } catch (e) { console.warn("Friends feed error", e); }
+}
+
 async function renderPerson(id) {
             showLoader();
             els.content.innerHTML = '';
@@ -969,9 +1021,9 @@ async function renderPerson(id) {
                 ]);
 
                 // 2. Normalize and Combine Credits
-                // Trakt returns wrappers like { character: "...", movie: {...} }
-                const movies = (movieCredits.cast || []).map(c => ({ ...c.movie, type: 'movie', character: c.character }));
-                const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', character: c.character }));
+// Trakt returns wrappers like { character: "...", movie: {...} }
+const movies = (movieCredits.cast || []).map(c => ({ ...c.movie, type: 'movie', character: c.character }));
+const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', character: c.character, episode_count: c.episode_count }));
 
                 // 3. Sort by Year (Newest First)
                 const allWorks = [...movies, ...shows]
@@ -1022,8 +1074,11 @@ async function renderPerson(id) {
                                             </div>
                                         </div>
                                         <div class="p-2 bg-[var(--card)] border-t border-gray-800">
-                                            <p class="text-[10px] text-[var(--primary)] font-bold truncate uppercase tracking-wide">as ${work.character || 'Self'}</p>
-                                        </div>
+    <p class="text-[10px] text-[var(--primary)] font-bold truncate uppercase tracking-wide">
+        as ${work.character || 'Self'}
+        ${work.episode_count ? `<span class="text-gray-500 font-normal normal-case ml-1 opacity-75">• ${work.episode_count} eps</span>` : ''}
+    </p>
+</div>
                                     </div>`;
                                 }).join('')}
                             </div>
@@ -1232,13 +1287,15 @@ if (playback) {
                         <div class="nav-btn nav-next" onclick="window.navigateEpisode('${showInfo.ids.trakt}', ${item.season}, ${item.number + 1})"><i class="fa-solid fa-chevron-right"></i></div>
                         <div class="absolute bottom-0 left-0 p-6 md:p-10 w-full bg-gradient-to-t from-black via-black/50 to-transparent">
                             <h4 class="text-lg md:text-xl font-bold text-gray-300 mb-1 flex items-center gap-2">
-                                <span class="bg-[var(--primary)] text-white px-2 py-0.5 rounded text-xs">EPISODE</span> ${showInfo.title}
-                            </h4>
+    <span class="bg-[var(--primary)] text-white px-2 py-0.5 rounded text-xs">EPISODE</span> 
+    <a href="#detail/show/${showInfo.ids.trakt}" class="hover:text-white hover:underline transition">${showInfo.title}</a>
+</h4>
                             <h1 class="text-3xl md:text-5xl font-bold text-white mb-4 leading-tight shadow-black drop-shadow-md">${titleText}</h1>
                             <div class="flex flex-wrap items-center gap-3 text-sm font-medium">
-                                <span class="bg-gray-800/80 backdrop-blur text-white px-3 py-1 rounded border border-gray-600">S${item.season} E${item.number}</span>
-                                ${watchedBadge} ${myRatingHtml}
-                            </div>
+    <a href="#detail/show/${showInfo.ids.trakt}/season/${item.season}" class="bg-gray-800/80 hover:bg-gray-700 backdrop-blur text-white px-3 py-1 rounded border border-gray-600 transition">Season ${item.season}</a>
+    <span class="bg-gray-800/80 backdrop-blur text-gray-300 px-3 py-1 rounded border border-gray-600">Ep ${item.number}</span>
+    ${watchedBadge} ${myRatingHtml}
+</div>
                         </div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -1248,7 +1305,15 @@ if (playback) {
                                 <span class="flex items-center"><i class="fa-regular fa-calendar mr-2"></i> First aired:</i> ${new Date(item.first_aired).toLocaleDateString()}</span>
                             </div>
                             <h3 class="text-xs font-bold text-[var(--primary)] mb-2 uppercase tracking-widest">Overview</h3>
-                            <p class="text-lg text-gray-300 leading-relaxed mb-8">${item.overview || 'No overview available.'}</p>
+                            ${!isWatched && item.overview ? 
+    `<div class="relative mb-8 cursor-pointer group rounded-lg overflow-hidden" onclick="this.querySelector('p').classList.remove('blur-md', 'select-none'); this.querySelector('.spoiler-overlay').remove()">
+        <p class="text-lg text-gray-300 leading-relaxed blur-md select-none transition duration-500">${item.overview}</p>
+        <div class="spoiler-overlay absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition">
+            <span class="text-xs font-bold text-gray-400 border border-gray-500 px-3 py-1 rounded-full uppercase tracking-widest group-hover:text-white group-hover:border-white transition"><i class="fa-solid fa-eye-slash mr-2"></i> Spoiler Warning</span>
+        </div>
+    </div>` 
+    : `<p class="text-lg text-gray-300 leading-relaxed mb-8">${item.overview || 'No overview available.'}</p>`
+}
                             ${progressHtml}
                             ${historyHtml}
                             <div class="flex flex-col sm:flex-row gap-4 mb-8">
@@ -1374,19 +1439,32 @@ if (playback) {
                         const seasons = await fetchDirect(`/shows/${id}/seasons?extended=full,images`);
                         const mainShowPoster = getImage(item, null, true);
                         window.renderSeasonsGrid = () => { 
-                            const validSeasons = seasons.filter(s => s.number > 0);
-                            mount.innerHTML = `<h2 class="text-2xl font-bold mb-6 border-l-4 border-yellow-500 px-4">Seasons</h2><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">${validSeasons.map(s => {
-                                let sImg = getImage(s); if(sImg === PLACEHOLDER_IMG) sImg = mainShowPoster;
-                                let isFullyWatched = false;
-                                if(showProgress && showProgress.seasons) {
-                                    const sp = showProgress.seasons.find(x => x.number === s.number);
-                                    if(sp && sp.aired > 0 && sp.completed >= sp.aired) isFullyWatched = true;
-                                }
-                                const styleClasses = isFullyWatched ? "opacity-50 grayscale blur-[1px] hover:blur-0 hover:grayscale-0 hover:opacity-100 border-transparent" : "hover:border-yellow-500 border-transparent";
-                                const checkIcon = isFullyWatched ? `<div class="absolute top-2 left-2 bg-green-500 text-black w-6 h-6 flex items-center justify-center rounded-full shadow-lg z-10"><i class="fa-solid fa-check text-xs"></i></div>` : '';
-                                return `<div class="card rounded-xl overflow-hidden cursor-pointer border transition-all duration-300 group relative ${styleClasses}" onclick="window.loadEpisodes('${id}', '${s.number}')"><div class="aspect-[2/3] relative"><img src="${sImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">${checkIcon}<div class="absolute top-2 right-2 bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded shadow">S${s.number}</div><div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center font-bold text-sm">View Episodes</div></div><div class="p-3 text-center"><h4 class="font-bold text-sm truncate">${s.title}</h4><p class="text-xs text-gray-500">${s.episode_count} Eps</p></div></div>`; 
-                            }).join('')}</div>`; 
-                        };
+    const validSeasons = seasons.filter(s => s.number > 0);
+    mount.innerHTML = `<h2 class="text-2xl font-bold mb-6 border-l-4 border-yellow-500 px-4">Seasons</h2><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">${validSeasons.map(s => {
+        let sImg = getImage(s); if(sImg === PLACEHOLDER_IMG) sImg = mainShowPoster;
+        let isFullyWatched = false;
+        let progressHtml = '';
+        
+        if(showProgress && showProgress.seasons) {
+            const sp = showProgress.seasons.find(x => x.number === s.number);
+            if(sp && sp.aired > 0) {
+                if(sp.completed >= sp.aired) isFullyWatched = true;
+                const pct = Math.round((sp.completed / sp.aired) * 100);
+                progressHtml = `
+                    <div class="w-full bg-gray-700 h-1.5 mt-2 rounded-full overflow-hidden">
+                        <div class="bg-gradient-to-r from-yellow-600 to-yellow-400 h-full" style="width: ${pct}%"></div>
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-1">${sp.completed} / ${sp.aired} watched</p>
+                `;
+            }
+        }
+        
+        const styleClasses = isFullyWatched ? "opacity-60 grayscale hover:grayscale-0 hover:opacity-100 border-green-900/30" : "hover:border-yellow-500 border-transparent";
+        const checkIcon = isFullyWatched ? `<div class="absolute top-2 left-2 bg-green-500 text-black w-6 h-6 flex items-center justify-center rounded-full shadow-lg z-10"><i class="fa-solid fa-check text-xs"></i></div>` : '';
+        
+        return `<div class="card rounded-xl overflow-hidden cursor-pointer border transition-all duration-300 group relative ${styleClasses}" onclick="window.loadEpisodes('${id}', '${s.number}')"><div class="aspect-[2/3] relative"><img src="${sImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">${checkIcon}<div class="absolute top-2 right-2 bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded shadow">S${s.number}</div><div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center font-bold text-sm">View Episodes</div></div><div class="p-3 text-center"><h4 class="font-bold text-sm truncate">${s.title}</h4><p class="text-xs text-gray-500">${s.episode_count} Eps</p>${progressHtml}</div></div>`; 
+    }).join('')}</div>`; 
+};
                         window.renderSeasonsGrid();
                         window.loadEpisodes = async (showId, seasonNum) => {
                             mount.innerHTML = `<div class="flex items-center gap-3 mb-6"><div class="animate-spin rounded-full h-6 w-6 border-2 border-yellow-500 border-t-transparent"></div> <span class="text-gray-400">Loading Season ${seasonNum}...</span></div>`;

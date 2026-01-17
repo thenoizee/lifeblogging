@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v9.149.0-alpha",
+    date: "2026-01-17",
+    changes: [
+        "In VidTrackr: Replaced the dashboard icon with a bold 'border-all' icon to match the style of PodTrackr.",
+        "In VidTrackr: Enhanced Person profiles to display the number of episodes an actor has appeared in within their credits list.",
+        "In VidTrackr: Upgraded the Seasons view to include visual progress bars and watched counts for each season.",
+        "In VidTrackr: Made the show title clickable in the episode detail header for quick navigation to the show page.",
+        "In VidTrackr: Separated the season/episode badge to make the Season number clickable, linking directly to that season's view.",
+        "In VidTrackr: Implemented spoiler protection that automatically blurs the overview text for unwatched episodes.",
+        "In VidTrackr: Added a 'Friends Activity Feed' to the dashboard, displaying the recent watching habits of Trakt mutuals."
+    ]
+    },
+    {
     version: "v9.148.0-alpha",
     date: "2026-01-17",
     changes: [
