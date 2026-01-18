@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.1.0-alpha",
+    date: "2026-01-18",
+    changes: [
+        "In HydrationTrackr: Migrated to the new `shared-nav.js` system, standardizing the header, 'Hub' dropdown, and mobile navigation bar.",
+        "In HydrationTrackr: Updated the Dark Mode implementation to use the standard `.dark` class, ensuring consistent theming with the rest of the ecosystem.",
+    ]
+    },
+    {
     version: "v10.0.1-alpha",
     date: "2026-01-18",
     changes: [
