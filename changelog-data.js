@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.0.0-alpha",
+    date: "2026-01-18",
+    changes: [
+        "Global: Introduced `shared-nav.js`, a unified navigation component that standardizes the header, tabs, and mobile menu across all apps.",
+        "Global: Implemented a 'Hub' dropdown with hover-activation (desktop) to allow quick switching between apps.",
+        "Global: Upgraded the UI with Glassmorphism (backdrop blur) and injected custom 'thin' scrollbar styling globally.",
+        "Global: Replaced the static email text with a circular User Avatar (initials) and added a 'Current App' indicator to the Hub drawdown.",
+        "Global: Enhanced the Dark/Light mode toggle with a 360° spin animation and state persistence.",
+        "In VidTrackr: Migrated to the new Shared Navigation system while dynamically preserving the Search Bar and Watch Status indicator.",    ]
+    },
+    {
     version: "v9.149.0-alpha",
     date: "2026-01-17",
     changes: [
