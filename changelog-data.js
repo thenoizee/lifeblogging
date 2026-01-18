@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.0.1-alpha",
+    date: "2026-01-18",
+    changes: [
+        "In PodTrackr: Updated icon to match the new shared navigation dropdown menu.",
+        "In RecipeManager: Updated icon to match the new shared navigation dropdown menu."
+    ]
+    },
+    {
     version: "v10.0.0-alpha",
     date: "2026-01-18",
     changes: [
