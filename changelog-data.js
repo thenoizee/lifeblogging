@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.2.0-alpha",
+    date: "2026-01-18",
+    changes: [
+        "In MediManagr: Added a new 'Grooming' tab to track haircuts and nail trims, featuring 'Log Now' buttons and a history view.",
+        "In MediManagr: Introduced an 'Eye Health' section within the Lenses tab to track the last full eye exam and contact lens check, complete with due date reminders."
+    ]
+    },
+    {
     version: "v10.1.0-alpha",
     date: "2026-01-18",
     changes: [
