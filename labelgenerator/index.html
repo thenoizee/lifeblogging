@@ -93,7 +93,20 @@
             font-size: 8pt;
             color: #aaa;
             font-family: 'Roboto Mono', monospace;
+            pointer-events: none; /* <--- ADD THIS LINE */
         }
+
+        /* Update/Add to your CSS */
+.label:not(.selected) .btn-deselect { 
+    display: none; 
+}
+
+.btn-clear {
+    display: none; /* Hidden by default */
+}
+.label.has-override .btn-clear { 
+    display: flex; /* Show only if label has manual text */
+}
         
         .label.has-template::before {
             display: none;
@@ -124,6 +137,76 @@
             display: block;
         }
 
+        /* Add to <style> block */
+.label-controls {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: flex;
+    gap: 4px;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.label:hover .label-controls, .label.selected .label-controls {
+    opacity: 1;
+}
+
+
+/* --- NEW CSS FIXES --- */
+
+/* 1. Isolates the editable text so controls don't interfere */
+.label-content {
+    outline: none;       /* Removes the blue border from the text box itself */
+    min-width: 100%;     /* Ensures it spans the full width for typing */
+    z-index: 1;          /* Sits below controls */
+}
+
+/* 2. Visual cue when you are actually editing */
+.label-content:focus {
+    /* Optional: adds a subtle background to show active editing */
+    background-color: rgba(255, 255, 255, 0.5); 
+}
+
+/* 3. Ensures the "1", "2" label numbers don't block your click */
+.label::before {
+    pointer-events: none;
+}
+.btn-control {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: bold;
+    user-select: none;
+    background: white;
+    border: 1px solid #ddd;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+.btn-deselect {
+    color: #64748b; /* Slate-500 */
+}
+.btn-deselect:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}
+.btn-clear {
+    color: #ef4444; /* Red-500 */
+    border-color: #fecaca;
+    background-color: #fef2f2;
+}
+.btn-clear:hover {
+    background-color: #fee2e2;
+    border-color: #ef4444;
+}
+@media print {
+    .label-controls { display: none !important; }
+}
+
         /* Visual Grid Alignment Styles */
         #gridAlignmentIcons button::after {
             content: '•';
@@ -148,6 +231,35 @@
         #gridAlignmentIcons button[data-value="end center"] { justify-self: center; align-self: end; }
         #gridAlignmentIcons button[data-value="end end"] { justify-self: end; align-self: end; }
         #gridAlignmentIcons button { display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; }
+
+        /* Add this to your existing CSS */
+        .remove-override {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 20px;
+            height: 20px;
+            background: #fee2e2; /* Red-100 */
+            color: #ef4444;       /* Red-500 */
+            border-radius: 50%;
+            text-align: center;
+            line-height: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 50;
+            user-select: none;
+        }
+        .label.selected:hover .remove-override {
+            opacity: 1;
+        }
+        
+        /* Ensure it hides during printing */
+        @media print {
+            .remove-override { display: none !important; }
+        }
 
         @page { size: auto; margin: 0mm; }
 
@@ -348,6 +460,7 @@
                         <div class="grid grid-cols-2 gap-2">
                             <button id="selectAll" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700">Select All</button>
                             <button id="deselectAll" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-600 hover:bg-gray-700">Deselect All</button>
+                            <button id="clearManual" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 mt-2 col-span-2">Clear Manual Edits</button>
                         </div>
                         <button id="printButton" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-sky-600 hover:bg-sky-700"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v6a2 2 0 002 2h1v-4a1 1 0 011-1h8a1 1 0 011 1v4h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd" /></svg>Print Selected Labels</button>
                     </div>
@@ -417,8 +530,62 @@
             const gridAlignmentIcons = document.getElementById('gridAlignmentIcons');
             let gridAlignmentValue = 'start start'; // Default value
 
-            let labelData = []; 
-            let csvHeader = []; 
+
+    // --- State Variables ---
+    let labelData = []; 
+    let csvHeader = []; 
+    let manualOverrides = {}; 
+    
+    // --- Undo/Redo System ---
+    const historyStack = [];
+    let historyPointer = -1;
+    let historyDebounceTimer = null;
+
+    const saveHistory = () => {
+        // Remove any future history if we are in the middle of the stack
+        if (historyPointer < historyStack.length - 1) {
+            historyStack.splice(historyPointer + 1);
+        }
+        // Deep copy the current state
+        historyStack.push(JSON.stringify(manualOverrides));
+        historyPointer++;
+        
+        // Limit stack size (optional, e.g., 50 steps)
+        if (historyStack.length > 50) {
+            historyStack.shift();
+            historyPointer--;
+        }
+    };
+
+    const undo = () => {
+        if (historyPointer > 0) {
+            historyPointer--;
+            manualOverrides = JSON.parse(historyStack[historyPointer]);
+            renderPreview();
+        }
+    };
+
+    const redo = () => {
+        if (historyPointer < historyStack.length - 1) {
+            historyPointer++;
+            manualOverrides = JSON.parse(historyStack[historyPointer]);
+            renderPreview();
+        }
+    };
+
+    document.getElementById('clearManual').addEventListener('click', () => {
+        if (confirm("Are you sure you want to remove all manual text changes?")) {
+            manualOverrides = {};
+            saveHistory(); // Save the empty state
+            renderPreview();
+        }
+    });
+
+    // Save initial empty state
+    saveHistory();
+
+    
+
             
             const PRESETS = {
                 labelSheet: {
@@ -550,98 +717,129 @@
 
             const renderPreview = () => {
                 const labelsPerPage = getLabelsPerPage();
-                
-                const currentSelection = Array.from(document.querySelectorAll('.label.selected')).map(l => parseInt(l.dataset.index, 10));
+                // Get currently selected indices
+                let currentSelection = Array.from(document.querySelectorAll('.label.selected')).map(l => parseInt(l.dataset.index, 10));
                 
                 labelGrid.innerHTML = '';
 
                 const dataToRender = generateDataArray();
                 const startPos = Math.max(0, parseInt(controls.startPosition.value, 10) - 1);
                 const isPureManualMode = dataToRender.length === 1 && dataToRender[0].MANUAL_CONTENT !== undefined;
-                
-                const labelsToShow = labelsPerPage; // Always show a full page grid
-                
                 const padding = Array(startPos).fill(null);
                 const finalData = padding.concat(dataToRender);
 
-
-                for (let i = 0; i < labelsToShow; i++) {
+                for (let i = 0; i < labelsPerPage; i++) {
                     const label = document.createElement('div');
                     label.classList.add('label');
                     label.dataset.index = i;
-                    label.dataset.labelNumber = i + 1;
+                    label.dataset.labelNumber = i + 1; // Ensure label number is set
                     
+                    // --- 1. SETUP CONTENT DATA ---
                     let content = '';
                     const dataItem = isPureManualMode ? dataToRender[0] : finalData[i];
 
-                    if (dataItem) {
+                    const hasOverride = manualOverrides[i] !== undefined;
+                    if (hasOverride) {
+                        content = manualOverrides[i];
+                        label.classList.add('has-override'); 
+                    } else if (dataItem) {
                         content = generateLabelContent(dataItem, i + 1);
                     }
-                    
-                    let isSelected = false;
 
-                    if (isPureManualMode) {
-                        // In manual mode, only show content if selected
-                        // ***FIXED LINE***: Removed the faulty default selection logic
-                        isSelected = currentSelection.includes(i);
-                        if (isSelected) {
-                            label.classList.add('selected');
-                            if (content.trim() !== '') {
-                                label.innerHTML = content;
-                                label.classList.add('has-template');
-                            }
-                        }
+                    // --- 2. SELECTION LOGIC ---
+                    let isSelected = currentSelection.includes(i);
+                    // Default selection on fresh load
+                    if (currentSelection.length === 0 && (dataItem || controls.templateType.value === 'envelope')) {
+                        isSelected = true; 
                     }
-                    else if (!isPureManualMode && dataItem) {
-                        // In data mode, select by default if data exists, but respect currentSelection if it's been modified
-                        isSelected = currentSelection.length === 0 || currentSelection.includes(i);
-                        if (isSelected) {
-                            label.classList.add('selected');
-                            if (content.trim() !== '') {
-                                label.innerHTML = content;
-                                label.classList.add('has-template');
-                            }
-                        }
-                    } 
-                    else if (controls.templateType.value === 'envelope') {
-                        // Envelope is always selected
+
+                    if (isSelected) {
                         label.classList.add('selected');
+                        if (content.trim() !== '') {
+                            label.classList.add('has-template');
+                        }
                     }
 
-                    // Add direct edit to first label
-                    if (i === 0) {
-                        label.setAttribute('contenteditable', 'true');
-                        if (!isPureManualMode && dataItem) {
-                             // If data-driven, don't allow editing (it's confusing)
-                             label.setAttribute('contenteditable', 'false');
-                        } else {
-                            // Sync content from template to first label
-                            label.innerText = controls.contentTemplate.value;
+                    // --- 3. CREATE SEPARATE CONTENT LAYER (The Fix) ---
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'label-content';
+                    contentDiv.contentEditable = true; // Only this part is editable
+                    contentDiv.innerHTML = content;
+                    
+                    // Input Listener (Saves ONLY the text, ignores buttons)
+                    contentDiv.addEventListener('input', (e) => {
+                        manualOverrides[i] = contentDiv.innerHTML;
+                        
+                        label.classList.add('has-override'); 
+                        if (!label.classList.contains('selected')) {
+                            label.classList.add('selected');
                         }
                         
-                        label.addEventListener('input', (e) => {
-                            controls.contentTemplate.value = e.target.innerText;
-                            if (isPureManualMode) {
-                                // Re-render to update all other selected labels
-                                renderPreview();
-                            }
-                        });
-                    }
+                        // Debounce History
+                        clearTimeout(historyDebounceTimer);
+                        historyDebounceTimer = setTimeout(() => saveHistory(), 500);
+                    });
 
-                    if (label.querySelector('.barcode')) {
-                        const svg = label.querySelector('.barcode');
+                    // --- 4. CREATE CONTROLS LAYER ---
+                    const controlsDiv = document.createElement('div');
+                    controlsDiv.className = 'label-controls';
+                    controlsDiv.contentEditable = false; // Buttons are NOT editable
+
+                    // Clear Button
+                    const clearBtn = document.createElement('div');
+                    clearBtn.className = 'btn-control btn-clear';
+                    clearBtn.innerHTML = '&#128465;'; 
+                    clearBtn.title = 'Clear Manual Text';
+                    clearBtn.addEventListener('mousedown', e => e.stopPropagation());
+                    clearBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        delete manualOverrides[i];
+                        saveHistory();
+                        renderPreview(); 
+                    });
+                    controlsDiv.appendChild(clearBtn);
+
+                    // Deselect Button
+                    const deselectBtn = document.createElement('div');
+                    deselectBtn.className = 'btn-control btn-deselect';
+                    deselectBtn.innerHTML = '&times;';
+                    deselectBtn.title = 'Deselect';
+                    deselectBtn.addEventListener('mousedown', e => e.stopPropagation());
+                    deselectBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        label.classList.remove('selected');
+                        // Use CSS to hide controls, no re-render needed
+                    });
+                    controlsDiv.appendChild(deselectBtn);
+
+                    // Append layers in order
+                    label.appendChild(contentDiv);
+                    label.appendChild(controlsDiv);
+
+                    // --- 5. CLICK HANDLER (Focus Management) ---
+                    label.addEventListener('click', (e) => {
+                         // Ctrl+Click to Deselect
+                         if (e.ctrlKey || e.metaKey) {
+                             label.classList.toggle('selected');
+                             return;
+                         }
+                         
+                         // Standard Click: Select
+                         if (!label.classList.contains('selected')) {
+                             label.classList.add('selected');
+                         }
+                         
+                         // FORCE FOCUS on the content layer
+                         // This fixes the "no entry bit" issue
+                         contentDiv.focus();
+                    });
+
+                    // Render Barcodes (if any in content)
+                    if (contentDiv.querySelector('.barcode')) {
+                        const svg = contentDiv.querySelector('.barcode');
                         JsBarcode(svg, svg.dataset.value, { displayValue: true, margin: 5, fontSize: 10, height: 30 });
                     }
-
-                    label.addEventListener('click', (e) => {
-                         if (e.target.isContentEditable) return; // Don't toggle select when editing text
-                         label.classList.toggle('selected');
-                         
-                         if (isPureManualMode) {
-                            // In pure manual mode, re-render to show/hide content on the label
-                            renderPreview();
-                         }
-                    });
+                    
                     labelGrid.appendChild(label);
                 }
             };
@@ -956,8 +1154,11 @@
                 const padding = Array(startPos).fill(null);
                 const finalData = padding.concat(dataToPrint);
 
-                if (finalData.length === 0 && controls.contentTemplate.value.trim() === '') {
-                     alert("There is no data to print. Please enter text in the Content Template, import a CSV, or use the Auto-Increment feature.");
+                // --- FIX 1: Check manualOverrides in the "Empty" validation ---
+                const hasManualData = Object.keys(manualOverrides).length > 0;
+                
+                if (finalData.length === 0 && controls.contentTemplate.value.trim() === '' && !hasManualData) {
+                     alert("There is no data to print. Please enter text in the Content Template, import a CSV, use Auto-Increment, or type manually into a label.");
                      return;
                 }
                 
@@ -972,9 +1173,10 @@
                     return;
                 }
 
-                // Calculate total pages needed based on *all* data, not just selected
-                const totalLabelsWithData = finalData.filter(d => d !== null).length;
-                const totalPages = isPureManualMode ? 1 : Math.ceil(totalLabelsWithData / labelsPerPage);
+                // --- FIX 2: Calculate pages based on the furthest selected label ---
+                // If I select label #20, I need to print enough pages to reach #20, even if I only have 1 item of data.
+                const maxIndex = Math.max(...selectedIndexes);
+                const totalPages = Math.ceil((maxIndex + 1) / labelsPerPage);
 
                 for (let i = 0; i < totalPages; i++) {
                     const page = document.createElement('div');
@@ -987,6 +1189,7 @@
                         const printLabel = document.createElement('div');
                         printLabel.className = 'label print-label';
                         
+                        // Copy Styles
                         printLabel.style.fontSize = root.style.getPropertyValue('--font-size');
                         printLabel.style.fontFamily = root.style.getPropertyValue('--font-family');
                         printLabel.style.fontWeight = root.style.getPropertyValue('--font-weight');
@@ -1000,7 +1203,12 @@
                         
                         // Check if this specific label index is selected
                         if (selectedIndexes.includes(globalIndex)) {
-                            if (isPureManualMode) {
+                            // --- FIX 3: Prioritize Manual Overrides ---
+                            if (manualOverrides[globalIndex] !== undefined) {
+                                content = manualOverrides[globalIndex];
+                                hasContent = true;
+                            }
+                            else if (isPureManualMode) {
                                 content = generateLabelContent(dataToPrint[0], globalIndex + 1); 
                                 hasContent = true;
                             } else {
@@ -1094,6 +1302,24 @@
             // without getting in the way of the re-render logic.
             labelGrid.querySelector('.label[data-index="0"]')?.classList.add('selected');
         });
+
+        // --- Keyboard Shortcuts (Undo/Redo) ---
+            document.addEventListener('keydown', (e) => {
+                // Check for Ctrl (or Cmd on Mac)
+                if (e.ctrlKey || e.metaKey) {
+                    if (e.key === 'z') {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                            redo();
+                        } else {
+                            undo();
+                        }
+                    } else if (e.key === 'y') {
+                        e.preventDefault();
+                        redo();
+                    }
+                }
+            });
     </script>
 </body>
 </html>

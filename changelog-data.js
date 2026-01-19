@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.5.0-alpha",
+    date: "2026-01-19",
+    changes: [
+        "In Label Generator: Enabled full manual editing capabilities, allowing users to type text or paste images directly into any label on the grid, overriding the default template.",
+        "In Label Generator: Added interactive on-label controls to 'Deselect' specific labels or 'Clear' manual overrides individually.",
+        "In Label Generator: Improved text editing UX by isolating content layers to prevent UI controls from interfering with typing or cursor focus.",
+        "In Label Generator: Added a 'Clear Manual Edits' button to the Print tab to globally reset all manual changes."
+    ]
+    },
+    {
     version: "v10.4.0-alpha",
     date: "2026-01-19",
     changes: [
