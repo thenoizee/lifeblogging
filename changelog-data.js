@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.6.0-alpha",
+    date: "2026-01-19",
+    changes: [
+        "In MediManagr: Migrated the application to the unified `shared-nav` system, replacing the legacy hardcoded header and mobile navigation bar.",
+        "In MediManagr: Updated the dark mode implementation to use the standard `.dark` class strategy, ensuring compatibility with the shared navigation theme toggle.",
+        "In MediManagr: Overhauled the 'Record Doses' mobile layout, switching from a horizontal scroll to a vertical 'Agenda View' for better usability on small screens.",
+        "In MediManagr: Redesigned the 'History' tab on mobile to use a compact vertical stack, hiding empty days and headers to maximize screen efficiency."
+    ]
+    },
+    {
     version: "v10.5.0-alpha",
     date: "2026-01-19",
     changes: [
