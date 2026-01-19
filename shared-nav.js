@@ -78,7 +78,7 @@ export class AppNavigation {
 
         // UPDATED: bg-white/90 and dark:bg-gray-800/90 (Matches VidTrackr Cards)
         const headerHtml = `
-        <header class="sticky top-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md shadow-sm z-50 shrink-0 border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
+<header class="sticky top-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md shadow-sm z-50 shrink-0 border-b border-gray-200 dark:border-gray-700 transition-colors duration-300 md:mb-8">
             <div class="container mx-auto px-4 py-2">
                 <div class="flex items-center justify-between h-12">
                     

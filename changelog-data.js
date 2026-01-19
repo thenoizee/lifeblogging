@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    "version": "v10.3.0-alpha",
+    "date": "2026-01-19",
+    "changes": [
+        "In FoodTrackr: Migrated the entire application to use the unified 'shared-nav' system, replacing the legacy hardcoded header and mobile navigation bar.",
+        "In FoodTrackr: Updated dark mode implementation to use the Tailwind 'class' strategy (:root.dark), ensuring consistent theming with the new navigation.",
+        "In Shared Nav: Added vertical spacing (margin-bottom) to the sticky header on desktop screens to better separate navigation from app content."
+    ]
+    },
+    {
     version: "v10.2.0-alpha",
     date: "2026-01-18",
     changes: [
