@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.4.0-alpha",
+    date: "2026-01-19",
+    changes: [
+        "In Text Generator: Migrated to use the new shared navigation system for consistent styling and mobile menu support.",
+        "In Text Generator: Re-added 'Duplicate as New' and 'Edit Master Template' quick action buttons to the workspace header.",
+        "In Text Generator: Added a mobile sidebar toggle to easily show/hide the template list on smaller screens.",
+        "In Text Generator: Fixed bugs related to the sync status indicator and theme initialization."
+    ]
+    },
+    {
     "version": "v10.3.0-alpha",
     "date": "2026-01-19",
     "changes": [
