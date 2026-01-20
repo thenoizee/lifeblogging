@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v10.10.0-alpha",
+    date: "2026-01-20",
+    changes: [
+        "In PodTrackr: Migrated the entire application header and navigation to the unified 'shared-nav' system, replacing the manual HTML/CSS implementation.",
+    ]
+    },
+    {
     version: "v10.9.0-alpha",
     date: "2026-01-20",
     changes: [
