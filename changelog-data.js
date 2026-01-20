@@ -5,6 +5,15 @@ export const changelogData = [
     version: "v10.10.0-alpha",
     date: "2026-01-20",
     changes: [
+        "In RecipeManagr: Migrated the application to the unified `shared-nav` system, replacing the legacy hardcoded header and mobile navigation bar.",
+        "In RecipeManagr: Relocated the 'Options' menu (cog icon) to the Filter & Sort section to maintain accessibility after removing the custom header.",
+        "In RecipeManagr: Integrated the search functionality directly into the shared navigation bar, updating filtering logic to listen to the new global input.",
+    ]
+    },
+    {
+    version: "v10.10.0-alpha",
+    date: "2026-01-20",
+    changes: [
         "In PodTrackr: Migrated the entire application header and navigation to the unified 'shared-nav' system, replacing the manual HTML/CSS implementation.",
     ]
     },
