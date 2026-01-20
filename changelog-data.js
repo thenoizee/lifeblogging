@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v10.6.1-alpha",
+    date: "2026-01-20",
+    changes: [
+        "In FoodTrackr: Restored functionality to the Dashboard navigation buttons (Back, Next, Today) which were previously unresponsive due to the script initialization failure."
+    ]
+    },
+    {
     version: "v10.6.0-alpha",
     date: "2026-01-19",
     changes: [
