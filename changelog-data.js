@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.9.0-alpha",
+    date: "2026-01-20",
+    changes: [
+        "In FoodTrackr: Introduced Goal Tracking to the Dashboard. Users can now set custom daily targets for Calories, Protein, Carbs, and Fat via a new 'Edit Goals' modal.",
+        "In FoodTrackr: Updated Dashboard summary cards with visual progress bars that track consumption against goals, automatically turning red when limits are exceeded.",
+        "In FoodTrackr: Overhauled the History Table with a unified toolbar combining search and date filtering, plus a new 'Clear Filters' button.",
+        "In FoodTrackr: Added 3-state sorting (Desc/Asc/Default) to all history table columns including Date, Name, and Nutrients.",
+        "In FoodTrackr: Implemented a sticky footer in the History view that calculates live totals for Calories and Macros based on the currently filtered results."
+    ]
+    },
+    {
     version: "v10.8.0-alpha",
     date: "2026-01-20",
     changes: [
@@ -10,7 +21,7 @@ export const changelogData = [
         "In IconGenerator: Added a 'Reverse Search' import tool that parses pasted HTML, CSS, or SVG code to auto-configure the designer.",
         "In IconGenerator: Enabled multiple export modes including HTML, CSS (Base64), SVG Favicon tags, and high-res PNG downloads."
     ]
-},
+    },
     {
     version: "v10.7.0-alpha",
     date: "2026-01-20",
