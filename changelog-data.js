@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.8.0-alpha",
+    date: "2026-01-20",
+    changes: [
+        "New App: Released 'IconGenerator', a standalone designer for creating, styling, and exporting custom icons directly within the Hub.",
+        "In IconGenerator: Added multi-library support for FontAwesome 6, Phosphor, Bootstrap Icons, Remix Icons, and Boxicons.",
+        "In IconGenerator: Added a 'Reverse Search' import tool that parses pasted HTML, CSS, or SVG code to auto-configure the designer.",
+        "In IconGenerator: Enabled multiple export modes including HTML, CSS (Base64), SVG Favicon tags, and high-res PNG downloads."
+    ]
+},
+    {
     version: "v10.7.0-alpha",
     date: "2026-01-20",
     changes: [
