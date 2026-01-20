@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.7.0-alpha",
+    date: "2026-01-20",
+    changes: [
+        "In VidTrackr: Fixed critical API 405 errors and 'undefined' routing crashes by implementing null-checks in `createCardHtml`, `handleRoute`, and `loadUpNext`.",
+        "In VidTrackr: Resolved a navigation conflict that caused deep links (e.g., Movie Details) to flicker or reset to the dashboard by updating the `tab-changed` event listener logic.",
+        "In VidTrackr: Restored the 'Friends Recently Watched' feed using a new manual fetching workaround and repositioned the section to appear below 'Airing This Week'.",
+    ]
+    },
+    {
     version: "v10.6.1-alpha",
     date: "2026-01-20",
     changes: [

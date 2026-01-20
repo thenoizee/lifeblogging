@@ -1,4 +1,3 @@
-// shared-nav.js
 export class AppNavigation {
     constructor(config) {
         this.appName = config.appName || 'My App';
@@ -8,6 +7,7 @@ export class AppNavigation {
         this.activeTab = config.activeTab || '';
         this.userEmail = config.userEmail || 'Guest';
         this.version = config.version || '';
+        this.search = config.search || null; // NEW: Search Config
         
         this.hubApps = [
             { name: 'Dashboard', url: '/dashboard', icon: 'fa-gauge-high', color: 'bg-slate-700' },
@@ -33,14 +33,12 @@ export class AppNavigation {
         this.renderMobileNav();
         this.attachEvents();
         
-        // Apply saved theme immediately
         const storedTheme = localStorage.getItem('theme') || 'dark';
         this.applyTheme(storedTheme === 'dark');
         
         this.updateActiveTab(this.activeTab);
     }
 
-    // NEW: Method to update user avatar dynamically
     updateUser(email) {
         this.userEmail = email || 'Guest';
         const initial = this.userEmail.charAt(0).toUpperCase();
@@ -76,7 +74,6 @@ export class AppNavigation {
     renderHeader() {
         const userInitial = this.userEmail.charAt(0).toUpperCase();
 
-        // UPDATED: bg-white/90 and dark:bg-gray-800/90 (Matches VidTrackr Cards)
         const headerHtml = `
 <header class="sticky top-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md shadow-sm z-50 shrink-0 border-b border-gray-200 dark:border-gray-700 transition-colors duration-300 md:mb-8">
             <div class="container mx-auto px-4 py-2">
@@ -127,7 +124,14 @@ export class AppNavigation {
                     </nav>
 
                     <div class="flex items-center gap-3">
-                        
+                        ${this.search ? `
+                        <div class="hidden md:block relative mx-2">
+                             <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                             <input type="search" id="${this.search.id}" placeholder="${this.search.placeholder || 'Search...'}" 
+                                class="bg-gray-100 dark:bg-gray-900/50 border-none text-gray-600 dark:text-gray-300 text-xs rounded-lg py-1.5 pl-8 pr-4 w-40 lg:w-48 focus:ring-2 focus:ring-${this.themeColor}-500 focus:outline-none transition-all">
+                        </div>
+                        ` : ''}
+
                         <div id="nav-user-avatar" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-help" title="Logged in as: ${this.userEmail}">
                             ${userInitial}
                         </div>
