@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.12.0-alpha",
+    date: "2026-01-21",
+    changes: [
+        "In TaskTrackr: Implemented a fully collapsible left navigation sidebar with persistent state, allowing users to toggle between expanded and compact icon-only modes.",
+        "In TaskTrackr: Fixed a UI bug causing a massive vertical gap to appear below the task title when opening the details pane by optimizing the height calculation timing.",
+        "In TaskTrackr: Added dedicated 'Copy Title' and 'Copy Description' buttons to the task details action bar for quick clipboard access.",
+    ]
+    },
+    {
     version: "v10.11.1-alpha",
     date: "2026-01-21",
     changes: [
