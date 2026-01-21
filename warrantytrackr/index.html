@@ -78,19 +78,7 @@
 </head>
 <body class="min-h-screen">
     <div id="app-container" class="container mx-auto p-4 sm:p-6 lg:p-8">
-        <header class="flex flex-wrap justify-between items-center gap-4 mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold flex items-center">
-                <i class="fas fa-shield-alt mr-3 text-green-500"></i>WarrantyTrackr
-            </h1>
-            <div class="flex items-center gap-4">
-                <a href="/" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition shadow-sm">Back to Hub</a>
-                <button id="theme-toggle" class="bg-[var(--card-bg-color)] border border-[var(--border-color)] rounded-full p-2.5 leading-none focus:outline-none focus:ring-2 focus:ring-indigo-500" title="Toggle dark mode">
-                    <i class="fas fa-moon"></i>
-                </button>
-            </div>
-        </header>
-
-        <main>
+                <main>
             <div class="bg-[var(--card-bg-color)] shadow-lg rounded-xl p-6 md:p-8">
                  <div id="dashboard" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 text-center">
                     <div class="p-4 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
@@ -121,19 +109,17 @@
                             <span id="import-badge" class="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center" style="display: none;"></span>
                         </button>
                     </div>
-                    <div class="flex items-center gap-4 w-full md:w-auto">
-                        <input type="search" id="search-input" placeholder="Search by name..." class="form-input rounded-lg w-full md:w-auto">
-                        <select id="category-filter" class="form-select rounded-lg w-full md:w-auto">
-                            <option value="">All Categories</option>
-                        </select>
-                        <select id="sort-by" class="form-select rounded-lg">
-                            <option value="expiryDate-asc">Expiry Date (Soonest)</option>
-                            <option value="expiryDate-desc">Expiry Date (Latest)</option>
-                            <option value="purchaseDate-desc">Purchase Date (Newest)</option>
-                            <option value="purchaseDate-asc">Purchase Date (Oldest)</option>
-                            <option value="productName-asc">Product Name (A-Z)</option>
-                        </select>
-                    </div>
+
+    <div class="w-full md:w-auto">
+        <select id="sort-by" class="form-select rounded-lg w-full md:w-auto cursor-pointer">
+            <option value="expiryDate-asc">Expires Soonest</option>
+            <option value="expiryDate-desc">Expires Latest</option>
+            <option value="productName-asc">Name (A-Z)</option>
+            <option value="productName-desc">Name (Z-A)</option>
+            <option value="purchaseDate-desc">Newest First</option>
+            <option value="purchaseDate-asc">Oldest First</option>
+        </select>
+    </div>
                 </div>
 
                 <div id="warranty-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -248,6 +234,7 @@
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+        import { AppNavigation } from '../shared-nav.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -272,7 +259,6 @@
         let recipeManagerDevices = [];
 
         // DOM Elements
-        const themeToggle = document.getElementById('theme-toggle');
         const warrantyList = document.getElementById('warranty-list');
         const addWarrantyBtn = document.getElementById('add-warranty-btn');
         const warrantyModal = document.getElementById('warranty-modal');
@@ -303,22 +289,39 @@ const registrationDetailsDiv = document.getElementById('registration-details');
 const registeredByInput = document.getElementById('registered-by');
 const registrationLinkInput = document.getElementById('registration-link');
 
-        // --- THEME ---
-        const applyTheme = (theme) => {
-            document.documentElement.classList.toggle('dark', theme === 'dark');
-            themeToggle.innerHTML = theme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
-        };
+// --- SHARED NAVIGATION INIT ---
+const nav = new AppNavigation({
+    appName: 'WarrantyTrackr',
+    appIcon: 'fa-shield-alt',
+    themeColor: 'emerald',
+    version: 'v10.12.0-alpha', // Matches latest changelog
+    userEmail: null,
+    tabs: [
+        { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie' },
+        // You can add more tabs here if you split the view later
+    ],
+    activeTab: 'dashboard',
+    search: { 
+        id: 'nav-search', 
+        placeholder: 'Search warranties...' 
+    },
+    onThemeChange: async (newTheme) => {
+        if (userId) {
+            // Updates Firestore, which syncs to all your other apps
+            await setDoc(doc(db, 'users', userId, 'settings', 'theme'), { theme: newTheme }, { merge: true });
+        }
+    }
+});
 
-        themeToggle.addEventListener('click', async () => {
-            if (!userId) return;
-            const newTheme = document.documentElement.classList.contains('dark') ? 'light' : 'dark';
-            try {
-                await setDoc(doc(db, 'users', userId, 'settings', 'theme'), { theme: newTheme });
-            } catch (error) {
-                console.error("Error updating theme:", error);
-                showMessage('Failed to save theme preference.', 'error');
-            }
-        });
+// --- SEARCH LISTENER UPDATE ---
+// Replace your old search listener with this:
+const navSearch = document.getElementById('nav-search');
+if (navSearch) {
+    navSearch.addEventListener('input', () => {
+        // Trigger your existing render/filter logic
+        renderWarranties(); 
+    });
+}
 
         // --- MODALS ---
         const openModal = (mode = 'add', data = null) => {
@@ -389,6 +392,18 @@ const registrationLinkInput = document.getElementById('registration-link');
             warrantyLengthInput.disabled = warrantyUnitInput.value === 'lifetime';
         });
 
+        const applyTheme = (theme) => {
+    // Let SharedNav handle the DOM class toggling class via its internal logic if possible, 
+    // or manually force it if Firestore dictates:
+    if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+    } else {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+    }
+};
+
         // --- DATA & RENDERING ---
         const calculateExpiry = (purchaseDateStr, length, unit) => {
             if (unit === 'lifetime') return null;
@@ -422,6 +437,13 @@ const registrationLinkInput = document.getElementById('registration-link');
                 return;
             }
 
+            document.getElementById('total-warranties').textContent = warranties.length;
+    document.getElementById('active-warranties').textContent = warranties.filter(w => w.status.color !== 'red').length;
+    document.getElementById('expiring-warranties').textContent = warranties.filter(w => w.status.color === 'orange').length;
+    document.getElementById('expired-warranties').textContent = warranties.filter(w => w.status.color === 'red').length;
+
+            const searchTerm = document.getElementById('nav-search')?.value.toLowerCase() || '';
+
             authState.style.display = 'none';
             if (warranties.length === 0) {
                 emptyState.style.display = 'block';
@@ -433,8 +455,10 @@ const registrationLinkInput = document.getElementById('registration-link');
 
             const [sortField, sortOrder] = sortBySelect.value.split('-');
             
-            const sortedWarranties = [...warranties].sort((a, b) => {
-                let valA, valB;
+            const sortedWarranties = [...warranties]
+        .filter(w => w.productName.toLowerCase().includes(searchTerm)) // Add this filter
+        .sort((a, b) => {
+            let valA, valB; // <--- ADD THIS LINE
                 if (sortField === 'expiryDate') {
                     valA = a.status.days;
                     valB = b.status.days;
@@ -595,6 +619,7 @@ const registrationLinkInput = document.getElementById('registration-link');
             
             if (user) {
                 userId = user.uid;
+                nav.updateUser(user.email); // <--- ADD THIS
                 loadingState.style.display = 'block';
                 authState.style.display = 'none';
 
@@ -633,6 +658,7 @@ const registrationLinkInput = document.getElementById('registration-link');
                 renderWarranties();
                 importBadge.style.display = 'none';
                 applyTheme(localStorage.getItem('theme') || 'light');
+                nav.updateUser(null); // <--- ADD THIS
             }
         });
     </script>

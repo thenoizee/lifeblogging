@@ -8,6 +8,7 @@ export class AppNavigation {
         this.userEmail = config.userEmail || 'Guest';
         this.version = config.version || '';
         this.search = config.search || null; // NEW: Search Config
+        this.onThemeChange = config.onThemeChange || null; // <--- ADD THIS
         
         this.hubApps = [
             { name: 'Dashboard', url: '/dashboard', icon: 'fa-gauge-high', color: 'bg-slate-700' },
@@ -20,7 +21,7 @@ export class AppNavigation {
             { name: 'Logger', url: '/log', icon: 'fa-pen-to-square', color: 'bg-green-600' },
             { name: 'Analyser', url: '/analyser', icon: 'fa-chart-line', color: 'bg-indigo-600' },
             { name: 'Hydration', url: '/hydrationtrackr', icon: 'fa-droplet', color: 'bg-cyan-600' },
-            { name: 'Vehicle', url: '/vehiclemanagr', icon: 'fa-car', color: 'bg-zinc-600' },
+            { name: 'Vehicle', url: '/vehiclemanagr', icon: 'fa-car-tunnel', color: 'bg-zinc-600' },
             { name: 'Warranty', url: '/warrantytrackr', icon: 'fa-shield-halved', color: 'bg-emerald-600' },
         ];
 
@@ -246,6 +247,11 @@ export class AppNavigation {
             themeBtn.addEventListener('click', () => {
                 const isDark = !document.documentElement.classList.contains('dark');
                 this.applyTheme(isDark);
+                // <--- ADD THIS BLOCK --->
+                if (this.onThemeChange) {
+                    this.onThemeChange(isDark ? 'dark' : 'light');
+                }
+                // <--- END ADD BLOCK --->
                 themeBtn.classList.add('rotate-360');
                 setTimeout(() => themeBtn.classList.remove('rotate-360'), 500);
             });

@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.13.0-alpha",
+    date: "2026-01-21",
+    changes: [
+        "In Shared Navigation: Added support for an `onThemeChange` callback, enabling apps to execute custom logic (like saving to Firestore) when the theme is toggled.",
+        "In WarrantyTrackr: Replaced the legacy header and sidebar with the unified `SharedNav` system, including user authentication state synchronization.",
+        "In WarrantyTrackr: Connected dashboard statistic counters to live data and restored the 'Sort By' dropdown which was missing after the navigation migration.",
+        "In VehicleManagr: Updated icon in App, Dashboard, and Shared Nav menu to car-tunnel."
+    ]
+    },
+    {
     version: "v10.12.0-alpha",
     date: "2026-01-21",
     changes: [
