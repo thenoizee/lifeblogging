@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v10.14.0-alpha",
+    date: "2026-01-21",
+    changes: [
+        "In Analyser: Refactored the entire application interface into a tabbed layout (Insights, Data Editor, Settings) and integrated the unified `AppNavigation` system.",
+    ]
+    },
+    {
     version: "v10.13.0-alpha",
     date: "2026-01-21",
     changes: [
