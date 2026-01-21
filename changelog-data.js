@@ -2,7 +2,14 @@
 
 export const changelogData = [
     {
-    version: "v10.10.0-alpha",
+    version: "v10.11.1-alpha",
+    date: "2026-01-21",
+    changes: [
+        "In FoodTrackr: Search bug fix.",
+    ]
+    },
+    {
+    version: "v10.11.0-alpha",
     date: "2026-01-20",
     changes: [
         "In RecipeManagr: Migrated the application to the unified `shared-nav` system, replacing the legacy hardcoded header and mobile navigation bar.",
