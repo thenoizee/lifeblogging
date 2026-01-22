@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.16.0-alpha",
+    date: "2026-01-22",
+    changes: [
+        "In IconGenerator: Added 'Text & Emoji Mode' to support text-based avatars and emojis with multiple font options.",
+        "In IconGenerator: Implemented 'Pattern Overlays' (Polka Dots, Diagonal Lines, Grid) to add texture to backgrounds.",
+        "In IconGenerator: Added SVG export functionality for scalable icon downloads.",
+        "In IconGenerator: Added advanced controls for Gradient Angle, Gradient Type (Linear/Radial), Icon Rotation, and Offsets.",
+        "In IconGenerator: Added new visual effects including Icon Drop Shadow, Opacity, and extended Border Styles (Dashed, Dotted, Double)."
+    ]
+    },
+    {
     version: "v10.15.0-alpha",
     date: "2026-01-22",
     changes: [
