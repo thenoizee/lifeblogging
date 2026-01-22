@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v10.15.0-alpha",
+    date: "2026-01-22",
+    changes: [
+        "In PDF Tools: Changed the default active tool to 'Organise' instead of 'Unlock' for faster access to page management features."
+    ]
+    },
+    {
     version: "v10.14.0-alpha",
     date: "2026-01-21",
     changes: [
