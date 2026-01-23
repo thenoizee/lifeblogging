@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.17.0-alpha",
+    date: "2026-01-23",
+    changes: [
+        "In VehicleManagr: Migrated navigation to the unified 'SharedNav' system for consistent Hub styling and behavior.",
+        "In VehicleManagr: Updated color palette to match the Hub's Slate theme (Zinc buttons, Slate backgrounds) and standardized Dark Mode implementation.",
+    ]
+    },
+    {
     version: "v10.16.0-alpha",
     date: "2026-01-22",
     changes: [
