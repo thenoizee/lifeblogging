@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v10.20.0-alpha",
+    date: "2026-01-25",
+    changes: [
+        "In IconGenerator: Added transparency support to color pickers, allowing for transparent backgrounds, icons, and borders."
+    ]
+    },
+    {
     version: "v10.19.0-alpha",
     date: "2026-01-25",
     changes: [
