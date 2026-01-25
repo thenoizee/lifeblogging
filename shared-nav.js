@@ -23,6 +23,7 @@ export class AppNavigation {
             { name: 'Hydration', url: '/hydrationtrackr', icon: 'fa-droplet', color: 'bg-cyan-600' },
             { name: 'Vehicle', url: '/vehiclemanagr', icon: 'fa-car-tunnel', color: 'bg-zinc-600' },
             { name: 'Warranty', url: '/warrantytrackr', icon: 'fa-shield-halved', color: 'bg-emerald-600' },
+            { name: 'PlantTrackr', url: '/planttrackr', icon: 'fa-leaf', color: 'bg-green-600' },
         ];
 
         this.init();

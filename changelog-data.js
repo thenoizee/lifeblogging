@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.21.0-alpha",
+    date: "2026-01-25",
+    changes: [
+        "In PlantTrackr: Initial release of the application fully integrated into the Lifeblogging ecosystem.",
+        "In PlantTrackr: Implemented `AppNavigation` (SharedNav) for standardized authentication, sidebar navigation, and mobile bottom-tabs.",
+        "In PlantTrackr: Added bi-directional Dark Mode synchronization to read/write theme settings to Firestore in real-time.",
+        "In PlantTrackr: Standardized CSS variables (bg, card, primary) to fix desktop layout visibility and ensure consistent theming with VidTrackr/Analyser.",
+        "In PlantTrackr: Added dashboard widgets for 'Thirsty Plants' and 'Needs Fertilizer' with quick-action logging buttons."
+    ]
+    },
+    {
     version: "v10.20.0-alpha",
     date: "2026-01-25",
     changes: [
