@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.18.0-alpha",
+    date: "2026-01-25",
+    changes: [
+        "In FoodTrackr: Added Sourdough Tracker feature to log feedings, calculate hydration %, and track starter health/activity.",
+        "In FoodTrackr: Added Starter Stats to track starter age and set a specific birthday.",
+        "In FoodTrackr: Updated the Search Bar to a compact, inline layout to save vertical space.",
+        "In FoodTrackr: Converted Bulk Actions to a sticky bottom bar that slides up, improving usability on mobile.",
+        "In FoodTrackr: Moved Toast Notifications to the bottom of the screen to prevent overlapping with top navigation.",
+    ]
+    },
+    {
     version: "v10.17.0-alpha",
     date: "2026-01-23",
     changes: [
