@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.19.0-alpha",
+    date: "2026-01-25",
+    changes: [
+        "In VidTrackr: Fixed navigation buttons on touch devices (iPad) to ensure they are visible and clickable without hovering.",
+        "In VidTrackr: Updated navigation logic to automatically jump to the next season (e.g., S1 finale to S2E1) when clicking next.",
+        "In Dashboard: Replaced text links in card headers with icons (e.g., HydrationTrackr -> Droplet Icon) for a cleaner layout.",
+        "In Dashboard: Added a Sourdough Widget to display starter age and last feeding status directly on the dashboard.",
+    ]
+    },
+    {
     version: "v10.18.0-alpha",
     date: "2026-01-25",
     changes: [

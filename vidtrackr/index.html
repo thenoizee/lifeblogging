@@ -86,10 +86,18 @@
             transition: all 0.3s;
             border: 1px solid rgba(255,255,255,0.1);
             z-index: 20; 
-            opacity: 0; 
             cursor: pointer;
+            
+            /* FIX: Default to visible (for mobile/iPad) */
+            opacity: 1; 
         }
-        .group:hover .nav-btn { opacity: 1; }
+
+        /* FIX: Only hide and use hover effect on devices that actually support hover */
+        @media (hover: hover) {
+            .nav-btn { opacity: 0; }
+            .group:hover .nav-btn { opacity: 1; }
+        }
+
         .nav-btn:hover { background: var(--primary); transform: translateY(-50%) scale(1.1); }
         .nav-prev { left: 20px; }
         .nav-next { right: 20px; } 
@@ -542,17 +550,29 @@ window.removeProgress = async (playbackId) => {
             showLoader();
             try {
                 if (targetNumber > 0) {
-                    const ep = await fetchDirect(`/shows/${showId}/seasons/${currentSeason}/episodes/${targetNumber}`);
-                    location.hash = `#detail/episode/${ep.ids.trakt}`;
+                    // FIX: Try next episode in current season; if fail, try S(Next)E1
+                    try {
+                        const ep = await fetchDirect(`/shows/${showId}/seasons/${currentSeason}/episodes/${targetNumber}`);
+                        location.hash = `#detail/episode/${ep.ids.trakt}`;
+                    } catch (err) {
+                        console.log("Next episode in season not found, checking next season...");
+                        // Try Season + 1, Episode 1
+                        const nextSeasonEp = await fetchDirect(`/shows/${showId}/seasons/${currentSeason + 1}/episodes/1`);
+                        location.hash = `#detail/episode/${nextSeasonEp.ids.trakt}`;
+                    }
                 } else if (targetNumber <= 0 && currentSeason > 1) {
+                    // Previous Season Logic
                     const prevSeasonData = await fetchDirect(`/shows/${showId}/seasons/${currentSeason - 1}?extended=full`);
                     const lastEpNum = prevSeasonData.episode_count;
                     const ep = await fetchDirect(`/shows/${showId}/seasons/${currentSeason - 1}/episodes/${lastEpNum}`);
                     location.hash = `#detail/episode/${ep.ids.trakt}`;
                 } else {
-                    showToast('No previous episodes', 'error');
+                    showToast('No more episodes found', 'error');
                 }
-            } catch (e) { showToast('Episode not found', 'error'); }
+            } catch (e) { 
+                console.error(e);
+                showToast('Episode not found', 'error'); 
+            }
             hideLoader();
         };
 
