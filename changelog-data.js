@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.22.0-alpha",
+    date: "2026-01-26",
+    changes: [
+        "In PlantTrackr: Added an 'Upcoming Tasks' dashboard widget to forecast watering and feeding needs for the next 7 days.",
+        "In PlantTrackr: Introduced 'Winter Mode' in settings, a global toggle that automatically extends watering schedules by 50% during colder months.",
+        "In PlantTrackr: Added 'Light Condition' (Low/Medium/High) and 'Position Details' fields to track specific sun exposure and placement for each plant.",
+        "In FoodTrackr: Implemented drag-and-drop functionality for Bulk Manage mode, allowing multiple selected items to be moved between sections simultaneously.",
+        "In Text Generator: Updated the template loader to automatically sort and select the latest version by default when opening a template."
+    ]
+    },
+    {
     version: "v10.21.0-alpha",
     date: "2026-01-25",
     changes: [

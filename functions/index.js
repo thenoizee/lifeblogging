@@ -1,32 +1,61 @@
 /**
  * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
-
-const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
+const { onRequest } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
+const { setGlobalOptions } = require("firebase-functions/v2/options");
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
+// Set maximum instances to control costs (optional but recommended)
 setGlobalOptions({ maxInstances: 10 });
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+// Define the secret so the function can access it safely
+const tickTickSecret = defineSecret("TICKTICK_CLIENT_SECRET");
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+exports.exchangeTickTickToken = onRequest(
+  { secrets: [tickTickSecret], cors: true }, // cors: true allows your website to call this
+  async (req, res) => {
+    const { code, redirect_uri } = req.body;
+
+    if (!code) {
+      res.status(400).json({ error: "Missing auth code" });
+      return;
+    }
+
+    try {
+      const clientId = "3ooYQiYjAFq2cRw2b5"; // Your public Client ID
+      const clientSecret = tickTickSecret.value(); // Securely retrieved from vault
+      
+      // Create the Basic Auth header securely on the server
+      const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+      // Exchange the code for the token
+      const tokenResponse = await fetch("https://ticktick.com/oauth/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": `Basic ${credentials}`,
+        },
+        body: new URLSearchParams({
+          code: code,
+          grant_type: "authorization_code",
+          scope: "tasks:read tasks:write",
+          redirect_uri: redirect_uri,
+        }),
+      });
+
+      const data = await tokenResponse.json();
+
+      if (data.error) {
+        throw new Error(data.error_description || "TickTick API Error");
+      }
+
+      // Send the token back to your frontend
+      res.json(data);
+
+    } catch (error) {
+      logger.error("TickTick Auth Error", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);

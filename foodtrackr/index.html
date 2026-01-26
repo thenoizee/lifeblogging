@@ -2843,14 +2843,13 @@ const renderDailyLog = () => {
         else document.getElementById('log-section-breakfast').appendChild(itemDiv);
     });
     
-    if (!isBulkMode) initSortable();
-    else sortableInstances.forEach(i => i.destroy());
-    
-    if (isBulkMode) {
-        document.querySelectorAll('.bulk-item-checkbox').forEach(cb => {
-            cb.addEventListener('change', updateBulkButtonState);
-        });
-    }
+    initSortable();
+
+if (isBulkMode) {
+    document.querySelectorAll('.bulk-item-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateBulkButtonState);
+    });
+}
 };
 
 // --- NEW: History State ---
@@ -3115,26 +3114,62 @@ document.getElementById('history-search-input').addEventListener('input', () => 
       };
 
       const handleDrop = async (evt) => {
-          const itemId = evt.item.dataset.id;
-          const newSection = evt.to.dataset.section;
-          if (!itemId || !newSection) return;
-          
-          const itemIndex = foodLog.findIndex(item => item.id === itemId);
-          let oldSection = null;
-          if (itemIndex > -1) {
-              oldSection = foodLog[itemIndex].section;
-              foodLog[itemIndex].section = newSection;
-          }
-          try {
-              const docRef = doc(db, `users/${user.uid}/foodLog`, itemId);
-              await updateDoc(docRef, { section: newSection, updatedAt: Timestamp.now(), updatedBy: user.email });
-          } catch (error) {
-              console.error("Error updating item section:", error);
-              showToast('Failed to move item.');
-              if (itemIndex > -1 && oldSection) foodLog[itemIndex].section = oldSection;
-              renderDailyLog();
-          }
-      };
+    const itemId = evt.item.dataset.id;
+    const newSection = evt.to.dataset.section;
+    if (!itemId || !newSection) return;
+
+    // --- NEW BULK DRAG LOGIC ---
+    if (isBulkMode) {
+        const checkedBoxes = document.querySelectorAll('.bulk-item-checkbox:checked');
+        const checkedIds = Array.from(checkedBoxes).map(cb => cb.dataset.id);
+
+        // Check if the item being dragged is actually part of the selected group
+        if (checkedIds.includes(itemId)) {
+            const batch = writeBatch(db);
+            const now = Timestamp.now();
+
+            checkedIds.forEach(id => {
+                const ref = doc(db, `users/${user.uid}/foodLog`, id);
+                // Optimistic UI update (optional, prevents visual snap-back lag)
+                const itemEl = document.querySelector(`.log-item[data-id="${id}"]`);
+                if(itemEl && itemEl !== evt.item) evt.to.appendChild(itemEl);
+                
+                batch.update(ref, { section: newSection, updatedAt: now });
+            });
+
+            try {
+                await batch.commit();
+                showToast(`Moved ${checkedIds.length} items to ${SECTION_NAMES[newSection]}`);
+                // Clear selection after move
+                document.getElementById('bulk-select-all').checked = false;
+                // Buttons will update on next render
+            } catch (error) {
+                console.error("Bulk drag failed:", error);
+                showToast("Failed to move items.", "error");
+                renderDailyLog(); // Revert UI on error
+            }
+            return; // Exit early to skip single-item logic
+        }
+    }
+    // ---------------------------
+
+    // Existing Single Item Logic
+    const itemIndex = foodLog.findIndex(item => item.id === itemId);
+    let oldSection = null;
+    if (itemIndex > -1) {
+        oldSection = foodLog[itemIndex].section;
+        foodLog[itemIndex].section = newSection;
+    }
+    try {
+        const docRef = doc(db, `users/${user.uid}/foodLog`, itemId);
+        await updateDoc(docRef, { section: newSection, updatedAt: Timestamp.now(), updatedBy: user.email });
+    } catch (error) {
+        console.error("Error updating item section:", error);
+        showToast('Failed to move item.');
+        if (itemIndex > -1 && oldSection) foodLog[itemIndex].section = oldSection;
+        renderDailyLog();
+    }
+};
 
 
 const handleDeleteLogItem = (itemId) => {
