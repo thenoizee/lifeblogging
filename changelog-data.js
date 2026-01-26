@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.23.0-alpha",
+    date: "2026-01-26",
+    changes: [
+        "In Palette Generator: Added 'Reverse Colour Search' to Saved Palettes, allowing users to filter by visual color match, Hex code, RGB values, or Tailwind names.",
+        "In Palette Generator: Implemented 'Reverse Tailwind Search'; users can now type names like 'green-600' into the Base Color input or Search bar to instantly retrieve the corresponding Hex code.",
+    ]
+    },
+    {
     version: "v10.22.0-alpha",
     date: "2026-01-26",
     changes: [
