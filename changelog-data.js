@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.25.0-alpha",
+    date: "2026-01-27",
+    changes: [
+        "In PodTrackr: Redesigned Dashboard to match the 'VidTrackr' aesthetic with a vibrant gradient banner and background iconography.",
+        "In PodTrackr: Added personalized 'Welcome Back' greeting integrated with user profile settings.",
+        "In PodTrackr: Implemented 'Quick Stats' overlay displaying total podcasts, episodes listened, and total hours.",
+    ]
+    },
+    {
     version: "v10.24.0-alpha",
     date: "2026-01-26",
     changes: [
