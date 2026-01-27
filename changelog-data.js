@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.24.0-alpha",
+    date: "2026-01-26",
+    changes: [
+        "In TaskTrackr: Migrated navigation to the unified 'SharedNav' system for consistent Hub styling and behavior.",
+        "In PDF Tools: Bug fix.",
+    ]
+    },
+    {
     version: "v10.23.0-alpha",
     date: "2026-01-26",
     changes: [
