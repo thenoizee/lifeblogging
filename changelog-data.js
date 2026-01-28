@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.26.0-alpha",
+    date: "2026-01-27",
+    changes: [
+        "In Analyser: Fixed the 'Filter, Sort & Search' accordion functionality by restructuring HTML to ensure inputs are inside the collapsible container.",
+        "In Analyser: Removed unnecessary top body padding to eliminate the gap above the navigation bar.",
+        "In Analyser: Modernized UI components by replacing legacy fieldsets with card styling and updating stats boxes with gradients.",
+    ]
+    },
+    {
     version: "v10.25.0-alpha",
     date: "2026-01-27",
     changes: [
