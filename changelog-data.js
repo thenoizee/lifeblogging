@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.27.0-alpha",
+    date: "2026-01-28",
+    changes: [
+        "In FoodTrackr: Updated 'Quick Star' functionality to search results, allowing users to instantly toggle favourites.",
+        "In PDFTools: Implemented a 'Continue Editing' workflow, allowing users to pass a processed file directly to another tool without downloading and re-uploading.",
+    ]
+    },
+    {
     version: "v10.26.0-alpha",
     date: "2026-01-27",
     changes: [

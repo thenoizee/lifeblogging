@@ -599,13 +599,92 @@
         btn.querySelector('.loader')?.classList.toggle('hidden', !isLoading);
     };
     const createDownloadLink = (tool, bytes, fileName) => {
-        const link = tool.querySelector('.download-link');
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-        link.href = URL.createObjectURL(blob);
-        link.download = fileName;
-        link.classList.add('show');
-        tool.querySelector('.reset-btn')?.classList.remove('hidden');
-    };
+    // 1. Setup Download Link
+    const link = tool.querySelector('.download-link');
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    link.classList.add('show');
+    tool.querySelector('.reset-btn')?.classList.remove('hidden');
+
+    // 2. Clear existing "Continue" container if any
+    let continueContainer = tool.querySelector('.continue-container');
+    if (continueContainer) continueContainer.remove();
+
+    // 3. Create "Continue Editing" UI
+    continueContainer = document.createElement('div');
+    continueContainer.className = 'continue-container mt-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg';
+    
+    continueContainer.innerHTML = `
+        <label class="block text-sm font-bold text-indigo-800 dark:text-indigo-200 mb-2">
+            <i class="fas fa-arrow-right mr-1"></i> Continue working on this file:
+        </label>
+        <div class="flex gap-2">
+            <select class="continue-select flex-grow p-2 rounded border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 text-sm">
+                <option value="">Select next tool...</option>
+                <option value="organise">Organise (Reorder/Rotate)</option>
+                <option value="metadata">Edit Metadata</option>
+                <option value="merge">Merge (Add more files)</option>
+                <option value="sign">Sign PDF</option>
+                <option value="addtext">Add Text</option>
+                <option value="redact">Redact</option>
+                <option value="watermark">Watermark</option>
+                <option value="pagenumbers">Page Numbers</option>
+                <option value="crop">Crop</option>
+                <option value="extract">Extract Pages</option>
+                <option value="splithalf">Split Pages in Half</option>
+                <option value="stitch">Stitch Pages</option>
+                <option value="flatten">Flatten</option>
+                <option value="protect">Protect (Password)</option>
+            </select>
+            <button class="continue-go-btn bg-indigo-600 text-white font-bold py-2 px-4 rounded hover:bg-indigo-700 disabled:opacity-50" disabled>
+                Go
+            </button>
+        </div>
+    `;
+
+    tool.querySelector('.download-link').after(continueContainer);
+
+    // 4. Handle "Continue" Logic
+    const select = continueContainer.querySelector('.continue-select');
+    const goBtn = continueContainer.querySelector('.continue-go-btn');
+
+    select.addEventListener('change', () => { goBtn.disabled = !select.value; });
+
+    goBtn.addEventListener('click', () => {
+        const targetId = select.value;
+        if (!targetId) return;
+
+        // Create a File object from the processed bytes
+        const newFile = new File([bytes], fileName, { type: 'application/pdf' });
+
+        // Switch Panel
+        setActivePanel(targetId);
+
+        // Load file into new tool
+        setTimeout(() => {
+            const targetTool = document.getElementById(`${targetId}-tool`);
+            // Reset target first to clear old state
+            resetTool(targetTool);
+            
+            // Invoke the handler (we must ensure setup functions exposed it below)
+            if (toolState[targetId] && toolState[targetId].loadHandler) {
+                // Some tools accept array (SimpleTool), others single file (EditorTool)
+                // Our update below ensures loadHandler handles the arguments correctly or we adapt here:
+                if (['merge', 'images'].includes(targetId)) {
+                    toolState[targetId].loadHandler([newFile]);
+                } else {
+                    toolState[targetId].loadHandler(newFile);
+                }
+                
+                // Scroll to top
+                targetTool.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                console.error(`Tool ${targetId} does not have a registered loadHandler.`);
+            }
+        }, 100);
+    });
+};
     const toDatetimeLocal = (date) => {
         if (!date) return '';
         const pad = (num) => (num < 10 ? '0' : '') + num;
@@ -673,6 +752,15 @@
                 document.getElementById('meta-subject').value = pdfDoc.getSubject() || '';
                 document.getElementById('meta-keywords').value = pdfDoc.getKeywords() || '';
                 document.getElementById('meta-creator').value = pdfDoc.getCreator() || '';
+
+                // --- NEW CODE: Custom Creator Logic ---
+const currentCreator = pdfDoc.getCreator();
+// Check if missing or if it's the default library tag
+if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || currentCreator.toLowerCase().includes('script')) {
+    document.getElementById('meta-creator').value = "";
+} else {
+    document.getElementById('meta-creator').value = currentCreator;
+}
                 
                 // --- CUSTOM PRODUCER LOGIC ---
                 const currentProducer = pdfDoc.getProducer();
@@ -692,6 +780,9 @@
                 console.error(e);
             }
         };
+
+        // EXPOSE HANDLER
+    toolState[toolId].loadHandler = handleFile;
 
         dropZone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
@@ -782,7 +873,15 @@
             if (options.multiFile) {
                 renderMultiFileList(toolId);
             }
+            
         };
+
+        // EXPOSE HANDLER (Adapter for single file vs FileList)
+    toolState[toolId].loadHandler = (filesInput) => {
+        // If passed a single File from "Continue", wrap in array
+        if (filesInput instanceof File) handleFiles([filesInput]);
+        else handleFiles(filesInput);
+    };
         const renderMultiFileList = (toolIdToList) => {
             const listContainer = tool.querySelector(`#${toolIdToList}-file-list`);
             if (!listContainer) return;
@@ -929,6 +1028,9 @@
                 resetTool(tool);
             }
         };
+
+        // EXPOSE HANDLER
+    toolState[toolId].loadHandler = handleFile;
 
         // Standard event listeners
         const prevPageBtn = tool.querySelector(`#${toolId}-prev-page`);
@@ -1158,6 +1260,9 @@
                 resetTool(tool);
             }
         };
+
+        // EXPOSE HANDLER
+    toolState.organise.loadHandler = handleFile;
         dropZone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
