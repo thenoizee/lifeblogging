@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.28.0-alpha",
+    date: "2026-01-29",
+    changes: [
+        "In VidTrackr: Added 'Skip / Filler' functionality, allowing users to mark episodes as skipped to remove them from 'Up Next' while visually tagging them as ignored.",
+        "In VidTrackr: Introduced 'Rewatch' tracking to identify and badge 2nd, 3rd, and subsequent viewings of episodes.",
+        "In VidTrackr: Improved image handling to automatically fall back to Show Art when specific episode screenshots are missing.",
+        "In VidTrackr: Implemented intelligent API throttling and sequential fetching to prevent rate-limiting (CORS) errors on the Progress and History tabs."
+    ]
+    },
+    {
     version: "v10.27.0-alpha",
     date: "2026-01-28",
     changes: [
