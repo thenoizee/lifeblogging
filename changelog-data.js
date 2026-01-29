@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.29.0-alpha",
+    date: "2026-01-29",
+    changes: [
+        "In TaskTrackr: Overhauled the main layout for higher density, featuring a unified 'Command Bar' that merges Quick Add and View Controls to save vertical space.",
+        "In TaskTrackr: Integrated the Task Count and Sync Status indicators directly into the Sidebar header to declutter the interface.",
+    ]
+    },
+    {
     version: "v10.28.0-alpha",
     date: "2026-01-29",
     changes: [
