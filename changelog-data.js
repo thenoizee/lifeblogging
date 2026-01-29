@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.32.0-alpha",
+    date: "2026-01-29",
+    changes: [
+        "In MediManagr: Expanded the Grooming tab to include tracking for 'Beard', 'Ears', and 'Shower', featuring 'Log Now' buttons and history tracking.",
+        "In MediManagr: Added a 'Grooming Status' widget to the Dashboard, displaying a 'Days Since' counter for all grooming activities (Hair, Nails, Beard, Ears, Shower).",
+    ]
+    },
+    {
     version: "v10.31.0-alpha",
     date: "2026-01-29",
     changes: [
