@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v10.31.0-alpha",
+    date: "2026-01-29",
+    changes: [
+        "In FoodTrackr: Eliminated the initial 'content flash' on load by implementing a dedicated loading screen and ensuring main application containers remain hidden until authentication is verified.",
+        "In FoodTrackr: Corrected the default date logic in Bulk Manage mode to automatically default to 'Yesterday' instead of 'Tomorrow' for easier retroactive logging.",
+        "In FoodTrackr: Added a real-time status indicator during food searches to display live progress (e.g., 'Contacting API...', 'Processing results...') to the user.",
+        "In FoodTrackr: Implemented aggressive search caching to store API results, allowing previously searched terms to load instantly without re-fetching network data.",
+        "In FoodTrackr: Improved the 'Selected Product' card by adding an explicit 'View Full Details' button, making it easier to re-open the product modal after selection.",
+        "In FoodTrackr: Introduced a 'Recent Searches' dropdown menu that saves search history to local storage, allowing for quick access to previous queries."
+    ]
+    },
+    {
     version: "v10.30.0-alpha",
     date: "2026-01-29",
     changes: [

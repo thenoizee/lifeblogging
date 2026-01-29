@@ -759,7 +759,13 @@ body.bulk-active {
     </style>
 </head>
 <body>
-    <div id="auth-container">
+    <div id="app-loading-screen" style="position:fixed; inset:0; background:#f7fafc; z-index:9999; display:flex; justify-content:center; align-items:center;">
+        <div style="text-align:center; color:#e78f37;">
+            <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 3rem;"></i>
+            <p style="margin-top:1rem; font-family:sans-serif; font-weight:600;">Loading FoodTrackr...</p>
+        </div>
+    </div>
+    <div id="auth-container" style="display: none;">
         <h1>Welcome to FoodTrackr</h1>
         <p>Please log in or sign up to track your food.</p>
         <div class="input-group">
@@ -776,7 +782,7 @@ body.bulk-active {
         </div>
     </div>
 
-    <div id="main-app-container" class="hidden w-full">
+    <div id="main-app-container" class="hidden w-full" style="display: none;">
         <div class="max-w-[1200px] mx-auto px-4 md:pb-8">
         
         <div id="tab-content-dashboard" class="tab-content active">
@@ -951,10 +957,12 @@ body.bulk-active {
                 <button id="scan-barcode-btn" class="action-btn-large scan-btn-styled" style="padding: 0 16px; width: auto;" title="Scan Barcode">
                     <i class="fa-solid fa-barcode"></i>
                 </button>
-                <div class="search-input-wrapper">
-                    <i class="fa-solid fa-search"></i>
-                    <input id="food-search" type="text" placeholder="Search food..." class="w-full">
-                </div>
+                <div class="search-input-wrapper relative"> <i class="fa-solid fa-search"></i>
+    <input id="food-search" type="text" placeholder="Search food..." class="w-full" autocomplete="off">
+    
+    <div id="recent-searches-dropdown" class="hidden absolute top-full left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 mt-2 overflow-hidden transition-all">
+        </div>
+</div>
                 <button id="search-btn" class="action-btn-large search-btn-styled" style="width: auto;">
                     Search
                 </button>
@@ -1771,6 +1779,8 @@ import { AppNavigation } from '../shared-nav.js';
 
       // --- State Variables ---
       let user = null;
+      const searchCache = new Map();
+      let recentSearches = JSON.parse(localStorage.getItem('foodTrackr_recentSearches')) || [];
       let foodLog = [];
       let favoriteFoods = [];
       let meals = [];
@@ -3560,118 +3570,123 @@ const searchFood = async (isNewSearch = true) => {
     if (!query && !brandFilter && !countryFilter) return;
     if (isFetching) return;
 
+    if (query) saveRecentSearch(query);
+
+    // 1. Generate Cache Key
+    const cacheKey = `${query}|${brandFilter}|${countryFilter}|${isNewSearch ? 1 : currentSearchPage + 1}`;
+
     const searchResultsDiv = document.getElementById('search-results');
     const searchControlsDiv = document.getElementById('search-controls');
 
+    // 2. Setup Status Message Element
+    let statusEl = document.getElementById('search-status-msg');
+    if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'search-status-msg';
+        statusEl.className = 'text-center text-xs font-mono text-orange-600 mb-4 animate-pulse';
+        searchResultsDiv.parentNode.insertBefore(statusEl, searchResultsDiv);
+    }
+    statusEl.classList.remove('hidden');
+
     if (isNewSearch) {
         currentSearchPage = 1;
-        searchResultsDiv.innerHTML = Array(6).fill(0).map(() => `
-            <div class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl flex items-center gap-4 animate-pulse">
-                <div class="w-20 h-20 bg-gray-200 dark:bg-gray-700 rounded-lg flex-shrink-0"></div>
-                <div class="flex-grow space-y-2">
-                    <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-                    <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-                </div>
-            </div>
-        `).join('');
-        searchControlsDiv.innerHTML = '';
+        statusEl.textContent = "Searching database...";
+        // Skeleton loader (optional, you can keep your existing one here)
+        searchResultsDiv.innerHTML = ''; 
     } else {
         currentSearchPage++;
-        const btn = document.getElementById('load-more-btn');
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
-        }
+        statusEl.textContent = "Loading more results...";
+    }
+
+    // 3. CHECK CACHE
+    if (searchCache.has(cacheKey)) {
+        console.log("Serving from cache:", cacheKey);
+        const cachedData = searchCache.get(cacheKey);
+        statusEl.textContent = "Loaded from cache.";
+        setTimeout(() => statusEl.classList.add('hidden'), 500);
+        
+        handleSearchData(cachedData, isNewSearch, searchResultsDiv, searchControlsDiv, query, brandFilter, countryFilter);
+        return;
     }
 
     isFetching = true;
     const isBarcode = /^\d+$/.test(query) && !brandFilter && !countryFilter;
     const pageSize = 24;
 
+    // ... (Keep your existing URL construction logic here) ...
     let url = '';
-
     if (isBarcode) {
         url = `https://world.openfoodfacts.org/api/v2/product/${query}`;
     } else {
-        let params = [
-            `search_simple=1`,
-            `action=process`,
-            `json=1`,
-            `page=${currentSearchPage}`,
-            `page_size=${pageSize}`
-        ];
-
-        if (query) {
-            params.push(`search_terms=${encodeURIComponent(query)}`);
-        }
-
-        if (brandFilter) {
-            params.push(`tagtype_0=brands`);
-            params.push(`tag_contains_0=contains`);
-            params.push(`tag_0=${encodeURIComponent(brandFilter)}`);
-        }
-
+        let params = [`search_simple=1`, `action=process`, `json=1`, `page=${currentSearchPage}`, `page_size=${pageSize}`];
+        if (query) params.push(`search_terms=${encodeURIComponent(query)}`);
+        if (brandFilter) { params.push(`tagtype_0=brands`); params.push(`tag_contains_0=contains`); params.push(`tag_0=${encodeURIComponent(brandFilter)}`); }
         let tagIndex = brandFilter ? 1 : 0;
-        if (countryFilter) {
-            params.push(`tagtype_${tagIndex}=countries`);
-            params.push(`tag_contains_${tagIndex}=contains`);
-            params.push(`tag_${tagIndex}=${encodeURIComponent(countryFilter)}`);
-        }
-
+        if (countryFilter) { params.push(`tagtype_${tagIndex}=countries`); params.push(`tag_contains_${tagIndex}=contains`); params.push(`tag_${tagIndex}=${encodeURIComponent(countryFilter)}`); }
         url = `https://world.openfoodfacts.org/cgi/search.pl?${params.join('&')}`;
     }
+    // ... (End URL logic) ...
 
     try {
+        statusEl.textContent = "Searching OpenFoodFacts database...";
         const response = await fetch(url);
+        
+        statusEl.textContent = "Processing results...";
         const data = await response.json();
         
-        if (isNewSearch) searchResultsDiv.innerHTML = '';
+        // 4. SAVE TO CACHE
+        searchCache.set(cacheKey, data);
 
-        let products = [];
-        if (isBarcode) {
-            products = data.product ? [data.product] : [];
-        } else {
-            products = data.products || [];
-        }
-
-        if (products.length === 0) {
-            if (isNewSearch) {
-                searchResultsDiv.innerHTML = `
-                    <div class="col-span-full text-center py-12 text-gray-400 select-none">
-                        <div class="inline-block p-4 rounded-full bg-gray-100 dark:bg-gray-800 mb-3">
-                            <i class="fa-solid fa-magnifying-glass text-3xl opacity-50"></i>
-                        </div>
-                        <p class="font-medium">No products found</p>
-                        <p class="text-sm opacity-70">Try adjusting your filters.</p>
-                    </div>`;
-            } else if (document.getElementById('load-more-btn')) {
-                document.getElementById('load-more-btn').remove();
-            }
-        } else {
-            renderSearchResults(products);
-            
-            if (!isBarcode && products.length >= pageSize) {
-                if (!document.getElementById('load-more-btn')) {
-                    const loadMoreBtn = document.createElement('button');
-                    loadMoreBtn.id = 'load-more-btn';
-                    loadMoreBtn.className = 'main-button mt-4';
-                    loadMoreBtn.textContent = 'Load More Results';
-                    loadMoreBtn.addEventListener('click', () => searchFood(false));
-                    searchControlsDiv.appendChild(loadMoreBtn);
-                } else {
-                    const btn = document.getElementById('load-more-btn');
-                    btn.textContent = 'Load More Results';
-                    btn.disabled = false;
-                }
-            }
-        }
+        handleSearchData(data, isNewSearch, searchResultsDiv, searchControlsDiv, query, brandFilter, countryFilter);
+        statusEl.classList.add('hidden');
     } catch (error) {
         console.error('Error fetching data:', error);
-        if (isNewSearch) {
-            searchResultsDiv.innerHTML = '<p class="text-center col-span-full text-red-500">Error connecting to database.</p>';
-        }
+        statusEl.textContent = "Error: Could not connect.";
+        statusEl.classList.add('text-red-500');
     } finally {
         isFetching = false;
+    }
+};
+
+// ADD THIS HELPER FUNCTION RIGHT AFTER searchFood
+const handleSearchData = (data, isNewSearch, resultsDiv, controlsDiv, query, brand, country) => {
+    const isBarcode = /^\d+$/.test(query) && !brand && !country;
+    if (isNewSearch) resultsDiv.innerHTML = '';
+
+    let products = [];
+    if (isBarcode) {
+        products = data.product ? [data.product] : [];
+    } else {
+        products = data.products || [];
+    }
+
+    if (products.length === 0) {
+        if (isNewSearch) {
+            resultsDiv.innerHTML = `
+                <div class="col-span-full text-center py-12 text-gray-400 select-none">
+                    <p class="font-medium">No products found</p>
+                    <p class="text-sm opacity-70">Try adjusting your filters.</p>
+                </div>`;
+        } else if (document.getElementById('load-more-btn')) {
+            document.getElementById('load-more-btn').remove();
+        }
+    } else {
+        renderSearchResults(products);
+        
+        if (!isBarcode && products.length >= 24) { 
+            if (!document.getElementById('load-more-btn')) {
+                const loadMoreBtn = document.createElement('button');
+                loadMoreBtn.id = 'load-more-btn';
+                loadMoreBtn.className = 'main-button mt-4';
+                loadMoreBtn.textContent = 'Load More Results';
+                loadMoreBtn.addEventListener('click', () => searchFood(false));
+                controlsDiv.appendChild(loadMoreBtn);
+            } else {
+                const btn = document.getElementById('load-more-btn');
+                btn.textContent = 'Load More Results';
+                btn.disabled = false;
+            }
+        }
     }
 };
 
@@ -4021,26 +4036,31 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
             <i class="fa-solid fa-utensils text-9xl"></i>
         </div>
         
-        <div class="absolute top-3 right-3 text-gray-300 dark:text-gray-600 group-hover:text-orange-500 transition-colors">
-            <i class="fa-solid fa-circle-info text-2xl"></i>
-        </div>
-        
         <div class="relative w-32 h-32 flex-shrink-0 bg-white rounded-lg shadow-sm border p-2">
             <img src="${imageUrl}" class="w-full h-full object-contain">
         </div>
         
-        <div class="flex-grow text-center md:text-left z-10">
+        <div class="flex-grow text-center md:text-left z-10 flex flex-col items-center md:items-start">
             <span class="inline-block px-3 py-1 bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300 text-xs font-bold uppercase tracking-wide rounded-full mb-2">
                 Currently Logging
             </span>
             <h4 class="font-bold text-2xl md:text-3xl leading-tight mb-1 text-gray-800 dark:text-white">${name}</h4>
-            <p class="text-lg text-gray-500 dark:text-gray-400 font-medium">${brands}</p>
-            <div class="mt-4 flex gap-4 justify-center md:justify-start text-sm text-gray-500">
-                 <span class="flex items-center gap-1"><i class="fa-solid fa-fire text-orange-500"></i> ${baseNutrients.calories.toFixed(0)} kcal/100g</span>
-                 <span class="flex items-center gap-1"><i class="fa-solid fa-dna text-green-500"></i> ${baseNutrients.protein.toFixed(1)}g Protein</span>
-            </div>
+            <p class="text-lg text-gray-500 dark:text-gray-400 font-medium mb-2">${brands}</p>
+            
+            <button id="reopen-details-btn" class="mt-2 secondary-button text-xs py-1 px-3 flex items-center gap-2 hover:bg-orange-100 dark:hover:bg-gray-700 border-orange-200">
+                <i class="fa-solid fa-circle-info text-orange-500"></i> View Full Details
+            </button>
         </div>
     `;
+
+    // Add this logic immediately after the innerHTML assignment:
+    setTimeout(() => {
+        const btn = document.getElementById('reopen-details-btn');
+        if(btn) btn.addEventListener('click', (e) => {
+            e.stopPropagation(); 
+            if(product) showProductDetailsModal(product);
+        });
+    }, 0);
     
     displayEl.onclick = (e) => {
         if(product) showProductDetailsModal(product);
@@ -4111,6 +4131,67 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     formSection.classList.remove('hidden');
     formSection.scrollIntoView({ behavior: 'smooth' });
 };
+
+// --- RECENT SEARCHES LOGIC ---
+    const saveRecentSearch = (query) => {
+        if (!query) return;
+        // Remove duplicates (case-insensitive)
+        recentSearches = recentSearches.filter(q => q.toLowerCase() !== query.toLowerCase());
+        // Add to top
+        recentSearches.unshift(query);
+        // Limit to 6 items
+        if (recentSearches.length > 6) recentSearches.pop();
+        
+        localStorage.setItem('foodTrackr_recentSearches', JSON.stringify(recentSearches));
+        renderRecentSearchesDropdown();
+    };
+
+    const renderRecentSearchesDropdown = () => {
+        const dropdown = document.getElementById('recent-searches-dropdown');
+        if (!dropdown) return;
+
+        if (recentSearches.length === 0) {
+            dropdown.classList.add('hidden');
+            return;
+        }
+
+        dropdown.innerHTML = '';
+
+        // Header with Clear button
+        const header = document.createElement('div');
+        header.className = 'px-4 py-2 text-[10px] uppercase font-bold text-gray-400 bg-gray-50 dark:bg-gray-700/50 flex justify-between items-center tracking-wider';
+        header.innerHTML = `
+            <span>Recent Searches</span>
+            <button id="clear-recent-btn" class="text-red-400 hover:text-red-600 transition-colors">Clear</button>
+        `;
+        dropdown.appendChild(header);
+
+        // Add Listeners to Clear Button
+        setTimeout(() => {
+            document.getElementById('clear-recent-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                recentSearches = [];
+                localStorage.removeItem('foodTrackr_recentSearches');
+                dropdown.classList.add('hidden');
+            });
+        }, 0);
+
+        // Render Items
+        recentSearches.forEach(term => {
+            const item = document.createElement('div');
+            item.className = 'px-4 py-3 text-sm cursor-pointer hover:bg-orange-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-0 flex items-center gap-3 text-gray-700 dark:text-gray-200 transition-colors';
+            item.innerHTML = `<i class="fa-solid fa-clock-rotate-left text-gray-400 text-xs"></i> ${term}`;
+            
+            // Click to Search
+            item.addEventListener('click', () => {
+                document.getElementById('food-search').value = term;
+                dropdown.classList.add('hidden');
+                searchFood(true);
+            });
+            
+            dropdown.appendChild(item);
+        });
+    };
 
 // --- NEW FUNCTION: Quick Toggle Favorite ---
 const toggleQuickFavorite = async (product, event) => {
@@ -4326,13 +4407,13 @@ document.getElementById('toggle-bulk-mode-btn').addEventListener('click', () => 
     
     if (isBulkMode) {
         btn.classList.add('bg-orange-100', 'text-orange-700', 'border-orange-200');
-        controls.classList.add('active'); // NEW: Uses CSS transition
-        document.body.classList.add('bulk-active'); // Add padding to body
+        controls.classList.add('active'); 
+        document.body.classList.add('bulk-active'); 
         
-        // Default target date logic
-        const tmrw = new Date();
-        tmrw.setDate(tmrw.getDate() + 1);
-        document.getElementById('bulk-target-date').value = toLocalISOString(tmrw).split('T')[0];
+        // REPLACE THE DATE LOGIC HERE:
+        const targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() - 1); // Set to Yesterday
+        document.getElementById('bulk-target-date').value = toLocalISOString(targetDate).split('T')[0];
     } else {
         btn.classList.remove('bg-orange-100', 'text-orange-700', 'border-orange-200');
         controls.classList.remove('active'); // NEW
@@ -4831,6 +4912,8 @@ const switchTab = (tabId) => {
       let nav = null;
 
       onAuthStateChanged(auth, (authUser) => {
+          const loadingScreen = document.getElementById('app-loading-screen'); // ADD THIS
+          
           if (authUser) {
               user = authUser;
               // ... inside onAuthStateChanged, after user = authUser ...
@@ -4845,11 +4928,16 @@ const switchTab = (tabId) => {
                           renderDashboard();
                       }
                   }
+                  if(loadingScreen) loadingScreen.style.display = 'none';
               });
-              document.getElementById("auth-container").classList.add("hidden");
-              document.getElementById("main-app-container").classList.remove("hidden");
+              document.getElementById("auth-container").style.display = "none";
+              
+              const appContainer = document.getElementById("main-app-container");
+              appContainer.classList.remove("hidden");
+              appContainer.style.display = "flex"; // Force flex display
+              
               setDefaultDateTime();
-              setDashboardDate(new Date()); 
+              setDashboardDate(new Date());
 
               // --- NEW NAV INITIALIZATION ---
               if (!nav) {
@@ -4914,11 +5002,11 @@ const switchTab = (tabId) => {
 
           } else {
               user = null;
-              document.getElementById("auth-container").classList.remove("hidden");
-              document.getElementById("main-app-container").classList.add("hidden");
-              if (themeUnsubscribe) themeUnsubscribe();
-              themeDocRef = null;
-              applyTheme('light');
+              document.getElementById("auth-container").style.display = "block";
+              
+              const appContainer = document.getElementById("main-app-container");
+              appContainer.classList.add("hidden");
+              appContainer.style.display = "none";
               
               // Clean up nav on logout
               const header = document.querySelector('header');
@@ -5529,6 +5617,24 @@ document.querySelectorAll('input[name="source-type"]').forEach(radio => {
           } catch (e) {
               console.error("Error saving goals", e);
               showToast("Failed to save targets.", "error");
+          }
+      });
+
+      // NEW: Recent Searches Listeners
+      const searchInput = document.getElementById('food-search');
+      const searchDropdown = document.getElementById('recent-searches-dropdown');
+
+      searchInput.addEventListener('focus', () => {
+          if (recentSearches.length > 0) {
+              renderRecentSearchesDropdown();
+              searchDropdown.classList.remove('hidden');
+          }
+      });
+
+      // Hide when clicking outside
+      document.addEventListener('click', (e) => {
+          if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
+              searchDropdown.classList.add('hidden');
           }
       });
 
