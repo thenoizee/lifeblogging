@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.30.0-alpha",
+    date: "2026-01-29",
+    changes: [
+        "In VidTrackr: Optimized the Progress Page loading speed by replacing slow sequential fetching with a batched parallel strategy (fetching 3 shows at a time) to prevent rate-limiting.",
+        "In VidTrackr: Improved image handling on Episode Detail pages to automatically fall back to high-quality Show Fanart when specific episode screenshots are missing.",
+        "In VidTrackr: Enhanced Watch Status badges by adding a distinct 'Full Watch' indicator for single plays and dynamic 'Rewatch' counters to better track repeat viewings."
+    ]
+    },
+    {
     version: "v10.29.0-alpha",
     date: "2026-01-29",
     changes: [

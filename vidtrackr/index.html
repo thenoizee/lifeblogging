@@ -1336,20 +1336,26 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 }
 
                 // Badge Logic (Watched / Skipped / Rewatched)
-                const plays = item.user_data?.plays || 0;
-                let statusBadge = '';
+const plays = item.user_data?.plays || 0;
+let statusBadge = '';
 
-                if (isSkipped) {
-                    statusBadge = `<span class="bg-gray-700 text-gray-300 border border-gray-500 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_10px_rgba(255,255,255,0.1)]"><i class="fa-solid fa-forward-step mr-2"></i> SKIPPED / FILLER</span>`;
-                } else if (plays > 1) {
-                    const rewatchCount = plays - 1;
-                    const ordinal = (n) => { const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
-                    statusBadge = `<span class="bg-purple-500/20 text-purple-300 border border-purple-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(168,85,247,0.2)]" title="Total Plays: ${plays}"><i class="fa-solid fa-rotate-right mr-2"></i> ${ordinal(rewatchCount)} Rewatch</span>`;
-                } else if (isWatched) {
-                    statusBadge = `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> Watched</span>`;
-                } else {
-                    statusBadge = `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
-                }
+if (isSkipped) {
+    statusBadge = `<span class="bg-gray-700 text-gray-300 border border-gray-500 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_10px_rgba(255,255,255,0.1)]"><i class="fa-solid fa-forward-step mr-2"></i> SKIPPED / FILLER</span>`;
+} else if (plays > 1) {
+    // REWATCH LOGIC
+    const rewatchCount = plays - 1;
+    const ordinal = (n) => { const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
+    
+    // Shows: "1st Rewatch", "2nd Rewatch"
+    statusBadge = `<span class="bg-purple-500/20 text-purple-300 border border-purple-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(168,85,247,0.2)]" title="Total Plays: ${plays}"><i class="fa-solid fa-rotate-right mr-2"></i> ${ordinal(rewatchCount)} Rewatch</span>`;
+    
+} else if (isWatched) {
+    // FULL WATCH LOGIC (Plays == 1)
+    // Changed label from "Watched" to "Full Watch" to be more explicit
+    statusBadge = `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> Full Watch</span>`;
+} else {
+    statusBadge = `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
+}
 
                 const myRatingHtml = myRating 
                     ? `<span class="bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(234,179,8,0.2)]"><i class="fa-solid fa-star mr-2"></i> ${myRating}</span>`
@@ -1387,11 +1393,18 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 let html = `<div class="animate-fade max-w-6xl mx-auto">`;
 
                 if (isEpisode) {
-                    // --- 1. Image Fix: Fallback to Show Art if Episode Art is Placeholder ---
-                    let bgImg = getImage(item, 'episode', true); 
-                    if (bgImg === PLACEHOLDER_IMG && showInfo) {
-                        bgImg = getImage(showInfo, 'show', true);
-                    }
+                    // --- 1. Image Fix: Prefer Show Fanart if Episode Screenshot is missing ---
+// Try to get high-res episode image
+let bgImg = getImage(item, 'episode', true); 
+
+// If the result is the placeholder URL, OR if showInfo is available, try the show's fanart
+// This fallback is often better quality than a generic episode thumbnail anyway
+if ((bgImg === PLACEHOLDER_IMG || !bgImg) && showInfo) {
+     const showArt = getImage(showInfo, 'show', true);
+     if (showArt !== PLACEHOLDER_IMG) {
+         bgImg = showArt;
+     }
+}
 
                     html += `
                     <button onclick="history.back()" class="absolute top-24 left-4 z-20 text-sm bg-black/50 hover:bg-black/80 text-white px-4 py-2 rounded-full backdrop-blur-md transition"><i class="fa-solid fa-arrow-left"></i></button>
@@ -1820,16 +1833,30 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                     fetchDirect('/sync/history/movies?limit=10&extended=images')     
                 ]);
 
-                // 2. Fetch detailed progress (Sequential + Delayed to prevent Rate Limit/CORS)
+                // 2. Fetch detailed progress (Batched to prevent Rate Limiting)
                 const showProgressData = [];
-                for (const item of watchedShows) {
-                    try {
-                        // Tiny delay (150ms) between requests to be gentle on the API
-                        await new Promise(r => setTimeout(r, 150)); 
-                        const prog = await fetchDirect(`/shows/${item.show.ids.trakt}/progress/watched?hidden=false&specials=false&count_specials=false`);
-                        showProgressData.push({ ...item, stats: prog });
-                    } catch(e) { /* Skip failed items */ }
+                
+                // Helper: Chunk array into smaller batches (e.g., 3 items at a time)
+                const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
+                const batches = chunk(watchedShows, 3); // Batch size of 3 is safe
+
+                for (const batch of batches) {
+                    // Fetch this batch in parallel
+                    const batchResults = await Promise.all(batch.map(async (item) => {
+                        try {
+                            const prog = await fetchDirect(`/shows/${item.show.ids.trakt}/progress/watched?hidden=false&specials=false&count_specials=false`);
+                            return { ...item, stats: prog };
+                        } catch(e) { return null; }
+                    }));
+                    
+                    showProgressData.push(...batchResults);
+                    
+                    // Tiny "breathing room" delay between batches (250ms)
+                    if (batches.indexOf(batch) < batches.length - 1) {
+                        await new Promise(r => setTimeout(r, 250));
+                    }
                 }
+                
                 const validShows = showProgressData.filter(s => s !== null);
 
                 // 3. Build HTML
