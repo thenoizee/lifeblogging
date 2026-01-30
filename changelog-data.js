@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.33.0-alpha",
+    date: "2026-01-30",
+    changes: [
+        "In VehicleManagr: Redesigned the login experience to be vertically and horizontally centered for better visual balance on initial load.",
+        "In VehicleManagr: Implemented a brand-matched loading page with a pulsed vehicle icon and 'Fueling up...' status message to improve feedback during app initialization.",
+    ]
+    },
+    {
     version: "v10.32.0-alpha",
     date: "2026-01-29",
     changes: [
