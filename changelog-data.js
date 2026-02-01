@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.34.0-alpha",
+    date: "2026-02-01",
+    changes: [
+        "In FoodTrackr: Redesigned 'Today's Log' cards with a dedicated action button row, wrapping text for readability, and visual source icons (e.g., Restaurant, Home Cooked).",
+        "In FoodTrackr: Updated the History tab to display source icons alongside food names, aligning the design with the Dashboard.",
+        "In FoodTrackr: Improved Bulk Mode UX by showing a helpful toast notification when attempting to edit items, rather than silently disabling buttons.",
+        "In FoodTrackr: Added `inputmode=\"decimal\"` to nutrient inputs to ensure the correct numeric keypad appears on mobile devices."
+    ]
+    },
+    {
     version: "v10.33.0-alpha",
     date: "2026-01-30",
     changes: [
