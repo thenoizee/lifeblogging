@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+  version: "v10.37.0-alpha",
+  date: "2026-02-02",
+  changes: [
+    "In TaskTrackr: Converted the main task grid to a responsive Flexbox layout, allowing columns to stack vertically on screens narrower than 768px.",
+    "In TaskTrackr: Implemented a collapsible 'Hamburger' navigation menu to replace the sidebar on mobile viewports.",
+    "In TaskTrackr: Increased minimum touch target sizes to 44px for all primary action buttons (Complete, Edit, Delete).",
+    "In TaskTrackr: Added a sticky Floating Action Button (FAB) for 'Add New Task' on mobile to improve accessibility.",
+    "In TaskTrackr: Hidden non-essential columns (Created Date, Tags) on mobile views to eliminate horizontal scrolling.",
+    "In TaskTrackr: Fixed modal overflow issues preventing the 'Save' button from being visible on smaller iOS screens."
+  ]
+    },
+    {
     version: "v10.36.0-alpha",
     date: "2026-02-02",
     changes: [
