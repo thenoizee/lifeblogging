@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.38.1-alpha",
+    date: "2026-02-02",
+    changes: [
+        "In LabelGenerator: Updated favicon.",
+        "In FoodTrackr: Bug fix.",
+    ]
+    },
+    {
     version: "v10.38.0-alpha",
     date: "2026-02-02",
     changes: [
