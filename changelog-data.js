@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v10.36.0-alpha",
+    date: "2026-02-02",
+    changes: [
+        "In PlantTrackr: Added 'Hospital Mode' to isolate sick or quarantined plants in a dedicated 'Infirmary' dashboard section.",
+        "In PlantTrackr: Implemented a 'Health Status' dropdown (Healthy, Sick, Quarantine) for better plant state management.",
+        "In PlantTrackr: Added 'Custom Snooze' functionality allowing snoozes of 1, 2, 7, or custom days.",
+        "In PlantTrackr: Fixed 'Winter Mode' logic to correctly apply a 1.5x multiplier to watering frequencies when enabled.",
+        "In PlantTrackr: Updated 'Upcoming Tasks' to display snoozed plants that are scheduled to wake up within the next 7 days.",
+        "In PlantTrackr: Added an 'Unsnooze' button to manually wake up plants and added history logging for all snooze/unsnooze actions."
+    ]
+    },
+    {
     version: "v10.35.0-alpha",
     date: "2026-02-02",
     changes: [

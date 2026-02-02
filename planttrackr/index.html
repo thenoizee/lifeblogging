@@ -159,6 +159,14 @@
         
         <div id="tab-content-dashboard" class="tab-content animate-fade">
             <h1 class="text-3xl font-bold mb-6">Dashboard</h1>
+
+            <section id="dashboard-hospital-section" class="card p-6 mb-8 border-2 border-red-100 dark:border-red-900 hidden">
+    <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-red-600 dark:text-red-400">
+        <i class="fa-solid fa-staff-snake"></i> The Infirmary
+    </h2>
+    <div id="dashboard-hospital-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        </div>
+</section>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <section class="card p-6">
@@ -332,6 +340,17 @@
                     <div><label class="text-sm font-bold">Feed Every (Days)</label><input type="number" id="plant-fert-freq" class="input-std"></div>
                 </div>
 
+                <div class="grid grid-cols-2 gap-4 mb-4">
+    <div>
+        <label class="text-sm font-bold">Health Status</label>
+        <select id="plant-health" class="input-std">
+            <option value="healthy">Healthy 🌿</option>
+            <option value="sick">Sick / Struggling 🤒</option>
+            <option value="quarantine">Quarantine / Pests 🚫</option>
+        </select>
+    </div>
+    </div>
+
                 <div class="grid grid-cols-2 gap-4">
                     <div><label class="text-sm font-bold">Acquired On</label><input type="date" id="plant-acquired" class="input-std"></div>
                     <div>
@@ -356,6 +375,31 @@
             </div>
         </div>
     </div>
+
+    <div id="snooze-modal" class="modal-overlay hidden" style="display: none;">
+    <div class="modal-content animate-fade max-w-sm">
+        <button class="absolute top-4 right-4 text-2xl hover:text-red-500 close-modal-btn" onclick="document.getElementById('snooze-modal').style.display='none'">&times;</button>
+        <h2 class="text-xl font-bold mb-2">Snooze Plant</h2>
+        <p class="text-sm opacity-70 mb-6">How long should we wait before reminding you again?</p>
+        <input type="hidden" id="snooze-plant-target">
+        
+        <div class="space-y-3">
+            <button class="w-full btn-secondary text-left p-3 flex justify-between" onclick="applySnooze(1)">
+                <span>Tomorrow (1 Day)</span> <i class="fa-solid fa-sun opacity-50"></i>
+            </button>
+            <button class="w-full btn-secondary text-left p-3 flex justify-between" onclick="applySnooze(2)">
+                <span>Short Break (2 Days)</span> <i class="fa-solid fa-coffee opacity-50"></i>
+            </button>
+            <button class="w-full btn-secondary text-left p-3 flex justify-between" onclick="applySnooze(7)">
+                <span>Next Week (7 Days)</span> <i class="fa-solid fa-calendar-week opacity-50"></i>
+            </button>
+            <div class="flex gap-2">
+                <input type="number" id="snooze-custom-val" class="input-std" placeholder="Custom days">
+                <button class="btn-primary whitespace-nowrap" onclick="applySnooze(document.getElementById('snooze-custom-val').value)">Set</button>
+            </div>
+        </div>
+    </div>
+</div>
 
     <div id="message-box" class="message-box"></div>
 
@@ -468,7 +512,13 @@ const lightColors = { low: 'text-gray-400', medium: 'text-yellow-400', high: 'te
     </div>
 
     ${plant.waterFreq ? `<div class="flex items-center gap-2 text-sm text-blue-500 mt-2"><i class="fa-solid fa-droplet w-4"></i> Every ${plant.waterFreq} days</div>` : ''}
-    ${plant.snoozeUntil && plant.snoozeUntil.toDate() > new Date() ? `<div class="inline-block px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs font-bold mt-1"><i class="fa-solid fa-clock"></i> Snoozed</div>` : ''}
+${plant.snoozeUntil && plant.snoozeUntil.toDate() > new Date() ? `
+    <div class="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs font-bold mt-1">
+        <i class="fa-solid fa-clock"></i> Snoozed
+        <button class="ml-2 hover:text-red-600 unsnooze-btn" data-id="${plant.id}" title="Undo Snooze">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>` : ''}
 </div>
 
                     <div class="grid grid-cols-2 gap-2 mt-auto">
@@ -481,155 +531,212 @@ const lightColors = { low: 'text-gray-400', medium: 'text-yellow-400', high: 'te
 
             document.querySelectorAll(".edit-plant-btn").forEach(b => b.onclick = (e) => openPlantModal(e.currentTarget.dataset.id));
             document.querySelectorAll(".quick-water-btn").forEach(b => b.onclick = (e) => quickWater(e.currentTarget.dataset.id));
+            // In renderPlants, add this with the other listeners:
+document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsnoozePlant(e.currentTarget.dataset.id));
         };
 
         const renderDashboard = () => {
-    const waterList = getEl("dashboard-water-list");
-    const fertList = getEl("dashboard-fert-list");
-    const upcomingList = getEl("dashboard-upcoming-list"); // Select new element
-    const recentList = getEl("dashboard-recent-list");
-    
-    waterList.innerHTML = ""; 
-    fertList.innerHTML = ""; 
-    upcomingList.innerHTML = ""; 
-    recentList.innerHTML = "";
+            const waterList = getEl("dashboard-water-list");
+            const fertList = getEl("dashboard-fert-list");
+            const hospitalSection = getEl("dashboard-hospital-section");
+            const hospitalList = getEl("dashboard-hospital-list");
+            const upcomingList = getEl("dashboard-upcoming-list");
+            const recentList = getEl("dashboard-recent-list");
 
-    const now = new Date();
-    let thirstyCount = 0; 
-    let hungryCount = 0;
-    const upcomingTasks = []; // Array to store future tasks
+            // 1. Clear all lists
+            waterList.innerHTML = "";
+            fertList.innerHTML = "";
+            hospitalList.innerHTML = "";
+            upcomingList.innerHTML = "";
+            recentList.innerHTML = "";
 
-    state.plants.forEach(plant => {
-        const plantLogs = state.logs.filter(l => l.plantId === plant.id);
-        const lastWater = plantLogs.find(l => l.type === 'Water');
-        const lastFert = plantLogs.find(l => l.type === 'Fertilize');
+            const now = new Date();
+            let thirstyCount = 0;
+            let hungryCount = 0;
+            const upcomingTasks = [];
+            let hasSickPlants = false;
 
-        // --- Check Water ---
-        if (plant.waterFreq) {
-            let isSnoozed = plant.snoozeUntil && plant.snoozeUntil.toDate() > now;
-            if (!isSnoozed) {
-                const lastDate = lastWater ? new Date(lastWater.date) : new Date(plant.acquired || 0);
-                const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
-                const daysOverdue = Math.floor(diffDays - plant.waterFreq);
+            // 2. Loop through ALL plants to calculate status
+            state.plants.forEach(plant => {
+                const isSick = (plant.health === 'sick' || plant.health === 'quarantine');
+                if (isSick) hasSickPlants = true;
 
-                if (daysOverdue >= 0) {
-                    // Existing Thirsty Logic
-                    thirstyCount++;
+                const plantLogs = state.logs.filter(l => l.plantId === plant.id);
+                const lastWater = plantLogs.find(l => l.type === 'Water');
+                const lastFert = plantLogs.find(l => l.type === 'Fertilize');
+
+                // --- Water Check ---
+                if (plant.waterFreq) {
+                    const isSnoozed = plant.snoozeUntil && plant.snoozeUntil.toDate() > now;
+                    
+                    // Winter Mode Calculation
+                    let freq = plant.waterFreq;
+                    if (state.winterMode) freq = Math.ceil(freq * 1.5);
+
+                    if (isSnoozed) {
+                        // LOGIC: If snoozed, check if it wakes up within 7 days
+                        const snoozeDate = plant.snoozeUntil.toDate();
+                        const diffMs = snoozeDate - now;
+                        const daysUntil = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                        
+                        // Add to Upcoming Tasks (regardless of health)
+                        if (daysUntil <= 7) {
+                            upcomingTasks.push({
+                                plant: plant,
+                                type: 'Snooze Ends (Water)',
+                                daysUntil: daysUntil,
+                                date: snoozeDate,
+                                icon: 'fa-clock',
+                                color: 'text-yellow-600',
+                                bg: 'bg-yellow-100 dark:bg-yellow-900'
+                            });
+                        }
+                    } else {
+                        // LOGIC: Not snoozed, check if due
+                        const lastDate = lastWater ? new Date(lastWater.date) : new Date(plant.acquired || 0);
+                        const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
+                        const daysOverdue = Math.floor(diffDays - freq);
+
+                        if (daysOverdue >= 0) {
+                            // It is DUE. 
+                            // If Healthy -> Add to Main Thirsty List. 
+                            // If Sick -> It will appear in Hospital Card (handled below).
+                            if (!isSick) {
+                                thirstyCount++;
+                                const div = document.createElement("div");
+                                div.className = "flex justify-between items-center bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border)]";
+                                div.innerHTML = `
+                                    <div>
+                                        <p class="font-bold text-sm">${plant.name}</p>
+                                        <p class="text-xs text-red-500 font-bold">${daysOverdue === 0 ? 'Due Today' : `${daysOverdue} days late`}</p>
+                                    </div>
+                                    <div class="flex gap-1">
+                                        <button class="btn-secondary p-1.5 rounded text-xs" onclick="openSnoozeModal('${plant.id}')" title="Snooze"><i class="fa-solid fa-clock text-yellow-500"></i></button>
+                                        <button class="btn-primary p-1.5 rounded text-xs quick-water-btn" data-id="${plant.id}"><i class="fa-solid fa-check"></i></button>
+                                    </div>
+                                `;
+                                waterList.appendChild(div);
+                            }
+                        } else if (daysOverdue >= -7) {
+                            // Upcoming (Due soon)
+                            const daysUntil = Math.abs(daysOverdue);
+                            const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + daysUntil);
+                            upcomingTasks.push({ 
+                                plant, 
+                                type: 'Water', 
+                                daysUntil, 
+                                date: dueDate, 
+                                icon: 'fa-droplet', 
+                                color: 'text-blue-500', 
+                                bg: 'bg-blue-100 dark:bg-blue-900' 
+                            });
+                        }
+                    }
+                }
+
+                // --- Fertilizer Check ---
+                if (plant.fertFreq) {
+                    const lastDate = lastFert ? new Date(lastFert.date) : new Date(plant.acquired || 0);
+                    const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
+                    const daysOverdue = Math.floor(diffDays - plant.fertFreq);
+
+                    if (daysOverdue >= 0) {
+                        if (!isSick) {
+                            hungryCount++;
+                            const div = document.createElement("div");
+                            div.className = "flex justify-between items-center bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border)]";
+                            div.innerHTML = `<div><p class="font-bold text-sm">${plant.name}</p><p class="text-xs text-orange-500 font-bold">${daysOverdue} days overdue</p></div>`;
+                            fertList.appendChild(div);
+                        }
+                    } else if (daysOverdue >= -7) {
+                        // Upcoming Fert
+                        const daysUntil = Math.abs(daysOverdue);
+                        const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + daysUntil);
+                        upcomingTasks.push({
+                            plant, type: 'Fertilize', daysUntil, date: dueDate, icon: 'fa-seedling', color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-900'
+                        });
+                    }
+                }
+
+                // --- Hospital Render (If Sick) ---
+                if (isSick) {
                     const div = document.createElement("div");
-                    div.className = "flex justify-between items-center bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border)]";
+                    div.className = `p-4 rounded-lg border ${plant.health === 'quarantine' ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'}`;
                     div.innerHTML = `
-                        <div>
-                            <p class="font-bold text-sm">${plant.name}</p>
-                            <p class="text-xs text-red-500 font-bold">${daysOverdue === 0 ? 'Due Today' : `${daysOverdue} days late`}</p>
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid ${plant.health === 'quarantine' ? 'fa-ban text-red-500' : 'fa-notes-medical text-yellow-500'}"></i>
+                                <span class="font-bold">${plant.name}</span>
+                            </div>
+                            <button class="text-xs btn-secondary px-2 py-1 edit-plant-btn" data-id="${plant.id}">Edit</button>
                         </div>
-                        <div class="flex gap-1">
-                            <button class="btn-secondary p-1.5 rounded text-xs snooze-btn" data-id="${plant.id}" title="Snooze 2 Days"><i class="fa-solid fa-clock text-yellow-500"></i></button>
-                            <button class="btn-primary p-1.5 rounded text-xs quick-water-btn" data-id="${plant.id}"><i class="fa-solid fa-check"></i></button>
+                        <p class="text-xs opacity-70 italic mb-2">${plant.health === 'quarantine' ? 'In Isolation' : 'Under Observation'}</p>
+                        <div class="flex gap-2">
+                            <button class="flex-1 btn-secondary text-xs py-1 quick-water-btn" data-id="${plant.id}">Water</button>
+                            <button class="flex-1 btn-secondary text-xs py-1" onclick="openSnoozeModal('${plant.id}')">Snooze</button>
                         </div>
                     `;
-                    waterList.appendChild(div);
-                } else if (daysOverdue >= -7) {
-                    // [NEW] Upcoming Water Logic
-                    const daysUntil = Math.abs(daysOverdue);
-                    const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + daysUntil);
-                    upcomingTasks.push({
-                        plant: plant,
-                        type: 'Water',
-                        daysUntil: daysUntil,
-                        date: dueDate,
-                        icon: 'fa-droplet',
-                        color: 'text-blue-500',
-                        bg: 'bg-blue-100 dark:bg-blue-900'
-                    });
+                    hospitalList.appendChild(div);
                 }
+            });
+
+            // 3. Update UI Visibility
+            toggleDisplay(hospitalSection, hasSickPlants);
+
+            // 4. Render Empty States
+            if (thirstyCount === 0) waterList.innerHTML = `<div class="text-center p-4 bg-[var(--input-bg)] rounded-lg text-green-600"><i class="fa-solid fa-check-circle mb-1 text-2xl"></i><p class="text-sm font-bold">All plants watered!</p></div>`;
+            if (hungryCount === 0) fertList.innerHTML = `<div class="text-center p-4 bg-[var(--input-bg)] rounded-lg text-green-600"><i class="fa-solid fa-check-circle mb-1 text-2xl"></i><p class="text-sm font-bold">All plants fed!</p></div>`;
+
+            // 5. Render Upcoming Tasks (Sorted)
+            upcomingTasks.sort((a, b) => a.daysUntil - b.daysUntil);
+            
+            if (upcomingTasks.length === 0) {
+                upcomingList.innerHTML = `<p class="text-center py-4 opacity-50 text-sm">No tasks for the next 7 days. Relax! 🌿</p>`;
+            } else {
+                upcomingTasks.forEach(task => {
+                    const row = document.createElement("div");
+                    row.className = "flex items-center justify-between p-3 border-b border-[var(--border)] last:border-0 hover:bg-[var(--input-bg)] transition-colors rounded";
+                    row.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full ${task.bg} flex items-center justify-center ${task.color}">
+                                <i class="fa-solid ${task.icon}"></i>
+                            </div>
+                            <div>
+                                <p class="font-bold text-sm">${task.plant.name}</p>
+                                <p class="text-xs opacity-70">${task.type}</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-sm text-[var(--primary)]">
+                                ${task.daysUntil <= 1 ? 'Tomorrow' : `In ${task.daysUntil} days`}
+                            </p>
+                            <p class="text-xs opacity-60">${task.date.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}</p>
+                        </div>
+                    `;
+                    upcomingList.appendChild(row);
+                });
             }
-        }
 
-        // --- Check Fertilizer ---
-        if (plant.fertFreq) {
-            const lastDate = lastFert ? new Date(lastFert.date) : new Date(plant.acquired || 0);
-            const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
-            const daysOverdue = Math.floor(diffDays - plant.fertFreq);
-
-            if (daysOverdue >= 0) {
-                // Existing Hungry Logic
-                hungryCount++;
-                const div = document.createElement("div");
-                div.className = "flex justify-between items-center bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border)]";
-                div.innerHTML = `
-                    <div><p class="font-bold text-sm">${plant.name}</p><p class="text-xs text-orange-500 font-bold">${daysOverdue} days overdue</p></div>
+            // 6. Render Recent
+            state.logs.slice(0, 6).forEach(log => {
+                const plant = state.plants.find(p => p.id === log.plantId);
+                const item = document.createElement("div");
+                item.className = "card p-3 flex flex-col justify-center h-24";
+                item.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold text-sm text-[var(--primary)]">${log.type}</span>
+                        <span class="text-xs opacity-60">${new Date(log.date).toLocaleDateString()}</span>
+                    </div>
+                    <p class="font-bold text-sm truncate">${plant ? plant.name : 'Unknown Plant'}</p>
+                    ${log.notes ? `<p class="text-xs italic opacity-70 truncate">"${log.notes}"</p>` : ''}
                 `;
-                fertList.appendChild(div);
-            } else if (daysOverdue >= -7) {
-                 // [NEW] Upcoming Fert Logic
-                 const daysUntil = Math.abs(daysOverdue);
-                 const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + daysUntil);
-                 upcomingTasks.push({
-                     plant: plant,
-                     type: 'Fertilize',
-                     daysUntil: daysUntil,
-                     date: dueDate,
-                     icon: 'fa-seedling',
-                     color: 'text-orange-500',
-                     bg: 'bg-orange-100 dark:bg-orange-900'
-                 });
-            }
-        }
-    });
+                recentList.appendChild(item);
+            });
 
-    // --- Render Empty States for Thirsty/Hungry ---
-    if (thirstyCount === 0) waterList.innerHTML = `<div class="text-center p-4 bg-[var(--input-bg)] rounded-lg text-green-600"><i class="fa-solid fa-check-circle mb-1 text-2xl"></i><p class="text-sm font-bold">All plants watered!</p></div>`;
-    if (hungryCount === 0) fertList.innerHTML = `<div class="text-center p-4 bg-[var(--input-bg)] rounded-lg text-green-600"><i class="fa-solid fa-check-circle mb-1 text-2xl"></i><p class="text-sm font-bold">All plants fed!</p></div>`;
-
-    document.querySelectorAll("#dashboard-water-list .quick-water-btn").forEach(b => b.onclick = (e) => quickWater(e.currentTarget.dataset.id));
-    document.querySelectorAll(".snooze-btn").forEach(b => b.onclick = (e) => snoozePlant(e.currentTarget.dataset.id));
-
-    // --- [NEW] Render Upcoming Tasks ---
-    upcomingTasks.sort((a, b) => a.daysUntil - b.daysUntil); // Sort by soonest
-
-    if (upcomingTasks.length === 0) {
-        upcomingList.innerHTML = `<p class="text-center py-4 opacity-50 text-sm">No tasks for the next 7 days. Relax! 🌿</p>`;
-    } else {
-        upcomingTasks.forEach(task => {
-            const row = document.createElement("div");
-            row.className = "flex items-center justify-between p-3 border-b border-[var(--border)] last:border-0 hover:bg-[var(--input-bg)] transition-colors rounded";
-            row.innerHTML = `
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-full ${task.bg} flex items-center justify-center ${task.color}">
-                        <i class="fa-solid ${task.icon}"></i>
-                    </div>
-                    <div>
-                        <p class="font-bold text-sm">${task.plant.name}</p>
-                        <p class="text-xs opacity-70">${task.type}</p>
-                    </div>
-                </div>
-                <div class="text-right">
-                    <p class="font-bold text-sm text-[var(--primary)]">
-                        ${task.daysUntil === 1 ? 'Tomorrow' : `In ${task.daysUntil} days`}
-                    </p>
-                    <p class="text-xs opacity-60">${task.date.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})}</p>
-                </div>
-            `;
-            upcomingList.appendChild(row);
-        });
-    }
-
-    // --- Render Recent Activity (Existing Logic) ---
-    state.logs.slice(0, 6).forEach(log => {
-        const plant = state.plants.find(p => p.id === log.plantId);
-        const item = document.createElement("div");
-        item.className = "card p-3 flex flex-col justify-center h-24";
-        item.innerHTML = `
-            <div class="flex justify-between items-center mb-1">
-                <span class="font-bold text-sm text-[var(--primary)]">${log.type}</span>
-                <span class="text-xs opacity-60">${new Date(log.date).toLocaleDateString()}</span>
-            </div>
-            <p class="font-bold text-sm truncate">${plant ? plant.name : 'Unknown Plant'}</p>
-            ${log.notes ? `<p class="text-xs italic opacity-70 truncate">"${log.notes}"</p>` : ''}
-        `;
-        recentList.appendChild(item);
-    });
-};
+            // 7. Attach Listeners
+            document.querySelectorAll(".quick-water-btn").forEach(b => b.onclick = (e) => quickWater(e.currentTarget.dataset.id));
+            document.querySelectorAll(".edit-plant-btn").forEach(b => b.onclick = (e) => openPlantModal(e.currentTarget.dataset.id));
+        };
 
         const renderHistory = () => {
             const tbody = getEl("history-table-body");
@@ -666,13 +773,14 @@ const lightColors = { low: 'text-gray-400', medium: 'text-yellow-400', high: 'te
             } catch (e) { showMsg(e.message, "error"); }
         };
 
-        const snoozePlant = async (plantId) => {
-            try {
-                const date = new Date(); date.setDate(date.getDate() + 2);
-                await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { snoozeUntil: Timestamp.fromDate(date) });
-                showMsg("Snoozed 2 days");
-            } catch(e) { showMsg(e.message, "error"); }
-        }
+        const unsnoozePlant = async (plantId) => {
+    if (!confirm("Wake this plant up?")) return;
+    try {
+        await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { snoozeUntil: null });
+        showMsg("Snooze cancelled");
+    } catch (e) { showMsg(e.message, "error"); }
+};
+
 
         const deleteLog = async (id) => {
             if(confirm("Delete this log?")) {
@@ -702,6 +810,7 @@ const lightColors = { low: 'text-gray-400', medium: 'text-yellow-400', high: 'te
                     getEl("plant-location").value = plant.location || "";
                     getEl("plant-light").value = plant.light || "";
 getEl("plant-position").value = plant.position || "";
+getEl("plant-health").value = plant.health || "healthy"; // NEW LINE
                     getEl("plant-water-freq").value = plant.waterFreq || "";
                     getEl("plant-fert-freq").value = plant.fertFreq || "";
                     getEl("plant-acquired").value = plant.acquired || "";
@@ -711,6 +820,7 @@ getEl("plant-position").value = plant.position || "";
             } else {
                 title.textContent = "Add Plant";
                 idInput.value = "";
+                getEl("plant-health").value = "healthy"; // NEW LINE
                 toggleDisplay(delBtn, false);
             }
             toggleDisplay(modal, true);
@@ -720,19 +830,20 @@ getEl("plant-position").value = plant.position || "";
         document.querySelectorAll(".close-modal-btn").forEach(b => b.onclick = () => toggleDisplay(getEl("plant-modal"), false));
 
         getEl("save-plant-btn").onclick = async () => {
-            const id = getEl("modal-plant-id").value;
-            const data = {
-                name: getEl("plant-name").value,
-                species: getEl("plant-species").value,
-                location: getEl("plant-location").value,
-                light: getEl("plant-light").value,
-    position: getEl("plant-position").value,
-                waterFreq: parseInt(getEl("plant-water-freq").value) || 0,
-                fertFreq: parseInt(getEl("plant-fert-freq").value) || 0,
-                acquired: getEl("plant-acquired").value,
-                icon: getEl("plant-icon").value,
-                updatedAt: Timestamp.now()
-            };
+    const id = getEl("modal-plant-id").value;
+    const data = {
+        name: getEl("plant-name").value,
+        species: getEl("plant-species").value,
+        location: getEl("plant-location").value,
+        light: getEl("plant-light").value,
+        health: getEl("plant-health").value, // NEW LINE
+        position: getEl("plant-position").value,
+        waterFreq: parseInt(getEl("plant-water-freq").value) || 0,
+        fertFreq: parseInt(getEl("plant-fert-freq").value) || 0,
+        acquired: getEl("plant-acquired").value,
+        icon: getEl("plant-icon").value,
+        updatedAt: Timestamp.now()
+    };
             if (!data.name) return showMsg("Name required", "error");
 
             try {
@@ -819,6 +930,63 @@ getEl("winter-mode-toggle").addEventListener('change', async (e) => {
         winterMode: e.target.checked 
     }, { merge: true });
 });
+
+// --- New Snooze Logic ---
+window.openSnoozeModal = (plantId) => {
+    getEl("snooze-plant-target").value = plantId;
+    getEl("snooze-custom-val").value = "";
+    toggleDisplay(getEl("snooze-modal"), true);
+};
+
+window.applySnooze = async (days) => {
+    const plantId = getEl("snooze-plant-target").value;
+    const duration = parseInt(days);
+    
+    if (!plantId || isNaN(duration) || duration <= 0) return showMsg("Invalid duration", "error");
+    
+    try {
+        const date = new Date(); 
+        date.setDate(date.getDate() + duration);
+        
+        // 1. Update the Plant (Existing)
+        await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { 
+            snoozeUntil: Timestamp.fromDate(date) 
+        });
+
+        // 2. Create the Log Entry (NEW)
+        await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+            plantId, 
+            type: "Snooze", 
+            date: new Date().toISOString(), 
+            notes: `Snoozed for ${duration} days`, // This explains "Why" in the history
+            createdAt: Timestamp.now()
+        });
+        
+        showMsg(`Snoozed for ${duration} days`);
+        toggleDisplay(getEl("snooze-modal"), false);
+        // No need to call renderDashboard(), the log listener will trigger it automatically
+    } catch(e) { 
+        showMsg(e.message, "error"); 
+    }
+};
+
+const unsnoozePlant = async (plantId) => {
+    if (!confirm("Wake this plant up?")) return;
+    try {
+        await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { snoozeUntil: null });
+        
+        // Add Log
+        await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+            plantId, 
+            type: "Unsnooze", 
+            date: new Date().toISOString(), 
+            notes: "Manually woke up plant", 
+            createdAt: Timestamp.now()
+        });
+
+        showMsg("Snooze cancelled");
+    } catch (e) { showMsg(e.message, "error"); }
+};
 
                 // 2. Setup Real-time Theme Sync
                 const themeDocRef = doc(db, 'users', user.uid, 'settings', 'theme');
