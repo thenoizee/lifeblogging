@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.35.0-alpha",
+    date: "2026-02-02",
+    changes: [
+        "In Data Tools: Added a new 'String Utilities' section to the converter hub.",
+        "In Data Tools: Implemented a Binary Converter to translate text to binary strings and vice versa.",
+        "In Data Tools: Added Base64, Hexadecimal, and URL Encode/Decode tools for quick string manipulation.",
+        "In Data Tools: Added a 'Use Result' swap button to easily move output data back into the input field for chained conversions."
+    ]
+    },
+    {
     version: "v10.34.0-alpha",
     date: "2026-02-01",
     changes: [
