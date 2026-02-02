@@ -287,21 +287,24 @@
         ]
     });
 
-    // --- Inject VidTrackr Header Elements (Search & Watch Status) ---
-    const headerRight = document.querySelector('header .container > .flex > .flex:last-child');
-    if (headerRight) {
-        const customDiv = document.createElement('div');
-        customDiv.className = 'flex items-center gap-2 mr-2 md:mr-4';
-        customDiv.innerHTML = `
-            <div id="header-watch-status" class="hidden mr-1 animate-pulse"></div>
-            <div id="search-container" class="hidden md:block relative">
-                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                <input type="search" id="search-input" placeholder="Search..." 
-                    class="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-200 rounded-lg py-1.5 pl-8 pr-4 text-xs focus:ring-2 focus:ring-red-600 focus:outline-none w-32 transition-all focus:w-48 placeholder-gray-500">
-            </div>
-        `;
-        headerRight.parentNode.insertBefore(customDiv, headerRight);
-    }
+    // --- Inject VidTrackr Header Elements ---
+const headerRight = document.querySelector('header .container > .flex > .flex:last-child');
+if (headerRight) {
+    const customDiv = document.createElement('div');
+    customDiv.className = 'flex items-center gap-2 mr-2 md:mr-4';
+    customDiv.innerHTML = `
+        <div id="header-watch-status" class="hidden mr-1 animate-pulse"></div>
+        
+        <div id="sync-status" class="hidden items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-900 border border-gray-700 transition-all duration-500"></div>
+        
+        <div id="search-container" class="hidden md:block relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+            <input type="search" id="search-input" placeholder="Search..." 
+                class="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-200 rounded-lg py-1.5 pl-8 pr-4 text-xs focus:ring-2 focus:ring-red-600 focus:outline-none w-32 transition-all focus:w-48 placeholder-gray-500">
+        </div>
+    `;
+    headerRight.parentNode.insertBefore(customDiv, headerRight);
+}
 
     // --- Nav Events ---
     // --- Nav Events (FIXED) ---
@@ -686,6 +689,77 @@ window.removeProgress = async (playbackId) => {
             finally { if(!cached) hideLoader(); }
         }
 
+        // Smart caching wrapper: 
+// 1. Loads from cache immediately (if available)
+// 2. Fetches fresh data in background
+// 3. Re-renders only if data changed
+async function runSmart(cacheKey, fetcherFn, rendererFn) {
+    const key = `vidtrackr_smart_${cacheKey}`;
+    const statusEl = document.getElementById('sync-status');
+    
+    // Helper to update the badge
+    const setStatus = (state) => {
+        if (!statusEl) return;
+        statusEl.classList.remove('hidden', 'text-gray-400', 'text-yellow-500', 'text-green-500', 'border-yellow-500', 'border-green-500');
+        
+        if (state === 'cache') {
+            statusEl.innerHTML = '<i class="fa-solid fa-bolt"></i> Cached';
+            statusEl.classList.add('text-gray-400', 'border-gray-700');
+        } else if (state === 'loading') {
+            statusEl.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin"></i> Syncing';
+            statusEl.classList.add('text-yellow-500', 'border-yellow-500/50');
+        } else if (state === 'success') {
+            statusEl.innerHTML = '<i class="fa-solid fa-check"></i> Updated';
+            statusEl.classList.add('text-green-500', 'border-green-500/50');
+            // Hide after 3 seconds
+            setTimeout(() => {
+                statusEl.classList.add('opacity-0');
+                setTimeout(() => {
+                    statusEl.classList.add('hidden');
+                    statusEl.classList.remove('opacity-0');
+                }, 500);
+            }, 3000);
+        }
+    };
+
+    // 1. Instant Load from Cache
+    const cached = localStorage.getItem(key);
+    if (cached) {
+        try {
+            setStatus('cache'); // Show "Cached" immediately
+            const cachedData = JSON.parse(cached);
+            rendererFn(cachedData, true);
+        } catch(e) { console.warn("Cache parse error", e); }
+    } else {
+        showLoader();
+    }
+
+    // 2. Silent Background Fetch
+    try {
+        if(cached) setStatus('loading'); // Switch to "Syncing..."
+        
+        const freshData = await fetcherFn();
+        
+        // 3. Compare & Update
+        if (!cached || JSON.stringify(freshData) !== cached) {
+            localStorage.setItem(key, JSON.stringify(freshData));
+            rendererFn(freshData, false);
+            setStatus('success'); // Show "Updated" (Green)
+        } else {
+            // Data was identical, just show green "Updated" briefly to reassure user
+            setStatus('success');
+        }
+    } catch (e) {
+        console.error(`Background update failed for ${cacheKey}`, e);
+        if(statusEl) {
+            statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Offline';
+            statusEl.classList.add('text-red-500', 'border-red-500/50');
+        }
+    } finally {
+        if (!cached) hideLoader();
+    }
+}
+
         async function syncUserRatings() {
             try {
                 const [movies, shows, episodes] = await Promise.all([ 
@@ -772,71 +846,81 @@ loadCalendar();
 }
 
         async function loadLastWatched() {
+    await runSmart(
+        'last_watched_v1', // Cache Key
+        
+        // --- FETCHER ---
+        async () => {
+            return await fetchDirect('/sync/history?limit=12&extended=images');
+        },
+
+        // --- RENDERER ---
+        (history) => {
             const container = document.getElementById('last-watched-container');
-            try {
-                const history = await fetchDirect('/sync/history?limit=12&extended=images');
-                if (!history.length) return;
+            if (!container) return;
+            if (!history.length) return;
 
-                const createCard = (h) => {
-                    const type = h.type;
-                    const data = h[type];
-                    const id = type === 'episode' ? h.episode.ids.trakt : h.movie.ids.trakt;
-                    const img = getImage(data, type === 'episode' ? 'episode' : 'movie', true);
-                    const title = type === 'episode' ? `${h.show.title}: ${h.episode.title}` : h.movie.title;
-                    const subTitle = type === 'episode' ? `S${h.episode.season}E${h.episode.number}` : h.movie.year;
-                    const targetHash = type === 'episode' ? `#detail/episode/${h.episode.ids.trakt}` : `#detail/movie/${h.movie.ids.trakt}`;
-                    const dateObj = new Date(h.watched_at);
-                    const dateTimeDisplay = `${dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})} @ ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-                    const myRating = userRatings.get(parseInt(id));
-                    const ratingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 text-[10px] ml-2 bg-black/50 px-1.5 rounded"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
+            const createCard = (h) => {
+                const type = h.type;
+                const data = h[type];
+                const id = type === 'episode' ? h.episode.ids.trakt : h.movie.ids.trakt;
+                const img = getImage(data, type === 'episode' ? 'episode' : 'movie', true);
+                const title = type === 'episode' ? `${h.show.title}: ${h.episode.title}` : h.movie.title;
+                const subTitle = type === 'episode' ? `S${h.episode.season}E${h.episode.number}` : h.movie.year;
+                const targetHash = type === 'episode' ? `#detail/episode/${h.episode.ids.trakt}` : `#detail/movie/${h.movie.ids.trakt}`;
+                const dateObj = new Date(h.watched_at);
+                const dateTimeDisplay = `${dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})} @ ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                const myRating = userRatings.get(parseInt(id));
+                const ratingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 text-[10px] ml-2 bg-black/50 px-1.5 rounded"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
 
-                    return `
-                        <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer animate-fade" onclick="location.hash='${targetHash}'">
-                            <div class="aspect-video relative">
-                                <img src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:scale-110" onerror="this.src='${PLACEHOLDER_IMG}'">
-                                <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
-                                <div class="absolute bottom-0 left-0 p-4 w-full">
-                                    <h4 class="text-white font-bold truncate shadow-black drop-shadow-md text-sm md:text-base">${title}</h4>
-                                    <div class="flex items-center justify-between mt-1">
-                                        <div class="flex items-center overflow-hidden">
-                                            <span class="text-xs text-gray-300 font-mono truncate">${subTitle}</span>
-                                            ${ratingHtml}
-                                        </div>
-                                        <span class="text-[10px] bg-[var(--primary)] text-white px-1.5 py-0.5 rounded font-bold uppercase flex-shrink-0 ml-2">${type}</span>
+                return `
+                    <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer animate-fade" onclick="location.hash='${targetHash}'">
+                        <div class="aspect-video relative">
+                            <img src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:scale-110" onerror="this.src='${PLACEHOLDER_IMG}'">
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
+                            <div class="absolute bottom-0 left-0 p-4 w-full">
+                                <h4 class="text-white font-bold truncate shadow-black drop-shadow-md text-sm md:text-base">${title}</h4>
+                                <div class="flex items-center justify-between mt-1">
+                                    <div class="flex items-center overflow-hidden">
+                                        <span class="text-xs text-gray-300 font-mono truncate">${subTitle}</span>
+                                        ${ratingHtml}
                                     </div>
-                                    <div class="mt-2 text-[10px] text-gray-400 font-montserrat border-t border-gray-700 pt-1 flex items-center">
-                                        <i class="fa-regular fa-clock mr-1 text-[var(--primary)]"></i> ${dateTimeDisplay}
-                                    </div>
+                                    <span class="text-[10px] bg-[var(--primary)] text-white px-1.5 py-0.5 rounded font-bold uppercase flex-shrink-0 ml-2">${type}</span>
+                                </div>
+                                <div class="mt-2 text-[10px] text-gray-400 font-montserrat border-t border-gray-700 pt-1 flex items-center">
+                                    <i class="fa-regular fa-clock mr-1 text-[var(--primary)]"></i> ${dateTimeDisplay}
                                 </div>
                             </div>
                         </div>
-                    `;
-                };
+                    </div>
+                `;
+            };
 
-                const top3 = history.slice(0, 3).map(createCard).join('');
-                const rest = history.slice(3).map(createCard).join('');
+            const top3 = history.slice(0, 3).map(createCard).join('');
+            const rest = history.slice(3).map(createCard).join('');
 
-                let html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-purple-500">Recently Watched</h2>`;
-                html += `<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">${top3}</div>`;
+            let html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-purple-500">Recently Watched</h2>`;
+            html += `<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">${top3}</div>`;
 
-                if (rest) {
-                    html += `
-                        <div id="hidden-history" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-6 hidden transition-all">
-                            ${rest}
-                        </div>
-                        <div class="mt-6 flex justify-center">
-                            <button onclick="const el = document.getElementById('hidden-history'); el.classList.toggle('hidden'); this.innerHTML = el.classList.contains('hidden') ? 'Show More <i class=&quot;fa-solid fa-chevron-down ml-2&quot;></i>' : 'Show Less <i class=&quot;fa-solid fa-chevron-up ml-2&quot;></i>'" 
-                                class="bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold py-2 px-6 rounded-full transition border border-gray-700 shadow-lg">
-                                Show More <i class="fa-solid fa-chevron-down ml-2"></i>
-                            </button>
-                        </div>
-                    `;
-                }
+            if (rest) {
+                html += `
+                    <div id="hidden-history" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-6 hidden transition-all">
+                        ${rest}
+                    </div>
+                    <div class="mt-6 flex justify-center">
+                        <button onclick="const el = document.getElementById('hidden-history'); el.classList.toggle('hidden'); this.innerHTML = el.classList.contains('hidden') ? 'Show More <i class=&quot;fa-solid fa-chevron-down ml-2&quot;></i>' : 'Show Less <i class=&quot;fa-solid fa-chevron-up ml-2&quot;></i>'" 
+                            class="bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold py-2 px-6 rounded-full transition border border-gray-700 shadow-lg">
+                            Show More <i class="fa-solid fa-chevron-down ml-2"></i>
+                        </button>
+                    </div>
+                `;
+            }
 
-                container.innerHTML = html;
-                container.classList.remove('hidden');
-            } catch (e) { console.error("Last Watched Error", e); }
+            container.innerHTML = html;
+            container.classList.remove('hidden');
         }
+    );
+}
 
         async function loadCalendar() {
             const container = document.getElementById('calendar-container');
@@ -917,53 +1001,67 @@ loadCalendar();
         }
         
 async function loadUpNext() {
-    const container = document.getElementById('up-next-container');
-    if (!container) return;
-
-    try {
-        // 1. Get Resumable Items (Paused)
-        const [resumeMovies, resumeEpisodes] = await Promise.all([
-            fetchDirect('/sync/playback/movies?limit=10&extended=full,images'),
-            fetchDirect('/sync/playback/episodes?limit=10&extended=full,images')
-        ]);
+    await runSmart(
+        'up_next_v1', // Cache Key
         
-        const resumeItems = [
-            ...resumeMovies.map(m => ({...m, type: 'movie', isResume: true, playbackId: m.id})),
-            ...resumeEpisodes.map(e => ({...e, type: 'episode', isResume: true, playbackId: e.id}))
-        ].sort((a, b) => new Date(b.paused_at) - new Date(a.paused_at));
+        // --- FETCHER: Returns pure data array ---
+        async () => {
+            // 1. Get Resumable Items (Paused)
+            const [resumeMovies, resumeEpisodes] = await Promise.all([
+                fetchDirect('/sync/playback/movies?limit=10&extended=full,images'),
+                fetchDirect('/sync/playback/episodes?limit=10&extended=full,images')
+            ]);
+            
+            const resumeItems = [
+                ...resumeMovies.map(m => ({...m, type: 'movie', isResume: true, playbackId: m.id})),
+                ...resumeEpisodes.map(e => ({...e, type: 'episode', isResume: true, playbackId: e.id}))
+            ].sort((a, b) => new Date(b.paused_at) - new Date(a.paused_at));
 
-        // 2. Get "Up Next" (Next Episodes)
-        const watchedShows = await fetchDirect('/sync/watched/shows?limit=50&extended=noseasons');
-        const nextEpisodes = [];
-        const uniqueShowIds = watchedShows.slice(0, 20).map(s => s.show.ids.trakt);
-        
-        await Promise.all(uniqueShowIds.map(async (id) => {
-            try {
-                if(resumeItems.find(r => r.type === 'episode' && r.show.ids.trakt == id)) return;
-                const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=false&count_specials=false&extended=full`);
-                if (progress.next_episode) {
-                     nextEpisodes.push({ 
-                         type: 'episode', isResume: false,
-                         show: { title: watchedShows.find(s => s.show.ids.trakt == id).show.title, ids: { trakt: id } }, 
-                         episode: progress.next_episode, ids: progress.next_episode.ids, 
-                         title: progress.next_episode.title, images: progress.next_episode.images 
-                     });
-                }
-            } catch (err) {}
-        }));
-        nextEpisodes.sort((a, b) => uniqueShowIds.indexOf(a.show.ids.trakt) - uniqueShowIds.indexOf(b.show.ids.trakt));
-        
-        const combined = [...resumeItems, ...nextEpisodes].slice(0, 18);
+            // 2. Get "Up Next" (Next Episodes)
+            const watchedShows = await fetchDirect('/sync/watched/shows?limit=50&extended=noseasons');
+            const nextEpisodes = [];
+            const uniqueShowIds = watchedShows.slice(0, 20).map(s => s.show.ids.trakt);
+            
+            await Promise.all(uniqueShowIds.map(async (id) => {
+                try {
+                    // Skip if we already have a resume item for this show
+                    if(resumeItems.find(r => r.type === 'episode' && r.show.ids.trakt == id)) return;
+                    
+                    const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=false&count_specials=false&extended=full`);
+                    if (progress.next_episode) {
+                         nextEpisodes.push({ 
+                             type: 'episode', isResume: false,
+                             show: { title: watchedShows.find(s => s.show.ids.trakt == id).show.title, ids: { trakt: id } }, 
+                             episode: progress.next_episode, ids: progress.next_episode.ids, 
+                             title: progress.next_episode.title, images: progress.next_episode.images 
+                         });
+                    }
+                } catch (err) {}
+            }));
+            
+            // Sort next episodes to match the user's "last watched" order
+            nextEpisodes.sort((a, b) => uniqueShowIds.indexOf(a.show.ids.trakt) - uniqueShowIds.indexOf(b.show.ids.trakt));
+            
+            // Combine and limit
+            return [...resumeItems, ...nextEpisodes].slice(0, 18);
+        },
 
-        if (combined.length > 0) {
+        // --- RENDERER: Updates the DOM ---
+        (items) => {
+            const container = document.getElementById('up-next-container');
+            if (!container) return;
+
+            if (items.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+
             const createCard = (item) => {
-                // FIX: Check for missing data immediately
                 if (!item || (!item.movie && !item.episode && !item.show)) return ''; 
 
                 const isMovie = item.type === 'movie';
                 const data = isMovie ? (item.movie || item) : (item.episode || item.episode);
                 
-                // FIX: Verify IDs exist
                 if (!data || !data.ids || !data.ids.trakt) return '';
 
                 const showTitle = !isMovie ? item.show.title : null;
@@ -982,21 +1080,16 @@ async function loadUpNext() {
                 let actionBtns = '';
                 
                 if (item.isResume) {
-                    // --- RESUME ITEMS ---
                     actionBtns = `
                     <div class="flex gap-2 w-full h-10">
                         <button onclick="event.stopPropagation(); window.rateDirect(${data.ids.trakt}, '${item.type}', 10)" class="h-full bg-gray-700 hover:bg-green-600 text-white text-xs px-3 rounded-lg transition font-bold shadow flex items-center justify-center" title="Mark Fully Watched"><i class="fa-solid fa-check"></i></button>
-                        
                         <button onclick='event.stopPropagation(); window.openScrobbleModal(${jsonStr})' class="flex-grow h-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white text-xs font-bold rounded-lg border border-blue-600/30 transition flex items-center justify-center gap-2"><i class="fa-solid fa-sliders"></i> Update</button>
-                        
                         <button onclick="event.stopPropagation(); window.removeProgress(${item.playbackId})" class="h-full bg-gray-700 hover:bg-red-600 text-white text-xs px-3 rounded-lg transition font-bold shadow flex items-center justify-center" title="Drop / Remove Progress"><i class="fa-solid fa-xmark"></i></button>
                     </div>`;
                 } else {
-                    // --- UP NEXT ITEMS (Updated for Quick Rate Modal) ---
                     actionBtns = `
                     <div class="flex gap-2 w-full relative z-20 h-10">
                          <button onclick='event.stopPropagation(); window.openScrobbleModal(${jsonStr})' class="flex-grow h-10 bg-[var(--primary)] hover:bg-red-700 text-white text-xs font-bold rounded-lg transition shadow-md flex items-center justify-center"><i class="fa-solid fa-play mr-1"></i> Log Watch</button>
-                         
                          <button onclick="event.stopPropagation(); window.openQuickRate(${data.ids.trakt}, '${item.type}', '${(isMovie ? title : `${showTitle}: ${title}`).replace(/'/g, "\\'")}')" class="h-10 w-12 bg-gray-700 hover:bg-yellow-500 hover:text-black text-white rounded-lg font-bold transition shadow-md flex items-center justify-center border border-gray-600"><i class="fa-solid fa-star"></i></button>
                     </div>`;
                 }
@@ -1019,11 +1112,11 @@ async function loadUpNext() {
                 </div>`;
             };
 
-            const html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${combined.map(createCard).join('')}</div>`;
+            const html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${items.map(createCard).join('')}</div>`;
             container.innerHTML = html;
             container.classList.remove('hidden');
         }
-    } catch (e) { console.error("Up Next Error", e); }
+    );
 }
 
 async function loadFriendsFeed() {

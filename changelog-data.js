@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.38.0-alpha",
+    date: "2026-02-02",
+    changes: [
+        "In VidTrackr: Implemented 'Stale-While-Revalidate' caching strategy for instant dashboard loading with silent background updates.",
+        "In VidTrackr: Added a visual 'Sync Status' indicator in the header (Cached/Syncing/Updated) to display real-time data states.",
+        "In VidTrackr: Updated Service Worker configuration to fully cache VidTrackr application files (App Shell) for offline support.",
+        "In VidTrackr: Refactored 'Up Next' and 'History' modules to decouple data fetching from rendering logic.",
+    ]
+    },
+    {
   version: "v10.37.0-alpha",
   date: "2026-02-02",
   changes: [

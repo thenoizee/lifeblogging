@@ -20,7 +20,14 @@ const urlsToCache = [
   '/podtrackr/index.html',
   '/hydration/index.html', 
   '/palette/index.html', 
-  '/tasktrackr/index.html', // Add the new TaskTrackr app
+  '/tasktrackr/index.html',
+  
+  // --- ADD THESE LINES ---
+  '/vidtrackr/',              // Caches the folder root
+  '/vidtrackr/index.html',    // Caches the main file
+  '/vidtrackr/api_keys.js',   // If you have this separate
+  // -----------------------
+
   '/recipemanagr/style.css',
   '/changelog-data.js',
   '/icons/icon-192x192.png',
