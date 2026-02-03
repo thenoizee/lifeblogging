@@ -398,19 +398,40 @@ body {
                 </div>
 
                 <div id="card-consumables" class="card p-6 border-t-4 border-teal-500">
-                    <div class="flex items-center gap-2 mb-4 text-teal-600 font-bold text-lg"><i class="fa-solid fa-spray-can-sparkles"></i> Consumables</div>
+                    <div class="flex items-center gap-2 mb-4 text-teal-600 font-bold text-lg"><i class="fa-solid fa-spray-can-sparkles"></i> Consumables & Bulbs</div>
                     <div class="space-y-3">
                         <div class="flex gap-2">
-    <input id="consumable-date" type="date" class="flex-grow" />
-    <input id="consumable-time" type="time" class="w-24" />
-</div>
-                        <select id="consumable-type">
+                            <input id="consumable-date" type="date" class="flex-grow" />
+                            <input id="consumable-time" type="time" class="w-24" />
+                        </div>
+                        
+                        <select id="consumable-type" onchange="toggleConsumableFields()">
                             <option value="Air Freshener">Air Freshener</option>
                             <option value="Wiper Blades">Wiper Blades</option>
                             <option value="Cabin Filter">Cabin Air Filter</option>
                             <option value="Light Bulb">Light Bulb</option>
                             <option value="Car Wash">Car Wash / Detail</option>
+                            <option value="Other">Other</option>
                         </select>
+
+                        <div id="bulb-fields" class="hidden grid-cols-2 gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 animate-fadeIn">
+                             <select id="bulb-position" class="text-sm">
+                                <option value="">Select Position...</option>
+                                <option value="Headlight (Low)">Headlight (Low)</option>
+                                <option value="Headlight (High)">Headlight (High)</option>
+                                <option value="Sidelight">Sidelight</option>
+                                <option value="Indicator (Front)">Indicator (Front)</option>
+                                <option value="Indicator (Rear)">Indicator (Rear)</option>
+                                <option value="Brake Light">Brake Light</option>
+                                <option value="Tail Light">Tail Light</option>
+                                <option value="Reverse Light">Reverse Light</option>
+                                <option value="Fog Light">Fog Light</option>
+                                <option value="Plate Light">Number Plate</option>
+                                <option value="Interior">Interior/Dome</option>
+                            </select>
+                            <input id="bulb-model" type="text" placeholder="Type (e.g. H7, 501)" class="text-sm" />
+                        </div>
+
                         <div class="relative"><span class="absolute left-3 top-3 text-gray-400">£</span><input id="consumable-cost" type="number" step="0.01" placeholder="0.00" class="pl-7" /></div>
                         <input id="consumable-notes" type="text" placeholder="Brand / Store / Details" />
                         <button id="log-consumable-btn" class="btn btn-primary w-full bg-teal-600 hover:bg-teal-700"><span>Save Update</span><div class="loader"></div></button>
@@ -532,6 +553,46 @@ body {
                         <tbody id="history-table-body" class="divide-y divide-gray-200 dark:divide-gray-700"></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+
+        <div id="tab-content-inventory" class="tab-content hidden space-y-6">
+            <div class="card p-6 border-t-4 border-yellow-500">
+                <h3 class="font-bold text-lg mb-4 text-yellow-600 flex items-center gap-2">
+                    <i class="fa-solid fa-warehouse"></i> Trusted Parts Inventory
+                </h3>
+                <div class="space-y-3 bg-yellow-50 dark:bg-yellow-900/10 p-4 rounded-lg border border-yellow-100 dark:border-yellow-900/30">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input id="inv-name" type="text" placeholder="Part Name (e.g. Bosch Aerotwin Wipers)" />
+                        <input id="inv-number" type="text" placeholder="Part Number (e.g. A863S)" />
+                    </div>
+                    <input id="inv-link" type="url" placeholder="Purchase Link (https://...)" />
+                    <div class="grid grid-cols-2 gap-3">
+                        <select id="inv-category">
+                            <option value="General">General</option>
+                            <option value="Bulbs">Bulbs</option>
+                            <option value="Wipers">Wipers</option>
+                            <option value="Filters">Filters</option>
+                            <option value="Fluids">Fluids</option>
+                            <option value="Electronics">Electronics</option>
+                            <option value="Tools">Tools</option>
+                        </select>
+                        <div class="relative"><span class="absolute left-3 top-3 text-gray-400">£</span><input id="inv-price" type="number" step="0.01" placeholder="Price" class="pl-7" /></div>
+                    </div>
+                    <textarea id="inv-notes" placeholder="Notes (e.g. Tested working, bought from Amazon)" rows="2"></textarea>
+                    <button id="add-inventory-btn" class="btn btn-primary w-full bg-yellow-600 hover:bg-yellow-700"><span>Save Part</span><div class="loader"></div></button>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                 <div class="relative flex-grow">
+                    <i class="fa-solid fa-search absolute left-3 top-3.5 text-gray-400 text-xs"></i>
+                    <input type="text" id="inventory-search" placeholder="Search parts..." class="pl-8" />
+                </div>
+            </div>
+
+            <div id="inventory-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-10">
+                <span class="text-gray-400 text-sm italic col-span-full text-center py-4">Loading inventory...</span>
             </div>
         </div>
 
@@ -919,6 +980,97 @@ document.getElementById('meta-ins-cost').value = v.insuranceCost || '';
             setLoading('save-metadata-btn', false);
         };
 
+        // --- INVENTORY LOGIC ---
+        const loadInventory = (uid, vid) => {
+            const grid = document.getElementById('inventory-grid');
+            if(!grid) return;
+            
+            const q = query(collection(db, `users/${uid}/vehicles/${vid}/inventory`), orderBy('category', 'asc'));
+            onSnapshot(q, (snap) => {
+                const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                
+                if (items.length === 0) {
+                    grid.innerHTML = '<div class="col-span-full text-center p-8 text-gray-400 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl"><i class="fa-solid fa-box-open text-3xl mb-2"></i><p>Inventory is empty.</p></div>';
+                    return;
+                }
+
+                grid.innerHTML = '';
+                const searchTerm = document.getElementById('inventory-search').value.toLowerCase();
+
+                items.filter(i => (i.name+i.number+i.category).toLowerCase().includes(searchTerm)).forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = "card p-4 relative group hover:shadow-lg transition-all border border-gray-200 dark:border-gray-700";
+                    
+                    const badgeColor = item.category === 'Bulbs' ? 'bg-yellow-100 text-yellow-700' : 
+                                     (item.category === 'Wipers' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600');
+                    
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${badgeColor}">${item.category}</span>
+                            <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button class="text-gray-400 hover:text-red-500 delete-inv-btn" data-id="${item.id}"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </div>
+                        <h4 class="font-bold text-gray-800 dark:text-gray-200 text-lg leading-tight">${item.name}</h4>
+                        <div class="font-mono text-xs text-gray-500 mt-1 select-all bg-gray-50 dark:bg-gray-800 inline-block px-1 rounded">${item.number || 'N/A'}</div>
+                        
+                        ${item.price ? `<div class="mt-2 text-sm font-semibold text-gray-600 dark:text-gray-400">£${parseFloat(item.price).toFixed(2)}</div>` : ''}
+                        
+                        ${item.notes ? `<p class="text-xs text-gray-500 mt-2 italic border-l-2 border-gray-200 pl-2 line-clamp-2">${item.notes}</p>` : ''}
+                        
+                        <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                             <span class="text-[10px] text-gray-400">Tested</span>
+                             ${item.link ? `<a href="${item.link}" target="_blank" class="btn btn-secondary py-1 px-3 text-xs"><i class="fa-solid fa-up-right-from-square mr-1"></i> Buy Again</a>` : ''}
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                    
+                    // Attach delete listener
+                    card.querySelector('.delete-inv-btn').onclick = () => deleteInventoryItem(item.id);
+                });
+            });
+        };
+
+        const deleteInventoryItem = async (id) => {
+            if(!confirm("Remove this part from inventory?")) return;
+            try {
+                await deleteDoc(doc(db, `users/${appState.user.uid}/vehicles/${appState.currentVehicleId}/inventory`, id));
+                showMessage("Part Removed");
+            } catch(e) { showMessage(e.message, "error"); }
+        };
+
+        // Attach Search Listener
+        document.getElementById('inventory-search').addEventListener('input', () => {
+             // Re-trigger load or just filter existing logic. 
+             // Since loadInventory has the snapshot listener, simply modifying the DOM based on state or re-calling specific render logic is best. 
+             // For simplicity, we can rely on the snapshot listener updating, OR just reload:
+             loadInventory(appState.user.uid, appState.currentVehicleId);
+        });
+
+        // Attach Save Button Listener
+        document.getElementById('add-inventory-btn').onclick = async () => {
+            const name = document.getElementById('inv-name').value;
+            if(!name) return showMessage("Part Name is required", "error");
+            
+            setLoading('add-inventory-btn', true);
+            try {
+                await addDoc(collection(db, `users/${appState.user.uid}/vehicles/${appState.currentVehicleId}/inventory`), {
+                    name: name,
+                    number: document.getElementById('inv-number').value,
+                    link: document.getElementById('inv-link').value,
+                    category: document.getElementById('inv-category').value,
+                    price: parseFloat(document.getElementById('inv-price').value),
+                    notes: document.getElementById('inv-notes').value,
+                    addedBy: auth.currentUser.email,
+                    createdAt: serverTimestamp()
+                });
+                showMessage("Part Added to Inventory");
+                // Clear inputs
+                ['inv-name','inv-number','inv-link','inv-price','inv-notes'].forEach(id => document.getElementById(id).value = '');
+            } catch(e) { showMessage(e.message, "error"); }
+            setLoading('add-inventory-btn', false);
+        };
+
         const loadVehicles = async (uid) => {
             let q = query(collection(db, `users/${uid}/vehicles`), orderBy('createdAt', 'asc'));
             
@@ -968,6 +1120,7 @@ document.getElementById('meta-ins-cost').value = v.insuranceCost || '';
 
                 if(appState.currentVehicleId) {
                     loadHistory(uid, appState.currentVehicleId);
+                    loadInventory(uid, appState.currentVehicleId); // ADD THIS
                     renderGlovebox();
                 } else {
                     document.getElementById('total-cost-display').textContent = "--";
@@ -1311,6 +1464,19 @@ const addVirtual = (date, label, type, customCost) => {
     }
 };
 
+// Add this at the end of the script or inside the module
+        window.toggleConsumableFields = () => {
+            const type = document.getElementById('consumable-type').value;
+            const fields = document.getElementById('bulb-fields');
+            if(type === 'Light Bulb') {
+                fields.classList.remove('hidden');
+                fields.classList.add('grid');
+            } else {
+                fields.classList.add('hidden');
+                fields.classList.remove('grid');
+            }
+        };
+
 // Pass the specific costs from vehicleData (v)
 if(v.taxIsAuto && v.taxExpiry) addVirtual(v.taxExpiry, 'Road Tax', 'expense', v.taxCost);
 if(v.insuranceIsAuto && v.insuranceExpiry) addVirtual(v.insuranceExpiry, 'Car Insurance', 'expense', v.insuranceCost);
@@ -1360,7 +1526,18 @@ if(v.insuranceIsAuto && v.insuranceExpiry) addVirtual(v.insuranceExpiry, 'Car In
             details = `${d.category}: ${miles}mi`; 
         }
         else if(d.type === 'health-check') { icon = "fa-heart-pulse text-purple-500"; details = "Check-up"; }
-        else if(d.type === 'consumable') { icon = "fa-spray-can-sparkles text-teal-500"; details = d.item; cost = getNumDisplay(d.cost); }
+        else if(d.type === 'consumable') { 
+            icon = "fa-spray-can-sparkles text-teal-500"; 
+            details = d.item;
+            
+            // NEW: Show Bulb Details if present
+            if(d.item === 'Light Bulb' && (d.bulbPosition || d.bulbModel)) {
+                icon = "fa-lightbulb text-yellow-500"; // Change icon for bulbs
+                details += ` <span class="text-xs font-bold text-gray-500">(${d.bulbPosition || 'Unknown'} - ${d.bulbModel || '?'})</span>`;
+            }
+            
+            cost = getNumDisplay(d.cost); 
+        }
         else if(d.type === 'purchase') { 
                 icon = "fa-car text-green-600"; 
                 details = `${companyInfo}Start Mileage: ${d.odometer || 0}mi`; 
@@ -1651,13 +1828,30 @@ document.getElementById("log-service-btn").onclick = () => saveEntry("log-servic
 }, 'service-receipt');
 
 // Update log-consumable-btn handler
-document.getElementById("log-consumable-btn").onclick = () => saveEntry("log-consumable-btn", {
-    type: 'consumable', 
-    date: getTimestamp('consumable'), // UPDATED
-    item: document.getElementById('consumable-type').value,
-    cost: parseFloat(document.getElementById('consumable-cost').value),
-    notes: document.getElementById('consumable-notes').value
-});
+document.getElementById("log-consumable-btn").onclick = () => {
+            const type = document.getElementById('consumable-type').value;
+            let notes = document.getElementById('consumable-notes').value;
+            let extraData = {};
+
+            // Append Bulb info to notes or store separately
+            if (type === 'Light Bulb') {
+                const pos = document.getElementById('bulb-position').value;
+                const model = document.getElementById('bulb-model').value;
+                if(pos) extraData.bulbPosition = pos;
+                if(model) extraData.bulbModel = model;
+                // Auto-format notes for display if empty
+                if(!notes && pos) notes = `${pos} Replacement (${model})`;
+            }
+
+            saveEntry("log-consumable-btn", {
+                type: 'consumable', 
+                date: getTimestamp('consumable'),
+                item: type,
+                cost: parseFloat(document.getElementById('consumable-cost').value),
+                notes: notes,
+                ...extraData // Spread bulb data
+            });
+        };
 
 // Update log-trip-btn handler
 document.getElementById("log-trip-btn").onclick = () => saveEntry("log-trip-btn", {
@@ -1943,20 +2137,21 @@ if(dVal) {
         let nav; // Global nav instance
 
 const initSharedNav = (user) => {
-    nav = new AppNavigation({
-        appName: 'VehicleManagr',
-        appIcon: 'fa-car-tunnel',
-        themeColor: 'zinc',
-        userEmail: user.email,
-        version: '1.2.0',
-        activeTab: 'dashboard',
-        tabs: [
-            { id: 'dashboard', label: 'Dashboard', icon: 'fa-house' },
-            { id: 'log', label: 'Log', icon: 'fa-pen-to-square' },
-            { id: 'history', label: 'History', icon: 'fa-clock-rotate-left' },
-            { id: 'trips', label: 'Trips', icon: 'fa-route' },
-            { id: 'settings', label: 'Settings', icon: 'fa-gear' }
-        ],
+            nav = new AppNavigation({
+                appName: 'VehicleManagr',
+                appIcon: 'fa-car-tunnel',
+                themeColor: 'zinc',
+                userEmail: user.email,
+                version: '1.3.0', // Bump version
+                activeTab: 'dashboard',
+                tabs: [
+                    { id: 'dashboard', label: 'Dashboard', icon: 'fa-house' },
+                    { id: 'log', label: 'Log', icon: 'fa-pen-to-square' },
+                    { id: 'history', label: 'History', icon: 'fa-clock-rotate-left' },
+                    { id: 'trips', label: 'Trips', icon: 'fa-route' },
+                    { id: 'inventory', label: 'Inventory', icon: 'fa-warehouse' }, // ADDED
+                    { id: 'settings', label: 'Settings', icon: 'fa-gear' }
+                ],
         // FIX: Write to Firestore when theme changes
         onThemeChange: async (theme) => {
             try {

@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.39.0-alpha",
+    date: "2026-02-03",
+    changes: [
+        "In VehicleManagr: Added new 'Inventory' tab for tracking trusted parts and purchase links.",
+        "In VehicleManagr: Added detailed fields (Position & Model) for Light Bulb replacements in Consumables.",
+        "In VehicleManagr: Updated History log to display specific bulb details.",
+    ]
+    },
+    {
     version: "v10.38.1-alpha",
     date: "2026-02-02",
     changes: [
