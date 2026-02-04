@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.41.0-alpha",
+    date: "2026-02-04",
+    changes: [
+        "In WarrantyTrackr: Added file attachment support, allowing users to upload and save receipts or photos with their warranties.",
+        "In WarrantyTrackr: Implemented a category filter dropdown to easily sort warranties by type (e.g., Electronics, Kitchen).",
+    ]
+    },
+    {
     version: "v10.40.0-alpha",
     date: "2026-02-04",
     changes: [
