@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v10.42.0-alpha",
+    date: "2026-02-04",
+    changes: [
+        "In FoodTrackr: Fixed critical mobile layout issues by enforcing viewport constraints to prevent horizontal scrolling.",
+        "In FoodTrackr: Optimized the 'History' table for mobile by hiding non-essential columns and stacking date/time information vertically.",
+        "In FoodTrackr: Converted the 'Log Food' sub-tabs (Search, Recent, etc.) into a responsive dropdown menu for better usability on small screens.",
+        "In FoodTrackr: Reduced vertical scrolling by reducing the height of empty log sections and making them collapsible (accordion style).",
+        "In FoodTrackr: Updated the Mobile Navigation bar to be strictly sticky to the screen width, preventing it from scrolling off-view on wide tables.",
+        "In FoodTrackr: Set the Dashboard 'Detailed Breakdown' table to be hidden by default on mobile to save screen space."
+    ]
+    },
+    {
     version: "v10.41.1-alpha",
     date: "2026-02-04",
     changes: [
