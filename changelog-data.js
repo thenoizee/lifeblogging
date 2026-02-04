@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.41.1-alpha",
+    date: "2026-02-04",
+    changes: [
+        "In TaskTrackr: Fixed a critical mobile bug where pressing 'Enter' in the Quick Add input failed to submit tasks on certain Android/iOS keyboards.",
+        "In TaskTrackr: Updated the Quick Add input logic to use `onkeyup` and added a `keyCode` fallback check to ensure reliable submission across all devices."
+    ]
+    },
+    {
     version: "v10.41.0-alpha",
     date: "2026-02-04",
     changes: [
