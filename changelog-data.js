@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.40.0-alpha",
+    date: "2026-02-04",
+    changes: [
+        "In PetManagr: Migrated to the unified `SharedNav` system for consistent header, mobile navigation, and theme management.",
+        "In PetManagr: Complete UI overhaul using Tailwind CSS, featuring refined stat cards, improved modals, and a cleaner dashboard layout.",
+        "In PetManagr: Enhanced UX with sortable/filterable history tables and context-aware edit modals.",
+        "In Hub: Added PetManagr to the main dashboard apps list and global navigation menu."
+    ]
+    },
+    {
     version: "v10.39.0-alpha",
     date: "2026-02-03",
     changes: [
