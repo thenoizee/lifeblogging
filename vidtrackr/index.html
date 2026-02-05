@@ -423,6 +423,88 @@ if (headerRight) {
             hideLoader();
         };
 
+        window.removeFromWatchlist = async (traktId, type) => {
+            if(!confirm('Remove from Watchlist?')) return;
+            // Show loading state on the button
+            const btn = event.target.closest('button');
+            const originalIcon = btn ? btn.innerHTML : '';
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+            try {
+                // Watchlist removal uses a specific endpoint
+                const payload = { [type === 'movie' ? 'movies' : 'shows']: [{ ids: { trakt: traktId } }] };
+                await fetch(`${TRAKT_API_URL}/sync/watchlist/remove`, { 
+                    method: 'POST', 
+                    headers: traktHeader(), 
+                    body: JSON.stringify(payload) 
+                });
+                
+                showToast('Removed from Watchlist');
+                
+                // Animate removal
+                const card = btn.closest('.card');
+                if(card) { 
+                    card.style.transition = 'all 0.3s';
+                    card.style.opacity = '0'; 
+                    card.style.transform = 'scale(0.9)';
+                    setTimeout(() => card.remove(), 300); 
+                }
+            } catch(e) { 
+                console.error(e);
+                showToast('Failed to remove', 'error'); 
+                if(btn) btn.innerHTML = originalIcon || '<i class="fa-solid fa-trash"></i>';
+            }
+        };
+
+        window.removeListItem = async (listId, traktId, type) => {
+            if(!confirm('Remove this item from the list?')) return;
+            // Find the card to show loading state
+            const btn = event.target.closest('button');
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+            try {
+                const payload = {
+                    [type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies')]: [{ ids: { trakt: traktId } }]
+                };
+                await fetch(`${TRAKT_API_URL}/users/me/lists/${listId}/items/remove`, {
+                    method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
+                });
+                showToast('Item removed');
+                
+                // Remove element from DOM immediately
+                const card = btn.closest('.relative.card');
+                if(card) {
+                    card.style.transition = 'all 0.3s';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.9)';
+                    setTimeout(() => card.remove(), 300);
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('Failed to remove item', 'error');
+                if(btn) btn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            }
+        };
+
+        window.createNewList = async () => {
+            const name = prompt("Enter list name:");
+            if(!name) return;
+            const desc = prompt("Enter description (optional):");
+            
+            showLoader();
+            try {
+                const payload = { name: name, description: desc || "", privacy: "public" };
+                await fetch(`${TRAKT_API_URL}/users/me/lists`, {
+                    method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
+                });
+                showToast('List created successfully!');
+                renderLibrary('lists'); // Refresh view
+            } catch(e) {
+                showToast('Failed to create list', 'error');
+            }
+            hideLoader();
+        };
+
         // --- NEW: Quick Rate Logic ---
         let quickRateTarget = null;
         
@@ -1486,18 +1568,23 @@ if (isSkipped) {
                 let html = `<div class="animate-fade max-w-6xl mx-auto">`;
 
                 if (isEpisode) {
-                    // --- 1. Image Fix: Prefer Show Fanart if Episode Screenshot is missing ---
-// Try to get high-res episode image
-let bgImg = getImage(item, 'episode', true); 
+                    // --- 1. Image Fix: Priority is Episode Screenshot ---
+                    let bgImg = getImage(item, 'episode', true); 
 
-// If the result is the placeholder URL, OR if showInfo is available, try the show's fanart
-// This fallback is often better quality than a generic episode thumbnail anyway
-if ((bgImg === PLACEHOLDER_IMG || !bgImg) && showInfo) {
-     const showArt = getImage(showInfo, 'show', true);
-     if (showArt !== PLACEHOLDER_IMG) {
-         bgImg = showArt;
-     }
-}
+                    // If Search result didn't have the image (returns placeholder), 
+                    // try fetching the episode directly to find the screenshot (like History/Dashboard does).
+                    if ((bgImg.includes('placehold.co') || !bgImg) && showInfo) {
+                        try {
+                            const freshEp = await fetchDirect(`/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}?extended=images`);
+                            const freshImg = getImage(freshEp, 'episode', true);
+                            // Only update if we actually found a real image
+                            if (freshImg && !freshImg.includes('placehold.co')) {
+                                bgImg = freshImg;
+                            }
+                        } catch(e) { console.warn("Could not fetch fallback episode image"); }
+                    }
+
+                    // Note: We do NOT fall back to showInfo (Show Art) here, respecting your request.
 
                     html += `
                     <button onclick="history.back()" class="absolute top-24 left-4 z-20 text-sm bg-black/50 hover:bg-black/80 text-white px-4 py-2 rounded-full backdrop-blur-md transition"><i class="fa-solid fa-arrow-left"></i></button>
@@ -2101,8 +2188,40 @@ if ((bgImg === PLACEHOLDER_IMG || !bgImg) && showInfo) {
             showLoader(); 
             try { 
                 const lists = await fetchDirect(`/users/me/lists?extended=full`); 
-                if (lists.length === 0) container.innerHTML = `<div class="text-center p-20 text-gray-500"><i class="fa-solid fa-list-ul text-6xl mb-4 opacity-50"></i><p>You have no custom lists.</p></div>`; 
-                else container.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade">${lists.map(list => `<div class="card p-6 rounded-xl border border-gray-700 hover:border-purple-500 cursor-pointer transition group" onclick="location.hash='#lists/${list.ids.trakt}'"><div class="flex justify-between items-start mb-4"><h3 class="font-bold text-xl group-hover:text-purple-400 transition">${list.name}</h3><span class="bg-gray-800 text-xs px-2 py-1 rounded text-gray-400"><i class="fa-solid fa-layer-group mr-1"></i> ${list.item_count}</span></div><p class="text-gray-400 text-sm line-clamp-2 h-10 mb-4">${list.description || 'No description provided.'}</p><div class="flex items-center gap-4 text-xs text-gray-500"><span><i class="fa-solid fa-heart text-[var(--primary)] opacity-70"></i> ${list.likes}</span><span><i class="fa-solid fa-lock${list.privacy==='private'?'':'-open'}"></i> ${list.privacy}</span><span class="ml-auto text-purple-400 font-bold group-hover:translate-x-1 transition">View Items <i class="fa-solid fa-arrow-right"></i></span></div></div>`).join('')}</div>`; 
+                
+                let html = `
+                    <div class="flex justify-end mb-6 animate-fade">
+                        <button onclick="window.createNewList()" class="bg-gray-800 hover:bg-[var(--primary)] text-white px-4 py-2 rounded-lg font-bold text-sm transition shadow-lg border border-gray-700 flex items-center gap-2">
+                            <i class="fa-solid fa-plus"></i> Create List
+                        </button>
+                    </div>
+                `;
+
+                if (lists.length === 0) {
+                    html += `<div class="text-center p-20 text-gray-500"><i class="fa-solid fa-list-ul text-6xl mb-4 opacity-50"></i><p>You have no custom lists.</p></div>`; 
+                } else {
+                    html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade">
+                        ${lists.map(list => `
+                        <div class="card p-6 rounded-xl border border-gray-700 hover:border-[var(--primary)] cursor-pointer transition group relative overflow-hidden" onclick="location.hash='#lists/${list.ids.trakt}'">
+                            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition transform group-hover:scale-110">
+                                <i class="fa-solid fa-list-check text-8xl"></i>
+                            </div>
+                            <div class="relative z-10">
+                                <div class="flex justify-between items-start mb-3">
+                                    <h3 class="font-bold text-xl group-hover:text-[var(--primary)] transition truncate pr-4">${list.name}</h3>
+                                    <span class="bg-gray-800 text-xs px-2 py-1 rounded text-gray-300 font-mono border border-gray-600">${list.item_count}</span>
+                                </div>
+                                <p class="text-gray-400 text-sm line-clamp-2 h-10 mb-6">${list.description || '<span class="italic opacity-50">No description</span>'}</p>
+                                <div class="flex items-center gap-4 text-xs text-gray-500 border-t border-gray-700/50 pt-4">
+                                    <span class="flex items-center gap-1"><i class="fa-solid fa-heart text-red-500/70"></i> ${list.likes}</span>
+                                    <span class="flex items-center gap-1"><i class="fa-solid fa-lock${list.privacy==='private'?'':'-open'}"></i> ${list.privacy}</span>
+                                    <span class="ml-auto text-[var(--primary)] font-bold opacity-0 group-hover:opacity-100 transition -translate-x-2 group-hover:translate-x-0">Open <i class="fa-solid fa-arrow-right ml-1"></i></span>
+                                </div>
+                            </div>
+                        </div>`).join('')}
+                    </div>`;
+                }
+                container.innerHTML = html;
             } catch (e) { showToast('Could not load lists', 'error'); } 
             hideLoader(); 
         }
@@ -2198,7 +2317,113 @@ if ((bgImg === PLACEHOLDER_IMG || !bgImg) && showInfo) {
             }
             hideLoader();
         }
-        async function renderListItems(listId) { els.content.innerHTML = ''; showLoader(); try { const [listInfo, items] = await Promise.all([fetchDirect(`/users/me/lists/${listId}`), fetchDirect(`/users/me/lists/${listId}/items?extended=images`)]); els.content.innerHTML = `<div class="flex items-center justify-between mb-6"><div><h2 class="text-3xl font-bold">${listInfo.name}</h2><p class="text-gray-400 text-sm mt-1">${listInfo.item_count} items</p></div><button onclick="location.hash='#library'" class="text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg transition"><i class="fa-solid fa-arrow-left mr-2"></i> Back to Lists</button></div><div id="list-grid"></div>`; if (items.length > 0) renderGrid('', items, false, 'list-grid'); else document.getElementById('list-grid').innerHTML = `<p class="text-gray-500 italic">This list is empty.</p>`; } catch (e) { showToast('Could not load list items', 'error'); } hideLoader(); }
+        async function renderListItems(listId) { 
+            els.content.innerHTML = ''; 
+            showLoader(); 
+            try { 
+                const [listInfo, items] = await Promise.all([
+                    fetchDirect(`/users/me/lists/${listId}`), 
+                    fetchDirect(`/users/me/lists/${listId}/items?extended=images`)
+                ]); 
+
+                let currentItems = items;
+
+                const renderGridLocal = (sortMethod) => {
+                    const gridTarget = document.getElementById('list-grid');
+                    if(!gridTarget) return;
+
+                    let sorted = [...currentItems];
+                    if(sortMethod === 'title') {
+                        sorted.sort((a,b) => {
+                            const tA = a.type === 'person' ? a.person.name : (a.movie || a.show || a.episode).title;
+                            const tB = b.type === 'person' ? b.person.name : (b.movie || b.show || b.episode).title;
+                            return tA.localeCompare(tB);
+                        });
+                    } else if (sortMethod === 'year') {
+                         sorted.sort((a,b) => ((b.movie||b.show||{}).year || 0) - ((a.movie||a.show||{}).year || 0));
+                    } else if (sortMethod === 'added') {
+                        sorted.sort((a,b) => new Date(b.listed_at) - new Date(a.listed_at));
+                    } else if (sortMethod === 'rank') {
+                        sorted.sort((a,b) => a.rank - b.rank);
+                    }
+
+                    if (sorted.length === 0) {
+                        gridTarget.innerHTML = `<p class="text-gray-500 italic col-span-full text-center py-10">This list is empty.</p>`;
+                        return;
+                    }
+
+                    gridTarget.innerHTML = sorted.map(item => {
+                        const type = item.type;
+                        const data = item[type];
+                        const img = getImage(data, type); 
+                        const traktId = data.ids.trakt;
+                        const title = type === 'person' ? data.name : data.title;
+                        const sub = type === 'person' ? '' : (type === 'episode' ? `S${item.episode.season}E${item.episode.number}` : (data.year || ''));
+                        // Format the Added Date
+                        const dateAdded = new Date(item.listed_at).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
+                        
+                        return `
+                        <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group hover:border-gray-600 transition">
+                             <div class="aspect-[2/3] relative bg-gray-900 cursor-pointer" onclick="location.hash='#detail/${type}/${traktId}'">
+                                <img src="${img}" class="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition" loading="lazy" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
+                                <div class="absolute bottom-0 left-0 p-3 w-full">
+                                    <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${title}</p>
+                                    <p class="text-xs text-gray-400 font-mono">${sub}</p>
+                                    <p class="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><i class="fa-solid fa-calendar-plus"></i> ${dateAdded}</p>
+                                </div>
+                                <div class="absolute top-2 left-2 bg-black/60 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-gray-300 border border-white/10">#${item.rank}</div>
+                             </div>
+                             <button onclick="window.removeListItem('${listId}', '${traktId}', '${type}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from List">
+                                <i class="fa-solid fa-trash text-xs"></i>
+                             </button>
+                        </div>`;
+                    }).join('');
+                };
+
+                els.content.innerHTML = `
+                    <div class="animate-fade mb-8">
+                        <button onclick="location.hash='#library'" class="mb-6 text-xs font-bold text-gray-400 hover:text-white flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-gray-800 transition w-fit border border-transparent hover:border-gray-700">
+                            <i class="fa-solid fa-arrow-left"></i> Back to Lists
+                        </button>
+                        
+                        <div class="flex flex-col md:flex-row gap-6 items-start md:items-end border-b border-gray-800 pb-8">
+                            <div class="bg-gradient-to-br from-[var(--primary)] to-purple-900 w-24 h-24 md:w-32 md:h-32 rounded-2xl flex items-center justify-center shadow-2xl flex-shrink-0 text-white">
+                                <i class="fa-solid fa-list-check text-4xl md:text-5xl opacity-80"></i>
+                            </div>
+                            <div class="flex-grow">
+                                <h1 class="text-3xl md:text-5xl font-bold mb-2">${listInfo.name}</h1>
+                                <p class="text-gray-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">${listInfo.description || 'No description provided.'}</p>
+                                <div class="flex flex-wrap gap-4 text-xs font-bold uppercase tracking-wider text-gray-500">
+                                    <span class="flex items-center gap-2 bg-gray-800 px-3 py-1 rounded border border-gray-700"><i class="fa-solid fa-layer-group text-[var(--primary)]"></i> ${listInfo.item_count} Items</span>
+                                    <span class="flex items-center gap-2 bg-gray-800 px-3 py-1 rounded border border-gray-700"><i class="fa-solid fa-heart text-red-500"></i> ${listInfo.likes} Likes</span>
+                                    <span class="flex items-center gap-2 bg-gray-800 px-3 py-1 rounded border border-gray-700"><i class="fa-solid fa-lock${listInfo.privacy==='private'?'':'-open'}"></i> ${listInfo.privacy}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center mt-6 mb-4">
+                            <h2 class="text-xl font-bold">Items</h2>
+                            <select id="list-sort-select" class="bg-gray-800 border border-gray-700 text-xs md:text-sm rounded-lg px-3 py-2 outline-none focus:border-[var(--primary)] text-gray-300">
+                                <option value="rank">Rank (Default)</option>
+                                <option value="added">Recently Added</option>
+                                <option value="title">Title (A-Z)</option>
+                                <option value="year">Year (Newest)</option>
+                            </select>
+                        </div>
+
+                        <div id="list-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+                    </div>`;
+
+                renderGridLocal('rank');
+                document.getElementById('list-sort-select').onchange = (e) => renderGridLocal(e.target.value);
+
+            } catch (e) { 
+                console.error(e);
+                showToast('Could not load list items', 'error'); 
+            } 
+            hideLoader(); 
+        }
 
         function handleRoute() {
         const hash = location.hash || '#dashboard';

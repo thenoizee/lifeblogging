@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v10.43.0-alpha",
+    date: "2026-02-05",
+    changes: [
+        "In VidTrackr: Updated the Episode Detail view to strictly prioritize episode screenshots, removing the automatic fallback to Show Fanart to ensure specific episode imagery is displayed.",
+        "In VidTrackr: Implemented a 'smart retry' for episode images that attempts to fetch a specific screenshot if the initial load returns a placeholder, preventing 'No Image' states without reverting to generic show art.",
+        "In VidTrackr: Overhauled the 'Custom Lists' detail view with a new rich header design displaying list description, item count, likes, and privacy status.",
+        "In VidTrackr: Added a 'Create List' button directly to the main Library tab for easier list management.",
+        "In VidTrackr: Added sorting functionality to Custom Lists, allowing users to order items by Rank, Date Added, Title, or Year.",
+        "In VidTrackr: Added a 'Remove Item' button (trash icon) to individual cards in Custom Lists for quick content management.",
+    ]
+    },
+    {
     version: "v10.42.0-alpha",
     date: "2026-02-04",
     changes: [
