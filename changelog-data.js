@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.44.0-alpha",
+    date: "2026-02-05",
+    changes: [
+        "In Dashboard: Added real-time weather data (temperature, condition icon, and text summary like 'Partly Cloudy') directly to the main header next to the date.",
+        "In Dashboard: Implemented 'Smart Greeting' logic that automatically adjusts the welcome message (Good Morning/Afternoon/Evening/Late Night) based on the user's local time.",
+        "In Dashboard: Refined the header layout to cleanly separate date, time, and weather information with visual dividers."
+    ]
+    },
+    {
     version: "v10.43.0-alpha",
     date: "2026-02-05",
     changes: [
