@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.47.0-alpha",
+    date: "2026-02-06",
+    changes: [
+        "In Account Page: Migrated the application to the unified `SharedNav` system, replacing the legacy manual header with the standard Hub navigation.",
+        "In Account Page: Refactored the long scrolling layout into four distinct tabs: General, Services, Data, and Security for improved organization.",
+        "In Account Page: Centralized third-party integrations (Trakt, Last.fm, Google Tasks, TickTick) into a dedicated 'Services' tab.",
+        "In Account Page: Moved sensitive actions (Change Password/Email, Delete Account) to a protected 'Security' tab."
+    ]
+    },
+    {
     version: "v10.46.0-alpha",
     date: "2026-02-06",
     changes: [
