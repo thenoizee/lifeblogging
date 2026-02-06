@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.46.0-alpha",
+    date: "2026-02-06",
+    changes: [
+        "In VidTrackr: Overhauled the Rating slider CSS to improve mobile usability, increasing the touch target size significantly.",
+        "In VidTrackr: Added visual tick marks (dots) to the rating slider track to clearly indicate the 1-10 scale intervals."
+    ]
+    },
+    {
     version: "v10.45.0-alpha",
     date: "2026-02-06",
     changes: [
