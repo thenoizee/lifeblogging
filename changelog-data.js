@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.45.0-alpha",
+    date: "2026-02-06",
+    changes: [
+        "In PodTrackr: Redesigned the Episode Detail page to match the styling of VidTrackr episodes.",
+        "In PodTrackr: Fixed a critical routing bug that caused URL hashes (deep links like #episode/123) to be overwritten during navigation.",
+        "In PodTrackr: Updated browser icon."
+    ]
+    },
+    {
     version: "v10.44.0-alpha",
     date: "2026-02-05",
     changes: [
