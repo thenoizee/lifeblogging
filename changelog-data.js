@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.48.0-alpha",
+    date: "2026-02-07",
+    changes: [
+        "In PlantTrackr: Introduced 'Layout Mode' (Birds-eye View), allowing users to visually drag and position plants on a specific location canvas.",
+        "In PlantTrackr: Updated the 'Add Plant' logic to asutomatically create a 'Welcome home' history log entry and timestamp when a new plant is added.",
+        "In PlantTrackr: Resolved a layout issue where modals were not centering correctly on the screen.",
+        "In PodTrackr: Connected the navigation bar version display to the global changelog data, ensuring it always reflects the latest release."
+    ]
+    },
+    {
     version: "v10.47.0-alpha",
     date: "2026-02-06",
     changes: [
