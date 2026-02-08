@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.49.0-alpha",
+    date: "2026-02-08",
+    changes: [
+        "In PlantTrackr: Introduced a 'Dream Garden' Wishlist tab, allowing users to track desired plants with priority levels (High/Med/Low) and price estimates.",
+        "In PlantTrackr: Implemented 'Promote to Garden' functionality, allowing one-click conversion of wishlist items into active plants with an automatic history log.",
+        "In PlantTrackr: Fixed a bug in the Layout tab where the location dropdown would not trigger a canvas update when changed.",
+        "In PlantTrackr: Refactored the layout rendering engine to resolve function conflicts between 'Move' and 'Draw' modes.",
+    ]
+    },
+    {
     version: "v10.48.0-alpha",
     date: "2026-02-07",
     changes: [
