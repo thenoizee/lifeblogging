@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v10.51.0-alpha",
+    date: "2026-02-08",
+    changes: [
+        "In Account Page: Added a dedicated 'Credits' tab to the Settings interface, explicitly acknowledging all external libraries, APIs, and services powering the Lifeblogging ecosystem (e.g., Open Food Facts, Trakt, TickTick).",
+    ]
+    },
+    {
     version: "v10.50.0-alpha",
     date: "2026-02-08",
     changes: [
