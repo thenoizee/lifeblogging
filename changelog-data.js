@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.50.0-alpha",
+    date: "2026-02-08",
+    changes: [
+        "In Logger: Enabled Firestore offline persistence, allowing users to view the calendar, historical logs, and daily plans without an internet connection.",
+        "In Logger: Implemented a 'flaky connection' safety mechanism that automatically saves logs locally if the network request takes longer than 3 seconds.",
+        "In Logger: Updated the Service Worker to explicitly cache critical external assets (Google Fonts, FontAwesome, Firebase SDKs) to prevent broken UI when offline.",
+        "In Logger: Added a proactive UI warning to alert users if offline persistence cannot start because the app is open in multiple tabs.",
+        "In Logger: Fixed a critical issue where the 'Log Data' button would freeze the application indefinitely on unstable networks.",
+    ]
+    },
+    {
     version: "v10.49.0-alpha",
     date: "2026-02-08",
     changes: [

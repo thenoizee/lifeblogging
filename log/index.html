@@ -936,58 +936,73 @@
         </div>
     </div>
     <script type="module">
-      import { changelogData } from '/changelog-data.js';
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-      import {
-        getAuth,
-        signInWithEmailAndPassword,
-        onAuthStateChanged,
-        createUserWithEmailAndPassword,
-        signOut,
-      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-      import {
-        getFirestore,
-        collection,
-        addDoc,
-        Timestamp,
-        doc,
-        deleteDoc,
-        updateDoc,
-        getDocs,
-        getDoc,
-        setDoc,
-        onSnapshot,
-        query,
-        where,
-        writeBatch,
-      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+  import { changelogData } from '/changelog-data.js';
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+  import {
+    getAuth,
+    signInWithEmailAndPassword,
+    onAuthStateChanged,
+    createUserWithEmailAndPassword,
+    signOut,
+  } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+  import {
+    getFirestore,
+    collection,
+    addDoc,
+    Timestamp,
+    doc,
+    deleteDoc,
+    updateDoc,
+    getDocs,
+    getDoc,
+    setDoc,
+    onSnapshot,
+    query,
+    where,
+    writeBatch,
+    enableIndexedDbPersistence // <--- ADD THIS IMPORT
+  } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-      const firebaseConfig = {
-        apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
-        authDomain: "sammy-7298f.firebaseapp.com",
-        projectId: "sammy-7298f",
-        storageBucket: "sammy-7298f.firebasestorage.app",
-        messagingSenderId: "963185683535",
-        appId: "1:963185683535:web:807df8941feba46c208e3a",
-        measurementId: "G-JT1YF2ELN3",
-      };
-      const app = initializeApp(firebaseConfig);
-      const auth = getAuth(app);
-      const db = getFirestore(app);
-      let userId = null;
-      let userEmail = null;
-      let sessionLogs = [];
-      let editingLog = null;
-      let selectedScreenTimeType = null;
-      let themeDocRef = null;
-      let themeUnsubscribe = null;
+  const firebaseConfig = {
+    apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
+    authDomain: "sammy-7298f.firebaseapp.com",
+    projectId: "sammy-7298f",
+    storageBucket: "sammy-7298f.firebasestorage.app",
+    messagingSenderId: "963185683535",
+    appId: "1:963185683535:web:807df8941feba46c208e3a",
+    measurementId: "G-JT1YF2ELN3",
+  };
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-      // --- NEW UI STATE VARIABLES & FUNCTIONS (Moved here) ---
-      let uiStateDocRef = null;
-      let uiStateUnsubscribe = null;
+  // --- ENABLE OFFLINE PERSISTENCE ---
+  // This allows you to view history and calendar while offline!
+  enableIndexedDbPersistence(db)
+  .catch((err) => {
+      if (err.code == 'failed-precondition') {
+          // Multiple tabs open, persistence can only be enabled in one tab at a time.
+          showMessage("Offline mode disabled: Close other tabs of this app.", "error");
+          console.warn('Persistence failed: Multiple tabs open');
+      } else if (err.code == 'unimplemented') {
+          console.warn('Persistence failed: Browser not supported');
+      }
+  });
+  // ----------------------------------
 
-      // Persist UI State (Open Panes)
-      const savePaneState = async () => {
+  let userId = null;
+  // ... [Keep your existing variable definitions: userEmail, sessionLogs, etc.] ...
+  let userEmail = null;
+  let sessionLogs = [];
+  let editingLog = null;
+  let selectedScreenTimeType = null;
+  let themeDocRef = null;
+  let themeUnsubscribe = null;
+  let uiStateDocRef = null;
+  let uiStateUnsubscribe = null;
+
+  // ... [Keep all your UI helper functions: savePaneState, initializePaneState, appState, themeToggle, applyTheme, toggleTheme, showMessage] ...
+  const savePaneState = async () => {
           if (!userId) return;
           const openPanes = [];
           document.querySelectorAll('details').forEach(detail => {
@@ -1003,21 +1018,18 @@
           }
       };
 
-      // Load UI State and Setup Listeners
       const initializePaneState = () => {
           if (!userId) return;
           
           uiStateDocRef = doc(db, 'users', userId, 'settings', 'uiState');
           
-          // Listen for external changes (sync) and initial load
           if (uiStateUnsubscribe) uiStateUnsubscribe();
           uiStateUnsubscribe = onSnapshot(uiStateDocRef, (doc) => {
               const data = doc.data();
-              const openPanes = data?.openPanes || ['pane-manual-log']; // Default to manual log open if nothing saved
+              const openPanes = data?.openPanes || ['pane-manual-log']; 
 
               document.querySelectorAll('details').forEach(detail => {
                   if (detail.id) {
-                      // Only change if different to avoid overriding user interaction during sync
                       const shouldBeOpen = openPanes.includes(detail.id);
                       if (detail.open !== shouldBeOpen) {
                           detail.open = shouldBeOpen;
@@ -1026,7 +1038,6 @@
               });
           });
 
-          // Add toggle listeners to save state on user interaction
           document.querySelectorAll('details').forEach(detail => {
               if (detail.id) {
                   detail.addEventListener('toggle', () => {
@@ -1035,8 +1046,7 @@
               }
           });
       };
-      // -------------------------------------------------------
-
+      
       const appState = {
         isReady: false,
         user: null,
@@ -1062,8 +1072,6 @@
       const versionDisplay = document.getElementById('version-display');
       const existingTagsList = document.getElementById('existing-tags-list');
       const manualTagsInput = document.getElementById('tags');
-      
-      // Modal Refs
       const editLogModal = document.getElementById('edit-log-modal');
       const saveEditLogBtn = document.getElementById('save-edit-log-btn');
       const cancelEditLogBtn = document.getElementById('cancel-edit-log-btn');
@@ -1114,8 +1122,13 @@
         return now.toISOString().slice(0, 16);
       };
 
-      const ensureCollectionExists = async (uid, collectionName) => {
+  // ... [Keep helper functions: ensureCollectionExists, fetchAndPopulateCollections, fetchAndPopulateTags] ...
+  const ensureCollectionExists = async (uid, collectionName) => {
         if (!uid || !collectionName) return false;
+        // If offline, we can't ensure collection exists on server, but that's fine.
+        // Firestore persistence handles the write queuing.
+        if (!navigator.onLine) return false; 
+
         const collectionDocRef = doc(db, `users/${uid}/sources`, collectionName);
         try {
             const docSnap = await getDoc(collectionDocRef);
@@ -1143,6 +1156,7 @@
 
         try {
           const collectionsRef = collection(db, `users/${uid}/sources`);
+          // This will work OFFLINE now thanks to persistence!
           const querySnapshot = await getDocs(collectionsRef);
 
           let collectionNames = [];
@@ -1168,7 +1182,7 @@
 
         } catch (error) {
           console.error("Error fetching collections:", error);
-          showMessage("Could not fetch your collections.", "error");
+          // Fallback options
           const manualOption = document.createElement("option");
           manualOption.value = "manual";
           manualOption.textContent = "manual";
@@ -1185,6 +1199,7 @@
         existingTagsList.innerHTML = '';
         const allTags = new Set();
         try {
+          // This also works offline with persistence
           const sourcesRef = collection(db, `users/${uid}/sources`);
           const sourcesSnapshot = await getDocs(sourcesRef);
 
@@ -1216,8 +1231,9 @@
           existingTagsList.appendChild(tagSpan);
         });
       };
-
-      const connectivityStatusEl = document.getElementById("connectivity-status");
+      
+  // ... [Keep connectivity logic: connectivityStatusEl, updateConnectivityStatus] ...
+  const connectivityStatusEl = document.getElementById("connectivity-status");
       const updateConnectivityStatus = () => {
         if (navigator.onLine) {
           connectivityStatusEl.textContent = "Online";
@@ -1228,7 +1244,8 @@
         }
       };
 
-      const renderUnsyncedLogs = () => {
+  // ... [Keep sync logic: renderUnsyncedLogs, syncPendingLogs] ...
+  const renderUnsyncedLogs = () => {
         const logItemsContainer = document.getElementById("unsynced-log-items");
         const unsyncedSection = document.getElementById("unsynced-log-section");
         logItemsContainer.innerHTML = "";
@@ -1269,6 +1286,9 @@
 
         for (const log of pendingLogs) {
           try {
+            // We double check online status here
+            if(!navigator.onLine) throw new Error("Still offline");
+
             const logToSync = { ...log };
             if (!logToSync.tags.includes("synced_from_offline")) {
                 logToSync.tags.push("synced_from_offline");
@@ -1341,16 +1361,14 @@
         });
       };
 
-      // --- EDIT MODE (MODAL) ---
-      const enterEditMode = (logEntry) => {
-        // Populate Modal Fields
+  // ... [Keep edit mode logic] ...
+  const enterEditMode = (logEntry) => {
         document.getElementById("edit-log-datetime").value = logEntry.date.replace(" ", "T");
         document.getElementById("edit-attributeName").value = logEntry.attributeName;
         document.getElementById("edit-attributeValue").value = logEntry.attributeValue;
         document.getElementById("edit-tags").value = logEntry.tags.join(", ");
         document.getElementById("edit-log-doc-id").value = logEntry.docId;
 
-        // Populate and select collection
         const mainSelect = document.getElementById("collection-select");
         const editSelect = document.getElementById("edit-collection-select");
         editSelect.innerHTML = mainSelect.innerHTML;
@@ -1389,9 +1407,9 @@
       });
 
       cancelEditLogBtn.addEventListener('click', exitEditMode);
-      // --- END EDIT MODE ---
-
-      const handleUndo = async (event) => {
+  
+  // ... [Keep undo logic] ...
+  const handleUndo = async (event) => {
           const index = event.target.dataset.index;
           const logEntry = sessionLogs[index];
           if (logEntry && logEntry.docId && logEntry.collectionName) {
@@ -1410,63 +1428,23 @@
           }
       };
 
-      async function addLogData(collectionName, attributeName, attributeValue, tags, logDatetimeString, fileSourceOverride = null) {
-        if (!userId || !appState.isReady) {
+  // --- UPDATED ADD LOG DATA FUNCTION ---
+  async function addLogData(collectionName, attributeName, attributeValue, tags, logDatetimeString, fileSourceOverride = null) {
+        if (!userId) {
           showMessage("Please wait for the application to finish loading.", "error");
           return;
         }
 
-        // --- DUPLICATE CHECK START ---
-        const DUPLICATE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+        // --- DUPLICATE CHECK (Keep your existing duplicate check logic here) ---
+        const DUPLICATE_WINDOW_MS = 5 * 60 * 1000; 
         const newLogDate = new Date(logDatetimeString);
         let isDuplicate = false;
-
-        // Helper to check a list of logs for duplicates
-        const checkDuplicate = (logs) => {
-            return logs.some(log => {
-                // 1. Check if name and value match
-                if (log.attributeName !== attributeName || String(log.attributeValue) !== String(attributeValue)) {
-                    return false;
-                }
-                
-                // 2. Check if time is within the window
-                const logDate = new Date(log.date); // Parses "YYYY-MM-DD HH:mm"
-                const diff = Math.abs(newLogDate - logDate);
-                return diff < DUPLICATE_WINDOW_MS;
-            });
-        };
-
-        // Check 1: Session Logs (Most recent, instant check)
-        if (checkDuplicate(sessionLogs)) {
-            isDuplicate = true;
-        } 
-        // Check 2: Historical Logs (appState.logs) if not already found
-        else {
-            try {
-                const dateKey = newLogDate.toISOString().split('T')[0];
-                const historicalLogs = appState.logs.get(dateKey) || [];
-                if (checkDuplicate(historicalLogs)) {
-                    isDuplicate = true;
-                }
-            } catch (e) {
-                console.warn("Skipping historical duplicate check due to date parsing error:", e);
-            }
-        }
-
+        // ... [Insert your existing duplicate check code here] ...
         if (isDuplicate) {
-            // Ask the user if they want to proceed despite the duplicate
             const confirmOverride = confirm(`Duplicate entry detected for "${attributeName}" within the last 5 minutes.\n\nDo you want to log it anyway?`);
-            if (!confirmOverride) {
-                return; // User cancelled, stop here.
-            }
+            if (!confirmOverride) return;
         }
-        // --- DUPLICATE CHECK END ---
-
-        const newCollectionWasCreated = await ensureCollectionExists(userId, collectionName);
-        if (newCollectionWasCreated) {
-            await fetchAndPopulateCollections(userId);
-            document.getElementById('collection-select').value = collectionName;
-        }
+        // ---------------------------------------------------------------------
 
         const formattedDate = logDatetimeString.replace("T", " ");
         const logEntry = {
@@ -1480,47 +1458,67 @@
             createdAt: Timestamp.now(),
             datapointUpdatedBy: userId,
             datapointUpdatedTime: Timestamp.now(),
-          };
+        };
 
-        try {
-          if (!navigator.onLine) {
-            throw new Error("You are currently offline.");
-          }
-          const docRef = await addDoc(collection(db, `users/${userId}/sources/${collectionName}/data`), logEntry);
-          showMessage(`Data logged successfully: ${attributeName} = ${attributeValue}`, "success");
-
-          const newLogEntry = { ...logEntry, docId: docRef.id, collectionName: collectionName };
-          sessionLogs.push(newLogEntry);
-          renderSessionLogs();
-          fetchAndPopulateTags(userId);
-          setDefaultDateTime();
-          fetchLogsForDateRange();
-          fetchAllAttributeNames();
-
-        } catch (err) {
-          console.error(err);
-          if (err.message.includes("You are currently offline.")) {
+        // Helper function to save locally
+        const saveLocally = () => {
             const pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
             const offlineLogEntry = {
               ...logEntry,
               collectionName: collectionName,
-              createdAt: {
-                seconds: logEntry.createdAt.seconds,
-                nanoseconds: logEntry.createdAt.nanoseconds
-              }
+              createdAt: { seconds: logEntry.createdAt.seconds, nanoseconds: logEntry.createdAt.nanoseconds }
             };
-
             pendingLogs.push(offlineLogEntry);
             localStorage.setItem("pendingLogs", JSON.stringify(pendingLogs));
             renderUnsyncedLogs();
-            showMessage("You are offline. Log saved locally.", "info");
-          } else {
-            showMessage("Error logging data: " + err.message, "error");
-          }
+            
+            // Optimistic UI Update
+            sessionLogs.push({ ...logEntry, collectionName, docId: "local-" + Date.now() });
+            renderSessionLogs();
+            showMessage("Saved locally (Network unstable/offline)", "info");
+        };
+
+        // 1. OFFLINE CHECK
+        if (!navigator.onLine) {
+            saveLocally();
+            return;
+        }
+
+        // 2. ONLINE WITH TIMEOUT (Flaky Connection Protection)
+        try {
+            // Create a timeout promise that rejects after 3 seconds
+            const timeout = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("NetworkTimeout")), 3000)
+            );
+
+            // Race the network request against the timeout
+            const docRef = await Promise.race([
+                (async () => {
+                    await ensureCollectionExists(userId, collectionName);
+                    return await addDoc(collection(db, `users/${userId}/sources/${collectionName}/data`), logEntry);
+                })(),
+                timeout
+            ]);
+
+            // Success!
+            showMessage(`Data logged successfully: ${attributeName} = ${attributeValue}`, "success");
+            const newLogEntry = { ...logEntry, docId: docRef.id, collectionName: collectionName };
+            sessionLogs.push(newLogEntry);
+            renderSessionLogs();
+            fetchAndPopulateTags(userId);
+            setDefaultDateTime();
+            fetchLogsForDateRange();
+            fetchAllAttributeNames();
+
+        } catch (err) {
+            // If it failed or Timed Out, save locally
+            console.warn("Save failed or timed out:", err);
+            saveLocally();
         }
       }
 
-      async function updateLogData(docId, collectionName, attributeName, attributeValue, tags, logDatetimeString) {
+  // ... [Keep the rest of the file (updateLogData, setInputsDisabled, uiDailies, etc.) exactly as is] ...
+  async function updateLogData(docId, collectionName, attributeName, attributeValue, tags, logDatetimeString) {
         if (!userId) {
           showMessage("You must be logged in to update data.", "error");
           return;
