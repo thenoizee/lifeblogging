@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.52.0-alpha",
+    date: "2026-02-09",
+    changes: [
+        "In FoodTrackr: Updated the Sourdough Tracker to support custom dates and times, allowing users to backdate feedings or record specific times.",
+        "In FoodTrackr: Implemented full editing capabilities for Sourdough logs, enabling users to modify flour, water, starter amounts, and notes for historical entries.",
+        "In FoodTrackr: Refined the search logic to prioritize API Numbers (Barcodes); numeric queries now bypass active filters (Brand/Country) to directly fetch the specific product.",
+        "In FoodTrackr: Added a 'Cancel' action to the Sourdough log form to easily exit edit mode without saving changes."
+    ]
+    },
+    {
     version: "v10.51.0-alpha",
     date: "2026-02-08",
     changes: [
