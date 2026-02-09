@@ -292,7 +292,7 @@ input[type=range]::-moz-range-thumb {
     import { changelogData } from '../changelog-data.js'; // Ensure this path is correct
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
     import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
     import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI } from './api_keys.js';
 
     // --- Config ---
@@ -446,26 +446,101 @@ if (headerRight) {
 
         // --- NEW: Custom List Logic ---
         window.openAddToList = async (traktId, type) => {
-            currentItemForList = { ids: { trakt: traktId }, type: type };
             const modal = document.getElementById('list-modal');
             const content = document.getElementById('list-modal-content');
             modal.classList.remove('hidden');
-            content.innerHTML = '<div class="flex justify-center"><div class="animate-spin rounded-full h-8 w-8 border-2 border-[var(--primary)] border-t-transparent"></div></div>';
+            content.innerHTML = '<div class="flex justify-center py-6"><div class="animate-spin rounded-full h-8 w-8 border-2 border-[var(--primary)] border-t-transparent"></div></div>';
             
             try {
+                // 1. Fetch all user lists
                 const lists = await fetchDirect(`/users/me/lists`);
                 if(lists.length === 0) {
                     content.innerHTML = '<p class="text-gray-500 text-center">No custom lists found.</p>';
                     return;
                 }
+
+                // 2. Render lists immediately with loading indicators
                 content.innerHTML = lists.map(l => `
-                    <button onclick="window.saveToList('${l.ids.trakt}')" class="w-full text-left p-3 rounded-lg bg-gray-800 hover:bg-[var(--primary)] hover:text-white transition flex justify-between items-center group">
-                        <span class="font-bold text-sm">${l.name}</span>
-                        <span class="text-xs bg-black/30 px-2 py-1 rounded group-hover:bg-white/20">${l.item_count}</span>
-                    </button>
+                    <div class="flex items-center justify-between bg-gray-800 hover:bg-gray-700 p-3 rounded-lg mb-2 border border-gray-700 transition">
+                        <div class="flex flex-col">
+                            <span class="font-bold text-sm text-white">${l.name}</span>
+                            <span class="text-xs text-gray-500">${l.item_count} items</span>
+                        </div>
+                        <button id="btn-list-${l.ids.trakt}" class="text-xs px-3 py-1.5 rounded font-bold bg-gray-900 text-gray-400 min-w-[70px]" disabled>
+                            <i class="fa-solid fa-spinner fa-spin"></i>
+                        </button>
+                    </div>
                 `).join('');
+
+                // 3. Check membership for each list in the background
+                lists.forEach(async (list) => {
+                    const btn = document.getElementById(`btn-list-${list.ids.trakt}`);
+                    try {
+                        // Fetch items in this list to see if our item exists
+                        // Note: Using 'type' helps narrow it down (movies/shows/episodes)
+                        const items = await fetchDirect(`/users/me/lists/${list.ids.trakt}/items/${type}`);
+                        const isMember = items.find(i => i[type].ids.trakt == traktId);
+
+                        // Update Button State
+                        btn.disabled = false;
+                        if (isMember) {
+                            btn.innerHTML = '<i class="fa-solid fa-minus"></i> Remove';
+                            btn.className = "text-xs px-3 py-1.5 rounded font-bold bg-red-900/50 text-red-400 hover:bg-red-600 hover:text-white border border-red-900 transition min-w-[70px]";
+                            btn.onclick = () => window.toggleListMembership(list.ids.trakt, traktId, type, 'remove', btn);
+                        } else {
+                            btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
+                            btn.className = "text-xs px-3 py-1.5 rounded font-bold bg-green-900/50 text-green-400 hover:bg-green-600 hover:text-white border border-green-900 transition min-w-[70px]";
+                            btn.onclick = () => window.toggleListMembership(list.ids.trakt, traktId, type, 'add', btn);
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to check list ${list.name}`, e);
+                        btn.innerHTML = '?';
+                    }
+                });
+
             } catch(e) {
+                console.error(e);
                 content.innerHTML = '<p class="text-red-500 text-center">Failed to load lists.</p>';
+            }
+        };
+
+        window.toggleListMembership = async (listId, traktId, type, action, btn) => {
+            const originalHtml = btn.innerHTML;
+            const originalClass = btn.className;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+
+            try {
+                const payload = {
+                    [type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies')]: [{ ids: { trakt: traktId } }]
+                };
+                
+                const endpoint = action === 'add' 
+                    ? `/users/me/lists/${listId}/items`
+                    : `/users/me/lists/${listId}/items/remove`;
+
+                await fetch(`${TRAKT_API_URL}${endpoint}`, {
+                    method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
+                });
+
+                // Toggle Button State UI immediately
+                btn.disabled = false;
+                if (action === 'add') {
+                    showToast('Added to list');
+                    btn.innerHTML = '<i class="fa-solid fa-minus"></i> Remove';
+                    btn.className = "text-xs px-3 py-1.5 rounded font-bold bg-red-900/50 text-red-400 hover:bg-red-600 hover:text-white border border-red-900 transition min-w-[70px]";
+                    btn.onclick = () => window.toggleListMembership(listId, traktId, type, 'remove', btn);
+                } else {
+                    showToast('Removed from list');
+                    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
+                    btn.className = "text-xs px-3 py-1.5 rounded font-bold bg-green-900/50 text-green-400 hover:bg-green-600 hover:text-white border border-green-900 transition min-w-[70px]";
+                    btn.onclick = () => window.toggleListMembership(listId, traktId, type, 'add', btn);
+                }
+            } catch (e) {
+                showToast('Action failed', 'error');
+                btn.innerHTML = originalHtml;
+                btn.className = originalClass;
+                btn.disabled = false;
             }
         };
 
@@ -608,6 +683,78 @@ if (headerRight) {
         };
 
         // --- New Helper Functions ---
+
+        // --- Watchlist Logic (Trakt & Local) ---
+        window.toggleTraktWatchlist = async (id, type, btn) => {
+            const isRemoving = btn.classList.contains('bg-red-900/40');
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            
+            try {
+                const payload = { [type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies')]: [{ ids: { trakt: id } }] };
+                const action = isRemoving ? 'remove' : 'add';
+                
+                await fetch(`${TRAKT_API_URL}/sync/watchlist/${action}`, { 
+                    method: 'POST', headers: traktHeader(), body: JSON.stringify(payload) 
+                });
+
+                showToast(isRemoving ? 'Removed from Trakt Watchlist' : 'Added to Trakt Watchlist');
+                
+                // Toggle Button State UI
+                if (isRemoving) {
+                    btn.classList.remove('bg-red-900/40', 'text-red-300', 'border-red-800');
+                    btn.classList.add('bg-blue-900/40', 'text-blue-300', 'border-blue-800');
+                    btn.innerHTML = `<i class="fa-solid fa-bookmark"></i> Trakt Watchlist`;
+                } else {
+                    btn.classList.remove('bg-blue-900/40', 'text-blue-300', 'border-blue-800');
+                    btn.classList.add('bg-red-900/40', 'text-red-300', 'border-red-800');
+                    btn.innerHTML = `<i class="fa-solid fa-trash-can"></i> Trakt Watchlist`;
+                }
+            } catch(e) {
+                showToast('Failed to update Trakt Watchlist', 'error');
+                btn.innerHTML = originalHtml;
+            }
+        };
+
+        window.toggleLocalWatchlist = async (id, type, btn, dataJson) => {
+            if (!currentUser) return showToast("Please login to use Local Watchlist", "error");
+            
+            const isRemoving = btn.classList.contains('bg-red-600');
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            const docRef = doc(db, `users/${currentUser.uid}/watchlist/${type}_${id}`);
+
+            try {
+                if (isRemoving) {
+                    await deleteDoc(docRef);
+                    showToast('Removed from Local Watchlist');
+                    // UI Update
+                    btn.classList.remove('bg-red-600', 'hover:bg-red-500', 'text-white');
+                    btn.classList.add('bg-green-600', 'hover:bg-green-500', 'text-white');
+                    btn.innerHTML = `<i class="fa-solid fa-folder-plus"></i> Local WL`;
+                } else {
+                    // Save minimal data needed to render card
+                    const itemData = JSON.parse(decodeURIComponent(dataJson));
+                    // Construct a wrapper that createCardHtml understands: { type: 'movie', movie: { ... } }
+                    const payload = {
+                        type: type,
+                        [type]: itemData,
+                        addedAt: new Date().toISOString()
+                    };
+                    
+                    await setDoc(docRef, payload);
+                    showToast('Saved to Local Watchlist (Unlimited)');
+                    // UI Update
+                    btn.classList.remove('bg-green-600', 'hover:bg-green-500');
+                    btn.classList.add('bg-red-600', 'hover:bg-red-500');
+                    btn.innerHTML = `<i class="fa-solid fa-folder-minus"></i> Local WL`;
+                }
+            } catch (e) {
+                console.error(e);
+                showToast('Failed to update Local Watchlist', 'error');
+                btn.innerHTML = originalHtml;
+            }
+        };
 
 // 1. Standalone function to open the modal (fixes the click propagation issue)
 window.openScrobbleModal = (data) => {
@@ -1429,11 +1576,12 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
             showLoader(); els.content.innerHTML = '';
             try {
                 const noteKey = `${type}_${id}`;
+                const localWlKey = `${type}_${id}`; 
                 const isEpisode = type === 'episode';
                 
-                let item, notes, history = [], related = [], showInfo = null, people = null, comments = null;
-                let showProgress = null; 
-                let collectionList = null; 
+                // FIX 1: Initialize collectionList to empty array to prevent ReferenceError
+                let item, notes, history = [], related = [], showInfo = null, people = null, comments = null, collectionList = [];
+                let localWlSnap = null; 
 
                 const fetchCommentsSafe = (url) => fetchDirect(url).catch(err => { console.warn("Comments unavailable", err); return []; });
 
@@ -1445,30 +1593,31 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                         showInfo = searchResults[0].show;
                     } else { throw new Error('Episode not found'); }
                     
-                    // Error Fix: Safely handle user_data
-                    let userData = null;
-                    try { userData = await fetchDirect(`/episodes/${id}?extended=user_data`); } catch(e) {}
-                    
-                    if (userData) {
+                    try { 
+                        const userData = await fetchDirect(`/episodes/${id}?extended=user_data`); 
                         item.user_rating = userData.user_rating;
-                        item.user_data = userData.user_data;
-                    }
+                        item.user_data = userData.user_data; 
+                    } catch(e) {}
                     
                     const commentUrl = `/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}/comments/newest?limit=10`;
-                    [history, comments, notes] = await Promise.all([
+                    
+                    // Fetch all data in parallel (Including Local Watchlist Check)
+                    [history, comments, notes, localWlSnap] = await Promise.all([
                         fetchDirect(`/users/me/history/episodes/${id}?limit=20`),
                         fetchCommentsSafe(commentUrl),
-                        getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey))
+                        getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
+                        (currentUser ? getDoc(doc(db, `users/${currentUser.uid}/watchlist`, localWlKey)) : null)
                     ]);
                 } else {
                     const commentUrl = `/${type}s/${id}/comments/newest?limit=10`;
-                    [item, notes, history, related, people, comments] = await Promise.all([
+                    [item, notes, history, related, people, comments, localWlSnap] = await Promise.all([
                         fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
                         (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=20`) : []),
                         fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`),
                         fetchDirect(`/${type}s/${id}/people?extended=images`),
-                        fetchCommentsSafe(commentUrl)
+                        fetchCommentsSafe(commentUrl),
+                        (currentUser ? getDoc(doc(db, `users/${currentUser.uid}/watchlist`, localWlKey)) : null)
                     ]);
                     
                     // Fetch Collection (Movies only)
@@ -1491,6 +1640,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 let navPrev = null, navNext = null;
                 if (!isEpisode && type === 'movie') {
                     let navSet = [];
+                    // Fix: Ensure collectionList is valid before checking length
                     if (collectionList && collectionList.length > 0) {
                         navSet = collectionList;
                     } else if (related.length > 0) {
@@ -1503,10 +1653,13 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                     }
                 }
 
-                // Extract Note & Skipped Status
+                // Extract Metadata
                 const noteData = (notes && notes.exists()) ? notes.data() : {};
                 const userNote = noteData.text || '';
                 const isSkipped = noteData.skipped === true;
+                const isTraktWl = item.user_data?.watchlist;
+                const isLocalWl = localWlSnap && localWlSnap.exists();
+                const safeJson = encodeURIComponent(JSON.stringify(item));
 
                 // Playback Progress Logic
                 const playback = userPlayback.get(parseInt(id));
@@ -1575,26 +1728,20 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 }
 
                 // Badge Logic (Watched / Skipped / Rewatched)
-const plays = item.user_data?.plays || 0;
-let statusBadge = '';
+                const plays = item.user_data?.plays || 0;
+                let statusBadge = '';
 
-if (isSkipped) {
-    statusBadge = `<span class="bg-gray-700 text-gray-300 border border-gray-500 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_10px_rgba(255,255,255,0.1)]"><i class="fa-solid fa-forward-step mr-2"></i> SKIPPED / FILLER</span>`;
-} else if (plays > 1) {
-    // REWATCH LOGIC
-    const rewatchCount = plays - 1;
-    const ordinal = (n) => { const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
-    
-    // Shows: "1st Rewatch", "2nd Rewatch"
-    statusBadge = `<span class="bg-purple-500/20 text-purple-300 border border-purple-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(168,85,247,0.2)]" title="Total Plays: ${plays}"><i class="fa-solid fa-rotate-right mr-2"></i> ${ordinal(rewatchCount)} Rewatch</span>`;
-    
-} else if (isWatched) {
-    // FULL WATCH LOGIC (Plays == 1)
-    // Changed label from "Watched" to "Full Watch" to be more explicit
-    statusBadge = `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> Full Watch</span>`;
-} else {
-    statusBadge = `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
-}
+                if (isSkipped) {
+                    statusBadge = `<span class="bg-gray-700 text-gray-300 border border-gray-500 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_10px_rgba(255,255,255,0.1)]"><i class="fa-solid fa-forward-step mr-2"></i> SKIPPED / FILLER</span>`;
+                } else if (plays > 1) {
+                    const rewatchCount = plays - 1;
+                    const ordinal = (n) => { const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
+                    statusBadge = `<span class="bg-purple-500/20 text-purple-300 border border-purple-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(168,85,247,0.2)]" title="Total Plays: ${plays}"><i class="fa-solid fa-rotate-right mr-2"></i> ${ordinal(rewatchCount)} Rewatch</span>`;
+                } else if (isWatched) {
+                    statusBadge = `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> Full Watch</span>`;
+                } else {
+                    statusBadge = `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
+                }
 
                 const myRatingHtml = myRating 
                     ? `<span class="bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(234,179,8,0.2)]"><i class="fa-solid fa-star mr-2"></i> ${myRating}</span>`
@@ -1621,7 +1768,7 @@ if (isSkipped) {
                                 </div>
                                 <div class="text-center">
                                     <p class="font-bold text-xs truncate text-white group-hover:text-[var(--primary)] transition">${person.person.name}</p>
-                                    <p class="text-[10px] text-gray-500 truncate">${person.characters[0]}</p>
+                                    <p class="text-xs text-gray-500 truncate">${person.characters[0]}</p>
                                 </div>
                              </div>`
                         }).join('')}
@@ -1632,23 +1779,16 @@ if (isSkipped) {
                 let html = `<div class="animate-fade max-w-6xl mx-auto">`;
 
                 if (isEpisode) {
-                    // --- 1. Image Fix: Priority is Episode Screenshot ---
                     let bgImg = getImage(item, 'episode', true); 
-
-                    // If Search result didn't have the image (returns placeholder), 
-                    // try fetching the episode directly to find the screenshot (like History/Dashboard does).
                     if ((bgImg.includes('placehold.co') || !bgImg) && showInfo) {
                         try {
                             const freshEp = await fetchDirect(`/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}?extended=images`);
                             const freshImg = getImage(freshEp, 'episode', true);
-                            // Only update if we actually found a real image
                             if (freshImg && !freshImg.includes('placehold.co')) {
                                 bgImg = freshImg;
                             }
                         } catch(e) { console.warn("Could not fetch fallback episode image"); }
                     }
-
-                    // Note: We do NOT fall back to showInfo (Show Art) here, respecting your request.
 
                     html += `
                     <button onclick="history.back()" class="absolute top-24 left-4 z-20 text-sm bg-black/50 hover:bg-black/80 text-white px-4 py-2 rounded-full backdrop-blur-md transition"><i class="fa-solid fa-arrow-left"></i></button>
@@ -1688,14 +1828,25 @@ if (isSkipped) {
                             }
                             ${progressHtml}
                             ${historyHtml}
+                            
                             <div class="flex flex-col sm:flex-row gap-4 mb-8">
                                 <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode', runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check"></i> Log / Rate Again</button>
+                                
+                                <button onclick="window.toggleTraktWatchlist('${item.ids.trakt}', 'episode', this)" class="w-full sm:w-auto px-4 py-3 rounded-lg font-bold border transition flex items-center justify-center gap-2 ${isTraktWl ? 'bg-red-900/40 text-red-300 border-red-800' : 'bg-blue-900/40 text-blue-300 border-blue-800'}" title="Trakt Watchlist">
+                                    ${isTraktWl ? '<i class="fa-solid fa-trash-can"></i>' : '<i class="fa-solid fa-bookmark"></i>'}
+                                </button>
+
+                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="w-full sm:w-auto px-4 py-3 rounded-lg font-bold transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}" title="Local Watchlist">
+                                    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i>' : '<i class="fa-solid fa-folder-plus"></i>'}
+                                </button>
+
                                 <button onclick="window.checkIn('${item.ids.trakt}', 'episode')" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-lg font-bold border border-purple-500 transition flex items-center justify-center" title="Check In Now"><i class="fa-solid fa-map-pin"></i></button>
                                 <button onclick="window.skipEpisode('${item.ids.trakt}')" class="bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white px-4 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center" title="Skip / Mark Filler"><i class="fa-solid fa-ban"></i></button>
                                 ${stremioUrl ? `<a href="${stremioUrl}" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-3 rounded-lg font-bold border border-indigo-500 transition flex items-center justify-center" title="Open in Stremio"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>` : ''}
                                 <button onclick="window.openAddToList('${item.ids.trakt}', 'episode')" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center" title="Add to List"><i class="fa-solid fa-list-ul"></i></button>
                                 <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-bold border border-gray-700 transition flex items-center justify-center gap-2">Season ${item.season}</button>
                             </div>
+
                             <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8">
                                 <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
                                 <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-3 text-sm outline-none resize-none" rows="2" placeholder="Private note...">${userNote}</textarea>
@@ -1706,7 +1857,7 @@ if (isSkipped) {
                     </div>`;
 
                 } else {
-                    // MOVIE / SHOW HTML (Same as before, simplified for this snippet)
+                    // MOVIE / SHOW HTML
                     const img = getImage(item, null, true);
                     html += `
                     <button onclick="history.back()" class="mb-6 text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition w-fit"><i class="fa-solid fa-arrow-left"></i> Back</button>
@@ -1718,9 +1869,19 @@ if (isSkipped) {
                                 ${navPrev ? `<div class="nav-btn nav-prev" onclick="location.hash='#detail/movie/${navPrev.ids.trakt}'" title="Previous: ${navPrev.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-left"></i></div>` : ''}
                                 ${navNext ? `<div class="nav-btn nav-next" onclick="location.hash='#detail/movie/${navNext.ids.trakt}'" title="Next: ${navNext.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-right"></i></div>` : ''}
                             </div>
+                            
                             <div class="mt-6 flex flex-col gap-3">
                                 <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2"><i class="fa-solid fa-play"></i> Stream Now</a>
                                 ${stremioUrl ? `<a href="${stremioUrl}" class="w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open in Stremio</a>` : ''}
+                                
+                                <button onclick="window.toggleTraktWatchlist('${item.ids.trakt}', '${type}', this)" class="w-full text-center py-2 rounded-lg font-bold text-xs transition border flex items-center justify-center gap-2 ${isTraktWl ? 'bg-red-900/40 hover:bg-red-900/60 text-red-300 border-red-800' : 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 border-blue-800'}">
+                                    ${isTraktWl ? '<i class="fa-solid fa-trash-can"></i> Trakt Watchlist' : '<i class="fa-solid fa-bookmark"></i> Trakt Watchlist'}
+                                </button>
+
+                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', '${type}', this, '${safeJson}')" class="w-full text-center py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}">
+                                    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> Local WL (Unlimited)' : '<i class="fa-solid fa-folder-plus"></i> Local WL (Unlimited)'}
+                                </button>
+
                                 <button onclick="window.checkIn('${item.ids.trakt}', '${type}')" class="w-full text-center bg-purple-900/40 hover:bg-purple-800 text-purple-300 py-2 rounded-lg font-bold text-xs transition border border-purple-800 flex items-center justify-center gap-2"><i class="fa-solid fa-map-pin"></i> Check In Now</button>
                                 <button onclick="window.openAddToList('${item.ids.trakt}', '${type}')" class="w-full text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold text-xs transition border border-gray-600 flex items-center justify-center gap-2"><i class="fa-solid fa-list-ul"></i> Add to List</button>
                                 ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition border border-gray-700">Official Website <i class="fa-solid fa-up-right-from-square ml-1"></i></a>` : ''}
@@ -1778,11 +1939,7 @@ if (isSkipped) {
                 
                 // Show Logic (Seasons)
                 if (type === 'show') {
-                    // (Existing show season logic preserved but omitted here for brevity as it was not changed)
                     const mount = document.getElementById('seasons-mount');
-                    // ... [Previous Seasons/Episodes logic stays here] ...
-                    // Since I replaced the *whole* function, I need to put the season logic back. 
-                    // I will provide the season logic here to ensure it's not lost.
                     mount.innerHTML = `<div class="flex items-center gap-3 mb-6"><div class="animate-spin rounded-full h-6 w-6 border-2 border-yellow-500 border-t-transparent"></div> <span class="text-gray-400">Loading seasons...</span></div>`;
                     try {
                         const seasons = await fetchDirect(`/shows/${id}/seasons?extended=full,images`);
@@ -2038,31 +2195,67 @@ if (isSkipped) {
             els.content.innerHTML = `
                 <div class="flex items-center justify-between mb-8 mt-4 animate-fade">
                     <h2 class="text-2xl font-bold border-l-4 border-[var(--primary)] px-3">Your Library</h2>
-                    <div class="flex bg-gray-900/50 p-1 rounded-lg border border-gray-700">
-                        <button id="tab-wl" class="px-5 py-2 rounded-md text-sm font-bold transition ${activeTab === 'watchlist' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('watchlist')">Watchlist</button>
-                        <button id="tab-lists" class="px-5 py-2 rounded-md text-sm font-bold transition ${activeTab === 'lists' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('lists')">Custom Lists</button>
+                    <div class="flex bg-gray-900/50 p-1 rounded-lg border border-gray-700 overflow-x-auto">
+                        <button id="tab-wl" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'watchlist' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('watchlist')">Trakt Watchlist</button>
+                        <button id="tab-local" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'local' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('local')">Local WL <span class="text-[10px] bg-white/20 px-1 rounded ml-1">Unlimited</span></button>
+                        <button id="tab-lists" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'lists' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('lists')">Custom Lists</button>
                     </div>
                 </div>
                 <div id="lib-target"></div>
             `;
             
             window.switchLib = (tab) => {
-                const btnWl = document.getElementById('tab-wl');
-                const btnLists = document.getElementById('tab-lists');
-                
-                if(tab === 'watchlist') {
-                    btnWl.className = "px-5 py-2 rounded-md text-sm font-bold transition bg-[var(--primary)] text-white shadow";
-                    btnLists.className = "px-5 py-2 rounded-md text-sm font-bold transition text-gray-400 hover:text-white";
-                    renderWatchlist('added', 'lib-target');
-                } else {
-                    btnLists.className = "px-5 py-2 rounded-md text-sm font-bold transition bg-[var(--primary)] text-white shadow";
-                    btnWl.className = "px-5 py-2 rounded-md text-sm font-bold transition text-gray-400 hover:text-white";
-                    renderLists('lib-target');
-                }
+                // Reset classes
+                ['tab-wl', 'tab-local', 'tab-lists'].forEach(id => {
+                    document.getElementById(id).className = "px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap text-gray-400 hover:text-white";
+                });
+                // Set active class
+                document.getElementById(`tab-${tab}`).className = "px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap bg-[var(--primary)] text-white shadow";
+
+                if(tab === 'watchlist') renderWatchlist('added', 'lib-target');
+                else if(tab === 'local') renderLocalWatchlist('lib-target');
+                else renderLists('lib-target');
             };
 
             if(activeTab === 'watchlist') renderWatchlist('added', 'lib-target');
+            else if(activeTab === 'local') renderLocalWatchlist('lib-target');
             else renderLists('lib-target');
+        }
+
+        async function renderLocalWatchlist(containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = `<div class="text-center py-10"><div class="animate-spin rounded-full h-10 w-10 border-4 border-[var(--primary)] border-t-transparent inline-block"></div></div>`;
+            
+            if (!currentUser) {
+                container.innerHTML = `<p class="text-center text-red-400">Please sign in to view your local watchlist.</p>`;
+                return;
+            }
+
+            try {
+                const querySnapshot = await getDocs(collection(db, `users/${currentUser.uid}/watchlist`));
+                if (querySnapshot.empty) {
+                    container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-folder-open text-6xl mb-4 opacity-50"></i><p>Your local watchlist is empty.</p><p class="text-xs mt-2 text-gray-600">Items added here do not sync to Trakt.</p></div>`;
+                    return;
+                }
+
+                const items = [];
+                querySnapshot.forEach((doc) => {
+                    items.push(doc.data());
+                });
+
+                // Sort by Added Date (Newest first)
+                items.sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0));
+
+                const gridHtml = `
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 mb-8 animate-fade">
+                        ${items.map(item => createCardHtml(item)).join('')}
+                    </div>`;
+                
+                container.innerHTML = gridHtml;
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = `<p class="text-center text-red-500">Failed to load local watchlist.</p>`;
+            }
         }
 
         async function renderProgress() {

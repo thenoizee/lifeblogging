@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.54.0-alpha",
+    date: "2026-02-09",
+    changes: [
+        "In VidTrackr: Added a new 'Local Watchlist' feature.",
+        "In VidTrackr: Implemented dedicated toggle buttons on detail pages to quickly add or remove items from both Trakt and Local watchlists.",
+        "In VidTrackr: Improved the 'Add to List' modal to automatically check existing list membership and provide a 'Remove' option.",
+    ]
+    },
+    {
     version: "v10.53.0-alpha",
     date: "2026-02-09",
     changes: [
