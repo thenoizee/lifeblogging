@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.53.0-alpha",
+    date: "2026-02-09",
+    changes: [
+        "In HydrationTrackr: Overhauled the History tab with new view selectors, allowing users to switch between Day, Week, Month, Year, and All Time modes.",
+        "In HydrationTrackr: Implemented date navigation controls to easily browse through previous and next time periods.",
+        "In HydrationTrackr: Added 'Total Intake' and 'Daily Average' summary cards that dynamically update based on the selected date range.",
+        "In HydrationTrackr: Refined the History Chart logic to adapt axis labels to the specific view (e.g. showing hours for Day view vs. months for Year view)."
+    ]
+    },
+    {
     version: "v10.52.0-alpha",
     date: "2026-02-09",
     changes: [

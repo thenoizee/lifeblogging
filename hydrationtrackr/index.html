@@ -65,6 +65,17 @@
     .main-button { background-color: var(--button-bg); color: white; transition: background-color 0.2s; }
     .main-button:hover:not(:disabled) { background-color: var(--button-hover); }
     .main-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Add to your <style> block */
+.history-view-btn.active {
+    background-color: var(--card-bg-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    color: var(--button-bg);
+}
+.dark-mode .history-view-btn.active {
+    background-color: #4a5568; /* Matches dark input bg */
+    color: white;
+}
     
     /* Tabs */
     .tab-content { display: none; }
@@ -276,18 +287,49 @@
             </div>
 
             <div id="tab-content-history" class="tab-content">
-                <div class="card">
-                    <h2 class="text-2xl font-bold mb-4">Intake History</h2>
-                    <div id="bulk-actions-bar" class="hidden bg-blue-100 dark-mode:bg-blue-900/50 border border-blue-300 dark-mode:border-blue-700 p-2 rounded-lg mb-4 flex justify-between items-center">
-                        <span id="selection-count">0 items selected</span>
-                        <div>
-                            <button id="bulk-delete-btn" class="bg-red-500 text-white font-bold py-1 px-3 rounded-lg hover:bg-red-600 text-sm">Delete Selected</button>
-                        </div>
-                    </div>
-                    <div class="w-full h-64 mb-4"><canvas id="history-chart"></canvas></div>
-                    <div id="history-table-container" class="max-h-96 overflow-y-auto"></div>
-                </div>
+    <div class="card">
+        <h2 class="text-2xl font-bold mb-4">Intake History</h2>
+
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+            <div class="bg-gray-100 dark-mode:bg-gray-700 p-1 rounded-lg flex space-x-1">
+                <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all" data-view="day">Day</button>
+                <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all bg-white dark-mode:bg-gray-600 shadow-sm" data-view="week">Week</button>
+                <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all" data-view="month">Month</button>
+                <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all" data-view="year">Year</button>
+                <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all" data-view="all">All</button>
             </div>
+
+            <div class="flex items-center space-x-4 bg-gray-50 dark-mode:bg-gray-800 px-4 py-2 rounded-lg">
+                <button id="hist-prev-btn" class="p-1 hover:text-blue-500 transition-colors"><i class="fa-solid fa-chevron-left"></i></button>
+                <span id="hist-date-range" class="font-bold text-lg min-w-[140px] text-center">Loading...</span>
+                <button id="hist-next-btn" class="p-1 hover:text-blue-500 transition-colors"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-blue-50 dark-mode:bg-blue-900/20 p-4 rounded-xl text-center border border-blue-100 dark-mode:border-blue-800">
+                <div class="text-sm text-gray-500 dark-mode:text-gray-400 uppercase tracking-wide font-semibold">Total Intake</div>
+                <div class="text-2xl sm:text-3xl font-bold text-blue-600 dark-mode:text-blue-400 mt-1"><span id="hist-total">0</span><span class="text-sm font-normal text-gray-500 ml-1">ml</span></div>
+            </div>
+            <div class="bg-green-50 dark-mode:bg-green-900/20 p-4 rounded-xl text-center border border-green-100 dark-mode:border-green-800">
+                <div class="text-sm text-gray-500 dark-mode:text-gray-400 uppercase tracking-wide font-semibold">Daily Average</div>
+                <div class="text-2xl sm:text-3xl font-bold text-green-600 dark-mode:text-green-400 mt-1"><span id="hist-avg">0</span><span class="text-sm font-normal text-gray-500 ml-1">ml</span></div>
+            </div>
+        </div>
+
+        <div id="bulk-actions-bar" class="hidden bg-blue-100 dark-mode:bg-blue-900/50 border border-blue-300 dark-mode:border-blue-700 p-2 rounded-lg mb-4 flex justify-between items-center">
+            <span id="selection-count">0 items selected</span>
+            <div>
+                <button id="bulk-delete-btn" class="bg-red-500 text-white font-bold py-1 px-3 rounded-lg hover:bg-red-600 text-sm">Delete Selected</button>
+            </div>
+        </div>
+
+        <div class="w-full h-72 mb-6"><canvas id="history-chart"></canvas></div>
+
+        <h3 class="font-bold text-lg mb-2">Detailed Logs</h3>
+        <div id="history-table-container" class="max-h-96 overflow-y-auto border-t border-[var(--border-color)]"></div>
+    </div>
+</div>
 
             <div id="tab-content-settings" class="tab-content">
                 <div class="card">
@@ -405,6 +447,8 @@
         let reminderIntervalId = null;
         let selectedHistoryIds = new Set();
         let editingLogId = null;
+        let historyViewMode = 'week'; // 'day', 'week', 'month', 'year', 'all'
+let historyCursorDate = new Date(); // The anchor date for navigation
 
         // --- UI ELEMENTS ---
         const ui = {
@@ -603,6 +647,29 @@ document.querySelectorAll('.quick-add-custom-btn').forEach(btn => {
                 ui.todayTotal.textContent = Math.round(total);
                 updateDashboard(settings);
             });
+
+            // History View Mode Buttons
+document.querySelectorAll('.history-view-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        // Update UI classes
+        document.querySelectorAll('.history-view-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        
+        // Update State
+        historyViewMode = e.target.dataset.view;
+        // Reset cursor to today when switching views for better UX, or keep it if preferred
+        if(historyViewMode === 'all') historyCursorDate = new Date(); 
+        
+        renderHistory();
+    });
+});
+
+// History Navigation Buttons
+document.getElementById('hist-prev-btn').addEventListener('click', () => navigateHistory(-1));
+document.getElementById('hist-next-btn').addEventListener('click', () => navigateHistory(1));
+
+
+
             renderHistory();
         }
         
@@ -628,6 +695,70 @@ document.querySelectorAll('.quick-add-custom-btn').forEach(btn => {
             ui.todayPercentage.textContent = percentage;
             ui.todayRemaining.textContent = remaining;
         }
+
+        function navigateHistory(direction) {
+    if (historyViewMode === 'all') return; // No nav in 'all' mode
+
+    const d = new Date(historyCursorDate);
+    if (historyViewMode === 'day') d.setDate(d.getDate() + direction);
+    if (historyViewMode === 'week') d.setDate(d.getDate() + (direction * 7));
+    if (historyViewMode === 'month') d.setMonth(d.getMonth() + direction);
+    if (historyViewMode === 'year') d.setFullYear(d.getFullYear() + direction);
+    
+    historyCursorDate = d;
+    renderHistory();
+}
+
+function getDateRangeForMode(mode, date) {
+    const start = new Date(date);
+    const end = new Date(date);
+    
+    // Set to start of day first
+    start.setHours(0,0,0,0);
+    end.setHours(23,59,59,999);
+
+    if (mode === 'day') {
+        // Start/End are already set to today
+    } else if (mode === 'week') {
+        // Assume Monday start
+        const day = start.getDay();
+        const diff = start.getDate() - day + (day === 0 ? -6 : 1); 
+        start.setDate(diff);
+        end.setDate(start.getDate() + 6);
+    } else if (mode === 'month') {
+        start.setDate(1);
+        end.setMonth(end.getMonth() + 1);
+        end.setDate(0); // Last day of previous month (which is current month now)
+    } else if (mode === 'year') {
+        start.setMonth(0, 1);
+        end.setMonth(11, 31);
+    }
+    return { start, end };
+}
+
+function updateHistoryHeader(start, end) {
+    const el = document.getElementById('hist-date-range');
+    const ukDateOpt = { day: '2-digit', month: '2-digit', year: 'numeric' }; // dd/mm/yyyy
+    const ukShortOpt = { day: '2-digit', month: '2-digit' }; // dd/mm
+    
+    if (historyViewMode === 'all') {
+        el.textContent = "All Time";
+    } else if (historyViewMode === 'day') {
+        // Example: Mon, 09/02/2026
+        el.textContent = start.toLocaleDateString('en-GB', { weekday: 'short', ...ukDateOpt });
+    } else if (historyViewMode === 'week') {
+        // Example: 02/02 - 08/02/2026
+        const startStr = start.toLocaleDateString('en-GB', ukShortOpt);
+        const endStr = end.toLocaleDateString('en-GB', (start.getFullYear() !== end.getFullYear() ? ukDateOpt : ukShortOpt));
+        const yearStr = (start.getFullYear() === end.getFullYear()) ? `/${start.getFullYear()}` : '';
+        el.textContent = `${startStr} - ${endStr}${yearStr}`;
+    } else if (historyViewMode === 'month') {
+        // Example: February 2026
+        el.textContent = start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    } else if (historyViewMode === 'year') {
+        el.textContent = start.getFullYear();
+    }
+}
 
         async function logWater(amount, drinkType = 'water', entryDate = null, notes = "", tags = ["manual_entry"], fileSource = "HydrationTrackr") {
             if (!currentUser || amount <= 0) return;
@@ -656,113 +787,238 @@ document.querySelectorAll('.quick-add-custom-btn').forEach(btn => {
         }
         
         async function renderHistory() {
-            if(!currentUser) return;
+    if(!currentUser) return;
 
-            const historyQuery = query(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`), orderBy('date', 'desc'));
-            const snapshot = await getDocs(historyQuery);
-            
-            const allLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // 1. Fetch ALL logs (or use cached snapshot if you want to optimize later)
+    // Note: In a production app with thousands of logs, you would query Firestore with date ranges.
+    // For this update, we filter client-side to keep it simple as per the existing pattern.
+    const historyQuery = query(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`), orderBy('date', 'desc'));
+    const snapshot = await getDocs(historyQuery);
+    const allLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // Chart Logic
-            const logsByDay = {};
-            const settingsDoc = await getDoc(doc(db, 'users', currentUser.uid, 'settings', 'water'));
-            const settings = settingsDoc.data() || { drinkFactors: defaultDrinkFactors };
-            const drinkFactors = settings.drinkFactors || defaultDrinkFactors;
-
-            allLogs.forEach(log => {
-                const date = log.date.toDate();
-                const dayStr = date.toISOString().split('T')[0];
-                if (!logsByDay[dayStr]) logsByDay[dayStr] = 0;
-                
-                const amount = log.attributeValue !== undefined ? log.attributeValue : log.amount;
-                const drinkType = log.attributeName || (log.tags && log.tags.length > 0 ? log.tags[0] : log.drinkType) || 'water';
-                const factor = drinkFactors[drinkType] || 1;
-                logsByDay[dayStr] += amount * factor;
-            });
-            const sortedDays = Object.keys(logsByDay).sort().reverse();
-            const chartData = {
-                labels: sortedDays.slice(0, 7).reverse(),
-                datasets: [{
-                    label: 'Hydration Intake (ml)',
-                    data: sortedDays.slice(0, 7).reverse().map(day => Math.round(logsByDay[day])),
-                    borderColor: 'var(--button-bg)',
-                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                    fill: true,
-                    tension: 0.1
-                }]
-            };
-            const ctx = document.getElementById('history-chart').getContext('2d');
-            if(historyChart) historyChart.destroy();
-            historyChart = new Chart(ctx, { type: 'line', data: chartData, options: { responsive: true, maintainAspectRatio: false } });
-
-            // Table Logic
-            const historyTable = document.createElement('table');
-            historyTable.className = 'w-full text-left';
-            historyTable.innerHTML = `
-                <thead><tr>
-                    <th class="p-2 w-10"><input type="checkbox" id="select-all-checkbox"></th>
-                    <th class="p-2">Date & Time</th>
-                    <th class="p-2">Drink</th>
-                    <th class="p-2">Amount</th>
-                    <th class="p-2">Notes</th>
-                    <th class="p-2">Tags</th>
-                    <th class="p-2">Actions</th>
-                </tr></thead><tbody></tbody>`;
-            const tbody = historyTable.querySelector('tbody');
-
-            allLogs.forEach(log => {
-                const row = document.createElement('tr');
-                row.dataset.docId = log.id;
-                const drinkType = log.attributeName || (log.tags && log.tags.length > 0 ? log.tags[0] : log.drinkType) || 'water';
-                const amount = log.attributeValue !== undefined ? log.attributeValue : log.amount;
-                const notes = log.notes || '-';
-                const tags = log.tags ? log.tags.join(', ') : '-';
-
-                row.innerHTML = `
-                    <td class="p-2 border-t border-[var(--border-color)] align-middle"><input type="checkbox" class="row-checkbox" ${selectedHistoryIds.has(log.id) ? 'checked' : ''}></td>
-                    <td class="p-2 border-t border-[var(--border-color)] align-middle">${log.date.toDate().toLocaleString()}</td>
-                    <td class="p-2 border-t border-[var(--border-color)] align-middle capitalize">${drinkType}</td>
-                    <td class="p-2 border-t border-[var(--border-color)] align-middle">${amount}ml</td>
-                    <td class="p-2 border-t border-[var(--border-color)] align-middle">${notes}</td>
-                    <td class="p-2 border-t border-[var(--border-color)] align-middle">${tags}</td>
-                    <td class="p-2 border-t border-[var(--border-color)] align-middle">
-                        <button class="edit-log-btn p-2 rounded-full hover:bg-gray-200 dark-mode:hover:bg-gray-600"><i class="fa-solid fa-pencil text-blue-500 pointer-events-none"></i></button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-            
-            document.getElementById('history-table-container').innerHTML = '';
-            document.getElementById('history-table-container').appendChild(historyTable);
-
-            document.getElementById('select-all-checkbox').checked = allLogs.length > 0 && allLogs.every(log => selectedHistoryIds.has(log.id));
-
-            document.getElementById('select-all-checkbox').addEventListener('change', (e) => {
-                const isChecked = e.target.checked;
-                allLogs.forEach(log => {
-                    if (isChecked) selectedHistoryIds.add(log.id);
-                    else selectedHistoryIds.delete(log.id);
-                });
-                renderHistory();
-                updateBulkActionsUI();
-            });
-            
-            tbody.querySelectorAll('.row-checkbox').forEach(checkbox => {
-                checkbox.addEventListener('change', (e) => {
-                    const docId = e.target.closest('tr').dataset.docId;
-                    if (e.target.checked) selectedHistoryIds.add(docId);
-                    else selectedHistoryIds.delete(docId);
-                    updateBulkActionsUI();
-                });
-            });
-
-            tbody.querySelectorAll('.edit-log-btn').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    const docId = e.target.closest('tr').dataset.docId;
-                    openEditModal(docId, allLogs);
-                });
-            });
+    // 2. Determine Date Range
+    let startDate, endDate;
+    if (historyViewMode === 'all') {
+        if(allLogs.length > 0) {
+            startDate = allLogs[allLogs.length - 1].date.toDate(); // Oldest
+            endDate = allLogs[0].date.toDate(); // Newest
+        } else {
+            startDate = new Date(); endDate = new Date();
         }
+    } else {
+        const range = getDateRangeForMode(historyViewMode, historyCursorDate);
+        startDate = range.start;
+        endDate = range.end;
+    }
+    updateHistoryHeader(startDate, endDate);
+
+    // 3. Filter Logs
+    const filteredLogs = allLogs.filter(log => {
+        const d = log.date.toDate();
+        return d >= startDate && d <= endDate;
+    });
+
+    // 4. Calculate Stats & Chart Data
+    const settingsDoc = await getDoc(doc(db, 'users', currentUser.uid, 'settings', 'water'));
+    const settings = settingsDoc.data() || { drinkFactors: defaultDrinkFactors };
+    const factors = settings.drinkFactors || defaultDrinkFactors;
+
+    let totalVolume = 0;
+    const chartMap = new Map(); // Key -> Volume
+
+    // Initialize Chart Keys based on view
+    if (historyViewMode === 'day') {
+        for(let i=0; i<24; i++) chartMap.set(i.toString().padStart(2, '0') + ':00', 0);
+    } else if (historyViewMode === 'week' || historyViewMode === 'month') {
+        // Fill all days in range
+        for(let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            chartMap.set(d.toISOString().split('T')[0], 0);
+        }
+    } else if (historyViewMode === 'year') {
+        for(let i=0; i<12; i++) chartMap.set(new Date(0, i).toLocaleString('default', { month: 'short' }), 0);
+    } 
+    // 'all' mode will dynamically add keys
+
+    // Aggregate Data
+    filteredLogs.forEach(log => {
+        const d = log.date.toDate();
+        const amount = log.attributeValue !== undefined ? log.attributeValue : log.amount;
+        const type = log.attributeName || 'water';
+        const factor = factors[type] || 1;
+        const volume = amount * factor;
+        
+        totalVolume += volume;
+
+        let key;
+        if (historyViewMode === 'day') {
+            key = d.getHours().toString().padStart(2, '0') + ':00';
+        } else if (historyViewMode === 'year') {
+            key = d.toLocaleString('default', { month: 'short' });
+        } else if (historyViewMode === 'all') {
+            // For all time, group by Month-Year
+            key = d.toLocaleString('default', { month: 'short', year: '2-digit' });
+        } else {
+            // Week/Month -> YYYY-MM-DD
+            key = d.toISOString().split('T')[0];
+        }
+
+        // Add to map (safe add for 'all' mode)
+        chartMap.set(key, (chartMap.get(key) || 0) + volume);
+    });
+
+    // Calculate Averages
+    let daysCount = 1;
+    if (historyViewMode === 'day') daysCount = 1;
+    else if (historyViewMode === 'all') {
+        const diffTime = Math.abs(endDate - startDate);
+        daysCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+    } else {
+         const diffTime = Math.abs(endDate - startDate);
+         daysCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive
+    }
+    
+    const dailyAvg = Math.round(totalVolume / daysCount);
+
+    // Update Stats UI
+    document.getElementById('hist-total').textContent = Math.round(totalVolume);
+    document.getElementById('hist-avg').textContent = dailyAvg;
+
+    // 5. Update Chart
+    const ctx = document.getElementById('history-chart').getContext('2d');
+    if(historyChart) historyChart.destroy();
+
+    const chartLabels = Array.from(chartMap.keys());
+    const chartValues = Array.from(chartMap.values());
+
+    // Formatting labels for Week/Month view to be DD/MM
+    const formattedLabels = chartLabels.map(lbl => {
+        if((historyViewMode === 'week' || historyViewMode === 'month') && lbl.includes('-')) {
+            const parts = lbl.split('-'); // [YYYY, MM, DD]
+            return `${parts[2]}/${parts[1]}`; // Returns DD/MM
+        }
+        return lbl;
+    });
+
+    historyChart = new Chart(ctx, {
+        type: 'bar', // Bar is generally better for volume per period
+        data: {
+            labels: formattedLabels,
+            datasets: [{
+                label: 'Hydration (ml)',
+                data: chartValues,
+                backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                borderColor: 'rgba(59, 130, 246, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: document.body.classList.contains('dark-mode') ? '#374151' : '#e5e7eb' } },
+                x: { grid: { display: false }, ticks: { color: document.body.classList.contains('dark-mode') ? '#9ca3af' : '#4b5563' } }
+            }
+        }
+    });
+
+    // 6. Update Table
+    const tbody = document.querySelector('#history-table-container table tbody');
+    if(!tbody) {
+        // Recreate table structure if missing (first run)
+        const container = document.getElementById('history-table-container');
+        container.innerHTML = `
+            <table class="w-full text-left border-collapse">
+                <thead class="bg-gray-50 dark-mode:bg-gray-800 sticky top-0"><tr>
+                    <th class="p-3 w-10"><input type="checkbox" id="select-all-checkbox"></th>
+                    <th class="p-3">Time</th>
+                    <th class="p-3">Drink</th>
+                    <th class="p-3">Amount</th>
+                    <th class="p-3 hidden sm:table-cell">Notes</th>
+                    <th class="p-3 w-16">Edit</th>
+                </tr></thead>
+                <tbody class="divide-y divide-[var(--border-color)]"></tbody>
+            </table>`;
+    }
+    
+    // Now populate tbody
+    const tableBody = document.querySelector('#history-table-container tbody');
+    tableBody.innerHTML = '';
+    
+    if(filteredLogs.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-500">No logs found for this period.</td></tr>`;
+    } else {
+        filteredLogs.forEach(log => {
+            const row = document.createElement('tr');
+            row.dataset.docId = log.id;
+            row.className = 'hover:bg-gray-50 dark-mode:hover:bg-gray-800 transition-colors';
+            
+            const drinkType = log.attributeName || (log.tags?.[0]) || 'water';
+            const amount = log.attributeValue !== undefined ? log.attributeValue : log.amount;
+            
+            // Format time based on view
+            const dateObj = log.date.toDate();
+            
+            // Format: dd/mm/yyyy, HH:MM
+            // If view is 'day', we usually just show time, but user asked for format
+            // We'll stick to Time for 'day' view as it's cleaner, but full date for others.
+            const dateStr = historyViewMode === 'day' 
+                ? dateObj.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'}) 
+                : dateObj.toLocaleString('en-GB', {
+                    day: '2-digit', 
+                    month: '2-digit', 
+                    year: 'numeric', 
+                    hour: '2-digit', 
+                    minute: '2-digit'
+                  });
+
+            row.innerHTML = `
+                <td class="p-3"><input type="checkbox" class="row-checkbox rounded" ${selectedHistoryIds.has(log.id) ? 'checked' : ''}></td>
+                <td class="p-3 text-sm font-medium">${dateStr}</td>
+                <td class="p-3 capitalize text-sm"><i class="fa-solid fa-glass-water text-blue-400 mr-2"></i>${drinkType}</td>
+                <td class="p-3 font-bold text-sm">${amount}ml</td>
+                <td class="p-3 text-sm text-gray-500 hidden sm:table-cell truncate max-w-[150px]">${log.notes || '-'}</td>
+                <td class="p-3">
+                    <button class="edit-log-btn text-gray-400 hover:text-blue-500 transition-colors"><i class="fa-solid fa-pen-to-square"></i></button>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
+
+    // Re-attach listeners for checkboxes and edit buttons
+    // (Same logic as your previous renderHistory, ensure you attach listeners here)
+    document.getElementById('select-all-checkbox').checked = filteredLogs.length > 0 && filteredLogs.every(log => selectedHistoryIds.has(log.id));
+    
+    document.getElementById('select-all-checkbox').onclick = (e) => {
+        const isChecked = e.target.checked;
+        filteredLogs.forEach(log => {
+            if (isChecked) selectedHistoryIds.add(log.id);
+            else selectedHistoryIds.delete(log.id);
+        });
+        updateBulkActionsUI();
+        renderHistory(); // Re-render to update checkbox states visually
+    };
+
+    tableBody.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const id = e.target.closest('tr').dataset.docId;
+            if(e.target.checked) selectedHistoryIds.add(id);
+            else selectedHistoryIds.delete(id);
+            updateBulkActionsUI();
+        });
+    });
+
+    tableBody.querySelectorAll('.edit-log-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const id = e.target.closest('tr').dataset.docId;
+            openEditModal(id, allLogs);
+        });
+    });
+}
         
         async function updateStreaks() {
             if(!currentUser) return;
