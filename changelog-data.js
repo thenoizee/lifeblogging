@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.55.0-alpha",
+    date: "2026-02-10",
+    changes: [
+        "In Account: Added a new 'Regional Preferences' section to the General tab for setting Locale, Date/Time formats, and First Day of Week.",
+        "In Account: Restored 'pulse' animations for expired tokens or error states on Service integrations (Google Tasks, Trakt).",
+    ]
+    },
+    {
     version: "v10.54.0-alpha",
     date: "2026-02-09",
     changes: [

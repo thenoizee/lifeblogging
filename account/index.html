@@ -48,7 +48,7 @@
             color: var(--text-color-primary);
             transition: background-color 0.3s ease, color 0.3s ease;
         }
-        input {
+        input, select {
             background-color: var(--input-bg-color);
             color: var(--text-color-primary);
         }
@@ -116,6 +116,50 @@
                     </div>
                     <p class="text-[10px] text-gray-500 mt-1 italic">This name will be displayed on greetings throughout the Lifeblogging app ecosystem.</p>
                 </div>
+            </div>
+
+            <div class="settings-card">
+                <h3 class="text-lg font-semibold mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">Regional Preferences</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="locale-select" class="block text-sm font-semibold mb-1">Locale</label>
+                        <select id="locale-select" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-[var(--input-bg-color)]">
+                            <option value="en-US">English (United States)</option>
+                            <option value="en-GB">English (United Kingdom)</option>
+                            <option value="en-CA">English (Canada)</option>
+                            <option value="en-AU">English (Australia)</option>
+                            <option value="es-ES">Spanish (Spain)</option>
+                            <option value="fr-FR">French (France)</option>
+                            <option value="de-DE">German (Germany)</option>
+                            <option value="ja-JP">Japanese (Japan)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="date-format-select" class="block text-sm font-semibold mb-1">Date Format</label>
+                        <select id="date-format-select" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-[var(--input-bg-color)]">
+                            <option value="MM/DD/YYYY">MM/DD/YYYY (US)</option>
+                            <option value="DD/MM/YYYY">DD/MM/YYYY (UK/EU)</option>
+                            <option value="YYYY-MM-DD">YYYY-MM-DD (ISO)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="time-format-select" class="block text-sm font-semibold mb-1">Time Format</label>
+                        <select id="time-format-select" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-[var(--input-bg-color)]">
+                            <option value="12h">12-hour (AM/PM)</option>
+                            <option value="24h">24-hour</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="week-start-select" class="block text-sm font-semibold mb-1">First Day of Week</label>
+                         <select id="week-start-select" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-[var(--input-bg-color)]">
+                            <option value="0">Sunday</option>
+                            <option value="1">Monday</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="save-regional-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg text-sm w-full md:w-auto">
+                    Save Preferences
+                </button>
             </div>
 
             <div class="settings-card">
@@ -360,6 +404,13 @@
         const traktStatus = document.getElementById('trakt-status');
         const traktBtn = document.getElementById('trakt-auth-btn');
 
+        // Regional Pref Elements
+        const localeSelect = document.getElementById('locale-select');
+        const dateFormatSelect = document.getElementById('date-format-select');
+        const timeFormatSelect = document.getElementById('time-format-select');
+        const weekStartSelect = document.getElementById('week-start-select');
+        const saveRegionalBtn = document.getElementById('save-regional-btn');
+
         const KNOWN_APPS = {
             'hydrationtrackr': { label: 'HydrationTrackr', paths: ['hydrationtrackr'] },
             'medimanagr': { label: 'MediManagr', paths: ['medications', 'doses', 'lenses_left', 'lenses_right'] },
@@ -396,11 +447,11 @@
 
         // --- TAB SWITCHING LOGIC ---
         const switchTab = (tabId) => {
+            // FIX: Removed the call to nav.updateActiveTab(tabId) to prevent infinite recursion
+            // The nav handles state, this just updates the local view
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             const content = document.getElementById(`tab-content-${tabId}`);
             if (content) content.classList.add('active');
-            
-            if (nav) nav.updateActiveTab(tabId);
         };
 
         // --- AUTH & LOAD ---
@@ -554,6 +605,16 @@
                 const profileDoc = await getDoc(doc(db, 'users', user.uid, 'settings', 'profile'));
                 if (profileDoc.exists()) displayNameInput.value = profileDoc.data().displayName || '';
                 
+                // Load Regional
+                const regionalDoc = await getDoc(doc(db, 'users', user.uid, 'settings', 'regional'));
+                if (regionalDoc.exists()) {
+                    const data = regionalDoc.data();
+                    if (data.locale) localeSelect.value = data.locale;
+                    if (data.dateFormat) dateFormatSelect.value = data.dateFormat;
+                    if (data.timeFormat) timeFormatSelect.value = data.timeFormat;
+                    if (data.weekStart) weekStartSelect.value = data.weekStart;
+                }
+
                 const lastfmDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'lastfm'));
                 if (lastfmDoc.exists()) lastfmInput.value = lastfmDoc.data().username || '';
 
@@ -562,8 +623,9 @@
                 if (googleDoc.exists() && googleDoc.data().token) {
                     if (isGoogleExpired(googleDoc.data())) {
                         googleTasksStatus.textContent = "Expired";
-                        googleTasksStatus.className = "text-sm font-bold text-red-500";
+                        googleTasksStatus.className = "text-sm font-bold text-red-500 animate-pulse";
                         googleTasksBtn.textContent = "Reconnect";
+                        googleTasksBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm animate-pulse";
                     } else {
                         googleTasksStatus.textContent = "Connected";
                         googleTasksStatus.className = "text-sm font-bold text-green-600";
@@ -630,7 +692,7 @@
                 if (tData && tData.accessToken) {
                     if (tData.status === 'error') {
                         traktStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Error';
-                        traktStatus.className = "text-sm font-bold text-red-500 flex items-center gap-2";
+                        traktStatus.className = "text-sm font-bold text-red-500 flex items-center gap-2 animate-pulse";
                         traktBtn.textContent = "Reconnect";
                         traktBtn.className = "text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm animate-pulse";
                         traktBtn.onclick = () => {
@@ -668,7 +730,7 @@
         async function loadExportSources(user) {
             try {
                 const dynamicSources = [];
-                const availableSources = new Set();
+                let count = 0; // Fixed: Use simple counter
                 const snapshot = await getDocs(collection(db, 'users', user.uid, 'collections'));
                 
                 exportSourcesList.innerHTML = '';
@@ -684,6 +746,7 @@
                         </label>
                     `;
                     exportSourcesList.appendChild(div);
+                    count++;
                 });
 
                 // Dynamic Sources (from Logger)
@@ -704,9 +767,10 @@
                         </label>
                     `;
                     exportSourcesList.appendChild(div);
+                    count++;
                 });
 
-                if (availableSources.size === 0 && dynamicSources.length === 0) {
+                if (count === 0) {
                     exportSourcesList.innerHTML = '<p class="text-xs text-gray-500 p-2">No data sources found.</p>';
                 }
             } catch (e) {
@@ -727,6 +791,25 @@
                 showMessage("Error saving: " + error.message, 'error');
             } finally {
                 saveProfileBtn.innerText = 'Save';
+            }
+        });
+
+        // SAVE REGIONAL PREFS
+        saveRegionalBtn.addEventListener('click', async () => {
+            if (!auth.currentUser) return;
+            try {
+                saveRegionalBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'regional'), {
+                    locale: localeSelect.value,
+                    dateFormat: dateFormatSelect.value,
+                    timeFormat: timeFormatSelect.value,
+                    weekStart: weekStartSelect.value
+                }, { merge: true });
+                showMessage("Regional preferences saved!");
+            } catch (error) {
+                showMessage("Error saving: " + error.message, 'error');
+            } finally {
+                saveRegionalBtn.textContent = 'Save Preferences';
             }
         });
 
