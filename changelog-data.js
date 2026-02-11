@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.58.0-alpha",
+    date: "2026-02-11",
+    changes: [
+        "In Logger: Fixed a critical issue where Quick Log buttons bypassed data validation, allowing empty entries to be created; implemented strict input checking within the core logging function.",
+        "In Logger: Standardized the 'Back to Hub' button styling to match the unified slate theme used across the Hub and other apps."
+    ]
+    },
+    {
     version: "v10.57.0-alpha",
     date: "2026-02-11",
     changes: [
