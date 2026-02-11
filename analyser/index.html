@@ -67,6 +67,22 @@ body {
     padding-top: 0; /* CHANGED FROM 1rem TO 0 */
     transition: background-color 0.3s ease, color 0.3s ease;
 }
+
+/* Add this inside your <style> tag */
+#global-loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-color);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.5s ease;
+}
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -299,6 +315,11 @@ tbody tr:nth-child(even) {
     </style>
 </head>
 <body>
+
+    <div id="global-loader">
+    <div class="spinner" style="width: 50px; height: 50px; border-width: 5px;"></div>
+    <p class="mt-4 font-semibold text-lg" style="color: var(--text-color-primary);">Loading Analyser...</p>
+</div>
 
 <div id="auth-container" class="container" style="display: none;">
     <div class="card max-w-md mx-auto mt-20">
@@ -837,6 +858,7 @@ tbody tr:nth-child(even) {
     let columnPreferences = {}; 
     let currentPage = 1;
     let rowsPerPage = 50;
+    let loadingSourceIds = new Set(); // <--- ADD THIS
     
     // Theme-related global variables (UI handled by AppNavigation, logic handled here)
     const body = document.body;
@@ -917,6 +939,14 @@ tbody tr:nth-child(even) {
             auth = getAuth(app);
             
             onAuthStateChanged(auth, async (user) => {
+                // --- NEW: Remove Global Loader ---
+                const globalLoader = document.getElementById('global-loader');
+                if (globalLoader) {
+                    globalLoader.style.opacity = '0';
+                    setTimeout(() => globalLoader.remove(), 500);
+                }
+                // ---------------------------------
+
                 if (user) {
                     nav.updateUser(user.email); 
                     userId = user.uid;
@@ -1415,9 +1445,17 @@ toggleFilterBtn.addEventListener('click', () => {
         });
     
         const sourcesToAttach = selectedSources.filter(sourceId => !activeListeners.includes(sourceId));
-        sourcesToAttach.forEach(sourceId => {
+        
+        // Mark these sources as loading
+        sourcesToAttach.forEach(id => loadingSourceIds.add(id));
+        
+        if (loadingSourceIds.size > 0) {
             dataLoadingStatus.classList.remove('hidden');
-            dataLoadingMessage.textContent = `Loading data for '${sourceId}'...`;
+            renderDataTable(); // Render immediately to show spinner in table
+        }
+
+        sourcesToAttach.forEach(sourceId => {
+            dataLoadingMessage.textContent = `Loading data...`;
             const dataRef = collection(db, `users/${userId}/sources/${sourceId}/data`);
             
             sourceListeners[sourceId] = onSnapshot(dataRef, (querySnapshot) => {
@@ -1427,13 +1465,22 @@ toggleFilterBtn.addEventListener('click', () => {
                     sourceData.push({ id: doc.id, ...docData, source: sourceId });
                 });
                 currentDataCache[sourceId] = sourceData;
+                
+                // Remove from loading set
+                loadingSourceIds.delete(sourceId);
+                
+                // Hide top loading bar only if ALL sources are done
+                if (loadingSourceIds.size === 0) {
+                    dataLoadingStatus.classList.add('hidden');
+                }
+
                 updateUIWithNewData();
-                dataLoadingStatus.classList.add('hidden');
     
             }, (error) => {
                 console.error(`Error listening to source ${sourceId}:`, error);
+                loadingSourceIds.delete(sourceId); // Ensure we don't get stuck loading
+                if (loadingSourceIds.size === 0) dataLoadingStatus.classList.add('hidden');
                 showMessage(`Failed to load live data for ${sourceId}.`, 'error');
-                dataLoadingStatus.classList.add('hidden');
             });
         });
     
@@ -1537,8 +1584,21 @@ toggleFilterBtn.addEventListener('click', () => {
             const row = document.createElement('tr');
             const cell = document.createElement('td');
             cell.colSpan = 100;
-            cell.className = 'py-4 text-center italic';
-            cell.textContent = 'No data to display. Try adjusting your filters.';
+            cell.className = 'py-10 text-center';
+
+            // Check if we are still waiting for data
+            if (loadingSourceIds.size > 0) {
+                cell.innerHTML = `
+                    <div class="flex flex-col items-center justify-center text-gray-500">
+                        <div class="spinner mb-3" style="border-width: 3px; width: 30px; height: 30px;"></div>
+                        <p>Fetching data from database...</p>
+                    </div>
+                `;
+            } else {
+                cell.className = 'py-4 text-center italic text-gray-500';
+                cell.textContent = 'No data to display. Try adjusting your filters.';
+            }
+
             row.appendChild(cell);
             dataTableBody.appendChild(row);
             renderPagination(sortedDataPoints.length);
@@ -2773,13 +2833,11 @@ function formatLabel(str) {
         
         const customInputs = modalCustomData.querySelectorAll('input');
         customInputs.forEach(input => {
-            const key = input.dataset.key;
-            if (key === 'attributeName' || key === 'attributeValue' || key === 'date') {
-                 input.disabled = false;
-            }
+            // FIX: Enable ALL inputs in the modal so you can edit custom columns
+            input.disabled = false;
         });
 
-        // Add delete buttons to tags
+        // Add delete buttons to tags (Keep your existing tag logic here)
         modalTagsList.innerHTML = '';
         if (currentModalDataPoint.tags && Array.isArray(currentModalDataPoint.tags)) {
             currentModalDataPoint.tags.forEach(tag => {

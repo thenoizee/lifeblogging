@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.57.0-alpha",
+    date: "2026-02-11",
+    changes: [
+        "In Analyser: Implemented a global loading screen to prevent unstyled content flashes while Firebase initializes.",
+        "In Analyser: Enhanced the Data Table to show a specific 'Fetching data...' spinner row while sources are loading, preventing the misleading 'No data' state.",
+        "In Analyser: Fixed a critical bug in the Edit Modal where custom attribute fields remained disabled; all fields are now correctly editable."
+    ]
+    },
+    {
     version: "v10.56.0-alpha",
     date: "2026-02-11",
     changes: [
