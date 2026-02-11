@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.56.0-alpha",
+    date: "2026-02-11",
+    changes: [
+        "In Hub: Overhauled the dashboard layout with a professional, sectioned grid design, separating 'Applications' and 'Utilities' for better organization.",
+        "In Hub: Integrated the unified `SharedNav` system for consistent authentication handling and mobile navigation.",
+        "In Hub: Optimized grid responsiveness to maximize screen real estate, reducing the need for scrolling on desktop devices."
+    ]
+    },
+    {
     version: "v10.55.0-alpha",
     date: "2026-02-10",
     changes: [
