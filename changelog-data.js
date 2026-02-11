@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.60.0-alpha",
+    date: "2026-02-11",
+    changes: [
+        "In Hub: Added a direct 'Account' shortcut card to the Utilities grid for quick profile access.",
+        "In Hub: Updated icon.",
+        "In IconGenerator: Updated icon.",
+        "In Shared Nav: Updated the navigation bar to include 'PetManagr' and refined the search input styling."
+    ]
+    },
+    {
     version: "v10.59.0-alpha",
     date: "2026-02-11",
     changes: [
