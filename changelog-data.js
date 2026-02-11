@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.59.0-alpha",
+    date: "2026-02-11",
+    changes: [
+        "In HydrationTrackr: Added a fully customizable 'Quick Add' manager in Settings, allowing users to create, color-code, and delete personalized cup sizes.",
+        "In HydrationTrackr: Implemented global Unit preferences, enabling seamless toggling between Milliliters (ml) and Fluid Ounces (oz) across the entire app.",
+        "In HydrationTrackr: Added 'Day Reset' configuration, allowing late-night hydration logs (e.g. up to 04:00 AM) to count towards the previous day's goal.",
+        "In HydrationTrackr: Added 'Week Start' preference (Monday, Sunday, Saturday) to correctly align the History charts and weekly totals.",
+        "In HydrationTrackr: Enhanced the History tab with dynamic drink-type icons (Coffee, Tea, Water) and improved smart-date formatting.",
+    ]
+    },
+    {
     version: "v10.58.0-alpha",
     date: "2026-02-11",
     changes: [
