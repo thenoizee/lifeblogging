@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v10.61.0-alpha",
+    date: "2026-02-12",
+    changes: [
+        "In TaskTrackr: Enabled Markdown rendering in the Task Details side pane description using `marked.js`.",
+    ]
+    },
+    {
     version: "v10.60.0-alpha",
     date: "2026-02-11",
     changes: [
