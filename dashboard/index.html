@@ -370,7 +370,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, onSnapshot, Timestamp, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, onSnapshot, Timestamp, setDoc, deleteField, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Constants
         const TRAKT_CLIENT_ID = '46c509e2cef42228978ae6a69b138628a6399c0bf28b729b7883b19ab9b082eb';
@@ -618,55 +618,85 @@
         };
 
         // --- Weather Logic (Inline) ---
-        async function fetchWeather() {
-            const el = document.getElementById('header-weather');
-            if (!navigator.geolocation) { el.innerHTML = ''; return; }
+        async function fetchWeather(uid) {
+    const el = document.getElementById('header-weather');
 
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                try {
-                    const { latitude, longitude } = pos.coords;
-                    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,is_day`);
-                    if(!res.ok) throw new Error();
-                    const data = await res.json();
-                    
-                    const temp = Math.round(data.current.temperature_2m);
-                    const code = data.current.weather_code;
-                    const isDay = data.current.is_day;
+    try {
+        const locRef = doc(db, 'users', uid, 'settings', 'location');
+        const locSnap = await getDoc(locRef);
+        let lat, lon;
 
-                    // Icon & Description Mapping
-                    let icon = 'fa-cloud';
-                    let color = 'text-gray-400';
-                    let desc = 'Cloudy';
+        if (locSnap.exists() && locSnap.data().latitude) {
+            const data = locSnap.data();
 
-                    if (code === 0) { 
-                        icon = isDay ? 'fa-sun' : 'fa-moon'; 
-                        color = isDay ? 'text-orange-400' : 'text-blue-300';
-                        desc = isDay ? 'Sunny' : 'Clear';
-                    }
-                    else if (code <= 3) { 
-                        icon = isDay ? 'fa-cloud-sun' : 'fa-cloud-moon'; 
-                        color = isDay ? 'text-yellow-500' : 'text-gray-400';
-                        desc = 'Partly Cloudy';
-                    }
-                    else if (code <= 48) { icon = 'fa-smog'; color = 'text-gray-500'; desc = 'Foggy'; }
-                    else if (code <= 57) { icon = 'fa-cloud-rain'; color = 'text-blue-300'; desc = 'Drizzle'; }
-                    else if (code <= 67) { icon = 'fa-cloud-showers-heavy'; color = 'text-blue-400'; desc = 'Rain'; }
-                    else if (code <= 77) { icon = 'fa-snowflake'; color = 'text-cyan-300'; desc = 'Snow'; }
-                    else if (code <= 82) { icon = 'fa-cloud-showers-water'; color = 'text-blue-500'; desc = 'Showers'; }
-                    else if (code <= 86) { icon = 'fa-snowflake'; color = 'text-cyan-400'; desc = 'Snow Showers'; }
-                    else if (code <= 99) { icon = 'fa-bolt'; color = 'text-purple-500'; desc = 'Thunderstorm'; }
+            // Check Expiration
+            if (data.expiresAt) {
+                const now = new Date();
+                const expiry = data.expiresAt.toDate();
+                if (now > expiry) {
+                    // Expired: Delete and return
+                    await updateDoc(locRef, {
+                        latitude: deleteField(),
+                        longitude: deleteField(),
+                        name: deleteField(),
+                        expiresAt: deleteField()
+                    });
+                    console.log("Location expired and removed.");
+                    throw new Error("Location expired"); // Jump to catch block
+                }
+            }
 
-                    // Updated HTML to include the Description
-                    el.innerHTML = `
-                        <i class="fas ${icon} ${color}"></i> 
-                        <span>${temp}°C</span> 
-                        <span class="hidden sm:inline text-[10px] text-[var(--text-secondary)] border-l border-[var(--border-color)] pl-2 ml-1 opacity-80">${desc}</span>
-                    `;
-                    el.classList.remove('opacity-0');
-
-                } catch (e) { el.classList.add('hidden'); }
-            }, () => el.classList.add('hidden'));
+            lat = data.latitude;
+            lon = data.longitude;
+        } else {
+            throw new Error("No location set");
         }
+
+        // Fetch Weather
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day`);
+        if(!res.ok) throw new Error("API Error");
+        const weatherData = await res.json();
+
+        const temp = Math.round(weatherData.current.temperature_2m);
+        const code = weatherData.current.weather_code;
+        const isDay = weatherData.current.is_day;
+
+        // Icon Mapping
+        let icon = 'fa-cloud';
+        let color = 'text-gray-400';
+        let desc = 'Cloudy';
+
+        if (code === 0) { 
+            icon = isDay ? 'fa-sun' : 'fa-moon'; 
+            color = isDay ? 'text-orange-400' : 'text-blue-300';
+            desc = isDay ? 'Sunny' : 'Clear';
+        }
+        else if (code <= 3) { 
+            icon = isDay ? 'fa-cloud-sun' : 'fa-cloud-moon'; 
+            color = isDay ? 'text-yellow-500' : 'text-gray-400';
+            desc = 'Partly Cloudy';
+        }
+        else if (code <= 48) { icon = 'fa-smog'; color = 'text-gray-500'; desc = 'Foggy'; }
+        else if (code <= 57) { icon = 'fa-cloud-rain'; color = 'text-blue-300'; desc = 'Drizzle'; }
+        else if (code <= 67) { icon = 'fa-cloud-showers-heavy'; color = 'text-blue-400'; desc = 'Rain'; }
+        else if (code <= 77) { icon = 'fa-snowflake'; color = 'text-cyan-300'; desc = 'Snow'; }
+        else if (code <= 82) { icon = 'fa-cloud-showers-water'; color = 'text-blue-500'; desc = 'Showers'; }
+        else if (code <= 86) { icon = 'fa-snowflake'; color = 'text-cyan-400'; desc = 'Snow Showers'; }
+        else if (code <= 99) { icon = 'fa-bolt'; color = 'text-purple-500'; desc = 'Thunderstorm'; }
+
+        el.innerHTML = `
+            <i class="fas ${icon} ${color}"></i> 
+            <span>${temp}°C</span> 
+            <span class="hidden sm:inline text-[10px] text-[var(--text-secondary)] border-l border-[var(--border-color)] pl-2 ml-1 opacity-80">${desc}</span>
+        `;
+        el.classList.remove('opacity-0');
+
+    } catch (e) { 
+        // Fallback UI
+        el.innerHTML = '<a href="/account" class="text-[10px] text-[var(--text-secondary)] underline hover:text-indigo-500">Set Location</a>';
+        el.classList.remove('opacity-0');
+    }
+}
 
         const renderDailies = () => {
             const todayStr = new Date().toISOString().split('T')[0];
@@ -1345,7 +1375,7 @@ unsubscribers.push(onSnapshot(collection(db, `users/${uid}/plants`), async (snap
                 ui.loginPrompt.classList.add('hidden');
                 ui.grid.classList.remove('hidden');
                 ui.authContainer.classList.remove('hidden');
-                fetchWeather();
+                fetchWeather(user.uid);
                 
                 // Greeting is now handled by setupListeners -> profile snapshot
                 // ui.date.textContent handled by updateTime()

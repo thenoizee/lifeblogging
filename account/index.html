@@ -163,11 +163,49 @@
             </div>
 
             <div class="settings-card">
+                <h3 class="text-lg font-semibold mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">Weather Location</h3>
+                
+                <div class="flex items-center justify-between mb-4 bg-[var(--input-bg-color)] p-3 rounded-lg">
+                    <div>
+                        <p class="text-xs text-[var(--text-color-secondary)] uppercase font-bold">Current Setting</p>
+                        <p id="location-status" class="text-sm font-mono mt-0.5">Not set</p>
+                    </div>
+                    <button id="delete-location-btn" class="hidden text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 p-2 rounded transition" title="Delete Saved Location">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-3">
+                    <div class="flex gap-2">
+                        <input type="text" id="city-input" placeholder="City or Town name (e.g. London)" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <select id="location-duration" class="rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-[var(--input-bg-color)] max-w-[130px]">
+                            <option value="forever">Forever</option>
+                            <option value="1">1 Hour</option>
+                            <option value="4">4 Hours</option>
+                            <option value="12">12 Hours</option>
+                            <option value="24">24 Hours</option>
+                        </select>
+                    </div>
+                    
+                    <div class="flex gap-2">
+                        <button id="search-city-btn" class="flex-1 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 shadow-lg text-sm">
+                            <i class="fas fa-search mr-2"></i> Set City
+                        </button>
+                        <button id="update-location-btn" class="bg-[var(--input-bg-color)] text-[var(--text-color-primary)] font-bold py-2 px-4 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition duration-300 shadow-sm text-sm border border-[var(--text-color-secondary)]/20" title="Use GPS">
+                            <i class="fas fa-location-crosshairs"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-card">
                 <h3 class="text-lg font-semibold mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">Linked Accounts</h3>
                 <div id="linked-accounts-container" class="space-y-2">
                     </div>
             </div>
         </div>
+
+        
 
         <div id="tab-content-services" class="tab-content">
             <div class="settings-card">
@@ -411,6 +449,14 @@
         const weekStartSelect = document.getElementById('week-start-select');
         const saveRegionalBtn = document.getElementById('save-regional-btn');
 
+        const updateLocationBtn = document.getElementById('update-location-btn');
+const locationStatus = document.getElementById('location-status');
+const cityInput = document.getElementById('city-input');
+const searchCityBtn = document.getElementById('search-city-btn');
+const deleteLocationBtn = document.getElementById('delete-location-btn');
+const locationDuration = document.getElementById('location-duration');
+// (updateLocationBtn and locationStatus should already be there from previous step)
+
         const KNOWN_APPS = {
             'hydrationtrackr': { label: 'HydrationTrackr', paths: ['hydrationtrackr'] },
             'medimanagr': { label: 'MediManagr', paths: ['medications', 'doses', 'lenses_left', 'lenses_right'] },
@@ -615,6 +661,29 @@
                     if (data.weekStart) weekStartSelect.value = data.weekStart;
                 }
 
+                // Load Location
+const locDoc = await getDoc(doc(db, 'users', user.uid, 'settings', 'location'));
+if (locDoc.exists() && locDoc.data().latitude) {
+    const data = locDoc.data();
+    let label = `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`;
+    if (data.name) label = data.name; // Show city name if available
+
+    if (data.expiresAt) {
+        const expireDate = data.expiresAt.toDate();
+        const timeVal = Math.ceil((expireDate - new Date()) / (1000 * 60 * 60));
+        if (timeVal > 0) label += ` (Expires in ~${timeVal}h)`;
+        else label += ` (Expired)`;
+    }
+
+    locationStatus.textContent = label;
+    locationStatus.className = "text-sm font-bold text-green-600";
+    deleteLocationBtn.classList.remove('hidden');
+} else {
+    locationStatus.textContent = "Not set";
+    locationStatus.className = "text-sm font-mono text-gray-500";
+    deleteLocationBtn.classList.add('hidden');
+}
+
                 const lastfmDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'lastfm'));
                 if (lastfmDoc.exists()) lastfmInput.value = lastfmDoc.data().username || '';
 
@@ -727,6 +796,14 @@
             }
         }
 
+        function getExpiryDate() {
+    const val = locationDuration.value;
+    if (val === 'forever') return null;
+    const date = new Date();
+    date.setHours(date.getHours() + parseInt(val));
+    return date;
+}
+
         async function loadExportSources(user) {
             try {
                 const dynamicSources = [];
@@ -812,6 +889,92 @@
                 saveRegionalBtn.textContent = 'Save Preferences';
             }
         });
+
+        // A. SEARCH CITY BUTTON
+searchCityBtn.addEventListener('click', async () => {
+    const query = cityInput.value.trim();
+    if (!query) return showMessage("Please enter a city name.", 'error');
+
+    searchCityBtn.disabled = true;
+    searchCityBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    try {
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`);
+        const data = await res.json();
+
+        if (!data.results || data.results.length === 0) throw new Error("City not found.");
+
+        const result = data.results[0];
+        const payload = {
+            latitude: result.latitude,
+            longitude: result.longitude,
+            name: `${result.name}, ${result.country_code.toUpperCase()}`,
+            updatedAt: new Date()
+        };
+
+        const expires = getExpiryDate();
+        if (expires) payload.expiresAt = expires;
+        else payload.expiresAt = deleteField(); // Remove expiry if forever
+
+        await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'location'), payload, { merge: true });
+
+        showMessage(`Saved: ${result.name}`);
+        cityInput.value = '';
+        loadSettings(auth.currentUser); // Refresh UI
+
+    } catch (e) {
+        showMessage(e.message, 'error');
+    } finally {
+        searchCityBtn.disabled = false;
+        searchCityBtn.innerHTML = '<i class="fas fa-search mr-2"></i> Set City';
+    }
+});
+
+// B. DELETE BUTTON
+deleteLocationBtn.addEventListener('click', async () => {
+    if (!confirm("Remove saved location?")) return;
+    try {
+        await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'location'), {
+            latitude: deleteField(),
+            longitude: deleteField(),
+            name: deleteField(),
+            expiresAt: deleteField()
+        }, { merge: true });
+
+        showMessage("Location cleared.");
+        loadSettings(auth.currentUser);
+    } catch (e) { showMessage(e.message, 'error'); }
+});
+
+// C. UPDATE EXISTING GPS LISTENER (Modify to include duration)
+updateLocationBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) return showMessage("Geolocation not supported.", 'error');
+    updateLocationBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+        try {
+            const payload = {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                name: 'GPS Coordinates',
+                updatedAt: new Date()
+            };
+
+            const expires = getExpiryDate();
+            if (expires) payload.expiresAt = expires;
+            else payload.expiresAt = deleteField();
+
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'location'), payload, { merge: true });
+            showMessage("GPS Location saved!");
+            loadSettings(auth.currentUser);
+        } catch (e) { showMessage(e.message, 'error'); }
+        finally { updateLocationBtn.innerHTML = '<i class="fas fa-location-crosshairs"></i>'; }
+    }, (err) => {
+        console.error(err);
+        updateLocationBtn.innerHTML = '<i class="fas fa-location-crosshairs"></i>';
+        showMessage("GPS access denied.", 'error');
+    });
+});
 
         saveLastfmBtn.addEventListener('click', async () => {
             const username = lastfmInput.value.trim();

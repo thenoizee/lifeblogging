@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.62.0-alpha",
+    date: "2026-02-13",
+    changes: [
+        "In Account: Added 'Weather Location' settings to allow saving a fixed global location, including a new City Search tool.",
+        "In Account: Added duration controls to allow setting temporary locations (e.g., 1h, 4h, 24h) that auto-expire.",
+        "In Dashboard: Updated weather widget to prioritize saved account location, eliminating the need for repetitive browser permission prompts.",
+        "In Dashboard: Implemented logic to automatically revert to default behavior once a temporary location expires."
+    ]
+    },
+    {
     version: "v10.61.0-alpha",
     date: "2026-02-12",
     changes: [
