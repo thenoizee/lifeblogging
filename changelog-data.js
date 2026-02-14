@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.63.0-alpha",
+    date: "2026-02-14",
+    changes: [
+        "In Text Generator: Enabled the description field in the template editor, allowing users to add custom notes to their templates.",
+        "In Text Generator: Overhauled the main layout to use a fluid width (95%), removing wasted screen space on larger displays.",
+        "In Text Generator: Widened the sidebar panels and optimized vertical height calculations to make better use of the available screen space."
+    ]
+    },
+    {
     version: "v10.62.0-alpha",
     date: "2026-02-13",
     changes: [
