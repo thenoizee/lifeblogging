@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.65.0-alpha",
+    date: "2026-02-14",
+    changes: [
+        "In Timestamp Converter: Integrated Firebase Authentication and Firestore to enable real-time cloud syncing across devices.",
+        "In Timestamp Converter: Added 'Cloud Alarms' feature, allowing users to set and manage synchronized alarms.",
+        "In Timestamp Converter: Added 'Cloud Timers', a shared countdown timer system that persists active states.",
+        "In Timestamp Converter: Implemented 'Sync Stopwatch' which tracks the exact start time and timezone, ensuring continuity across sessions.",
+        "In Timestamp Converter: Renamed app to simply 'Time Tool' in preparation for future updates."
+    ]
+    },
+    {
     version: "v10.64.0-alpha",
     date: "2026-02-14",
     changes: [
