@@ -228,6 +228,16 @@
                 </div>
             </div>
 
+            <div class="dashboard-card col-span-1" id="card-pets">
+    <div class="card-header">
+        <span>Pets</span>
+        <a href="/petmanagr" class="text-indigo-500 hover:text-indigo-600" title="PetManagr"><i class="fas fa-paw text-lg"></i></a>
+    </div>
+    <div id="pets-list-container" class="flex-grow custom-scroll overflow-y-auto space-y-2 pr-1 max-h-[140px]">
+        <p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">Loading...</p>
+    </div>
+</div>
+
             <div class="dashboard-card col-span-1" id="card-warranties">
     <div class="card-header">
     <span>Warranties</span>
@@ -323,26 +333,24 @@
         <span>Garden</span>
         <a href="/planttrackr" class="text-green-500 hover:text-green-600" title="PlantTrackr"><i class="fas fa-leaf text-lg"></i></a>
     </div>
-    <div id="plant-container" class="flex flex-col items-center justify-center h-full">
-        <div class="text-center">
-            <span id="thirsty-count" class="text-3xl font-bold text-green-500">-</span>
-            <p class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mt-1">Thirsty Plants</p>
+    <div id="plant-container" class="flex flex-col h-full custom-scroll overflow-y-auto pr-1">
+        <div class="text-center h-full flex flex-col justify-center items-center">
+             <span class="text-3xl font-bold text-gray-300">-</span>
+             <p class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mt-1">Loading...</p>
         </div>
     </div>
 </div>
 
             <div class="dashboard-card col-span-1" id="card-inbox">
-                <div class="card-header">
-    <span>Inbox</span>
-    <a href="/tasktrackr" class="text-blue-500 hover:text-blue-600" title="TaskTrackr"><i class="fas fa-check-double text-lg"></i></a>
+    <div class="card-header">
+        <span>Inbox</span>
+        <a href="/tasktrackr" class="text-blue-500 hover:text-blue-600" title="TaskTrackr"><i class="fas fa-check-double text-lg"></i></a>
+    </div>
+    <div id="inbox-container" class="flex flex-col items-center justify-center h-full text-center p-1">
+        <span class="text-3xl font-bold text-gray-300">-</span>
+        <p class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mt-1">Loading...</p>
+    </div>
 </div>
-                <div id="inbox-container" class="flex flex-col items-center justify-center h-full">
-                    <div class="text-center">
-                        <span id="inbox-count" class="text-3xl font-bold text-blue-500">-</span>
-                        <p class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mt-1">Tasks Remaining</p>
-                    </div>
-                </div>
-            </div>
 
             <div class="dashboard-card md:col-span-2" id="card-activity">
                 <div class="card-header">
@@ -427,6 +435,9 @@
             dailiesProgBar: document.getElementById('dailies-progress-bar'),
             waterVal: document.getElementById('water-value'),
             waterGoalText: document.getElementById('water-goal-text'),
+            petsList: document.getElementById('pets-list-container'),
+plantContainer: document.getElementById('plant-container'),
+inboxContainer: document.getElementById('inbox-container'),
             warrantyList: document.getElementById('warranty-list-container'),
             vehicleList: document.getElementById('vehicle-list-container'),
         };
@@ -513,6 +524,11 @@
             dailyLogs: [],
             manualLogs: [],
             dailyPlan: [],
+            plants: [],
+    plantLogs: [],
+    pets: [],
+    petTreatments: [],
+    petEvents: [],
             todayDoses: [],
             medsSchedule: [],
             recentMedLogs: [] // <--- ADD THIS
@@ -616,6 +632,115 @@
                  ui.moodTime.classList.add('opacity-0');
             }
         };
+
+        async function updateVidTrackrWidget(token) {
+            try {
+                const headers = { 
+                    'Content-Type': 'application/json', 
+                    'trakt-api-version': '2', 
+                    'trakt-api-key': TRAKT_CLIENT_ID, 
+                    'Authorization': `Bearer ${token}` 
+                };
+
+                const [historyRes, ratingsRes] = await Promise.all([
+                    fetch(`${TRAKT_API_URL}/sync/history?limit=1&extended=images`, { headers }),
+                    fetch(`${TRAKT_API_URL}/sync/ratings?limit=50`, { headers }) 
+                ]);
+
+                const history = await historyRes.json();
+                const ratings = await ratingsRes.json();
+
+                if (history.length > 0) {
+                    const item = history[0];
+                    const type = item.type;
+                    const data = item[type];
+                    const id = data.ids.trakt;
+                    
+                    // --- 1. Rating Logic ---
+                    const userRating = ratings.find(r => r[type] && r[type].ids.trakt === id);
+                    const ratingBadge = userRating 
+                        ? `<span class="absolute top-[-4px] right-[-4px] bg-green-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm border border-white dark:border-gray-800">${userRating.rating}</span>` 
+                        : '';
+
+                    // --- 2. Old Image Loading Logic (Preserved) ---
+                    const media = data; 
+                    const get = (path, obj) => {
+                        const val = path.split('.').reduce((acc, part) => acc && acc[part], obj);
+                        let final = Array.isArray(val) ? val[0] : val;
+                        if (typeof final === 'string') {
+                            if (!final.startsWith('http') && !final.startsWith('//')) return `https://${final}`;
+                            if (final.startsWith('//')) return `https:${final}`;
+                            return final;
+                        }
+                        return null;
+                    };
+
+                    let imgUrl = 'https://placehold.co/400x600/1f2937/FFF?text=No+Image';
+
+                    if (type === 'episode') {
+                         imgUrl = get('images.screenshot.medium', media) || 
+                               get('images.screenshot.full', media) || 
+                               get('images.screenshot', media) ||      
+                               get('images.thumb.medium', media) || 
+                               get('images.thumb.full', media) || 
+                               get('images.thumb', media) ||           
+                               get('images.fanart.medium', item.show) || 
+                               get('images.fanart.full', item.show) || 
+                               get('images.fanart', item.show) ||      
+                               imgUrl;
+                    } else if (type === 'movie') {
+                         imgUrl = get('images.fanart.medium', media) || 
+                               get('images.fanart.full', media) || 
+                               get('images.fanart', media) ||          
+                               get('images.thumb.medium', media) || 
+                               get('images.thumb.full', media) || 
+                               get('images.thumb', media) ||           
+                               imgUrl;
+                    }
+                    
+                    if (imgUrl.includes('placehold.co') || !imgUrl) {
+                         if (type === 'episode' && item.show) {
+                            imgUrl = get('images.poster.medium', item.show) || 
+                                  get('images.poster.full', item.show) || 
+                                  get('images.poster', item.show) || 
+                                  imgUrl;
+                         } else {
+                            imgUrl = get('images.poster.medium', media) || 
+                                  get('images.poster.full', media) || 
+                                  get('images.poster', media) || 
+                                  imgUrl;
+                         }
+                    }
+
+                    // --- 3. Render (With Date & Time) ---
+                    const title = type === 'episode' ? `${item.show.title}: ${data.title}` : data.title;
+                    const watchedDate = new Date(item.watched_at);
+                    const dateStr = watchedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                    const timeStr = watchedDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+                    ui.videoContainer.innerHTML = `
+                        <div class="flex items-center gap-3 h-full px-1 w-full text-left relative">
+                            <div class="relative flex-shrink-0">
+                                <img src="${imgUrl}" class="w-16 h-10 rounded-md object-cover shadow-sm bg-gray-800" onerror="this.src='https://placehold.co/400x600/1f2937/FFF?text=Error'">
+                                ${ratingBadge}
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <p class="font-bold truncate text-xs text-[var(--text-primary)]" title="${title}">${title}</p>
+                                <p class="text-[10px] text-[var(--text-secondary)] truncate">
+                                    ${type === 'episode' ? `S${data.season}E${data.number}` : data.year} 
+                                    <span class="mx-1">•</span> 
+                                    <span class="text-[9px] opacity-80">Watched ${dateStr} at ${timeStr}</span>
+                                </p>
+                            </div>
+                        </div>`;
+                } else {
+                     ui.videoContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic">No watch history.</p>`;
+                }
+            } catch (e) {
+                console.error("VidTrackr Widget Error:", e);
+                ui.videoContainer.innerHTML = `<p class="text-xs text-red-400 italic">Connection error</p>`;
+            }
+        }
 
         // --- Weather Logic (Inline) ---
         async function fetchWeather(uid) {
@@ -838,38 +963,121 @@
 
         // --- TickTick Logic ---
         async function fetchTickTickCount(accessToken) {
-            try {
-                // 1. Get Project List to find Inbox
-                const projRes = await fetch(`${TICKTICK_API_URL}/project`, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                });
-                
-                if (projRes.status === 401) throw new Error('Unauthorized');
-                const projects = await projRes.json();
-                
-                const inbox = projects.find(p => p.kind === 'inbox' || p.name === 'Inbox');
-                const inboxId = inbox ? inbox.id : 'inbox';
-                
-                // 2. Get Tasks in Inbox
-                const taskRes = await fetch(`${TICKTICK_API_URL}/project/${inboxId}/data`, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                });
-                
-                const data = await taskRes.json();
-                const tasks = data.tasks || [];
-                // Count active tasks (status 0)
-                const count = tasks.filter(t => t.status === 0).length;
-                
-                ui.inboxCount.textContent = count;
-                ui.inboxCount.classList.remove('text-gray-400');
-                ui.inboxCount.classList.add('text-blue-500');
+    try {
+        const projRes = await fetch(`${TICKTICK_API_URL}/project`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+        if (projRes.status === 401) throw new Error('Unauthorized');
+        const projects = await projRes.json();
+        const inbox = projects.find(p => p.kind === 'inbox' || p.name === 'Inbox');
+        const inboxId = inbox ? inbox.id : 'inbox';
+        
+        const taskRes = await fetch(`${TICKTICK_API_URL}/project/${inboxId}/data`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+        const data = await taskRes.json();
+        const tasks = (data.tasks || []).filter(t => t.status === 0);
+        
+        ui.inboxContainer.innerHTML = '';
+        if(tasks.length > 0) {
+             ui.inboxContainer.classList.remove('justify-center', 'items-center');
+             ui.inboxContainer.classList.add('justify-start', 'items-start');
+             
+             // Count Header
+             ui.inboxContainer.innerHTML += `<div class="w-full flex justify-between items-center mb-2 pb-1 border-b border-[var(--border-color)]"><span class="text-xs font-bold text-gray-500">Inbox</span><span class="text-xs font-bold text-blue-500">${tasks.length}</span></div>`;
 
-            } catch (e) {
-                console.error("TickTick Error", e);
-                ui.inboxCount.textContent = '?';
-                ui.inboxCount.classList.add('text-gray-400');
-            }
+             // Task List (Top 3)
+             const list = document.createElement('div');
+             list.className = "w-full space-y-1.5";
+             tasks.slice(0, 3).forEach(t => {
+                 list.innerHTML += `<div class="flex items-start gap-2 text-xs"><i class="far fa-square text-gray-400 mt-0.5"></i> <span class="truncate leading-tight">${t.title}</span></div>`;
+             });
+             ui.inboxContainer.appendChild(list);
+             
+             if(tasks.length > 3) {
+                 ui.inboxContainer.innerHTML += `<p class="text-[9px] text-gray-400 mt-2 w-full text-center">+${tasks.length - 3} more</p>`;
+             }
+        } else {
+            ui.inboxContainer.classList.add('justify-center', 'items-center');
+            ui.inboxContainer.innerHTML = `<i class="fas fa-check-circle text-3xl text-green-200 dark:text-green-900 mb-1"></i><p class="text-xs text-gray-400">All caught up!</p>`;
         }
+    } catch (e) {
+        console.error("TickTick Error", e);
+        ui.inboxContainer.innerHTML = '<span class="text-gray-400 text-xs">Error loading tasks</span>';
+    }
+}
+
+const renderPlantsWidget = () => {
+    const now = new Date();
+    let thirsty = [];
+    
+    state.plants.forEach(plant => {
+        if (plant.health === 'sick' || !plant.waterFreq) return;
+        if (plant.snoozeUntil && plant.snoozeUntil.toDate() > now) return;
+
+        const logs = state.plantLogs.filter(l => l.plantId === plant.id && l.type === 'Water');
+        const lastWater = logs.length > 0 ? new Date(logs[0].date) : (plant.acquired ? new Date(plant.acquired) : new Date(0));
+        
+        const daysOverdue = Math.floor(((now - lastWater) / (1000 * 60 * 60 * 24)) - plant.waterFreq);
+        
+        if (daysOverdue >= 0) {
+            thirsty.push({ name: plant.name, days: daysOverdue, icon: plant.icon || 'fa-leaf' });
+        }
+    });
+
+    thirsty.sort((a,b) => b.days - a.days);
+    ui.plantContainer.innerHTML = '';
+    
+    if (thirsty.length === 0) {
+         ui.plantContainer.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-green-500 opacity-60"><i class="fas fa-check-circle text-3xl mb-1"></i><span class="text-xs font-bold">All Good</span></div>`;
+    } else {
+        thirsty.slice(0, 10).forEach(p => {
+            ui.plantContainer.innerHTML += `
+                <div class="flex justify-between items-center p-1.5 rounded-lg mb-1 bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/30">
+                    <div class="flex items-center gap-2 min-w-0"><i class="fa-solid ${p.icon} text-green-600 text-[10px]"></i><span class="text-xs font-semibold truncate">${p.name}</span></div>
+                    <span class="text-[9px] font-bold text-red-500 whitespace-nowrap">${p.days > 0 ? p.days + 'd late' : 'Due'}</span>
+                </div>`;
+        });
+    }
+};
+
+const renderPetsWidget = () => {
+    const now = new Date();
+    let reminders = [];
+
+    state.pets.forEach(pet => {
+        (pet.assignedTreatments || []).forEach(assigned => {
+            const treatment = state.petTreatments.find(t => t.id === assigned.treatmentId);
+            if(!treatment) return;
+
+            const lastEvent = state.petEvents
+                .filter(e => e.petId === pet.id && e.type === treatment.name)
+                .sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+            
+            const baseDate = lastEvent ? new Date(lastEvent.date) : new Date(assigned.startDate);
+            const nextDate = new Date(baseDate);
+            nextDate.setDate(nextDate.getDate() + parseInt(treatment.frequencyDays));
+            
+            const diffDays = Math.ceil((nextDate - now) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays <= 14) { 
+                reminders.push({ pet: pet.name, task: treatment.name, date: nextDate, days: diffDays, icon: pet.icon || 'fa-paw' });
+            }
+        });
+    });
+
+    reminders.sort((a,b) => a.days - b.days);
+    ui.petsList.innerHTML = '';
+    
+    if (reminders.length === 0) {
+        ui.petsList.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">No upcoming tasks.</p>`;
+    } else {
+        reminders.forEach(r => {
+            let color = r.days < 0 ? 'text-red-600 bg-red-50 dark:bg-red-900/20' : 'text-[var(--text-primary)] bg-gray-50 dark:bg-gray-800';
+            ui.petsList.innerHTML += `
+                <div class="flex justify-between items-center p-2 rounded-lg text-xs ${color} mb-1">
+                    <div class="flex items-center gap-2 min-w-0"><i class="fas ${r.icon} opacity-70"></i><div class="flex flex-col min-w-0"><span class="font-bold truncate">${r.task}</span><span class="text-[10px] opacity-75 truncate">${r.pet}</span></div></div>
+                    <div class="text-right whitespace-nowrap ml-2"><div class="font-bold">${r.days < 0 ? 'Overdue' : r.days + 'd'}</div><div class="text-[9px] opacity-75">${r.date.toLocaleDateString(undefined, {month:'short', day:'numeric'})}</div></div>
+                </div>`;
+        });
+    }
+};
 
         // --- Last.fm Logic ---
         async function fetchLastFm(username) {
@@ -921,110 +1129,7 @@
             }
         }
 
-        // --- VidTrackr Logic ---
-        async function fetchTraktHistory(accessToken) {
-            try {
-                const response = await fetch(`${TRAKT_API_URL}/sync/history?limit=1&extended=images`, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'trakt-api-version': '2',
-                        'trakt-api-key': TRAKT_CLIENT_ID,
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                });
-
-                if (response.status === 401) {
-                    ui.videoContainer.innerHTML = `
-                        <div class="w-full text-center flex flex-col justify-center h-full">
-                            <p class="text-xs text-red-500 font-bold mb-1">Session Expired</p>
-                            <a href="/vidtrackr" class="text-[10px] text-[var(--text-secondary)] underline hover:text-[var(--text-primary)]">Reconnect</a>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                if (!response.ok) throw new Error('Failed to fetch Trakt history');
-                const data = await response.json();
-                
-                if (data.length > 0) {
-                    const item = data[0];
-                    const type = item.type;
-                    const media = item[type];
-                    
-                    const get = (path, obj) => {
-                        const val = path.split('.').reduce((acc, part) => acc && acc[part], obj);
-                        let final = Array.isArray(val) ? val[0] : val;
-                        
-                        if (typeof final === 'string') {
-                            if (!final.startsWith('http') && !final.startsWith('//')) {
-                                return `https://${final}`;
-                            }
-                            if (final.startsWith('//')) {
-                                return `https:${final}`;
-                            }
-                            return final;
-                        }
-                        return null;
-                    };
-
-                    let img = 'https://placehold.co/400x600/1f2937/FFF?text=No+Image';
-
-                    if (type === 'episode') {
-                         img = get('images.screenshot.medium', media) || 
-                               get('images.screenshot.full', media) || 
-                               get('images.screenshot', media) ||      
-                               get('images.thumb.medium', media) || 
-                               get('images.thumb.full', media) || 
-                               get('images.thumb', media) ||           
-                               get('images.fanart.medium', item.show) || 
-                               get('images.fanart.full', item.show) || 
-                               get('images.fanart', item.show) ||      
-                               img;
-                    } else if (type === 'movie') {
-                         img = get('images.fanart.medium', media) || 
-                               get('images.fanart.full', media) || 
-                               get('images.fanart', media) ||          
-                               get('images.thumb.medium', media) || 
-                               get('images.thumb.full', media) || 
-                               get('images.thumb', media) ||           
-                               img;
-                    }
-                    
-                    if (img.includes('placehold.co') || !img) {
-                         if (type === 'episode' && item.show) {
-                            img = get('images.poster.medium', item.show) || 
-                                  get('images.poster.full', item.show) || 
-                                  get('images.poster', item.show) || 
-                                  img;
-                         } else {
-                            img = get('images.poster.medium', media) || 
-                                  get('images.poster.full', media) || 
-                                  get('images.poster', media) || 
-                                  img;
-                         }
-                    }
-
-                    const title = type === 'episode' ? `${item.show.title}` : media.title;
-                    const subtitle = type === 'episode' ? `S${item.episode.season}E${item.episode.number}: ${item.episode.title}` : (media.year || 'Movie');
-
-                    ui.videoContainer.innerHTML = `
-                        <img src="${img}" class="w-16 h-10 rounded-md object-cover shadow-sm bg-gray-800" onerror="this.src='https://placehold.co/400x600/1f2937/FFF?text=Error'">
-                        <div class="min-w-0 flex-grow">
-                            <p class="font-bold truncate text-xs" title="${title}">${title}</p>
-                            <p class="text-[10px] text-[var(--text-secondary)] truncate" title="${subtitle}">${subtitle}</p>
-                            <p class="text-[9px] text-[var(--text-secondary)] mt-0.5 flex items-center gap-1">
-                                <i class="fas fa-check text-green-500"></i> ${new Date(item.watched_at).toLocaleDateString()}
-                            </p>
-                        </div>
-                    `;
-                } else {
-                    ui.videoContainer.innerHTML = `<div class="w-full text-center text-[var(--text-secondary)] italic text-sm">No watch history found.</div>`;
-                }
-            } catch (err) {
-                console.error(err);
-                ui.videoContainer.innerHTML = `<div class="w-full text-center text-red-400 italic text-xs">Failed to load.</div>`;
-            }
-        }
+        
 
         // --- Helper for Warranty Dates ---
 const calculateWarrantyExpiry = (start, len, unit) => {
@@ -1092,6 +1197,49 @@ const calculateWarrantyExpiry = (start, len, unit) => {
             }));
 
             // --- Inside setupListeners(uid) ---
+
+            // 1. PETS LISTENERS
+unsubscribers.push(onSnapshot(collection(db, `users/${uid}/pets`), s => {
+    state.pets = s.docs.map(d => ({id:d.id, ...d.data()})); renderPetsWidget();
+}));
+unsubscribers.push(onSnapshot(collection(db, `users/${uid}/pet_treatments`), s => {
+    state.petTreatments = s.docs.map(d => ({id:d.id, ...d.data()})); renderPetsWidget();
+}));
+unsubscribers.push(onSnapshot(query(collection(db, `users/${uid}/pet_events`), orderBy('date', 'desc'), limit(50)), s => {
+    state.petEvents = s.docs.map(d => ({id:d.id, ...d.data()})); renderPetsWidget();
+}));
+
+// 2. PLANTS LISTENERS
+unsubscribers.push(onSnapshot(collection(db, `users/${uid}/plants`), s => {
+    state.plants = s.docs.map(d => ({id:d.id, ...d.data()})); renderPlantsWidget();
+}));
+// We only need the latest Water logs to know if they are thirsty
+unsubscribers.push(onSnapshot(query(collection(db, `users/${uid}/plant_logs`), where('type', '==', 'Water'), orderBy('date', 'desc'), limit(100)), s => {
+    state.plantLogs = s.docs.map(d => ({id:d.id, ...d.data()})); renderPlantsWidget();
+}));
+
+// 3. RECIPE SUGGESTIONS (Replace your existing 'recipes' listener with this)
+const cookQ = query(collection(db, `users/${uid}/recipes`), orderBy('lastCooked', 'desc'), limit(5));
+unsubscribers.push(onSnapshot(cookQ, (snap) => {
+    if (!snap.empty) {
+        const lastData = snap.docs[0].data();
+        const daysSince = Math.floor((new Date() - new Date(lastData.lastCooked.replace(' ', 'T')))/(1000*60*60*24));
+
+        if(daysSince > 3) {
+                // Suggest random recipe from top 5
+                const randomRec = snap.docs[Math.floor(Math.random() * snap.docs.length)].data();
+                ui.cookingContainer.innerHTML = `<div class="text-center p-1"><p class="text-[10px] text-[var(--text-secondary)] mb-1">Hungry? Try this:</p><p class="font-bold text-xs text-teal-600 truncate">${randomRec.name}</p></div>`;
+        } else {
+            // Show last cooked
+            const img = lastData.lastCookedImage || lastData.imageUrl || 'https://placehold.co/100x100/e2e8f0/adb5bd?text=Food';
+            ui.cookingContainer.innerHTML = `<div class="flex items-center gap-3 h-full px-1 text-left w-full"><img src="${img}" class="w-12 h-12 rounded-md object-cover shadow-sm bg-gray-100 flex-shrink-0"><div class="min-w-0"><p class="font-bold truncate text-xs">${lastData.name}</p><p class="text-[10px] text-[var(--text-secondary)] truncate">Cooked ${daysSince === 0 ? 'Today' : daysSince + 'd ago'}</p></div></div>`;
+        }
+    } else {
+        ui.cookingContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic">No recent cooks.</p>`;
+    }
+}));
+
+
 
     // 1. WarrantyTrackr Listener
     unsubscribers.push(onSnapshot(collection(db, `users/${uid}/warranties`), (snap) => {
@@ -1186,36 +1334,36 @@ const calculateWarrantyExpiry = (start, len, unit) => {
         }
     }));
 
-            const podQ = query(collection(db, `users/${uid}/history`), orderBy('listenedAt', 'desc'), limit(1));
-            unsubscribers.push(onSnapshot(podQ, (snap) => {
-                if (!snap.empty) {
-                    const pod = snap.docs[0].data();
-                    ui.podcastContainer.innerHTML = `
-                        <div class="flex items-center gap-3 h-full px-1 text-left w-full">
-                            <img src="${pod.podcastArtwork}" class="w-12 h-12 rounded-md object-cover shadow-sm bg-gray-100 flex-shrink-0">
-                            <div class="min-w-0">
-                                <p class="font-bold truncate text-xs" title="${pod.episodeTitle}">${pod.episodeTitle}</p>
-                                <p class="text-[10px] text-[var(--text-secondary)] truncate" title="${pod.podcastTitle}">${pod.podcastTitle}</p>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                     ui.podcastContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic">No podcast history.</p>`;
-                }
-            }));
+   
 
-            // PlantManagr Listener
-unsubscribers.push(onSnapshot(collection(db, `users/${uid}/plants`), async (snap) => {
-    // Note: To be perfectly accurate, this requires fetching logs too, 
-    // but for a dashboard widget, we can approximate or do a heavier fetch if needed.
-    // For now, let's just count plants to verify connection.
-    // To implement logic similar to PlantManagr, you would need to fetch the 'plant_logs' collection here as well.
-    
-    // Simple count for now:
-    const count = snap.size;
-    document.getElementById('thirsty-count').textContent = count;
-    document.getElementById('thirsty-count').nextElementSibling.textContent = "Total Plants";
+            // --- PodTrackr Widget (History & Ratings) ---
+const podQ = query(collection(db, `users/${uid}/history`), orderBy('listenedAt', 'desc'), limit(1));
+unsubscribers.push(onSnapshot(podQ, (snap) => {
+    if (!snap.empty) {
+        const data = snap.docs[0].data();
+        const rating = data.rating || 0;
+        
+        // Generate Star Rating HTML
+        let starsHtml = '';
+        for (let i = 1; i <= 5; i++) {
+            starsHtml += `<i class="fas fa-star text-[10px] ${i <= rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}"></i>`;
+        }
+
+        ui.podcastContainer.innerHTML = `
+            <div class="flex items-center gap-3 h-full px-1 w-full text-left">
+                <img src="${data.podcastArtwork}" class="w-12 h-12 rounded-md object-cover shadow-sm bg-gray-100 flex-shrink-0">
+                <div class="min-w-0 flex-1">
+                    <p class="font-bold truncate text-xs text-[var(--text-primary)]" title="${data.episodeTitle}">${data.episodeTitle}</p>
+                    <p class="text-[10px] text-[var(--text-secondary)] truncate mb-0.5">${data.podcastTitle}</p>
+                    <div class="flex gap-0.5">${starsHtml}</div>
+                </div>
+            </div>`;
+    } else {
+        ui.podcastContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic">No recent listens.</p>`;
+    }
 }));
+
+           
 
             // --- Sourdough Listener ---
             // 1. Get Birthday for Age
@@ -1261,7 +1409,6 @@ unsubscribers.push(onSnapshot(collection(db, `users/${uid}/plants`), async (snap
 
             // NEW: Listener for Recently Cooked Recipe
         // This queries recipes that have the 'lastCooked' field, sorted descending
-        const cookQ = query(collection(db, `users/${uid}/recipes`), orderBy('lastCooked', 'desc'), limit(1));
         unsubscribers.push(onSnapshot(cookQ, (snap) => {
             if (!snap.empty) {
                 const recipe = snap.docs[0].data();
@@ -1386,7 +1533,7 @@ unsubscribers.push(onSnapshot(collection(db, `users/${uid}/plants`), async (snap
 
                 getDoc(doc(db, 'users', user.uid, 'services', 'trakt')).then(snap => {
                     if (snap.exists() && snap.data().accessToken) {
-                        fetchTraktHistory(snap.data().accessToken);
+                        updateVidTrackrWidget(snap.data().accessToken); // <--- Add this line
                     } else {
                         ui.videoContainer.innerHTML = `<div class="w-full text-center text-sm text-[var(--text-secondary)]">VidTrackr not connected.</div>`;
                     }

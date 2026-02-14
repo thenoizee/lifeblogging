@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v10.66.0-alpha",
+    date: "2026-02-14",
+    changes: [
+        "In Dashboard: Added new 'Pets' widget to track upcoming flea and worming treatments based on PetManagr schedules.",
+        "In Dashboard: Upgraded 'Garden' widget to list specific thirsty plants and overdue watering tasks instead of a generic count.",
+        "In Dashboard: Upgraded 'Inbox' widget to sync and display the top 3 active tasks from TickTick.",
+        "In Dashboard: Upgraded 'Kitchen' widget to display the last cooked meal with images or offer a random recipe suggestion.",
+        "In Dashboard: Enhanced 'VidTrackr' widget to include 1-10 rating badges and precise 'watched at' timestamps.",
+        "In Dashboard: Enhanced 'PodTrackr' widget to display 5-star user ratings for the most recent listen.",
+    ]
+    },
+    {
     version: "v10.65.0-alpha",
     date: "2026-02-14",
     changes: [
@@ -9,7 +21,7 @@ export const changelogData = [
         "In Timestamp Converter: Added 'Cloud Alarms' feature, allowing users to set and manage synchronized alarms.",
         "In Timestamp Converter: Added 'Cloud Timers', a shared countdown timer system that persists active states.",
         "In Timestamp Converter: Implemented 'Sync Stopwatch' which tracks the exact start time and timezone, ensuring continuity across sessions.",
-        "In Timestamp Converter: Renamed app to simply 'Time Tool' in preparation for future updates."
+        "In Timestamp Converter: Renamed Timestamp Converter to simply 'Time Tool' in preparation for future updates."
     ]
     },
     {
