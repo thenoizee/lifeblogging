@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.64.0-alpha",
+    date: "2026-02-14",
+    changes: [
+        "In Hub: Updated the descriptions of some apps.",
+        "In Account: Updated the Data Export configuration to include previously missing applications: TaskTrackr, VehicleManagr, PlantTrackr, PetManagr, and Palette Generator.",
+        "In Account: Expanded export definitions for VidTrackr (Notes, Custom Lists) and RecipeManagr (Recipe Books) to ensure comprehensive data backups."
+    ]
+    },
+    {
     version: "v10.63.0-alpha",
     date: "2026-02-14",
     changes: [
