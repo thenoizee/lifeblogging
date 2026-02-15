@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v10.67.0-alpha",
+    date: "2026-02-15",
+    changes: [
+        "In RouteTrackr: Initial release of the RouteTrackr App.",
+        "In RouteTrackr: Smart Routing Engine toggles seamlessly between 'Snap-to-Road' for precise turn-by-turn navigation and 'As-the-Crow-Flies' for off-grid plotting.",
+        "In RouteTrackr: Interactive Elevation Analysis visualizes terrain with a dynamic grade chart that highlights the exact corresponding location on the map when hovered.",
+        "In RouteTrackr: Amenity Radar scans the visible map area to instantly locate essential POIs like drinking water, restrooms, cafes, and fuel stations.",
+        "In RouteTrackr: Live Weather Intelligence fetches real-time temperature, wind speed, and sky conditions for the route's starting location.",
+        "In RouteTrackr: Turn-by-Turn Cue Sheet generates a detailed list of navigation maneuvers and distances for road-based routes.",
+        "In RouteTrackr: Adaptive Pace Estimator calculates estimated completion times based on specific activity profiles including Hiking, Running, and Cycling.",
+    ]
+    },
+    {
     version: "v10.66.0-alpha",
     date: "2026-02-14",
     changes: [
