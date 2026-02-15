@@ -7,11 +7,12 @@ export class AppNavigation {
         this.activeTab = config.activeTab || '';
         this.userEmail = config.userEmail || 'Guest';
         this.version = config.version || '';
-        this.search = config.search || null; // NEW: Search Config
-        this.onThemeChange = config.onThemeChange || null; // <--- ADD THIS
+        this.search = config.search || null; 
+        this.onThemeChange = config.onThemeChange || null;
         
         this.hubApps = [
             { name: 'Dashboard', url: '/dashboard', icon: 'fa-gauge-high', color: 'bg-slate-700' },
+            { name: 'RouteTrackr', url: '/routetrackr', icon: 'fa-map-location-dot', color: 'bg-lime-600' }, // <--- ADDED HERE
             { name: 'FoodTrackr', url: '/foodtrackr', icon: 'fa-utensils', color: 'bg-orange-600' },
             { name: 'RecipeManagr', url: '/recipemanagr', icon: 'fa-book-open', color: 'bg-teal-600' },
             { name: 'TaskTrackr', url: '/tasktrackr', icon: 'fa-check-double', color: 'bg-blue-600' },
@@ -23,13 +24,24 @@ export class AppNavigation {
             { name: 'Hydration', url: '/hydrationtrackr', icon: 'fa-droplet', color: 'bg-cyan-600' },
             { name: 'Vehicle', url: '/vehiclemanagr', icon: 'fa-car-tunnel', color: 'bg-zinc-600' },
             { name: 'Warranty', url: '/warrantytrackr', icon: 'fa-shield-halved', color: 'bg-emerald-600' },
-            { name: 'PetManagr', url: '/petmanagr', icon: 'fa-paw', color: 'bg-indigo-600' }, // <--- ADD THIS
+            { name: 'PetManagr', url: '/petmanagr', icon: 'fa-paw', color: 'bg-indigo-600' },
             { name: 'PlantTrackr', url: '/planttrackr', icon: 'fa-leaf', color: 'bg-green-600' },
+        ];
+
+        this.hubTools = [
+            { name: 'Account', url: '/account', icon: 'fa-user-gear', color: 'bg-gray-600' },
+            { name: 'Text Generator', url: '/work', icon: 'fa-envelope-open-text', color: 'bg-fuchsia-600' },
+            { name: 'Label Generator', url: '/labelgenerator', icon: 'fa-print', color: 'bg-lime-600' },
+            { name: 'PDF Tools', url: '/pdftools', icon: 'fa-file-pdf', color: 'bg-rose-600' },
+            { name: 'Time Tool', url: '/time', icon: 'fa-clock', color: 'bg-sky-600' },
+            { name: 'Converter', url: '/converter', icon: 'fa-exchange-alt', color: 'bg-amber-600' },
+            { name: 'Palette Generator', url: '/palette', icon: 'fa-palette', color: 'bg-emerald-600' },
+            { name: 'Icon Generator', url: '/icongenerator', icon: 'fa-box', color: 'bg-pink-400' },
         ];
 
         this.init();
     }
-
+    // ... [Rest of class remains the same] ...
     init() {
         this.injectGlobalStyles();
         this.renderHeader();
@@ -93,20 +105,34 @@ export class AppNavigation {
                                 </button>
                             </div>
 
-                            <div id="hub-dropdown-menu" class="hidden absolute top-full left-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 p-3 grid grid-cols-3 gap-2 z-[100] transform origin-top-left transition-all duration-200">
-                                ${this.hubApps.map(app => {
-                                    const isCurrent = app.name === this.appName;
-                                    const pointerClass = isCurrent ? 'cursor-default opacity-50 ring-2 ring-gray-200 dark:ring-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer group/item';
-                                    
-                                    return `
-                                    <a href="${isCurrent ? '#' : app.url}" class="flex flex-col items-center justify-center p-2 rounded-lg transition-all text-center ${pointerClass}">
-                                        <div class="${app.color} text-white w-8 h-8 rounded-full flex items-center justify-center mb-1 shadow-sm ${!isCurrent ? 'group-hover/item:scale-110' : ''} transition-transform">
-                                            <i class="fa-solid ${app.icon} text-xs"></i>
-                                        </div>
-                                        <span class="text-[10px] font-semibold text-gray-600 dark:text-gray-300 truncate w-full">${app.name}</span>
-                                    </a>
-                                    `;
-                                }).join('')}
+                            <div id="hub-dropdown-menu" class="hidden absolute top-full left-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 p-3 z-[100] transform origin-top-left transition-all duration-200 flex flex-col gap-3">
+                                
+                                <div class="grid grid-cols-3 gap-2">
+                                    ${this.hubApps.map(app => {
+                                        const isCurrent = app.name === this.appName;
+                                        const pointerClass = isCurrent ? 'cursor-default opacity-50 ring-2 ring-gray-200 dark:ring-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer group/item';
+                                        
+                                        return `
+                                        <a href="${isCurrent ? '#' : app.url}" class="flex flex-col items-center justify-center p-2 rounded-lg transition-all text-center ${pointerClass}">
+                                            <div class="${app.color} text-white w-8 h-8 rounded-full flex items-center justify-center mb-1 shadow-sm ${!isCurrent ? 'group-hover/item:scale-110' : ''} transition-transform">
+                                                <i class="fa-solid ${app.icon} text-xs"></i>
+                                            </div>
+                                            <span class="text-[10px] font-semibold text-gray-600 dark:text-gray-300 truncate w-full">${app.name}</span>
+                                        </a>
+                                        `;
+                                    }).join('')}
+                                </div>
+
+                                <div class="border-t border-gray-100 dark:border-gray-700 pt-2">
+                                    <div class="grid grid-cols-8 gap-1 justify-items-center">
+                                        ${this.hubTools.map(tool => `
+                                        <a href="${tool.url}" class="${tool.color} text-white w-6 h-6 rounded-full flex items-center justify-center hover:opacity-80 transition-opacity" title="${tool.name}">
+                                            <i class="fa-solid ${tool.icon} text-[10px]"></i>
+                                        </a>
+                                        `).join('')}
+                                    </div>
+                                </div>
+
                             </div>
                         </div>
 
@@ -249,11 +275,9 @@ export class AppNavigation {
             themeBtn.addEventListener('click', () => {
                 const isDark = !document.documentElement.classList.contains('dark');
                 this.applyTheme(isDark);
-                // <--- ADD THIS BLOCK --->
                 if (this.onThemeChange) {
                     this.onThemeChange(isDark ? 'dark' : 'light');
                 }
-                // <--- END ADD BLOCK --->
                 themeBtn.classList.add('rotate-360');
                 setTimeout(() => themeBtn.classList.remove('rotate-360'), 500);
             });

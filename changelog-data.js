@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v10.69.0-alpha",
+    date: "2026-02-15",
+    changes: [
+        "In Hub: Added 'RouteTrackr' to the main dashboard application grid.",
+        "In Hub: Reorganized the dashboard layout into distinct categories: 'Daily & Tracking', 'Media', and 'Management' for better navigation.",
+        "In Shared Nav: Added 'RouteTrackr' to the global navigation dropdown menu.",
+        "In Shared Nav: Redesigned the Hub dropdown menu to separate primary applications from utilities.",
+        "In Shared Nav: Compacted the 'Utilities' section in the dropdown into a streamlined row of icon-only buttons."
+    ]
+    },
+    {
     version: "v10.68.0-alpha",
     date: "2026-02-15",
     changes: [
