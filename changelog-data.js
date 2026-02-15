@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.68.0-alpha",
+    date: "2026-02-15",
+    changes: [
+        "In Dashboard: Replaced the 'Account' button with a direct 'Hub' home button in the main header.",
+        "In TaskTrackr: Implemented a full-screen 'Syncing Tasks' loading overlay with a bouncing icon to mask the initial data fetch.",
+        "In MediManagr: Added a branded 'Opening Cabinet' full-screen loading sequence to prevent unstyled content flashes on startup."
+    ]
+    },
+    {
     version: "v10.67.1-alpha",
     date: "2026-02-15",
     changes: [
