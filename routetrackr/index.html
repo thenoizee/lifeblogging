@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RouteTrackr</title>
+    <link rel="icon" href="../favicons/map-location-dot.svg"> <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#65a30d', // Lime-600 to match theme
+                        'primary-hover': '#4d7c0f',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --card-bg-color: #ffffff;
+            --text-color-primary: #0f172a;
+            --text-color-secondary: #64748b;
+            --input-bg-color: #f1f5f9;
+            --border-color: #e2e8f0;
+            --shadow-subtle: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        html.dark {
+            --bg-color: #0f172a;
+            --card-bg-color: #1f2937;
+            --text-color-primary: #f8fafc;
+            --text-color-secondary: #94a3b8;
+            --input-bg-color: #374151;
+            --border-color: #374151;
+            --shadow-subtle: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Standard Inputs/Buttons */
+        input, textarea, select {
+            width: 100%; padding: 10px; border: 1px solid var(--border-color);
+            background-color: var(--input-bg-color); color: var(--text-color-primary);
+            border-radius: 8px; outline: none; transition: all 0.2s;
+        }
+        input:focus, textarea:focus, select:focus { border-color: #65a30d; ring: 2px solid rgba(101, 163, 13, 0.2); }
+
+        button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; cursor: pointer; }
+        .main-button { background-color: #65a30d; color: white; padding: 10px 18px; border-radius: 8px; font-weight: 600; }
+        .main-button:hover { background-color: #4d7c0f; }
+        .secondary-button { background-color: var(--card-bg-color); border: 1px solid var(--border-color); color: var(--text-color-primary); padding: 8px 16px; border-radius: 8px; font-weight: 500; }
+        .secondary-button:hover { background-color: var(--input-bg-color); }
+        .destructive-button { background-color: #ef4444; color: white; padding: 8px 16px; border-radius: 8px; }
+        .destructive-button:hover { background-color: #dc2626; }
+        
+        /* Map Specifics */
+        #map-wrapper {
+            position: relative; height: 60vh; min-height: 450px;
+            border-radius: 16px; overflow: hidden;
+            box-shadow: var(--shadow-subtle); border: 1px solid var(--border-color);
+            z-index: 1; /* Lower than nav */
+        }
+        #map-container { height: 100%; width: 100%; z-index: 0; }
+        
+        /* Map Controls Overlay */
+        .map-overlay-controls {
+            position: absolute; top: 15px; right: 15px;
+            display: flex; flex-direction: column; gap: 8px; z-index: 400;
+        }
+        .map-btn {
+            width: 40px; height: 40px; border-radius: 8px;
+            background: var(--card-bg-color); color: var(--text-color-secondary);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); border: 1px solid var(--border-color);
+        }
+        .map-btn:hover { background: var(--input-bg-color); color: #65a30d; }
+        .map-btn.active { background: #65a30d; color: white; border-color: #65a30d; }
+
+        .map-bottom-bar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--card-bg-color); padding: 6px 8px; border-radius: 50px;
+            display: flex; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 400;
+            border: 1px solid var(--border-color);
+        }
+
+        /* Slide-out Panels */
+        #directions-panel {
+            position: fixed; top: 0; right: -100%; width: 100%; max-width: 320px;
+            height: 100vh; background: var(--card-bg-color); z-index: 1000; /* Higher than map, lower than header usually */
+            box-shadow: -5px 0 15px rgba(0,0,0,0.1); transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex; flex-direction: column; border-left: 1px solid var(--border-color);
+            padding-top: 60px; /* Space for Header */
+        }
+        #directions-panel.open { right: 0; }
+
+        /* POI Markers */
+        .poi-icon-wrapper { background: white; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; }
+        .poi-cafe { color: #d97706; border-color: #d97706; }
+        .poi-water { color: #3b82f6; border-color: #3b82f6; }
+        .poi-toilet { color: #64748b; border-color: #64748b; }
+
+        /* Utils */
+        .chart-container { position: relative; height: 160px; width: 100%; margin-top: 15px; background: var(--card-bg-color); padding: 10px; border-radius: 12px; border: 1px solid var(--border-color); }
+        .message-box { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 50px; color: white; font-weight: 600; z-index: 2000; opacity: 0; transition: all 0.3s; pointer-events: none; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .message-box.show { opacity: 1; bottom: 90px; }
+        .message-box.success { background: linear-gradient(135deg, #65a30d, #4d7c0f); }
+        .message-box.loading { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        .message-box.error { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+        
+        .app-hidden { display: none !important; }
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .difficulty-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 12px; font-weight: 800; text-transform: uppercase; }
+        .badge-easy { background: #dcfce7; color: #15803d; } .badge-moderate { background: #fef9c3; color: #a16207; } .badge-hard { background: #ffedd5; color: #c2410c; } .badge-extreme { background: #fee2e2; color: #b91c1c; }
+
+        /* Dark Mode Map Filter */
+        html.dark .leaflet-layer.osm-layer { filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(90%); }
+    </style>
+</head>
+<body>
+
+    <div id="auth-container" class="min-h-screen flex items-center justify-center p-4 bg-[var(--bg-color)] z-[5000] relative">
+        <div class="w-full max-w-md bg-[var(--card-bg-color)] p-8 rounded-2xl shadow-xl border border-[var(--border-color)]">
+            <div class="text-center mb-8">
+                <div class="text-6xl mb-4 text-lime-600"><i class="fa-solid fa-map-location-dot"></i></div>
+                <h1 class="text-2xl font-bold text-lime-600">RouteTrackr</h1>
+                <p class="text-[var(--text-color-secondary)]">Plan your path. Track your journey.</p>
+            </div>
+            <div class="space-y-4">
+                <input id="email" type="email" placeholder="explorer@example.com" />
+                <input id="password" type="password" placeholder="••••••••" />
+                <button id="sign-in-btn" class="main-button w-full justify-center">Start Adventure</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-app-container" class="app-hidden flex flex-col min-h-screen">
+        <main class="flex-grow w-full max-w-7xl mx-auto p-4 md:p-6 mb-20">
+            
+            <div id="tab-content-planner" class="tab-content active">
+                <div class="flex items-center justify-between mb-4 bg-[var(--card-bg-color)] p-3 rounded-xl border border-[var(--border-color)] shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <div id="difficulty-badge" class="difficulty-badge badge-easy">EASY</div>
+                        <div class="text-sm font-semibold text-[var(--text-color-secondary)] border-l border-gray-300 pl-3" id="route-mode-text">New Route</div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="undo-point-btn" class="secondary-button text-xs py-1.5 px-3" title="Undo Last Point"><i class="fa-solid fa-rotate-left"></i></button>
+                        <button id="clear-map-btn" class="secondary-button text-red-500 border-red-200 hover:bg-red-50 text-xs py-1.5 px-3" title="Clear All"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                    <div class="bg-[var(--card-bg-color)] p-4 rounded-xl border border-[var(--border-color)] text-center shadow-sm">
+                        <div class="text-xs font-bold text-[var(--text-color-secondary)] uppercase tracking-wider">Distance</div>
+                        <div class="text-2xl font-black text-lime-600 mt-1"><span id="distance-display">0.00</span><span class="text-base font-normal text-[var(--text-color-secondary)]" id="unit-display">km</span></div>
+                    </div>
+                    <div class="bg-[var(--card-bg-color)] p-4 rounded-xl border border-[var(--border-color)] text-center shadow-sm">
+                        <div class="text-xs font-bold text-[var(--text-color-secondary)] uppercase tracking-wider">Est. Time</div>
+                        <div class="text-2xl font-black text-blue-500 mt-1" id="time-display">0h 00m</div>
+                    </div>
+                    <div class="bg-[var(--card-bg-color)] p-4 rounded-xl border border-[var(--border-color)] text-center shadow-sm">
+                        <div class="text-xs font-bold text-[var(--text-color-secondary)] uppercase tracking-wider">Elevation</div>
+                        <div class="text-2xl font-black text-orange-500 mt-1"><span id="elevation-display">0</span>m</div>
+                    </div>
+                    <div class="bg-[var(--card-bg-color)] p-4 rounded-xl border border-[var(--border-color)] text-center shadow-sm">
+                        <div class="text-xs font-bold text-[var(--text-color-secondary)] uppercase tracking-wider">Descent</div>
+                        <div class="text-2xl font-black text-indigo-500 mt-1"><span id="descent-display">0</span>m</div>
+                    </div>
+                    <div class="bg-[var(--card-bg-color)] p-4 rounded-xl border border-[var(--border-color)] text-center shadow-sm col-span-2 md:col-span-1">
+                        <div class="text-xs font-bold text-[var(--text-color-secondary)] uppercase tracking-wider">Max Grade</div>
+                        <div class="text-2xl font-black text-red-500 mt-1"><span id="grade-display">0</span>%</div>
+                    </div>
+                </div>
+
+                <div id="map-wrapper">
+                    <div id="map-container"></div>
+                    
+                    <div class="map-overlay-controls">
+                        <button class="map-btn" id="locate-me-btn" title="Locate Me"><i class="fa-solid fa-location-crosshairs"></i></button>
+                        <button class="map-btn" id="toggle-layer-btn" title="Switch Map Layer"><i class="fa-solid fa-layer-group"></i></button>
+                        <button class="map-btn" id="weather-btn" title="Route Weather"><i class="fa-solid fa-cloud-sun"></i></button>
+                        <hr class="border-gray-300 w-full my-1">
+                        <button class="map-btn" id="toggle-poi-btn" title="Toggle POI Radar"><i class="fa-solid fa-map-pin"></i></button>
+                        <button class="map-btn" id="toggle-directions-btn" title="Directions"><i class="fa-solid fa-list-ul"></i></button>
+                    </div>
+
+                    <div class="map-bottom-bar">
+                         <button id="snap-toggle-btn" class="secondary-button text-xs py-1 px-3 rounded-full border-lime-500 text-lime-600 bg-lime-50/90 backdrop-blur">
+                            <i class="fa-solid fa-magnet"></i> <span id="snap-status-text">Snap: On</span>
+                        </button>
+                        <button id="close-loop-btn" class="secondary-button text-xs py-1 px-3 rounded-full text-blue-500">
+                            <i class="fa-solid fa-arrows-spin"></i> Loop
+                        </button>
+                    </div>
+                </div>
+
+                <div class="chart-container"><canvas id="elevationChart"></canvas></div>
+
+                <div class="flex flex-wrap justify-end gap-3 mt-6 p-4 bg-[var(--card-bg-color)] rounded-xl border border-[var(--border-color)]">
+                    <input type="file" id="gpx-input" accept=".gpx" class="hidden" />
+                    <button id="import-gpx-btn" class="secondary-button"><i class="fa-solid fa-file-import"></i> Import GPX</button>
+                    <button id="download-gpx-btn" class="secondary-button"><i class="fa-solid fa-file-export"></i> Export GPX</button>
+                    <div class="flex-grow"></div>
+                    <button id="delete-active-route-btn" class="destructive-button hidden"><i class="fa-solid fa-trash-can"></i> Delete</button>
+                    <button id="save-route-modal-btn" class="main-button px-6"><i class="fa-solid fa-floppy-disk"></i> Save Route</button>
+                </div>
+            </div>
+
+            <div id="tab-content-routes" class="tab-content">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">Saved Routes</h2>
+                    <div class="relative w-full max-w-xs">
+                        <input type="text" id="search-routes" placeholder="Search routes..." class="pl-10">
+                        <i class="fa-solid fa-search absolute left-3 top-3.5 text-gray-400"></i>
+                    </div>
+                </div>
+                <div id="routes-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    </div>
+            </div>
+
+            <div id="tab-content-settings" class="tab-content">
+                <div class="max-w-2xl mx-auto bg-[var(--card-bg-color)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm">
+                    <h2 class="text-xl font-bold mb-6 flex items-center gap-2"><i class="fa-solid fa-sliders"></i> Preferences</h2>
+                    
+                    <div class="flex items-center justify-between py-4 border-b border-[var(--border-color)]">
+                        <div>
+                            <div class="font-semibold">Imperial Units</div>
+                            <div class="text-xs text-[var(--text-color-secondary)]">Use miles instead of kilometers</div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="use-miles-checkbox" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-lime-600"></div>
+                        </label>
+                    </div>
+
+                    <div class="py-4 border-b border-[var(--border-color)]">
+                        <div class="font-semibold mb-2">Pace Estimator Profile</div>
+                        <div class="text-xs text-[var(--text-color-secondary)] mb-3">Adjusts estimated time calculations based on activity</div>
+                        <select id="speed-profile-select">
+                            <option value="hiking">🥾 Hiking (3-5 km/h + Vert)</option>
+                            <option value="running">🏃 Running (8-10 km/h + Vert)</option>
+                            <option value="walking">🚶 Casual Walk (4 km/h flat)</option>
+                            <option value="cycling">🚴 Cycling (15-20 km/h)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mt-8 text-center text-sm text-[var(--text-color-secondary)]">
+                        <p class="font-mono text-xs opacity-50">RouteTrackr
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <div id="directions-panel">
+        <div class="flex items-center justify-between p-4 border-b border-[var(--border-color)] bg-[var(--card-bg-color)]">
+            <h3 class="font-bold text-lg flex items-center gap-2"><i class="fa-solid fa-diamond-turn-right text-lime-600"></i> Cue Sheet</h3>
+            <button id="close-directions-btn" class="w-8 h-8 rounded-full hover:bg-[var(--input-bg-color)] flex items-center justify-center text-[var(--text-color-secondary)]"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="directions-list" class="flex-grow overflow-y-auto p-0">
+            </div>
+        <div class="p-3 border-t border-[var(--border-color)] bg-[var(--input-bg-color)] text-[10px] text-center text-[var(--text-color-secondary)]">
+            Routing provided by OSRM
+        </div>
+    </div>
+
+    <div id="save-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden flex justify-center items-center z-[2000] p-4">
+        <div class="bg-[var(--card-bg-color)] p-6 rounded-2xl w-full max-w-md shadow-2xl border border-[var(--border-color)]">
+            <h2 class="text-xl font-bold mb-4">Save Route</h2>
+            <div class="space-y-4">
+                <input id="route-name" type="text" placeholder="Route Name (e.g., Morning Run)" />
+                <textarea id="route-notes" rows="3" placeholder="Description or notes..."></textarea>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button id="cancel-save-btn" class="secondary-button">Cancel</button>
+                <button id="confirm-save-btn" class="main-button">Save Route</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="weather-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden flex justify-center items-center z-[2000] p-4">
+        <div class="bg-[var(--card-bg-color)] p-6 rounded-2xl w-full max-w-xs shadow-2xl border border-[var(--border-color)] text-center relative">
+            <button id="close-weather-btn" class="absolute top-2 right-3 text-gray-400 hover:text-gray-600"><i class="fa-solid fa-xmark"></i></button>
+            <h2 class="text-lg font-bold mb-1">Forecast</h2>
+            <div class="text-xs text-gray-500 mb-4">At Start Point</div>
+            <div id="weather-content" class="py-2">
+                <div class="text-5xl mb-3" id="weather-icon">--</div>
+                <div class="text-3xl font-bold text-lime-600 mb-1" id="weather-temp">--°C</div>
+                <div class="text-[var(--text-color-secondary)] font-medium" id="weather-desc">Fetching...</div>
+                <div class="text-sm text-[var(--text-color-secondary)] mt-4 pt-4 border-t border-[var(--border-color)] flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-wind"></i> <span id="weather-wind">-- km/h</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-box" class="message-box"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, doc, deleteDoc, updateDoc, query, orderBy, onSnapshot, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { AppNavigation } from '../shared-nav.js';
+
+        // --- Firebase Init ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
+            authDomain: "sammy-7298f.firebaseapp.com",
+            projectId: "sammy-7298f",
+            storageBucket: "sammy-7298f.firebasestorage.app",
+            messagingSenderId: "963185683535",
+            appId: "1:963185683535:web:807df8941feba46c208e3a",
+        };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- State ---
+        const state = {
+            user: null,
+            map: null,
+            layers: { osm: null, satellite: null, terrain: null },
+            currentLayer: 'osm',
+            routeLine: null,
+            poiLayer: null,
+            markers: [],
+            userLocationMarker: null,
+            hoverMarker: null,
+            elevationChart: null,
+            
+            waypoints: [], 
+            routeSegments: [], 
+            elevationProfile: [], 
+            elevationDataPoints: [], 
+            
+            totalDistance: 0,
+            totalElevationGain: 0,
+            totalDescent: 0,
+            maxGrade: 0,
+            estimatedTimeMinutes: 0,
+            
+            savedRoutes: [],
+            useMiles: localStorage.getItem('routeTrackr_useMiles') === 'true',
+            speedProfile: localStorage.getItem('routeTrackr_speedProfile') || 'hiking',
+            snapMode: true,
+            isDrawing: true,
+            currentLoadedRouteId: null,
+            poiActive: false,
+            isOffline: !navigator.onLine
+        };
+
+        // --- UI Utils ---
+        const showMessage = (msg, type='success') => {
+            const el = document.getElementById('message-box');
+            el.innerHTML = type === 'loading' ? `<i class="fa-solid fa-circle-notch fa-spin"></i> ${msg}` : msg;
+            el.className = `message-box ${type} show`;
+            if(type !== 'loading') setTimeout(() => el.classList.remove('show'), 3000);
+        };
+
+        const formatTime = (minutes) => {
+            const h = Math.floor(minutes / 60);
+            const m = Math.round(minutes % 60);
+            return `${h}h ${m < 10 ? '0'+m : m}m`;
+        };
+
+        const debounce = (func, wait) => {
+            let timeout;
+            return function(...args) {
+                const later = () => { clearTimeout(timeout); func(...args); };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        };
+
+        const calculateDifficulty = (distKm, elevM) => {
+            const score = distKm + (elevM / 100);
+            if (score < 5) return { label: 'Easy', class: 'badge-easy' };
+            if (score < 10) return { label: 'Moderate', class: 'badge-moderate' };
+            if (score < 18) return { label: 'Hard', class: 'badge-hard' };
+            return { label: 'Extreme', class: 'badge-extreme' };
+        };
+
+        // --- Shared Nav Integration ---
+        let nav;
+        const initNav = (userEmail) => {
+            if(nav) { nav.updateUser(userEmail); return; }
+            nav = new AppNavigation({
+                appName: 'RouteTrackr',
+                appIcon: 'fa-map-location-dot',
+                themeColor: 'lime',
+                userEmail: userEmail,
+                tabs: [
+                    { id: 'planner', label: 'Map', icon: 'fa-map' },
+                    { id: 'routes', label: 'Saved', icon: 'fa-book-open' },
+                    { id: 'settings', label: 'Settings', icon: 'fa-sliders' }
+                ],
+                activeTab: 'planner',
+                search: { id: 'nav-search', placeholder: 'Search map...' },
+                onThemeChange: (theme) => {
+                    // Force map redraw/style update if needed
+                    if(state.map) state.map.invalidateSize();
+                }
+            });
+            
+            window.addEventListener('tab-changed', (e) => {
+                const tabId = e.detail.tabId;
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+                document.getElementById(`tab-content-${tabId}`).classList.add('active');
+                if(tabId === 'planner' && state.map) setTimeout(() => state.map.invalidateSize(), 100);
+            });
+        };
+
+        // --- Core Logic ---
+        
+        // 1. Map & Route Logic
+        const initMap = () => {
+            if (state.map) return;
+            // Layers
+            state.layers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM', className: 'osm-layer' });
+            state.layers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '© Esri' });
+            state.layers.terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenTopoMap' });
+
+            state.map = L.map('map-container', { zoomControl: false, layers: [state.layers.osm] }).setView([51.505, -0.09], 13);
+            L.control.zoom({ position: 'bottomright' }).addTo(state.map);
+            
+            // Geocoder
+            if (L.Control.Geocoder) {
+                L.Control.geocoder({ defaultMarkGeocode: false, position: 'topleft', placeholder: 'Search location...' })
+                .on('markgeocode', function(e) { 
+                    state.map.fitBounds(e.geocode.bbox); 
+                }).addTo(state.map);
+            }
+
+            // Interactive Markers
+            state.hoverMarker = L.circleMarker([0,0], { radius: 6, fillColor: '#65a30d', color: '#fff', weight: 2, opacity: 0, fillOpacity: 0 }).addTo(state.map);
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => { 
+                    updateUserMarker(pos.coords.latitude, pos.coords.longitude); 
+                    state.map.setView([pos.coords.latitude, pos.coords.longitude], 15); 
+                });
+            }
+
+            // Click to add
+            state.map.on('click', async (e) => { 
+                if (state.isDrawing) await addWaypoint(e.latlng); 
+            });
+        };
+
+        const updateUserMarker = (lat, lng) => {
+            if (state.userLocationMarker) state.map.removeLayer(state.userLocationMarker);
+            state.userLocationMarker = L.marker([lat, lng], {
+                icon: L.divIcon({ html: '<div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white animate-pulse shadow-lg"></div>', iconSize: [16,16]})
+            }).addTo(state.map);
+        };
+
+        const toggleSnap = () => {
+            state.snapMode = !state.snapMode;
+            const btn = document.getElementById('snap-toggle-btn');
+            const txt = document.getElementById('snap-status-text');
+            if(state.snapMode) {
+                txt.textContent = "Snap: On";
+                btn.classList.add('text-lime-600', 'bg-lime-50/90', 'border-lime-500');
+                btn.classList.remove('text-gray-500', 'bg-gray-50', 'border-gray-300');
+            } else {
+                txt.textContent = "Snap: Off";
+                btn.classList.remove('text-lime-600', 'bg-lime-50/90', 'border-lime-500');
+                btn.classList.add('text-gray-500', 'bg-gray-50', 'border-gray-300');
+            }
+            // Recalculate route with new snap setting
+            if(state.waypoints.length > 1) {
+                recalculateAllSegments();
+            }
+        };
+
+        const recalculateAllSegments = async () => {
+            if(state.waypoints.length < 2) return;
+            showMessage("Recalculating...", "loading");
+            const updates = [];
+            for(let i=0; i < state.waypoints.length - 1; i++) {
+                updates.push(fetchRouteSegment(state.waypoints[i], state.waypoints[i+1]));
+            }
+            state.routeSegments = await Promise.all(updates);
+            redrawRoute();
+            debouncedElevationUpdate();
+            showMessage("Route updated");
+        };
+
+        const fetchRouteSegment = async (start, end) => {
+            if (state.isOffline || !state.snapMode) {
+                return {
+                    coordinates: [{lat: start.lat, lng: start.lng}, {lat: end.lat, lng: end.lng}],
+                    distance: L.latLng(start).distanceTo(end),
+                    steps: [] // No directions for straight lines
+                };
+            }
+            const url = `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson&steps=true`;
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) throw new Error('No route');
+                return {
+                    coordinates: data.routes[0].geometry.coordinates.map(c => ({ lat: c[1], lng: c[0] })),
+                    distance: data.routes[0].distance,
+                    steps: data.routes[0].legs[0].steps
+                };
+            } catch (err) {
+                // Fallback to straight line
+                return {
+                    coordinates: [{lat: start.lat, lng: start.lng}, {lat: end.lat, lng: end.lng}],
+                    distance: L.latLng(start).distanceTo(end),
+                    steps: []
+                };
+            }
+        };
+
+        const addWaypoint = async (latlng) => {
+            const newPoint = { lat: latlng.lat, lng: latlng.lng, name: `WP ${state.waypoints.length + 1}` };
+            if (state.waypoints.length > 0) {
+                showMessage('Routing...', 'loading');
+                const segment = await fetchRouteSegment(state.waypoints[state.waypoints.length-1], newPoint);
+                state.routeSegments.push(segment);
+            }
+            state.waypoints.push(newPoint);
+            redrawRoute(); 
+            debouncedElevationUpdate();
+        };
+
+        const redrawRoute = () => {
+            if (state.routeLine) state.map.removeLayer(state.routeLine);
+            state.markers.forEach(m => state.map.removeLayer(m));
+            state.markers = [];
+
+            let fullPath = [];
+            state.routeSegments.forEach(seg => fullPath = fullPath.concat(seg.coordinates));
+            if (state.waypoints.length === 1) fullPath = [{lat: state.waypoints[0].lat, lng: state.waypoints[0].lng}];
+
+            if (fullPath.length > 0) {
+                state.routeLine = L.polyline(fullPath, { color: '#65a30d', weight: 5, opacity: 0.8, lineJoin: 'round' }).addTo(state.map);
+                // Click polyline to insert point
+                state.routeLine.on('click', (e) => { L.DomEvent.stopPropagation(e); insertWaypoint(e.latlng); });
+            }
+
+            state.waypoints.forEach((wp, idx) => {
+                const isStart = idx === 0;
+                const isEnd = idx === state.waypoints.length - 1;
+                let colorClass = isStart ? 'bg-green-500' : (isEnd ? 'bg-red-500' : 'bg-blue-500');
+                
+                const icon = L.divIcon({ 
+                    className: 'custom-div-icon', 
+                    html: `<div class="${colorClass} w-3 h-3 rounded-full border-2 border-white shadow-sm transition hover:scale-125"></div>`, 
+                    iconSize: [12, 12] 
+                });
+                
+                const marker = L.marker([wp.lat, wp.lng], { icon, draggable: true }).addTo(state.map);
+                
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <div class="text-xs font-bold mb-1">Waypoint ${idx+1}</div>
+                    <button class="text-[10px] text-red-500 hover:bg-red-50 px-2 py-1 rounded w-full border border-red-200">Remove</button>
+                `;
+                div.querySelector('button').onclick = () => { marker.closePopup(); deleteWaypoint(idx); };
+                
+                marker.bindPopup(div).on('dragstart',()=>state.isDrawing=false).on('dragend', async(e)=>{ 
+                    state.isDrawing=true; 
+                    await updateWaypointPosition(idx, e.target.getLatLng()); 
+                });
+                state.markers.push(marker);
+            });
+            updateStatsUI();
+        };
+
+        const insertWaypoint = async (latlng) => {
+            if (state.waypoints.length < 2) { addWaypoint(latlng); return; }
+            // Find best segment to split
+            let minDst = Infinity, bestIdx = -1;
+            for (let i=0; i<state.waypoints.length-1; i++) {
+                const p = state.map.latLngToLayerPoint(latlng);
+                const p1 = state.map.latLngToLayerPoint(state.waypoints[i]);
+                const p2 = state.map.latLngToLayerPoint(state.waypoints[i+1]);
+                const d = L.LineUtil.pointToSegmentDistance(p, p1, p2);
+                if(d < minDst) { minDst = d; bestIdx = i; }
+            }
+            
+            if(bestIdx === -1) { addWaypoint(latlng); return; }
+            
+            showMessage('Inserting point...', 'loading');
+            const newPoint = { lat: latlng.lat, lng: latlng.lng, name: `WP` };
+            state.waypoints.splice(bestIdx + 1, 0, newPoint);
+            
+            // Re-route affected segments
+            const s1 = await fetchRouteSegment(state.waypoints[bestIdx], newPoint);
+            const s2 = await fetchRouteSegment(newPoint, state.waypoints[bestIdx+2]);
+            state.routeSegments.splice(bestIdx, 1, s1, s2);
+            
+            redrawRoute(); 
+            debouncedElevationUpdate(); 
+            showMessage('Point Inserted', 'success');
+        };
+
+        const deleteWaypoint = async (index) => {
+            state.waypoints.splice(index, 1);
+            if (state.waypoints.length > 0) {
+                // Brute force recalc for simplicity, or optimize locally
+                recalculateAllSegments();
+            } else {
+                state.routeSegments = [];
+                redrawRoute();
+                updateStatsUI();
+            }
+        };
+
+        const updateWaypointPosition = async (index, newLatLng) => {
+            state.waypoints[index].lat = newLatLng.lat; 
+            state.waypoints[index].lng = newLatLng.lng;
+            
+            const updates = [];
+            if (index > 0) updates.push(fetchRouteSegment(state.waypoints[index-1], state.waypoints[index]).then(s => state.routeSegments[index-1] = s));
+            if (index < state.waypoints.length-1) updates.push(fetchRouteSegment(state.waypoints[index], state.waypoints[index+1]).then(s => state.routeSegments[index] = s));
+            
+            await Promise.all(updates);
+            redrawRoute(); 
+            debouncedElevationUpdate();
+        };
+
+        // 2. Elevation Logic
+        const fetchElevationData = async () => {
+            let points = [];
+            state.routeSegments.forEach(seg => points = points.concat(seg.coordinates));
+            
+            if (points.length < 2) {
+                state.elevationProfile = []; state.totalElevationGain = 0; state.totalDescent = 0; state.maxGrade = 0;
+                updateStatsUI(); updateChart(); return;
+            }
+
+            // Downsample for API limit
+            const sampleRate = Math.max(1, Math.floor(points.length / 80));
+            const sampled = points.filter((_, i) => i % sampleRate === 0);
+            if(sampled.length > 80) sampled.length = 80; // Hard cap
+
+            const lats = sampled.map(p => p.lat).join(',');
+            const lngs = sampled.map(p => p.lng).join(',');
+            const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lngs}`;
+
+            try {
+                const res = await fetch(url);
+                if(!res.ok) throw new Error("API Limit");
+                const data = await res.json();
+                if (data.elevation) {
+                    state.elevationProfile = data.elevation;
+                    state.elevationDataPoints = sampled; // Keep for chart hovering
+                    
+                    let ascent = 0, descent = 0, maxG = 0;
+                    for (let i = 1; i < data.elevation.length; i++) {
+                        const diff = data.elevation[i] - data.elevation[i-1];
+                        if (diff > 0) ascent += diff;
+                        if (diff < 0) descent += Math.abs(diff);
+                        
+                        const dist = L.latLng(sampled[i-1]).distanceTo(sampled[i]);
+                        if(dist > 0) {
+                            const grade = (diff / dist) * 100;
+                            if(grade > maxG) maxG = grade;
+                        }
+                    }
+                    state.totalElevationGain = ascent;
+                    state.totalDescent = descent;
+                    state.maxGrade = Math.round(maxG);
+                    updateStatsUI();
+                    updateChart();
+                }
+            } catch (e) { console.error("Elevation error", e); }
+        };
+        const debouncedElevationUpdate = debounce(fetchElevationData, 1000);
+
+        // 3. UI Updates
+        const updateStatsUI = () => {
+            state.totalDistance = state.routeSegments.reduce((sum, seg) => sum + seg.distance, 0);
+            if (state.waypoints.length <= 1) state.totalDistance = 0;
+
+            const distKm = state.totalDistance / 1000;
+            const distVal = state.useMiles ? distKm * 0.621371 : distKm;
+            
+            document.getElementById('distance-display').textContent = distVal.toFixed(2);
+            document.getElementById('unit-display').textContent = state.useMiles ? " mi" : " km";
+
+            const diff = calculateDifficulty(distKm, state.totalElevationGain);
+            const badgeEl = document.getElementById('difficulty-badge');
+            badgeEl.className = `difficulty-badge ${diff.class}`;
+            badgeEl.textContent = diff.label;
+
+            const profiles = { 
+                hiking: { speed: 83.3, climbPenalty: 0.1 }, // m/min
+                running: { speed: 160, climbPenalty: 0.05 }, 
+                walking: { speed: 66, climbPenalty: 0.05 }, 
+                cycling: { speed: 300, climbPenalty: 0.2 } 
+            };
+            const p = profiles[state.speedProfile];
+            // Naismith's Rule-ish estimation
+            state.estimatedTimeMinutes = (state.totalDistance / p.speed) + (state.totalElevationGain * p.climbPenalty);
+            document.getElementById('time-display').textContent = formatTime(state.estimatedTimeMinutes);
+
+            document.getElementById('elevation-display').textContent = state.totalElevationGain > 0 ? `+${Math.round(state.totalElevationGain)}` : '0';
+            document.getElementById('descent-display').textContent = state.totalDescent > 0 ? `-${Math.round(state.totalDescent)}` : '0';
+            document.getElementById('grade-display').textContent = state.maxGrade;
+
+            const delBtn = document.getElementById('delete-active-route-btn');
+            const modeText = document.getElementById('route-mode-text');
+            if (state.currentLoadedRouteId) { 
+                delBtn.classList.remove('hidden'); 
+                modeText.textContent = "Editing Saved Route"; 
+            } else { 
+                delBtn.classList.add('hidden'); 
+                modeText.textContent = "New Route"; 
+            }
+            
+            if(document.getElementById('directions-panel').classList.contains('open')) renderDirections();
+        };
+
+        // 4. GPX / Features
+        const generateGPX = () => {
+            if(state.waypoints.length < 2) return null;
+            
+            let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RouteTrackr">
+<trk><name>Route</name><trkseg>`;
+            
+            // Export the full path geometry
+            state.routeSegments.forEach(seg => {
+                seg.coordinates.forEach(coord => {
+                     gpx += `<trkpt lat="${coord.lat}" lon="${coord.lng}"></trkpt>`;
+                });
+            });
+            
+            gpx += `</trkseg></trk></gpx>`;
+            return gpx;
+        };
+
+        const handleGPXExport = () => {
+            const content = generateGPX();
+            if(!content) return showMessage("Draw a route first!", "error");
+            
+            const blob = new Blob([content], { type: 'application/gpx+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `route-${Date.now()}.gpx`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showMessage("GPX Downloaded");
+        };
+
+        const handleGPXImport = (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const text = ev.target.result;
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(text, "text/xml");
+                const trkpts = xmlDoc.getElementsByTagName('trkpt');
+                
+                if(trkpts.length === 0) return showMessage("No track points found in GPX", "error");
+
+                // Simplify: Just take start, end, and maybe some mid points to reconstruct?
+                // Or just load geometry. For now, let's just clear and load the geometry as a static line is hard, 
+                // so we will extract major points and try to snap to them.
+                // Actually, simplest integration: Extract ~10 points and treat as waypoints.
+                
+                state.waypoints = [];
+                state.routeSegments = [];
+                
+                const step = Math.ceil(trkpts.length / 10); // Max 10 waypoints
+                for(let i=0; i<trkpts.length; i+=step) {
+                    const lat = parseFloat(trkpts[i].getAttribute('lat'));
+                    const lon = parseFloat(trkpts[i].getAttribute('lon'));
+                    state.waypoints.push({ lat, lng: lon, name: `GPX ${state.waypoints.length+1}` });
+                }
+                // Ensure end point is captured
+                const last = trkpts[trkpts.length-1];
+                const endLat = parseFloat(last.getAttribute('lat'));
+                const endLon = parseFloat(last.getAttribute('lon'));
+                if(state.waypoints[state.waypoints.length-1].lat !== endLat) {
+                     state.waypoints.push({ lat: endLat, lng: endLon, name: "End" });
+                }
+                
+                recalculateAllSegments();
+                state.map.fitBounds(L.latLngBounds(state.waypoints));
+                showMessage("GPX Imported (Simplified)");
+            };
+            reader.readAsText(file);
+        };
+
+        // 5. Amenities / Radar
+        const togglePOI = async () => {
+            state.poiActive = !state.poiActive;
+            const btn = document.getElementById('toggle-poi-btn');
+            
+            if(!state.poiActive) {
+                btn.classList.remove('active');
+                if(state.poiLayer) state.poiLayer.clearLayers();
+                return;
+            }
+            
+            btn.classList.add('active');
+            showMessage("Scanning area...", "loading");
+            
+            const bounds = state.map.getBounds();
+            const query = `
+                [out:json][timeout:25];
+                (
+                  node["amenity"~"drinking_water|toilets|cafe|fast_food|fuel"](${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()});
+                );
+                out body;
+            `;
+            
+            try {
+                const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                
+                if(state.poiLayer) state.poiLayer.clearLayers();
+                else state.poiLayer = L.layerGroup().addTo(state.map);
+                
+                if(data.elements.length === 0) showMessage("No amenities nearby.");
+                else {
+                    data.elements.forEach(node => {
+                        let iconClass = 'fa-circle-question';
+                        let colorClass = 'poi-toilet';
+                        const type = node.tags.amenity;
+                        
+                        if(type === 'drinking_water') { iconClass = 'fa-faucet-drip'; colorClass = 'poi-water'; }
+                        else if(type === 'cafe' || type === 'fast_food') { iconClass = 'fa-mug-hot'; colorClass = 'poi-cafe'; }
+                        else if(type === 'toilets') { iconClass = 'fa-restroom'; colorClass = 'poi-toilet'; }
+                        else if(type === 'fuel') { iconClass = 'fa-gas-pump'; colorClass = 'poi-cafe'; }
+                        
+                        const icon = L.divIcon({
+                            className: 'custom-div-icon',
+                            html: `<div class="poi-icon-wrapper ${colorClass} w-8 h-8"><i class="fa-solid ${iconClass} text-sm"></i></div>`,
+                            iconSize: [32, 32]
+                        });
+                        
+                        L.marker([node.lat, node.lon], { icon }).addTo(state.poiLayer)
+                         .bindPopup(`<b>${type}</b><br>${node.tags.name || ''}`);
+                    });
+                    showMessage(`Found ${data.elements.length} amenities!`);
+                }
+            } catch(e) {
+                state.poiActive = false;
+                btn.classList.remove('active');
+                showMessage("Scan failed", "error");
+            }
+        };
+
+        // 6. Charting
+        const initChart = () => {
+            const ctx = document.getElementById('elevationChart').getContext('2d');
+            state.elevationChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [{ label: 'Elevation', data: [], borderColor: '#65a30d', backgroundColor: 'rgba(101, 163, 13, 0.2)', fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+                    scales: { x: { display: false }, y: { beginAtZero: false, grid: { color: 'rgba(0,0,0,0.05)' } } },
+                    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                    onHover: (e, el) => { 
+                        if (!el.length) { 
+                            if(state.hoverMarker) state.hoverMarker.setStyle({opacity:0, fillOpacity:0}); 
+                            return; 
+                        } 
+                        const idx = el[0].index; 
+                        if(state.elevationDataPoints[idx]) {
+                            state.hoverMarker.setLatLng(state.elevationDataPoints[idx]).setStyle({opacity:1, fillOpacity:1}); 
+                        }
+                    }
+                }
+            });
+        };
+        const updateChart = () => { if(state.elevationChart) { state.elevationChart.data.labels = state.elevationProfile.map((_,i)=>i); state.elevationChart.data.datasets[0].data = state.elevationProfile; state.elevationChart.update(); }};
+
+        // 7. Directions
+        const toggleDirections = () => {
+            const panel = document.getElementById('directions-panel');
+            panel.classList.toggle('open');
+            if(panel.classList.contains('open')) renderDirections();
+        };
+
+        const renderDirections = () => {
+            const list = document.getElementById('directions-list');
+            if(state.routeSegments.length === 0) {
+                list.innerHTML = `<div class="p-8 text-center text-[var(--text-color-secondary)]"><p>Draw a route to see directions.</p></div>`;
+                return;
+            }
+
+            let html = '';
+            let stepCounter = 1;
+
+            state.routeSegments.forEach((segment, segIdx) => {
+                if(!segment.steps) return;
+                segment.steps.forEach((step) => {
+                    if(step.maneuver.type === 'arrive' && segIdx < state.routeSegments.length - 1) return;
+                    
+                    let icon = 'fa-arrow-up';
+                    const m = step.maneuver;
+                    
+                    if(m.type === 'turn') {
+                        if(m.modifier.includes('left')) icon = 'fa-arrow-turn-up fa-flip-horizontal';
+                        else if(m.modifier.includes('right')) icon = 'fa-arrow-turn-up';
+                    } else if (m.type === 'depart') icon = 'fa-play';
+                    else if (m.type === 'arrive') icon = 'fa-flag-checkered';
+                    
+                    const dist = state.useMiles ? (step.distance * 0.000621371).toFixed(2) + ' mi' : (step.distance < 1000 ? Math.round(step.distance) + ' m' : (step.distance/1000).toFixed(2) + ' km');
+                    
+                    let text = step.name || (m.type === 'arrive' ? 'Destination' : 'Unknown Road');
+                    if(m.type === 'depart') text = "Start Route";
+                    
+                    html += `
+                        <div class="flex gap-3 p-3 border-b border-[var(--border-color)] hover:bg-[var(--input-bg-color)]">
+                            <div class="w-6 text-center text-lime-600"><i class="fa-solid ${icon}"></i></div>
+                            <div>
+                                <div class="text-xs font-bold">${text}</div>
+                                <div class="text-[10px] text-[var(--text-color-secondary)]">${dist}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+            list.innerHTML = html;
+        };
+
+        // 8. Load/Save
+        const saveRoute = async () => {
+            const name = document.getElementById('route-name').value.trim();
+            if (!name) return showMessage('Name required', 'error');
+            
+            let fullPath = []; state.routeSegments.forEach(seg => fullPath = fullPath.concat(seg.coordinates));
+            
+            const docData = {
+                name, notes: document.getElementById('route-notes').value.trim(),
+                waypoints: state.waypoints, 
+                fullPath, // Stored for display loading without recalc
+                elevationProfile: state.elevationProfile,
+                distanceMeters: state.totalDistance, 
+                elevationGain: state.totalElevationGain,
+                estimatedTime: state.estimatedTimeMinutes, 
+                updatedAt: Timestamp.now(), 
+                userId: state.user.uid,
+                difficulty: calculateDifficulty(state.totalDistance/1000, state.totalElevationGain).label
+            };
+            
+            try {
+                if (state.currentLoadedRouteId) await updateDoc(doc(db, `users/${state.user.uid}/routes`, state.currentLoadedRouteId), docData);
+                else { 
+                    docData.createdAt = Timestamp.now(); 
+                    const ref = await addDoc(collection(db, `users/${state.user.uid}/routes`), docData); 
+                    state.currentLoadedRouteId = ref.id; 
+                }
+                document.getElementById('save-modal').classList.add('hidden'); 
+                showMessage('Route Saved!'); 
+            } catch (e) { console.error(e); showMessage('Save Failed', 'error'); }
+        };
+
+        const loadSavedRoute = (route) => {
+            state.waypoints = route.waypoints;
+            // Load geometry from DB to avoid re-fetching API immediately
+            state.routeSegments = [{ coordinates: route.fullPath || [], distance: route.distanceMeters, steps: [] }]; 
+            state.elevationProfile = route.elevationProfile || []; 
+            state.totalElevationGain = route.elevationGain || 0;
+            state.currentLoadedRouteId = route.id;
+            
+            document.getElementById('route-name').value = route.name || ""; 
+            document.getElementById('route-notes').value = route.notes || "";
+            
+            redrawRoute(); 
+            updateChart();
+            if(route.fullPath && route.fullPath.length) state.map.fitBounds(L.latLngBounds(route.fullPath), {padding:[50,50]});
+            
+            // Trigger nav switch
+            document.querySelector('.nav-tab-btn[data-tab="planner"]').click();
+        };
+        
+        const deleteRoute = async (id) => { 
+            if(confirm("Delete this route?")) { 
+                await deleteDoc(doc(db, `users/${state.user.uid}/routes`, id)); 
+                if(state.currentLoadedRouteId===id){ 
+                    state.waypoints=[]; state.routeSegments=[]; redrawRoute(); updateChart();
+                } 
+            } 
+        };
+
+        const renderRoutesList = () => {
+            const list = document.getElementById('routes-list'); 
+            list.innerHTML = '';
+            if (state.savedRoutes.length === 0) return list.innerHTML = '<div class="col-span-3 text-center text-gray-400 mt-10">No routes saved yet.</div>';
+            
+            state.savedRoutes.forEach(route => {
+                const diff = calculateDifficulty(route.distanceMeters/1000, route.elevationGain || 0);
+                const el = document.createElement('div'); 
+                el.className = 'bg-[var(--card-bg-color)] border border-[var(--border-color)] rounded-xl p-3 shadow-sm flex items-center justify-between group hover:border-lime-500 transition-colors';
+                el.innerHTML = `
+                    <div class="cursor-pointer flex-grow route-click-area">
+                        <div class="font-bold truncate text-sm mb-1">${route.name}</div>
+                        <div class="flex gap-2 text-[10px] text-[var(--text-color-secondary)]">
+                            <span class="${diff.class}">${diff.label}</span>
+                            <span><i class="fa-solid fa-ruler"></i> ${(route.distanceMeters/1000).toFixed(1)}km</span>
+                        </div>
+                    </div>
+                    <button class="destructive-button delete-btn px-2 py-1 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"><i class="fa-solid fa-trash"></i></button>
+                `;
+                el.querySelector('.route-click-area').onclick = () => loadSavedRoute(route);
+                el.querySelector('.delete-btn').onclick = (e) => { e.stopPropagation(); deleteRoute(route.id); };
+                list.appendChild(el);
+            });
+        };
+
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Auth
+            document.getElementById('sign-in-btn').onclick = () => signInWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value).catch(e => showMessage(e.message, 'error'));
+
+            // Map Controls
+            document.getElementById('undo-point-btn').onclick = () => { state.waypoints.pop(); state.routeSegments.pop(); redrawRoute(); };
+            document.getElementById('clear-map-btn').onclick = () => confirm('Clear map?') && (state.waypoints = [], state.routeSegments = [], state.currentLoadedRouteId = null, redrawRoute(), updateChart());
+            document.getElementById('close-loop-btn').onclick = async () => state.waypoints.length > 1 && await addWaypoint(state.waypoints[0]);
+            document.getElementById('snap-toggle-btn').onclick = toggleSnap;
+            document.getElementById('locate-me-btn').onclick = () => navigator.geolocation && navigator.geolocation.getCurrentPosition(pos => state.map.setView([pos.coords.latitude, pos.coords.longitude], 16));
+            document.getElementById('toggle-layer-btn').onclick = () => { 
+                const layers=['osm','satellite','terrain']; 
+                const next=layers[(layers.indexOf(state.currentLayer)+1)%layers.length]; 
+                state.map.removeLayer(state.layers[state.currentLayer]); 
+                state.currentLayer=next; 
+                state.map.addLayer(state.layers[next]); 
+            };
+
+            // Overlay Controls
+            document.getElementById('toggle-poi-btn').onclick = togglePOI;
+            document.getElementById('toggle-directions-btn').onclick = toggleDirections;
+            document.getElementById('close-directions-btn').onclick = toggleDirections;
+            
+            // Weather
+            document.getElementById('weather-btn').onclick = async () => {
+                if(!state.waypoints.length) return showMessage("Add start point first", "error");
+                const start = state.waypoints[0];
+                const modal = document.getElementById('weather-modal');
+                modal.classList.remove('hidden');
+                document.getElementById('weather-icon').innerHTML = '<i class="fa-solid fa-spinner fa-spin text-2xl"></i>';
+                
+                try {
+                    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${start.lat}&longitude=${start.lng}&current=temperature_2m,weather_code,wind_speed_10m`);
+                    const data = await res.json();
+                    const code = data.current.weather_code;
+                    let icon = '❓', desc = 'Unknown';
+                    // Simple code mapping
+                    if(code===0){icon='☀️';desc='Clear';}else if(code<4){icon='⛅';desc='Cloudy';}else if(code<50){icon='🌫️';desc='Fog';}else if(code<68){icon='🌧️';desc='Rain';}else if(code<78){icon='❄️';desc='Snow';}else {icon='⚡';desc='Storm';}
+                    
+                    document.getElementById('weather-icon').innerText = icon;
+                    document.getElementById('weather-temp').innerText = `${data.current.temperature_2m}°C`;
+                    document.getElementById('weather-desc').innerText = desc;
+                    document.getElementById('weather-wind').innerText = `${data.current.wind_speed_10m} km/h Wind`;
+                } catch(e) { document.getElementById('weather-desc').innerText = "Error"; }
+            };
+            document.getElementById('close-weather-btn').onclick = () => document.getElementById('weather-modal').classList.add('hidden');
+
+            // Save/Load
+            document.getElementById('save-route-modal-btn').onclick = () => document.getElementById('save-modal').classList.remove('hidden');
+            document.getElementById('cancel-save-btn').onclick = () => document.getElementById('save-modal').classList.add('hidden');
+            document.getElementById('confirm-save-btn').onclick = saveRoute;
+            document.getElementById('delete-active-route-btn').onclick = () => state.currentLoadedRouteId && deleteRoute(state.currentLoadedRouteId);
+
+            // Settings
+            const useMilesCheck = document.getElementById('use-miles-checkbox');
+            useMilesCheck.checked = state.useMiles;
+            useMilesCheck.onchange = (e) => { state.useMiles = e.target.checked; localStorage.setItem('routeTrackr_useMiles', state.useMiles); updateStatsUI(); };
+            
+            document.getElementById('speed-profile-select').value = state.speedProfile;
+            document.getElementById('speed-profile-select').onchange = (e) => { state.speedProfile = e.target.value; localStorage.setItem('routeTrackr_speedProfile', state.speedProfile); updateStatsUI(); };
+
+            // GPX
+            document.getElementById('download-gpx-btn').onclick = handleGPXExport;
+            document.getElementById('import-gpx-btn').onclick = () => document.getElementById('gpx-input').click();
+            document.getElementById('gpx-input').onchange = handleGPXImport;
+
+            // Auth State
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    state.user = user;
+                    document.getElementById('auth-container').classList.add('app-hidden');
+                    document.getElementById('main-app-container').classList.remove('app-hidden');
+                    initNav(user.email);
+                    setTimeout(() => { initMap(); initChart(); }, 200);
+                    onSnapshot(query(collection(db, `users/${user.uid}/routes`), orderBy('createdAt', 'desc')), (snap) => {
+                        state.savedRoutes = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                        renderRoutesList();
+                    });
+                } else {
+                    state.user = null;
+                    document.getElementById('auth-container').classList.remove('app-hidden');
+                    document.getElementById('main-app-container').classList.add('app-hidden');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

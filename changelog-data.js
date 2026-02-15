@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v10.67.1-alpha",
+    date: "2026-02-15",
+    changes: [
+        "In RouteTrackr: Bug fix.",
+    ]
+    },
+    {
     version: "v10.67.0-alpha",
     date: "2026-02-15",
     changes: [
