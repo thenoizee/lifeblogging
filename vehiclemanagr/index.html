@@ -580,7 +580,13 @@ body {
                         <div class="relative"><span class="absolute left-3 top-3 text-gray-400">£</span><input id="inv-price" type="number" step="0.01" placeholder="Price" class="pl-7" /></div>
                     </div>
                     <textarea id="inv-notes" placeholder="Notes (e.g. Tested working, bought from Amazon)" rows="2"></textarea>
-                    <button id="add-inventory-btn" class="btn btn-primary w-full bg-yellow-600 hover:bg-yellow-700"><span>Save Part</span><div class="loader"></div></button>
+
+<div class="flex items-center gap-2 py-2">
+    <input type="checkbox" id="inv-log-cost" class="w-4 h-4 text-yellow-600 rounded cursor-pointer accent-yellow-600" />
+    <label for="inv-log-cost" class="text-xs font-bold text-gray-500 cursor-pointer select-none">Log as purchased cost (Add to History)</label>
+</div>
+
+<button id="add-inventory-btn" class="btn btn-primary w-full bg-yellow-600 hover:bg-yellow-700"><span>Save Part</span><div class="loader"></div></button>
                 </div>
             </div>
 
@@ -1047,13 +1053,14 @@ document.getElementById('meta-ins-cost').value = v.insuranceCost || '';
              loadInventory(appState.user.uid, appState.currentVehicleId);
         });
 
-        // Attach Save Button Listener
+        // Attach Save Button Listener (UPDATED)
         document.getElementById('add-inventory-btn').onclick = async () => {
             const name = document.getElementById('inv-name').value;
             if(!name) return showMessage("Part Name is required", "error");
             
             setLoading('add-inventory-btn', true);
             try {
+                // 1. Always add to Inventory Collection
                 await addDoc(collection(db, `users/${appState.user.uid}/vehicles/${appState.currentVehicleId}/inventory`), {
                     name: name,
                     number: document.getElementById('inv-number').value,
@@ -1064,9 +1071,58 @@ document.getElementById('meta-ins-cost').value = v.insuranceCost || '';
                     addedBy: auth.currentUser.email,
                     createdAt: serverTimestamp()
                 });
-                showMessage("Part Added to Inventory");
+
+                // 2. NEW: If Checkbox is checked, also add to History
+                if(document.getElementById('inv-log-cost').checked) {
+                    const price = parseFloat(document.getElementById('inv-price').value);
+                    
+                    // Only log if there is a valid price
+                    if(price > 0) {
+                        const cat = document.getElementById('inv-category').value;
+                        const now = new Date();
+                        // Format date as YYYY-MM-DDTHH:mm for consistency
+                        const dateStr = now.toISOString().slice(0, 10) + 'T' + now.toTimeString().slice(0, 5);
+                        
+                        let historyData = {
+                            date: dateStr,
+                            company: 'Inventory Purchase',
+                            location: 'Online', 
+                            paymentMethod: 'Card', // Default assumption
+                            notes: `Inventory Item: ${name} (${document.getElementById('inv-number').value})`,
+                            createdAt: serverTimestamp(),
+                            uploadedBy: auth.currentUser.email,
+                            uploadedApp: 'VehicleManagr',
+                            datapointUpdatedBy: auth.currentUser.uid,
+                            datapointUpdatedTime: serverTimestamp()
+                        };
+
+                        // Intelligent Mapping: Decide if it's a Consumable or an Expense
+                        if(['Bulbs', 'Wipers', 'Fluids', 'Filters'].includes(cat)) {
+                            historyData.type = 'consumable';
+                            historyData.cost = price;
+                            
+                            // Map generic category to specific consumable item types if possible
+                            if(cat === 'Bulbs') historyData.item = 'Light Bulb';
+                            else if(cat === 'Wipers') historyData.item = 'Wiper Blades';
+                            else if(cat === 'Filters') historyData.item = 'Cabin Filter'; // Generic fallback
+                            else historyData.item = 'Other'; // Fluids etc
+                        } else {
+                            // Tools, Electronics, General -> Expense
+                            historyData.type = 'expense';
+                            historyData.expenseItem = 'Accessories';
+                            historyData.expenseCost = price;
+                        }
+                        
+                        await addDoc(collection(db, `users/${appState.user.uid}/vehicles/${appState.currentVehicleId}/history`), historyData);
+                    }
+                }
+
+                showMessage("Part Saved" + (document.getElementById('inv-log-cost').checked ? " & Cost Logged" : ""));
+                
                 // Clear inputs
                 ['inv-name','inv-number','inv-link','inv-price','inv-notes'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('inv-log-cost').checked = false; // Reset checkbox
+
             } catch(e) { showMessage(e.message, "error"); }
             setLoading('add-inventory-btn', false);
         };
@@ -2142,14 +2198,15 @@ const initSharedNav = (user) => {
                 appIcon: 'fa-car-tunnel',
                 themeColor: 'zinc',
                 userEmail: user.email,
-                version: '1.3.0', // Bump version
+                // UPDATED: Dynamically find the latest version for this app
+                version: changelogData.find(v => v.changes.some(c => c.includes("In VehicleManagr:")))?.version || "v1.0.0",
                 activeTab: 'dashboard',
                 tabs: [
                     { id: 'dashboard', label: 'Dashboard', icon: 'fa-house' },
                     { id: 'log', label: 'Log', icon: 'fa-pen-to-square' },
                     { id: 'history', label: 'History', icon: 'fa-clock-rotate-left' },
                     { id: 'trips', label: 'Trips', icon: 'fa-route' },
-                    { id: 'inventory', label: 'Inventory', icon: 'fa-warehouse' }, // ADDED
+                    { id: 'inventory', label: 'Inventory', icon: 'fa-warehouse' },
                     { id: 'settings', label: 'Settings', icon: 'fa-gear' }
                 ],
         // FIX: Write to Firestore when theme changes

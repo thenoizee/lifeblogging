@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.73.0-alpha",
+    date: "2026-02-16",
+    changes: [
+        "In VehicleManagr: Added a 'Log as Cost' checkbox to the Inventory form, allowing users to instantly record the purchase price to their history log while saving the part.",
+        "In VehicleManagr: Implemented smart category mapping for inventory purchases; items like 'Bulbs' or 'Wipers' are automatically logged as Consumables, while 'Tools' become Expenses.",
+        "In VehicleManagr: Version number now displays correctly in the top-right hand side of the screen.",
+    ]
+    },
+    {
     version: "v10.72.0-alpha",
     date: "2026-02-16",
     changes: [
