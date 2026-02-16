@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v11.2.0-alpha",
+    date: "2026-02-16",
+    changes: [
+        "Fix GitHub Pages deployment path and CNAME location",     
+    ]
+    },
+    {
     version: "v11.1.0-alpha",
     date: "2026-02-16",
     changes: [
