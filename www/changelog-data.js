@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v11.1.0-alpha",
+    date: "2026-02-16",
+    changes: [
+        "GitHub pages re-direct fix.",     
+    ]
+    },
+    {
     version: "v11.0.0-alpha",
     date: "2026-02-16",
     changes: [
