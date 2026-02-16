@@ -41,7 +41,7 @@
             border-radius: 50%;
             background: #ffffff;
             box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            margin-top: -8px; /* Centers thumb on track */
+            margin-top: -8px;
             border: 2px solid white;
         }
 
@@ -103,15 +103,10 @@
                     Connect Locally
                 </button>
             </div>
-
-            <div class="relative mb-6">
-                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200 dark:border-gray-700"></div></div>
-                <div class="relative flex justify-center text-xs"><span class="px-2 bg-white dark:bg-gray-800 text-gray-500">OR</span></div>
+            
+            <div class="text-center text-xs text-gray-400">
+                To connect via Cloud, please go to the <a href="/account" class="text-blue-500 underline">Account Page</a>.
             </div>
-
-            <button onclick="connectRemote()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold transition flex justify-center items-center gap-2">
-                <i class="fa-solid fa-cloud"></i> Connect with Hue Account
-            </button>
         </div>
     </div>
 
@@ -136,10 +131,8 @@
             </div>
         </div>
         
-        <div id="lights-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            <div class="hidden" id="skeleton-loader">
-                <div class="h-40 bg-gray-200 dark:bg-gray-800 rounded-2xl animate-pulse"></div>
-                <div class="h-40 bg-gray-200 dark:bg-gray-800 rounded-2xl animate-pulse"></div>
+        <div id="main-content" class="space-y-8">
+             <div class="hidden" id="skeleton-loader">
                 <div class="h-40 bg-gray-200 dark:bg-gray-800 rounded-2xl animate-pulse"></div>
             </div>
         </div>
@@ -173,40 +166,30 @@
 
     const getEl = (id) => document.getElementById(id);
     let localConfig = JSON.parse(localStorage.getItem('hue_config')) || null;
-    let cachedLights = JSON.parse(localStorage.getItem('hue_cache_lights')) || null;
+    let cachedData = JSON.parse(localStorage.getItem('hue_cache_data')) || null;
     let isRemote = false;
     let debounceTimers = {};
     let isGlobalActionPending = false;
 
     // --- MATH HELPERS ---
-    // Improved Color Matcher: Convert Hue (0-65535) to CSS Color for the UI glow
     function hueSatToCss(hue, sat, bri) {
-        // Hue: 0-65535 -> 0-360 deg
-        // Sat: 0-254 -> 0-100%
-        // Bri: 0-254 -> 0-100% (Lightness)
-        
         const h = (hue / 65535) * 360;
         const s = (sat / 254) * 100;
-        // In HSL, L=50% is full color. We adjust slightly based on brightness but keep it colorful.
-        // We map Bri 0-254 to Lightness 10-60 to avoid washing out to white or black on the glow
         const l = 20 + ((bri / 254) * 40); 
-        
         return `hsl(${h}, ${s}%, ${l}%)`;
     }
 
     // --- CORE LOGIC ---
     async function init() {
-        // 1. FAST LOAD: Show cached data immediately if available
-        if (cachedLights) {
+        if (cachedData) {
             getEl('dashboard').classList.remove('hidden');
-            renderLights(cachedLights);
+            renderData(cachedData);
             getEl('connection-badge').innerHTML = `<i class="fa-solid fa-bolt text-yellow-500"></i> Loaded (Cache)`;
         } else {
              getEl('dashboard').classList.remove('hidden');
              getEl('skeleton-loader').classList.remove('hidden');
         }
 
-        // 2. CONNECTION CHECK
         if (localConfig && localConfig.ip) {
             refreshLights();
             return;
@@ -216,7 +199,6 @@
             if (user) {
                 try {
                     const proxy = httpsCallable(functions, 'hueProxy');
-                    // Check cloud availability
                     const result = await proxy({ endpoint: 'config', method: 'GET' });
                     
                     if (result.data && !result.data.error) {
@@ -224,13 +206,13 @@
                         getEl('setup-panel').classList.add('hidden');
                         refreshLights();
                     } else {
-                        if(!cachedLights) getEl('setup-panel').classList.remove('hidden');
+                        if(!cachedData) getEl('setup-panel').classList.remove('hidden');
                     }
                 } catch (e) {
-                    if(!cachedLights) getEl('setup-panel').classList.remove('hidden');
+                    if(!cachedData) getEl('setup-panel').classList.remove('hidden');
                 }
             } else {
-                if(!cachedLights) getEl('setup-panel').classList.remove('hidden');
+                if(!cachedData) getEl('setup-panel').classList.remove('hidden');
             }
         });
     }
@@ -242,23 +224,29 @@
                 if(icon) icon.classList.add('fa-spin');
             }
 
-            let lights;
+            let lights, groups;
             
             if (isRemote) {
                 getEl('connection-badge').innerHTML = `<i class="fa-solid fa-cloud text-blue-500"></i> Cloud`;
                 const proxy = httpsCallable(functions, 'hueProxy');
-                const res = await proxy({ endpoint: 'lights', method: 'GET' });
-                lights = res.data;
+                // Fetch Lights
+                const resLights = await proxy({ endpoint: 'lights', method: 'GET' });
+                lights = resLights.data;
+                // Fetch Groups
+                const resGroups = await proxy({ endpoint: 'groups', method: 'GET' });
+                groups = resGroups.data;
             } else if (localConfig) {
                 getEl('connection-badge').innerHTML = `<i class="fa-solid fa-wifi text-green-500"></i> Local`;
-                const res = await fetch(`http://${localConfig.ip}/api/${localConfig.username}/lights`);
-                lights = await res.json();
+                const resL = await fetch(`http://${localConfig.ip}/api/${localConfig.username}/lights`);
+                lights = await resL.json();
+                const resG = await fetch(`http://${localConfig.ip}/api/${localConfig.username}/groups`);
+                groups = await resG.json();
             }
             
             if(lights) {
-                // CACHE THE RESULT
-                localStorage.setItem('hue_cache_lights', JSON.stringify(lights));
-                renderLights(lights);
+                const fullData = { lights, groups };
+                localStorage.setItem('hue_cache_data', JSON.stringify(fullData));
+                renderData(fullData);
             }
         } catch (e) { 
             console.error(e); 
@@ -281,7 +269,20 @@
         // Optimistic Update
         document.querySelectorAll('.light-card').forEach(c => {
             const id = c.id.replace('card-', '');
-            window.handleToggle(id, state, true);
+            // Simple heuristic: if id is < 100 it's likely a light, if > large number maybe group? 
+            // Better to rely on the type attribute if we had it, but for global visual updates:
+            // We just force toggle visual state
+            const btn = c.querySelector('.toggle-btn');
+            const span = btn?.querySelector('span');
+            if(state) { 
+                c.classList.remove('light-off'); c.classList.add('light-on');
+                btn?.classList.remove('bg-gray-300', 'dark:bg-gray-600'); btn?.classList.add('bg-green-500');
+                if(span) span.style.transform = 'translateX(16px)';
+            } else {
+                c.classList.add('light-off'); c.classList.remove('light-on');
+                btn?.classList.add('bg-gray-300', 'dark:bg-gray-600'); btn?.classList.remove('bg-green-500');
+                if(span) span.style.transform = 'translateX(0)';
+            }
         });
 
         try {
@@ -303,25 +304,25 @@
     };
 
     // --- THROTTLED UPDATER ---
-    window.updateState = (id, body) => {
-        // Clear existing timer to reset the clock (debounce)
+    window.updateState = (id, body, isGroup = false) => {
         if(debounceTimers[id]) clearTimeout(debounceTimers[id]);
         
-        // Wait 400ms after the LAST slide event before sending to bridge
-        // This makes the UI feel smooth but prevents "popcorn" lag
         debounceTimers[id] = setTimeout(async () => {
+            // Determine endpoint: groups use /action, lights use /state
+            const endpoint = isGroup ? `groups/${id}/action` : `lights/${id}/state`;
+            
             if (isRemote) {
                 const proxy = httpsCallable(functions, 'hueProxy');
-                await proxy({ endpoint: `lights/${id}/state`, method: 'PUT', body: body });
+                await proxy({ endpoint: endpoint, method: 'PUT', body: body });
             } else {
-                await fetch(`http://${localConfig.ip}/api/${localConfig.username}/lights/${id}/state`, {
+                await fetch(`http://${localConfig.ip}/api/${localConfig.username}/${endpoint}`, {
                     method: 'PUT', body: JSON.stringify(body)
                 });
             }
         }, 400); 
     };
 
-    window.handleToggle = (id, newState, skipApi = false) => {
+    window.handleToggle = (id, newState, isGroup = false) => {
         const card = document.getElementById(`card-${id}`);
         if(!card) return;
         const btn = card.querySelector('.toggle-btn');
@@ -339,57 +340,60 @@
             span.style.transform = 'translateX(0)';
             controls.classList.add('opacity-50', 'pointer-events-none');
         }
-        if(!skipApi) window.updateState(id, { on: newState });
+        window.updateState(id, { on: newState }, isGroup);
     };
 
     // New Handlers
-    window.handleHue = (id, hueVal) => {
-        // Update Glow Instantly
+    window.handleHue = (id, hueVal, isGroup = false) => {
         const card = document.getElementById(`card-${id}`);
-        // Default Saturation to 254 (Vivid) when sliding hue
         const color = hueSatToCss(hueVal, 254, 127);
         card.style.setProperty('--light-color', color);
+        window.updateState(id, { hue: parseInt(hueVal), sat: 254 }, isGroup);
+    };
+
+    window.handleBri = (id, val, isGroup = false) => {
+        // Live UI update for Brightness Text
+        const label = document.getElementById(`bri-label-${id}`);
+        if(label) label.innerText = Math.round((val/254)*100) + '%';
         
-        // API uses 0-65535
-        window.updateState(id, { hue: parseInt(hueVal), sat: 254 });
+        window.updateState(id, { bri: parseInt(val) }, isGroup);
     };
 
-    window.handleBri = (id, val) => {
-        window.updateState(id, { bri: parseInt(val) });
-    };
-
-    window.handleTemp = (id, mireds) => {
-        window.updateState(id, { ct: parseInt(mireds) });
+    window.handleTemp = (id, mireds, isGroup = false) => {
+        window.updateState(id, { ct: parseInt(mireds) }, isGroup);
     };
 
     // --- RENDERER ---
-    function renderLights(lights) {
-        const grid = getEl('lights-grid');
-        getEl('skeleton-loader')?.classList.add('hidden'); // Hide loader
+    function createCardHTML(id, item, isGroup) {
+        // Groups use 'action' object, Lights use 'state' object for current status
+        const state = isGroup ? item.action : item.state;
         
-        // We use a Map to preserve order or prevent flicker if re-rendering partially
-        // But simply replacing innerHTML is cleanest for this size app
-        
-        grid.innerHTML = Object.entries(lights).map(([id, light]) => {
-            const isOn = light.state.on;
-            const bri = light.state.bri || 254;
-            const hue = light.state.hue || 0;
-            const sat = light.state.sat || 0;
-            const ct = light.state.ct || 370;
+        const isOn = state.on;
+        const bri = state.bri || 254;
+        const hue = state.hue || 0;
+        const sat = state.sat || 0;
+        const ct = state.ct || 370;
 
-            const canColor = light.type.toLowerCase().includes('color');
-            const canTemp = light.type.toLowerCase().includes('color') || light.type.toLowerCase().includes('temperature') || light.type.toLowerCase().includes('ambiance');
-            
-            // Calculate current Glow Color
-            let glowColor = '#fbbf24';
-            if (isOn && light.state.colormode === 'hs') {
-                glowColor = hueSatToCss(hue, sat, bri);
-            } else if (isOn && light.state.colormode === 'ct') {
-                // Simple warm/cool approx
-                glowColor = ct < 300 ? '#dcf4ff' : '#ffb76b';
-            }
+        // Feature detection
+        let canColor = false;
+        let canTemp = false;
 
-            return `
+        // Group type usually isn't strict, but if it has 'hue' in action it supports color
+        if (state.hue !== undefined) canColor = true;
+        if (state.ct !== undefined) canTemp = true;
+
+        // Calculate current Glow Color
+        let glowColor = '#fbbf24';
+        if (isOn && state.colormode === 'hs') {
+            glowColor = hueSatToCss(hue, sat, bri);
+        } else if (isOn && state.colormode === 'ct') {
+            glowColor = ct < 300 ? '#dcf4ff' : '#ffb76b';
+        }
+
+        const icon = isGroup ? 'fa-layer-group' : (item.type && item.type.includes('Strip') ? 'fa-tape' : 'fa-lightbulb');
+        const itemType = isGroup ? 'Room/Group' : (item.productname || item.type);
+
+        return `
             <div id="card-${id}" 
                  style="--light-color: ${glowColor}; --light-color-dim: ${glowColor}4D"
                  class="light-card bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 ${isOn ? 'light-on' : 'light-off'}">
@@ -397,15 +401,15 @@
                 <div class="flex justify-between items-start mb-6">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xl">
-                            <i class="fa-solid ${light.type.includes('Strip') ? 'fa-tape' : 'fa-lightbulb'} text-gray-400"></i>
+                            <i class="fa-solid ${icon} text-gray-400"></i>
                         </div>
                         <div class="overflow-hidden">
-                            <h3 class="font-bold text-gray-900 dark:text-white leading-tight truncate pr-2">${light.name}</h3>
-                            <span class="text-xs text-gray-400 font-medium truncate block">${light.productname || light.type}</span>
+                            <h3 class="font-bold text-gray-900 dark:text-white leading-tight truncate pr-2">${item.name}</h3>
+                            <span class="text-xs text-gray-400 font-medium truncate block">${itemType}</span>
                         </div>
                     </div>
                     
-                    <button onclick="window.handleToggle('${id}', ${!isOn})" 
+                    <button onclick="window.handleToggle('${id}', ${!isOn}, ${isGroup})" 
                         class="toggle-btn w-12 h-8 rounded-full transition-colors relative flex-shrink-0 ${isOn ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}">
                         <span class="absolute top-1 left-1 bg-white w-6 h-6 rounded-full shadow-sm transition-transform duration-200" style="transform: ${isOn ? 'translateX(16px)' : 'translateX(0)'}"></span>
                     </button>
@@ -415,10 +419,10 @@
                     <div>
                         <div class="flex justify-between text-xs text-gray-400 mb-1 font-bold uppercase">
                             <span>Brightness</span>
-                            <span>${Math.round((bri/254)*100)}%</span>
+                            <span id="bri-label-${id}">${Math.round((bri/254)*100)}%</span>
                         </div>
                         <input type="range" min="1" max="254" value="${bri}" 
-                            oninput="window.handleBri('${id}', this.value)"
+                            oninput="window.handleBri('${id}', this.value, ${isGroup})"
                             class="slider-bri w-full bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600">
                     </div>
 
@@ -426,7 +430,7 @@
                     <div>
                          <label class="text-xs text-gray-400 font-bold uppercase mb-1 block">Color</label>
                          <input type="range" min="0" max="65535" value="${hue}" 
-                             oninput="window.handleHue('${id}', this.value)"
+                             oninput="window.handleHue('${id}', this.value, ${isGroup})"
                              class="slider-hue w-full appearance-none">
                     </div>
                     ` : ''}
@@ -435,14 +439,38 @@
                     <div>
                          <label class="text-xs text-gray-400 font-bold uppercase mb-1 block">Warmth</label>
                          <input type="range" min="153" max="500" value="${ct}" 
-                             oninput="window.handleTemp('${id}', this.value)"
+                             oninput="window.handleTemp('${id}', this.value, ${isGroup})"
                              class="slider-temp w-full appearance-none">
                     </div>
                     ` : ''}
                 </div>
             </div>
             `;
-        }).join('');
+    }
+
+    function renderData(data) {
+        const container = getEl('main-content');
+        getEl('skeleton-loader')?.classList.add('hidden');
+        
+        let html = '';
+
+        // 1. Groups Section
+        if(data.groups && Object.keys(data.groups).length > 0) {
+            html += `<h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-layer-group text-yellow-500"></i> Rooms & Groups</h2>`;
+            html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">`;
+            html += Object.entries(data.groups).map(([id, group]) => createCardHTML(id, group, true)).join('');
+            html += `</div>`;
+        }
+
+        // 2. Lights Section
+        if(data.lights && Object.keys(data.lights).length > 0) {
+            html += `<h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fa-regular fa-lightbulb text-yellow-500"></i> Individual Lights</h2>`;
+            html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">`;
+            html += Object.entries(data.lights).map(([id, light]) => createCardHTML(id, light, false)).join('');
+            html += `</div>`;
+        }
+
+        container.innerHTML = html;
     }
 
     init();

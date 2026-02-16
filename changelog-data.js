@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.74.0-alpha",
+    date: "2026-02-16",
+    changes: [
+        "In LightManagr: Added support for Rooms & Groups, allowing users to control brightness and toggle power for entire rooms at once alongside individual lights.",
+        "In LightManagr: Implemented live UI feedback for brightness sliders; the percentage value now updates instantly while dragging for a smoother experience.",
+        "In Account: Added a dedicated Philips Hue integration section, enabling users to connect or disconnect their Hue Bridge directly via the cloud.",
+    ]
+    },
+    {
     version: "v10.73.0-alpha",
     date: "2026-02-16",
     changes: [

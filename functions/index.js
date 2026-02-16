@@ -75,14 +75,15 @@ exports.exchangeTickTickToken = onRequest(
 // A. LOGIN
 exports.hueLogin = onRequest((req, res) => {
   const uid = req.query.uid; 
-  // Ensure this URL matches your deployed hosting URL
-  const redirectUri = `https://${process.env.GCLOUD_PROJECT}.web.app/huemanagr/callback.html`;
+  // FIX: Changed 'huemanagr' to 'lightmanagr' to match your folder name
+  const redirectUri = `https://${process.env.GCLOUD_PROJECT}.web.app/lightmanagr/callback.html`;
   
   if (!uid) {
       res.send("Error: Missing User ID");
       return;
   }
 
+  // Note: HUE_CLIENT_ID and HUE_APP_ID must be defined at the top of your file
   const authUrl = `https://api.meethue.com/oauth2/auth?clientid=${HUE_CLIENT_ID}&appid=${HUE_APP_ID}&deviceid=lifehub_server&state=${uid}&response_type=code`;
   
   res.redirect(authUrl);
