@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v11.0.0-alpha",
+    date: "2026-02-16",
+    changes: [
+        "Project Architecture: Migrated all web assets into a dedicated 'www' directory to implement a unified Capacitor-based project structure.",
+        "Android: Formally integrated the native Android project into the main repository, enabling single-source-of-truth version control for both the web app and native components.",
+        "Mood Widget: Complete overhaul of the Android home screen widget with a new layout featuring dynamic background colors mapped to mood levels.",
+        "Mood Widget: Added a manual synchronization button to the widget interface for instant data refreshing.",
+        "Mood Widget: Implemented emoji mapping and 'Last Updated' timestamps for improved visual feedback on the home screen.",
+        "Backend: Enhanced the 'getLatestMood' Cloud Function to return dynamic hex color codes and implemented a 5-minute client-side caching strategy.",
+        "Build System: Configured Android Gradle Plugin compatibility and corrected XML syntax errors to support modern Android Studio environments."
+    ]
+    },
+    {
     version: "v10.75.0-alpha",
     date: "2026-02-16",
     changes: [
