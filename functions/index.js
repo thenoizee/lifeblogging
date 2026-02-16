@@ -4,6 +4,8 @@ const logger = require("firebase-functions/logger");
 const { setGlobalOptions } = require("firebase-functions/v2/options");
 const admin = require("firebase-admin");
 const axios = require("axios");
+const crypto = require("crypto");
+const cors = require("cors")({ origin: true });
 
 // Initialize Firebase Admin
 if (admin.apps.length === 0) {
@@ -14,6 +16,8 @@ setGlobalOptions({ maxInstances: 10 });
 
 // --- SECRETS & KEYS ---
 const tickTickSecret = defineSecret("TICKTICK_CLIENT_SECRET");
+const podcastIndexKey = defineSecret("PODCASTINDEX_KEY");    // New
+const podcastIndexSecret = defineSecret("PODCASTINDEX_SECRET"); // New
 
 // TODO: ENSURE YOUR KEYS ARE HERE
 const HUE_CLIENT_ID = "61472d07-caca-4ba3-bead-4ea7a28eb7f9";     
@@ -182,4 +186,92 @@ exports.saveHueUsername = onCall(async (request) => {
     }, { merge: true });
     
     return { success: true };
+});
+
+// ==========================================
+// 3. PODCAST INDEX PROXY
+// ==========================================
+exports.podcastIndexProxy = onRequest(
+  { secrets: [podcastIndexKey, podcastIndexSecret], cors: true },
+  async (request, response) => {
+    const apiKey = podcastIndexKey.value();
+    const apiSecret = podcastIndexSecret.value();
+
+    // --- Prepare for the API call ---
+    const apiHeaderTime = Math.floor(Date.now() / 1000);
+    const sha1 = require("crypto")
+      .createHash("sha1")
+      .update(apiKey + apiSecret + apiHeaderTime)
+      .digest("hex");
+
+    const headers = {
+      "X-Auth-Date": `${apiHeaderTime}`,
+      "X-Auth-Key": apiKey,
+      "Authorization": sha1,
+      "User-Agent": "PodTrackr/1.0 (via Firebase Cloud Function)",
+    };
+
+    const podcastIndexApiUrl = "https://api.podcastindex.org/api/1.0";
+    const endpoint = request.query.endpoint;
+
+    if (!endpoint) {
+      response.status(400).send("API endpoint parameter is missing.");
+      return;
+    }
+
+    const targetUrl = new URL(`${podcastIndexApiUrl}${endpoint}`);
+
+    // Pass all other query parameters to the target URL
+    for (const key in request.query) {
+      if (key !== 'endpoint') {
+        targetUrl.searchParams.append(key, request.query[key]);
+      }
+    }
+
+    try {
+      const apiResponse = await axios.get(targetUrl.toString(), { headers });
+      response.status(200).json(apiResponse.data);
+    } catch (error) {
+      logger.error("Error fetching from Podcast Index API:", error.response?.data || error.message);
+      response.status(500).send("An error occurred while contacting the Podcast Index API.");
+    }
+  }
+);
+
+// ==========================================
+// 4. GET LATEST MOOD (Restored & Updated)
+// ==========================================
+exports.getLatestMood = onRequest({ cors: true }, async (req, res) => {
+  // --- Your specific User ID is now included ---
+  const userId = "lDL9pl7kjkMlKx8gezxHG2Qbcwl2";
+
+  const db = admin.firestore();
+
+  try {
+    const snapshot = await db
+      .collection(`users/${userId}/sources/dailies/data`)
+      .where("attributeName", "==", "mood")
+      .orderBy("date", "desc")
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      res.status(404).json({ error: "No mood entries found." });
+      return;
+    }
+
+    const latestMoodData = snapshot.docs[0].data();
+
+    // Send back the mood value and the date it was logged
+    const responseData = {
+        attributeValue: latestMoodData.attributeValue,
+        date: latestMoodData.date
+    };
+
+    res.status(200).json(responseData);
+
+  } catch (error) {
+    logger.error("Error fetching latest mood:", error);
+    res.status(500).json({ error: "An error occurred while fetching the mood data." });
+  }
 });

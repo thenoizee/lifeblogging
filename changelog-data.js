@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v10.75.0-alpha",
+    date: "2026-02-16",
+    changes: [
+        "In Account: Updated the Project Credits section to include RouteTrackr, acknowledging Leaflet, OpenStreetMap, and Open-Meteo as core data providers.",
+        "In Account: Added a dedicated privacy notice for PDF Tools, clarifying that all document processing occurs locally within the browser and no files are uploaded to the server.",
+    ]
+    },
+    {
     version: "v10.74.0-alpha",
     date: "2026-02-16",
     changes: [
