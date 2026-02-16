@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v10.71.0-alpha",
+    date: "2026-02-16",
+    changes: [
+        "In TaskTrackr: Resolved a bug preventing the project sidebar from collapsing correctly on desktop devices.",
+        "In TaskTrackr: Updated Data Source branding; TaskTrackr is now represented by a Blue Double-Tick, TickTick by an Orange Single-Tick, and Local tasks by a Green Hard Drive icon.",
+        "In TaskTrackr: Updated icon.",
+
+    ]
+    },
+    {
     version: "v10.70.0-alpha",
     date: "2026-02-16",
     changes: [
