@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.72.0-alpha",
+    date: "2026-02-16",
+    changes: [
+        "In PlantTrackr: Added the ability to upload custom photos for plants, allowing users to replace default icons with real images.",
+        "In PlantTrackr: Updated the Dashboard widgets (Thirsty, Hungry, Infirmary) and Recent Activity feed to display custom plant photos.",
+        "In PlantTrackr: Fixed a critical bug where the 'Delete Plant' button was non-responsive; deleting a plant now works correctly.",
+    ]
+    },
+    {
     version: "v10.71.0-alpha",
     date: "2026-02-16",
     changes: [

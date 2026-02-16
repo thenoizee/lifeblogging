@@ -431,6 +431,11 @@
                             <option value="fa-pepper-hot">Veg</option>
                         </select>
                     </div>
+                    <div>
+    <label class="text-sm font-bold">Custom Photo (Optional)</label>
+    <input type="file" id="plant-photo" accept="image/*" class="input-std">
+    <p class="text-xs opacity-50 mt-1">Uploading overrides the icon.</p>
+</div>
                 </div>
 
                 <div class="flex gap-3 mt-6">
@@ -532,6 +537,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, Timestamp, doc, deleteDoc, updateDoc, query, orderBy, onSnapshot, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
         // --- Configuration ---
         const firebaseConfig = {
@@ -546,6 +552,7 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+        const storage = getStorage(app);
 
         // --- Theme Init (Immediate) ---
         if (localStorage.getItem('theme') === 'dark' || 
@@ -629,8 +636,11 @@ const lightColors = { low: 'text-gray-400', medium: 'text-yellow-400', high: 'te
                 card.innerHTML = `
                     <div class="flex items-start justify-between mb-4">
                         <div class="flex items-center gap-3">
-                            <div class="plant-icon-circle"><i class="fa-solid ${plant.icon || 'fa-leaf'}"></i></div>
-                            <div>
+    ${plant.photoUrl 
+        ? `<img src="${plant.photoUrl}" class="w-12 h-12 rounded-full object-cover border border-[var(--border)]">` 
+        : `<div class="plant-icon-circle"><i class="fa-solid ${plant.icon || 'fa-leaf'}"></i></div>`
+    }
+    <div>
                                 <h3 class="font-bold text-lg leading-tight">${plant.name}</h3>
                                 <p class="text-xs opacity-70">${plant.species || 'Unknown'}</p>
                             </div>
@@ -735,26 +745,32 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
                         const daysOverdue = Math.floor(diffDays - freq);
 
                         if (daysOverdue >= 0) {
-                            // It is DUE. 
-                            // If Healthy -> Add to Main Thirsty List. 
-                            // If Sick -> It will appear in Hospital Card (handled below).
-                            if (!isSick) {
-                                thirstyCount++;
-                                const div = document.createElement("div");
-                                div.className = "flex justify-between items-center bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border)]";
-                                div.innerHTML = `
-                                    <div>
-                                        <p class="font-bold text-sm">${plant.name}</p>
-                                        <p class="text-xs text-red-500 font-bold">${daysOverdue === 0 ? 'Due Today' : `${daysOverdue} days late`}</p>
-                                    </div>
-                                    <div class="flex gap-1">
-                                        <button class="btn-secondary p-1.5 rounded text-xs" onclick="openSnoozeModal('${plant.id}')" title="Snooze"><i class="fa-solid fa-clock text-yellow-500"></i></button>
-                                        <button class="btn-primary p-1.5 rounded text-xs quick-water-btn" data-id="${plant.id}"><i class="fa-solid fa-check"></i></button>
-                                    </div>
-                                `;
-                                waterList.appendChild(div);
-                            }
-                        } else if (daysOverdue >= -7) {
+    if (!isSick) {
+        thirstyCount++;
+        const div = document.createElement("div");
+        div.className = "flex justify-between items-center bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border)]";
+        
+        // NEW: Check for photo
+        const imgHtml = plant.photoUrl 
+            ? `<img src="${plant.photoUrl}" class="w-10 h-10 rounded-full object-cover mr-3 border border-gray-200">`
+            : `<div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3 text-blue-500"><i class="fa-solid ${plant.icon || 'fa-leaf'}"></i></div>`;
+
+        div.innerHTML = `
+            <div class="flex items-center">
+                ${imgHtml}
+                <div>
+                    <p class="font-bold text-sm">${plant.name}</p>
+                    <p class="text-xs text-red-500 font-bold">${daysOverdue === 0 ? 'Due Today' : `${daysOverdue} days late`}</p>
+                </div>
+            </div>
+            <div class="flex gap-1">
+                <button class="btn-secondary p-1.5 rounded text-xs" onclick="openSnoozeModal('${plant.id}')" title="Snooze"><i class="fa-solid fa-clock text-yellow-500"></i></button>
+                <button class="btn-primary p-1.5 rounded text-xs quick-water-btn" data-id="${plant.id}"><i class="fa-solid fa-check"></i></button>
+            </div>
+        `;
+        waterList.appendChild(div);
+    }
+} else if (daysOverdue >= -7) {
                             // Upcoming (Due soon)
                             const daysUntil = Math.abs(daysOverdue);
                             const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + daysUntil);
@@ -778,12 +794,26 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
                     const daysOverdue = Math.floor(diffDays - plant.fertFreq);
 
                     if (daysOverdue >= 0) {
-                        if (!isSick) {
-                            hungryCount++;
-                            const div = document.createElement("div");
-                            div.className = "flex justify-between items-center bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border)]";
-                            div.innerHTML = `<div><p class="font-bold text-sm">${plant.name}</p><p class="text-xs text-orange-500 font-bold">${daysOverdue} days overdue</p></div>`;
-                            fertList.appendChild(div);
+    if (!isSick) {
+        hungryCount++;
+        const div = document.createElement("div");
+        div.className = "flex justify-between items-center bg-[var(--input-bg)] p-3 rounded-lg border border-[var(--border)]";
+        
+        // NEW: Check for photo
+        const imgHtml = plant.photoUrl 
+            ? `<img src="${plant.photoUrl}" class="w-10 h-10 rounded-full object-cover mr-3 border border-gray-200">`
+            : `<div class="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center mr-3 text-orange-500"><i class="fa-solid ${plant.icon || 'fa-seedling'}"></i></div>`;
+
+        div.innerHTML = `
+            <div class="flex items-center">
+                ${imgHtml}
+                <div>
+                    <p class="font-bold text-sm">${plant.name}</p>
+                    <p class="text-xs text-orange-500 font-bold">${daysOverdue} days overdue</p>
+                </div>
+            </div>
+        `;
+        fertList.appendChild(div);
                         }
                     } else if (daysOverdue >= -7) {
                         // Upcoming Fert
@@ -797,24 +827,33 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
 
                 // --- Hospital Render (If Sick) ---
                 if (isSick) {
-                    const div = document.createElement("div");
-                    div.className = `p-4 rounded-lg border ${plant.health === 'quarantine' ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'}`;
-                    div.innerHTML = `
-                        <div class="flex justify-between items-start mb-2">
-                            <div class="flex items-center gap-2">
-                                <i class="fa-solid ${plant.health === 'quarantine' ? 'fa-ban text-red-500' : 'fa-notes-medical text-yellow-500'}"></i>
-                                <span class="font-bold">${plant.name}</span>
-                            </div>
-                            <button class="text-xs btn-secondary px-2 py-1 edit-plant-btn" data-id="${plant.id}">Edit</button>
-                        </div>
-                        <p class="text-xs opacity-70 italic mb-2">${plant.health === 'quarantine' ? 'In Isolation' : 'Under Observation'}</p>
-                        <div class="flex gap-2">
-                            <button class="flex-1 btn-secondary text-xs py-1 quick-water-btn" data-id="${plant.id}">Water</button>
-                            <button class="flex-1 btn-secondary text-xs py-1" onclick="openSnoozeModal('${plant.id}')">Snooze</button>
-                        </div>
-                    `;
-                    hospitalList.appendChild(div);
-                }
+    const div = document.createElement("div");
+    div.className = `p-4 rounded-lg border ${plant.health === 'quarantine' ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'}`;
+    
+    // NEW: Check for photo
+    const imgHtml = plant.photoUrl 
+        ? `<img src="${plant.photoUrl}" class="w-10 h-10 rounded-full object-cover mr-3 border border-gray-200">`
+        : ``; // If no photo, we rely on the status icon below
+
+    div.innerHTML = `
+        <div class="flex justify-between items-start mb-2">
+            <div class="flex items-center">
+                ${imgHtml}
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid ${plant.health === 'quarantine' ? 'fa-ban text-red-500' : 'fa-notes-medical text-yellow-500'}"></i>
+                    <span class="font-bold">${plant.name}</span>
+                </div>
+            </div>
+            <button class="text-xs btn-secondary px-2 py-1 edit-plant-btn" data-id="${plant.id}">Edit</button>
+        </div>
+        <p class="text-xs opacity-70 italic mb-2">${plant.health === 'quarantine' ? 'In Isolation' : 'Under Observation'}</p>
+        <div class="flex gap-2">
+            <button class="flex-1 btn-secondary text-xs py-1 quick-water-btn" data-id="${plant.id}">Water</button>
+            <button class="flex-1 btn-secondary text-xs py-1" onclick="openSnoozeModal('${plant.id}')">Snooze</button>
+        </div>
+    `;
+    hospitalList.appendChild(div);
+}
             });
 
             // 3. Update UI Visibility
@@ -859,13 +898,34 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
                 const plant = state.plants.find(p => p.id === log.plantId);
                 const item = document.createElement("div");
                 item.className = "card p-3 flex flex-col justify-center h-24";
+                
+                // NEW: Prepare visual (Photo or Icon)
+                let iconHtml = '';
+                if (plant) {
+                    if (plant.photoUrl) {
+                        iconHtml = `<img src="${plant.photoUrl}" class="w-8 h-8 rounded-full object-cover mr-2 border border-[var(--border)]">`;
+                    } else {
+                        // Fallback to icon if no photo
+                        iconHtml = `<div class="w-8 h-8 rounded-full bg-[var(--input-bg)] flex items-center justify-center mr-2 text-[var(--primary)]"><i class="fa-solid ${plant.icon || 'fa-leaf'}"></i></div>`;
+                    }
+                } else {
+                    // Handle deleted plants
+                    iconHtml = `<div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center mr-2"><i class="fa-solid fa-trash text-gray-400"></i></div>`;
+                }
+
                 item.innerHTML = `
                     <div class="flex justify-between items-center mb-1">
-                        <span class="font-bold text-sm text-[var(--primary)]">${log.type}</span>
-                        <span class="text-xs opacity-60">${new Date(log.date).toLocaleDateString()}</span>
+                        <span class="font-bold text-xs uppercase tracking-wider text-[var(--primary)]">${log.type}</span>
+                        <span class="text-[10px] opacity-60">${new Date(log.date).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</span>
                     </div>
-                    <p class="font-bold text-sm truncate">${plant ? plant.name : 'Unknown Plant'}</p>
-                    ${log.notes ? `<p class="text-xs italic opacity-70 truncate">"${log.notes}"</p>` : ''}
+                    
+                    <div class="flex items-center">
+                        ${iconHtml}
+                        <div class="overflow-hidden">
+                            <p class="font-bold text-sm truncate">${plant ? plant.name : 'Deleted Plant'}</p>
+                            ${log.notes ? `<p class="text-xs italic opacity-70 truncate">"${log.notes}"</p>` : ''}
+                        </div>
+                    </div>
                 `;
                 recentList.appendChild(item);
             });
@@ -926,6 +986,35 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
             }
         };
 
+        getEl("delete-plant-btn").onclick = async () => {
+    const id = getEl("modal-plant-id").value;
+    if (!id) return;
+
+    if (confirm("Delete this plant?")) {
+        try {
+            // Find the plant to see if it has a photoUrl
+            const plant = state.plants.find(p => p.id === id);
+
+            // Delete image if it exists (and is a firebase storage url)
+            if (plant && plant.photoUrl && plant.photoUrl.includes("firebasestorage")) {
+                try {
+                    // Extract path from URL or reconstruct the ref
+                    const fileRef = ref(storage, plant.photoUrl); 
+                    await deleteObject(fileRef);
+                } catch (err) {
+                    console.log("Could not delete image, might be external or already gone");
+                }
+            }
+
+            await deleteDoc(doc(db, `users/${state.user.uid}/plants`, id));
+            toggleDisplay(getEl("plant-modal"), false);
+            showMsg("Plant deleted 🗑️");
+        } catch (e) {
+            showMsg(e.message, "error");
+        }
+    }
+};
+
         // --- Modal Logic ---
         const openPlantModal = (plantId = null) => {
             const modal = getEl("plant-modal");
@@ -971,46 +1060,63 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
         document.querySelectorAll(".close-modal-btn").forEach(b => b.onclick = () => toggleDisplay(getEl("plant-modal"), false));
 
         getEl("save-plant-btn").onclick = async () => {
-            const id = getEl("modal-plant-id").value;
-            const data = {
-                name: getEl("plant-name").value,
-                species: getEl("plant-species").value,
-                location: getEl("plant-location").value,
-                light: getEl("plant-light").value,
-                health: getEl("plant-health").value,
-                position: getEl("plant-position").value,
-                waterFreq: parseInt(getEl("plant-water-freq").value) || 0,
-                fertFreq: parseInt(getEl("plant-fert-freq").value) || 0,
-                acquired: getEl("plant-acquired").value,
-                icon: getEl("plant-icon").value,
-                updatedAt: Timestamp.now()
-            };
-            if (!data.name) return showMsg("Name required", "error");
+    const id = getEl("modal-plant-id").value;
+    const fileInput = getEl("plant-photo");
+    const file = fileInput.files[0];
+    
+    // 1. Prepare base data
+    let data = {
+        name: getEl("plant-name").value,
+        species: getEl("plant-species").value,
+        location: getEl("plant-location").value,
+        light: getEl("plant-light").value,
+        health: getEl("plant-health").value,
+        position: getEl("plant-position").value,
+        waterFreq: parseInt(getEl("plant-water-freq").value) || 0,
+        fertFreq: parseInt(getEl("plant-fert-freq").value) || 0,
+        acquired: getEl("plant-acquired").value,
+        icon: getEl("plant-icon").value,
+        updatedAt: Timestamp.now()
+    };
+    
+    if (!data.name) return showMsg("Name required", "error");
 
-            try {
-                if (id) {
-                    // Update existing plant
-                    await updateDoc(doc(db, `users/${state.user.uid}/plants`, id), data);
-                    showMsg("Plant updated");
-                } else {
-                    // Create new plant
-                    data.createdAt = Timestamp.now();
-                    const docRef = await addDoc(collection(db, `users/${state.user.uid}/plants`), data);
-                    
-                    // NEW: Create History Log for "Added" event
-                    await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
-                        plantId: docRef.id,
-                        type: "Added",
-                        date: new Date().toISOString(),
-                        notes: `Welcome home, ${data.name}!`,
-                        createdAt: Timestamp.now()
-                    });
+    try {
+        showMsg("Saving...", "success"); // Visual feedback
 
-                    showMsg("Plant added");
-                }
-                toggleDisplay(getEl("plant-modal"), false);
-            } catch (e) { showMsg(e.message, "error"); }
-        };
+        // 2. Handle Image Upload (if file exists)
+        if (file) {
+            const storageRef = ref(storage, `users/${state.user.uid}/plants/${Date.now()}_${file.name}`);
+            await uploadBytes(storageRef, file);
+            const photoUrl = await getDownloadURL(storageRef);
+            data.photoUrl = photoUrl; // Add URL to data
+        }
+
+        // 3. Save to Firestore
+        if (id) {
+            await updateDoc(doc(db, `users/${state.user.uid}/plants`, id), data);
+            showMsg("Plant updated");
+        } else {
+            data.createdAt = Timestamp.now();
+            const docRef = await addDoc(collection(db, `users/${state.user.uid}/plants`), data);
+            
+            // Log the add
+            await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                plantId: docRef.id, type: "Added", date: new Date().toISOString(), 
+                notes: `Welcome home, ${data.name}!`, createdAt: Timestamp.now()
+            });
+            showMsg("Plant added");
+        }
+        toggleDisplay(getEl("plant-modal"), false);
+        
+        // Reset file input for next time
+        fileInput.value = ""; 
+
+    } catch (e) { 
+        console.error(e);
+        showMsg("Error saving: " + e.message, "error"); 
+    }
+};
 
         // --- Layout / Birds-Eye Logic ---
         let layoutMode = 'move'; // 'move' or 'draw'
