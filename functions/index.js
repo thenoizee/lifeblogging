@@ -1,19 +1,30 @@
-/**
- * Import function triggers from their respective submodules:
- */
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest, onCall } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { setGlobalOptions } = require("firebase-functions/v2/options");
+const admin = require("firebase-admin");
+const axios = require("axios");
 
-// Set maximum instances to control costs (optional but recommended)
+// Initialize Firebase Admin
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
+
 setGlobalOptions({ maxInstances: 10 });
 
-// Define the secret so the function can access it safely
+// --- SECRETS & KEYS ---
 const tickTickSecret = defineSecret("TICKTICK_CLIENT_SECRET");
 
+// TODO: ENSURE YOUR KEYS ARE HERE
+const HUE_CLIENT_ID = "61472d07-caca-4ba3-bead-4ea7a28eb7f9";     
+const HUE_CLIENT_SECRET = "a9d0d32b191081be67cf7ba3c0f472d7"; 
+const HUE_APP_ID = "lifeblogging"; 
+
+// ==========================================
+// 1. TICKTICK FUNCTION
+// ==========================================
 exports.exchangeTickTickToken = onRequest(
-  { secrets: [tickTickSecret], cors: true }, // cors: true allows your website to call this
+  { secrets: [tickTickSecret], cors: true },
   async (req, res) => {
     const { code, redirect_uri } = req.body;
 
@@ -23,13 +34,11 @@ exports.exchangeTickTickToken = onRequest(
     }
 
     try {
-      const clientId = "3ooYQiYjAFq2cRw2b5"; // Your public Client ID
-      const clientSecret = tickTickSecret.value(); // Securely retrieved from vault
+      const clientId = "3ooYQiYjAFq2cRw2b5"; 
+      const clientSecret = tickTickSecret.value(); 
       
-      // Create the Basic Auth header securely on the server
       const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-      // Exchange the code for the token
       const tokenResponse = await fetch("https://ticktick.com/oauth/token", {
         method: "POST",
         headers: {
@@ -50,7 +59,6 @@ exports.exchangeTickTickToken = onRequest(
         throw new Error(data.error_description || "TickTick API Error");
       }
 
-      // Send the token back to your frontend
       res.json(data);
 
     } catch (error) {
@@ -59,3 +67,118 @@ exports.exchangeTickTickToken = onRequest(
     }
   }
 );
+
+// ==========================================
+// 2. HUE FUNCTIONS
+// ==========================================
+
+// A. LOGIN
+exports.hueLogin = onRequest((req, res) => {
+  const uid = req.query.uid; 
+  // Ensure this URL matches your deployed hosting URL
+  const redirectUri = `https://${process.env.GCLOUD_PROJECT}.web.app/huemanagr/callback.html`;
+  
+  if (!uid) {
+      res.send("Error: Missing User ID");
+      return;
+  }
+
+  const authUrl = `https://api.meethue.com/oauth2/auth?clientid=${HUE_CLIENT_ID}&appid=${HUE_APP_ID}&deviceid=lifehub_server&state=${uid}&response_type=code`;
+  
+  res.redirect(authUrl);
+});
+
+// B. TOKEN EXCHANGE (FIXED)
+exports.hueTokenExchange = onCall(async (request) => {
+  const code = request.data.code;
+  
+  if (!code) {
+      throw new Error("Missing auth code");
+  }
+
+  try {
+    const authHeader = Buffer.from(`${HUE_CLIENT_ID}:${HUE_CLIENT_SECRET}`).toString('base64');
+    
+    const response = await axios.post('https://api.meethue.com/oauth2/token', null, {
+      params: {
+        grant_type: 'authorization_code',
+        code: code
+      },
+      headers: {
+        Authorization: `Basic ${authHeader}`
+      }
+    });
+
+    // --- FIX IS HERE: We only destructure tokens, NOT username ---
+    const { access_token, refresh_token } = response.data;
+
+    if (!request.auth) throw new Error("User must be logged in.");
+    
+    // We save the tokens to the database
+    await admin.firestore().collection('users').doc(request.auth.uid).collection('services').doc('hue').set({
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      linkedAt: new Date()
+    }, { merge: true }); // Use merge just in case
+
+    return { success: true };
+    
+  } catch (error) {
+    // Improved logging to see exact API response if it fails again
+    logger.error("Hue Exchange Failed", error.response?.data || error.message);
+    throw new Error('Failed to exchange token');
+  }
+});
+
+// C. PROXY: Controls lights using the saved DB token
+exports.hueProxy = onCall(async (request) => {
+  if (!request.auth) throw new Error("Must be logged in");
+
+  // 1. Get tokens from DB
+  const db = admin.firestore();
+  const snapshot = await db.collection('users').doc(request.auth.uid).collection('services').doc('hue').get();
+  const data = snapshot.data();
+  
+  if (!data || !data.accessToken) {
+      throw new Error("Hue not linked. Please connect first.");
+  }
+
+  const { accessToken, username } = data;
+  
+  // If we don't have a username yet, we try '0' (the default placeholder)
+  const targetUser = username || '0';
+  
+  // 2. Prepare the command
+  const endpoint = request.data.endpoint; // e.g. "lights" or "lights/1/state"
+  const method = request.data.method || 'GET';
+  const body = request.data.body || null;
+
+  try {
+     const url = `https://api.meethue.com/route/api/${targetUser}/${endpoint}`;
+     
+     const response = await axios({
+        method: method,
+        url: url,
+        headers: { Authorization: `Bearer ${accessToken}` },
+        data: body
+     });
+
+     return response.data;
+     
+  } catch (error) {
+     logger.error("Hue Proxy Error", error.response?.data || error.message);
+     throw new Error("Failed to send command to Hue.");
+  }
+});
+
+// D. MANUAL SYNC: Saves a username to the DB (Call this from frontend)
+exports.saveHueUsername = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', "Login required");
+    const username = request.data.username;
+    
+    await admin.firestore().collection('users').doc(request.auth.uid).collection('services').doc('hue').set({
+        username: username
+    }, { merge: true });
+    
+    return { success: true };
+});

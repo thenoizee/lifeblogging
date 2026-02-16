@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LightManagr</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        yellow: { 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706' }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg-color: #f3f4f6; --card-bg: #ffffff; --text-primary: #1f2937; }
+        .dark { --bg-color: #111827; --card-bg: #1f2937; --text-primary: #f9fafb; }
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: var(--bg-color); 
+            color: var(--text-primary); 
+            transition: background-color 0.3s, color 0.3s; 
+        }
+
+        /* --- CUSTOM SLIDERS --- */
+        input[type=range] { -webkit-appearance: none; background: transparent; cursor: pointer; }
+        input[type=range]:focus { outline: none; }
+        
+        /* Thumb Style */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px; width: 20px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            margin-top: -8px; /* Centers thumb on track */
+            border: 2px solid white;
+        }
+
+        /* Brightness Track */
+        .slider-bri::-webkit-slider-runnable-track {
+            width: 100%; height: 6px; cursor: pointer;
+            background: #e5e7eb; border-radius: 99px;
+        }
+        .dark .slider-bri::-webkit-slider-runnable-track { background: #374151; }
+
+        /* Hue Rainbow Track */
+        .slider-hue::-webkit-slider-runnable-track {
+            width: 100%; height: 8px; cursor: pointer;
+            border-radius: 99px;
+            background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+        }
+
+        /* Temp Track */
+        .slider-temp::-webkit-slider-runnable-track {
+            width: 100%; height: 8px; cursor: pointer;
+            border-radius: 99px;
+            background: linear-gradient(to right, #a1c4fd, #ffffff, #fbc2eb);
+        }
+
+        /* Card Glow & Transitions */
+        .light-card { transition: all 0.3s ease; position: relative; overflow: hidden; }
+        .light-card::before { 
+            content: ''; position: absolute; top: 0; left: 0; right: 0; 
+            height: 4px; background: var(--light-color, transparent); transition: 0.3s; 
+        }
+        .light-on { 
+            box-shadow: 0 4px 20px -5px var(--light-color-dim, rgba(251, 191, 36, 0.3)); 
+            border-color: var(--light-color, #fbbf24); 
+        }
+        .light-off { opacity: 0.75; filter: grayscale(1); }
+
+        .controls-container { transition: opacity 0.3s ease; }
+    </style>
+</head>
+<body class="min-h-screen pb-20 md:pb-0">
+
+    <div id="setup-panel" class="hidden max-w-md mx-auto mt-20 px-4">
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">
+                <i class="fa-solid fa-lightbulb"></i>
+            </div>
+            <h1 class="text-3xl font-bold mb-2">Connect Hue</h1>
+            <p class="text-gray-500 dark:text-gray-400">Control your lights from your LifeBlogging Hub</p>
+        </div>
+        
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700">
+            <div class="mb-6">
+                <h3 class="font-bold text-lg mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-house-signal text-green-500"></i> Local (Fastest)
+                </h3>
+                <p class="text-xs text-gray-400 mb-3">Requires same Wi-Fi. Press button on bridge first.</p>
+                <input id="bridge-ip" placeholder="Bridge IP (e.g. 192.168.1.50)" class="w-full mb-3 p-3 rounded-lg border bg-gray-50 dark:bg-gray-900 dark:border-gray-600 text-sm focus:ring-2 ring-yellow-500 outline-none transition">
+                <button onclick="connectBridge()" class="w-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white py-3 rounded-lg font-bold transition">
+                    Connect Locally
+                </button>
+            </div>
+
+            <div class="relative mb-6">
+                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200 dark:border-gray-700"></div></div>
+                <div class="relative flex justify-center text-xs"><span class="px-2 bg-white dark:bg-gray-800 text-gray-500">OR</span></div>
+            </div>
+
+            <button onclick="connectRemote()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold transition flex justify-center items-center gap-2">
+                <i class="fa-solid fa-cloud"></i> Connect with Hue Account
+            </button>
+        </div>
+    </div>
+
+    <div id="dashboard" class="container mx-auto px-4 md:px-6 hidden">
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 mt-6">
+            <div class="flex items-center gap-3">
+                <div id="connection-badge" class="px-3 py-1 rounded-full text-xs font-mono bg-gray-200 dark:bg-gray-800 text-gray-500">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...
+                </div>
+            </div>
+
+            <div class="flex gap-2 w-full md:w-auto">
+                <button id="btn-all-on" onclick="allLights(true)" class="flex-1 md:flex-none px-4 py-2 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 rounded-lg font-bold hover:bg-yellow-200 dark:hover:bg-yellow-900/50 transition text-sm disabled:opacity-50">
+                    All On
+                </button>
+                <button id="btn-all-off" onclick="allLights(false)" class="flex-1 md:flex-none px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition text-sm disabled:opacity-50">
+                    All Off
+                </button>
+                <button onclick="refreshLights(true)" class="p-2 w-10 h-10 bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div id="lights-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div class="hidden" id="skeleton-loader">
+                <div class="h-40 bg-gray-200 dark:bg-gray-800 rounded-2xl animate-pulse"></div>
+                <div class="h-40 bg-gray-200 dark:bg-gray-800 rounded-2xl animate-pulse"></div>
+                <div class="h-40 bg-gray-200 dark:bg-gray-800 rounded-2xl animate-pulse"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+    import { AppNavigation } from '/shared-nav.js';
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
+
+    // --- CONFIG ---
+    const nav = new AppNavigation({
+        appName: 'LightManagr',
+        appIcon: 'fa-lightbulb',
+        themeColor: 'yellow'
+    });
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
+        authDomain: "sammy-7298f.firebaseapp.com",
+        projectId: "sammy-7298f",
+        storageBucket: "sammy-7298f.firebasestorage.app",
+        messagingSenderId: "963185683535",
+        appId: "1:963185683535:web:807df8941feba46c208e3a"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const functions = getFunctions(app);
+
+    const getEl = (id) => document.getElementById(id);
+    let localConfig = JSON.parse(localStorage.getItem('hue_config')) || null;
+    let cachedLights = JSON.parse(localStorage.getItem('hue_cache_lights')) || null;
+    let isRemote = false;
+    let debounceTimers = {};
+    let isGlobalActionPending = false;
+
+    // --- MATH HELPERS ---
+    // Improved Color Matcher: Convert Hue (0-65535) to CSS Color for the UI glow
+    function hueSatToCss(hue, sat, bri) {
+        // Hue: 0-65535 -> 0-360 deg
+        // Sat: 0-254 -> 0-100%
+        // Bri: 0-254 -> 0-100% (Lightness)
+        
+        const h = (hue / 65535) * 360;
+        const s = (sat / 254) * 100;
+        // In HSL, L=50% is full color. We adjust slightly based on brightness but keep it colorful.
+        // We map Bri 0-254 to Lightness 10-60 to avoid washing out to white or black on the glow
+        const l = 20 + ((bri / 254) * 40); 
+        
+        return `hsl(${h}, ${s}%, ${l}%)`;
+    }
+
+    // --- CORE LOGIC ---
+    async function init() {
+        // 1. FAST LOAD: Show cached data immediately if available
+        if (cachedLights) {
+            getEl('dashboard').classList.remove('hidden');
+            renderLights(cachedLights);
+            getEl('connection-badge').innerHTML = `<i class="fa-solid fa-bolt text-yellow-500"></i> Loaded (Cache)`;
+        } else {
+             getEl('dashboard').classList.remove('hidden');
+             getEl('skeleton-loader').classList.remove('hidden');
+        }
+
+        // 2. CONNECTION CHECK
+        if (localConfig && localConfig.ip) {
+            refreshLights();
+            return;
+        }
+        
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                try {
+                    const proxy = httpsCallable(functions, 'hueProxy');
+                    // Check cloud availability
+                    const result = await proxy({ endpoint: 'config', method: 'GET' });
+                    
+                    if (result.data && !result.data.error) {
+                        isRemote = true;
+                        getEl('setup-panel').classList.add('hidden');
+                        refreshLights();
+                    } else {
+                        if(!cachedLights) getEl('setup-panel').classList.remove('hidden');
+                    }
+                } catch (e) {
+                    if(!cachedLights) getEl('setup-panel').classList.remove('hidden');
+                }
+            } else {
+                if(!cachedLights) getEl('setup-panel').classList.remove('hidden');
+            }
+        });
+    }
+
+    window.refreshLights = async (manual = false) => {
+        try {
+            if(manual) {
+                const icon = document.querySelector('.fa-rotate');
+                if(icon) icon.classList.add('fa-spin');
+            }
+
+            let lights;
+            
+            if (isRemote) {
+                getEl('connection-badge').innerHTML = `<i class="fa-solid fa-cloud text-blue-500"></i> Cloud`;
+                const proxy = httpsCallable(functions, 'hueProxy');
+                const res = await proxy({ endpoint: 'lights', method: 'GET' });
+                lights = res.data;
+            } else if (localConfig) {
+                getEl('connection-badge').innerHTML = `<i class="fa-solid fa-wifi text-green-500"></i> Local`;
+                const res = await fetch(`http://${localConfig.ip}/api/${localConfig.username}/lights`);
+                lights = await res.json();
+            }
+            
+            if(lights) {
+                // CACHE THE RESULT
+                localStorage.setItem('hue_cache_lights', JSON.stringify(lights));
+                renderLights(lights);
+            }
+        } catch (e) { 
+            console.error(e); 
+        } finally {
+             const icon = document.querySelector('.fa-rotate');
+             if(icon) icon.classList.remove('fa-spin');
+        }
+    };
+
+    // --- CONTROLS ---
+
+    window.allLights = async (state) => {
+        if (isGlobalActionPending) return;
+        isGlobalActionPending = true;
+
+        const btnOn = getEl('btn-all-on');
+        const btnOff = getEl('btn-all-off');
+        btnOn.disabled = true; btnOff.disabled = true;
+
+        // Optimistic Update
+        document.querySelectorAll('.light-card').forEach(c => {
+            const id = c.id.replace('card-', '');
+            window.handleToggle(id, state, true);
+        });
+
+        try {
+            if (isRemote) {
+                const proxy = httpsCallable(functions, 'hueProxy');
+                await proxy({ endpoint: 'groups/0/action', method: 'PUT', body: { on: state } });
+            } else if (localConfig) {
+                await fetch(`http://${localConfig.ip}/api/${localConfig.username}/groups/0/action`, {
+                    method: 'PUT', body: JSON.stringify({ on: state })
+                });
+            }
+        } catch (e) { alert("Command failed"); } 
+        finally {
+            setTimeout(() => {
+                isGlobalActionPending = false;
+                btnOn.disabled = false; btnOff.disabled = false;
+            }, 1000);
+        }
+    };
+
+    // --- THROTTLED UPDATER ---
+    window.updateState = (id, body) => {
+        // Clear existing timer to reset the clock (debounce)
+        if(debounceTimers[id]) clearTimeout(debounceTimers[id]);
+        
+        // Wait 400ms after the LAST slide event before sending to bridge
+        // This makes the UI feel smooth but prevents "popcorn" lag
+        debounceTimers[id] = setTimeout(async () => {
+            if (isRemote) {
+                const proxy = httpsCallable(functions, 'hueProxy');
+                await proxy({ endpoint: `lights/${id}/state`, method: 'PUT', body: body });
+            } else {
+                await fetch(`http://${localConfig.ip}/api/${localConfig.username}/lights/${id}/state`, {
+                    method: 'PUT', body: JSON.stringify(body)
+                });
+            }
+        }, 400); 
+    };
+
+    window.handleToggle = (id, newState, skipApi = false) => {
+        const card = document.getElementById(`card-${id}`);
+        if(!card) return;
+        const btn = card.querySelector('.toggle-btn');
+        const span = btn.querySelector('span');
+        const controls = card.querySelector('.controls-container');
+
+        if(newState) { 
+            card.classList.remove('light-off'); card.classList.add('light-on');
+            btn.classList.remove('bg-gray-300', 'dark:bg-gray-600'); btn.classList.add('bg-green-500');
+            span.style.transform = 'translateX(16px)';
+            controls.classList.remove('opacity-50', 'pointer-events-none');
+        } else { 
+            card.classList.add('light-off'); card.classList.remove('light-on'); 
+            btn.classList.add('bg-gray-300', 'dark:bg-gray-600'); btn.classList.remove('bg-green-500');
+            span.style.transform = 'translateX(0)';
+            controls.classList.add('opacity-50', 'pointer-events-none');
+        }
+        if(!skipApi) window.updateState(id, { on: newState });
+    };
+
+    // New Handlers
+    window.handleHue = (id, hueVal) => {
+        // Update Glow Instantly
+        const card = document.getElementById(`card-${id}`);
+        // Default Saturation to 254 (Vivid) when sliding hue
+        const color = hueSatToCss(hueVal, 254, 127);
+        card.style.setProperty('--light-color', color);
+        
+        // API uses 0-65535
+        window.updateState(id, { hue: parseInt(hueVal), sat: 254 });
+    };
+
+    window.handleBri = (id, val) => {
+        window.updateState(id, { bri: parseInt(val) });
+    };
+
+    window.handleTemp = (id, mireds) => {
+        window.updateState(id, { ct: parseInt(mireds) });
+    };
+
+    // --- RENDERER ---
+    function renderLights(lights) {
+        const grid = getEl('lights-grid');
+        getEl('skeleton-loader')?.classList.add('hidden'); // Hide loader
+        
+        // We use a Map to preserve order or prevent flicker if re-rendering partially
+        // But simply replacing innerHTML is cleanest for this size app
+        
+        grid.innerHTML = Object.entries(lights).map(([id, light]) => {
+            const isOn = light.state.on;
+            const bri = light.state.bri || 254;
+            const hue = light.state.hue || 0;
+            const sat = light.state.sat || 0;
+            const ct = light.state.ct || 370;
+
+            const canColor = light.type.toLowerCase().includes('color');
+            const canTemp = light.type.toLowerCase().includes('color') || light.type.toLowerCase().includes('temperature') || light.type.toLowerCase().includes('ambiance');
+            
+            // Calculate current Glow Color
+            let glowColor = '#fbbf24';
+            if (isOn && light.state.colormode === 'hs') {
+                glowColor = hueSatToCss(hue, sat, bri);
+            } else if (isOn && light.state.colormode === 'ct') {
+                // Simple warm/cool approx
+                glowColor = ct < 300 ? '#dcf4ff' : '#ffb76b';
+            }
+
+            return `
+            <div id="card-${id}" 
+                 style="--light-color: ${glowColor}; --light-color-dim: ${glowColor}4D"
+                 class="light-card bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 ${isOn ? 'light-on' : 'light-off'}">
+                
+                <div class="flex justify-between items-start mb-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xl">
+                            <i class="fa-solid ${light.type.includes('Strip') ? 'fa-tape' : 'fa-lightbulb'} text-gray-400"></i>
+                        </div>
+                        <div class="overflow-hidden">
+                            <h3 class="font-bold text-gray-900 dark:text-white leading-tight truncate pr-2">${light.name}</h3>
+                            <span class="text-xs text-gray-400 font-medium truncate block">${light.productname || light.type}</span>
+                        </div>
+                    </div>
+                    
+                    <button onclick="window.handleToggle('${id}', ${!isOn})" 
+                        class="toggle-btn w-12 h-8 rounded-full transition-colors relative flex-shrink-0 ${isOn ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}">
+                        <span class="absolute top-1 left-1 bg-white w-6 h-6 rounded-full shadow-sm transition-transform duration-200" style="transform: ${isOn ? 'translateX(16px)' : 'translateX(0)'}"></span>
+                    </button>
+                </div>
+
+                <div class="controls-container space-y-5 ${!isOn ? 'opacity-50 pointer-events-none' : ''}">
+                    <div>
+                        <div class="flex justify-between text-xs text-gray-400 mb-1 font-bold uppercase">
+                            <span>Brightness</span>
+                            <span>${Math.round((bri/254)*100)}%</span>
+                        </div>
+                        <input type="range" min="1" max="254" value="${bri}" 
+                            oninput="window.handleBri('${id}', this.value)"
+                            class="slider-bri w-full bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600">
+                    </div>
+
+                    ${canColor ? `
+                    <div>
+                         <label class="text-xs text-gray-400 font-bold uppercase mb-1 block">Color</label>
+                         <input type="range" min="0" max="65535" value="${hue}" 
+                             oninput="window.handleHue('${id}', this.value)"
+                             class="slider-hue w-full appearance-none">
+                    </div>
+                    ` : ''}
+
+                    ${canTemp && !canColor ? `
+                    <div>
+                         <label class="text-xs text-gray-400 font-bold uppercase mb-1 block">Warmth</label>
+                         <input type="range" min="153" max="500" value="${ct}" 
+                             oninput="window.handleTemp('${id}', this.value)"
+                             class="slider-temp w-full appearance-none">
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+            `;
+        }).join('');
+    }
+
+    init();
+    </script>
+</body>
+</html>

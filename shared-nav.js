@@ -12,7 +12,7 @@ export class AppNavigation {
         
         this.hubApps = [
             { name: 'Dashboard', url: '/dashboard', icon: 'fa-gauge-high', color: 'bg-slate-700' },
-            { name: 'RouteTrackr', url: '/routetrackr', icon: 'fa-map-location-dot', color: 'bg-lime-600' }, // <--- ADDED HERE
+            { name: 'RouteTrackr', url: '/routetrackr', icon: 'fa-map-location-dot', color: 'bg-lime-600' },
             { name: 'FoodTrackr', url: '/foodtrackr', icon: 'fa-utensils', color: 'bg-orange-600' },
             { name: 'RecipeManagr', url: '/recipemanagr', icon: 'fa-book-open', color: 'bg-teal-600' },
             { name: 'TaskTrackr', url: '/tasktrackr', icon: 'fa-check-double', color: 'bg-blue-600' },
@@ -37,6 +37,7 @@ export class AppNavigation {
             { name: 'Converter', url: '/converter', icon: 'fa-exchange-alt', color: 'bg-amber-600' },
             { name: 'Palette Generator', url: '/palette', icon: 'fa-palette', color: 'bg-emerald-600' },
             { name: 'Icon Generator', url: '/icongenerator', icon: 'fa-box', color: 'bg-pink-400' },
+            { name: 'LightManagr', url: '/lightmanagr', icon: 'fa-lightbulb', color: 'bg-yellow-500' },
         ];
 
         this.init();
@@ -124,7 +125,7 @@ export class AppNavigation {
                                 </div>
 
                                 <div class="border-t border-gray-100 dark:border-gray-700 pt-2">
-                                    <div class="grid grid-cols-8 gap-1 justify-items-center">
+                                    <div class="grid grid-cols-9 gap-1 justify-items-center">
                                         ${this.hubTools.map(tool => `
                                         <a href="${tool.url}" class="${tool.color} text-white w-6 h-6 rounded-full flex items-center justify-center hover:opacity-80 transition-opacity" title="${tool.name}">
                                             <i class="fa-solid ${tool.icon} text-[10px]"></i>

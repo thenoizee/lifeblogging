@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v10.70.0-alpha",
+    date: "2026-02-16",
+    changes: [
+        "In Hub: Introduced 'LightManagr', a new application for controlling smart lights directly from the dashboard.",
+        "In LightManagr: Features local network discovery and remote cloud connection for seamless control.",
+        "In LightManagr: Includes a full dashboard to toggle all lights, adjust brightness, color (Hue), and temperature."
+    ]
+    },
+    {
     version: "v10.69.0-alpha",
     date: "2026-02-15",
     changes: [
