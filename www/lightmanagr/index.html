@@ -229,18 +229,34 @@
             if (isRemote) {
                 getEl('connection-badge').innerHTML = `<i class="fa-solid fa-cloud text-blue-500"></i> Cloud`;
                 const proxy = httpsCallable(functions, 'hueProxy');
-                // Fetch Lights
                 const resLights = await proxy({ endpoint: 'lights', method: 'GET' });
                 lights = resLights.data;
-                // Fetch Groups
                 const resGroups = await proxy({ endpoint: 'groups', method: 'GET' });
                 groups = resGroups.data;
             } else if (localConfig) {
-                getEl('connection-badge').innerHTML = `<i class="fa-solid fa-wifi text-green-500"></i> Local`;
-                const resL = await fetch(`http://${localConfig.ip}/api/${localConfig.username}/lights`);
-                lights = await resL.json();
-                const resG = await fetch(`http://${localConfig.ip}/api/${localConfig.username}/groups`);
-                groups = await resG.json();
+                // Set loading state without hiding existing data
+                getEl('connection-badge').innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-yellow-500"></i> Syncing...`;
+                
+                try {
+                    // Add a timeout to the fetch so it doesn't hang forever
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+                    const resL = await fetch(`http://${localConfig.ip}/api/${localConfig.username}/lights`, { signal: controller.signal });
+                    if(!resL.ok) throw new Error("Hub unreachable");
+                    lights = await resL.json();
+                    
+                    const resG = await fetch(`http://${localConfig.ip}/api/${localConfig.username}/groups`, { signal: controller.signal });
+                    groups = await resG.json();
+                    
+                    clearTimeout(timeoutId);
+                    
+                    // Success UI
+                    getEl('connection-badge').innerHTML = `<i class="fa-solid fa-wifi text-green-500"></i> Online`;
+                    getEl('connection-badge').classList.remove('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
+                } catch (err) {
+                    throw new Error("Hub Offline");
+                }
             }
             
             if(lights) {
@@ -250,6 +266,12 @@
             }
         } catch (e) { 
             console.error(e); 
+            // OFFLINE UI STATE
+            getEl('connection-badge').innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Hub Offline`;
+            getEl('connection-badge').classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
+            
+            // Do NOT clear the grid (renderData) here. 
+            // We leave the cached data on screen so it doesn't "flash" empty.
         } finally {
              const icon = document.querySelector('.fa-rotate');
              if(icon) icon.classList.remove('fa-spin');

@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v11.5.0-alpha",
+    date: "2026-02-17",
+    changes: [
+        "In Lifeblogging Hub: Implemented an immediate authentication and theme check in the page head to prevent the 'white flash' and layout shift on initial load.",
+        "In LightManagr: Updated the hub connection logic to handle offline states gracefully, preventing the UI from flashing empty by preserving cached data.",
+        "In LightManagr: Added a 3-second timeout to local hub requests to prevent interface hanging during connection issues.",
+        "In VidTrackr: Implemented a 'lazy load' mechanism for the Stremio button to ensure IMDb IDs are fetched before generating links, fixing broken deep links.",
+        "In VidTrackr: Added external service links (Trakt, IMDb, TMDB, TVDB) to the Movie, Show, and Episode detail views.",
+        "In VidTrackr: Fixed the grid layout on the Episode Details page to utilize the full screen width, removing the previous 2/3 width constraint."
+    ]
+    },
+    {
     version: "v11.4.0-alpha",
     date: "2026-02-17",
     changes: [
