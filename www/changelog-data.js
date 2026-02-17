@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v11.4.0-alpha",
+    date: "2026-02-17",
+    changes: [
+        "In RecipeManagr: Relocated the search bar from the navigation menu to the main content area, making it larger and more accessible on mobile devices.",
+        "In RecipeManagr: Implemented a sticky search header that remains pinned to the top of the screen while scrolling through the recipe list.",
+    ]
+    },
+    {
     version: "v11.3.0-alpha",
     date: "2026-02-17",
     changes: [
