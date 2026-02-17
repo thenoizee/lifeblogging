@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v11.3.0-alpha",
+    date: "2026-02-17",
+    changes: [
+        "In PlantTrackr: Added a full-screen photo viewer (lightbox). Clicking on plant thumbnails in the Garden, Dashboard lists, or Recent Activity now opens the image in full resolution.",
+    ]
+    },
+    {
     version: "v11.2.0-alpha",
     date: "2026-02-16",
     changes: [
