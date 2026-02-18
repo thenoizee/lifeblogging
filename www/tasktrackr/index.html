@@ -26,7 +26,18 @@
             --bg: var(--bg-dark); --card: var(--card-dark); --text: var(--text-dark); 
         }
         
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); transition: 0.3s; padding-bottom: 0; overflow: hidden; }
+        /* Update body to use dynamic viewport height and ensure no scrolling on body itself */
+body { 
+    font-family: 'Inter', sans-serif; 
+    background-color: var(--bg); 
+    color: var(--text); 
+    transition: 0.3s; 
+    padding-bottom: 0 !important; /* Add !important here */
+    overflow: hidden; 
+    height: 100dvh; 
+    width: 100vw;
+}
+
         .card { transition: all 0.2s; position: relative; overflow: hidden; }
         .btn-primary { background-color: var(--primary); color: white; transition: 0.2s; }
         .btn-primary:hover { background-color: var(--primary-hover); }
@@ -207,7 +218,7 @@
     <i class="fa-solid fa-check-double fa-bounce text-6xl text-blue-500 mb-6"></i>
     <p class="text-xl font-bold opacity-80 animate-pulse text-[var(--text)]">Syncing Tasks...</p>
 </div>
-    <main class="flex-grow container mx-auto px-4 py-4 pb-24 md:pb-4 relative flex items-stretch gap-4 overflow-hidden h-[calc(100dvh-80px)]">
+    <main class="flex-grow container mx-auto px-4 relative flex items-stretch gap-4 overflow-hidden h-full">
     
     <div id="project-sidebar" 
      class="fixed inset-y-0 left-0 z-[60] w-64 flex-col transition-all duration-300 transform -translate-x-full 
@@ -246,7 +257,7 @@
 
     <div id="main-content-wrapper" class="flex-grow flex flex-col h-full min-w-0 transition-all duration-300">
 
-        <div class="flex items-center gap-2 mb-4 shrink-0">
+        <div class="flex items-center gap-2 mb-2 shrink-0">
     <div id="quick-add-container" class="relative group flex-grow z-0">
         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <i class="fa-solid fa-plus text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
@@ -279,7 +290,7 @@
         </button>
     </div>
 </div>
-        <div id="content" class="flex-grow overflow-y-auto pr-2 pb-20"></div>
+       <div id="content" class="flex-grow overflow-y-auto pr-2 pt-0 pb-24 lg:pb-0"></div>
     </div>
     
     <div id="side-pane" class="bg-white dark:bg-[#1a202c] shadow-2xl flex flex-col transition-all duration-300 side-pane-desktop side-pane-mobile h-full rounded-xl">
@@ -669,40 +680,44 @@ import {
         ];
         
         onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                showLoader(); // <--- ADD THIS LINE
-                // Update Shared Nav User
-                nav.updateUser(user.email);
+    // 1. If Firebase User exists (Google/Sync)
+    if (user) {
+        showLoader();
+        nav.updateUser(user.email);
+        document.getElementById('login-overlay').classList.add('hidden');
 
-                // FIX: Hide login screen immediately when user is detected
-                document.getElementById('login-overlay').classList.add('hidden');
-
-                // 1. Existing TickTick Sync
-                try {
-                    const docRef = doc(db, 'users', user.uid, 'services', 'ticktick');
-                    const docSnap = await getDoc(docRef);
-                    if (docSnap.exists() && docSnap.data().token) {
-                        const dbToken = docSnap.data().token;
-                        if (dbToken !== accessToken) {
-                            accessToken = dbToken;
-                            localStorage.setItem('ticktick_token', accessToken);
-                            fetchAllData();
-                        }
-                    }
-                } catch (e) { console.error("Error syncing with Firestore:", e); }
-
-                // 2. New Google Tasks Sync
-                try {
-                    const gDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'google'));
-                    if (gDoc.exists() && gDoc.data().token) {
-                        localStorage.setItem('google_token', gDoc.data().token);
-                        
-                        // If we are logged in but FetchAllData hasn't run (e.g. no TickTick token), run it now
-                        if (!accessToken) fetchAllData(); 
-                    }
-                } catch (e) { console.error("Error syncing Google:", e); }
+        // Sync Services
+        try {
+            const docRef = doc(db, 'users', user.uid, 'services', 'ticktick');
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists() && docSnap.data().token) {
+                accessToken = docSnap.data().token;
+                localStorage.setItem('ticktick_token', accessToken);
             }
-        });
+        } catch (e) { console.error(e); }
+
+        try {
+            const gDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'google'));
+            if (gDoc.exists() && gDoc.data().token) {
+                localStorage.setItem('google_token', gDoc.data().token);
+            }
+        } catch (e) { console.error(e); }
+
+        // Fetch Data ONLY once here
+        fetchAllData();
+    } 
+    // 2. If No Firebase User (TickTick Standalone / Local)
+    else {
+        // Check if we have a legacy TickTick token
+        if (accessToken) {
+            document.getElementById('login-overlay').classList.add('hidden');
+            fetchAllData();
+        } else {
+            // No user, no token -> Show Login
+            document.getElementById('login-overlay').classList.remove('hidden');
+        }
+    }
+});
         
         let taskCache = [];
         let historyCache = [];
@@ -916,11 +931,10 @@ const api = async (endpoint, method = 'GET', body = null) => {
 window.connectGoogle = async () => {
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/tasks');
-    // Optional: Forces account selection if you have multiple
-    // provider.setCustomParameters({ prompt: 'select_account' }); 
     
     try {
         const result = await signInWithPopup(auth, provider);
+        // ... (existing success logic remains the same) ...
         const credential = GoogleAuthProvider.credentialFromResult(result);
         const token = credential.accessToken;
         
@@ -932,11 +946,15 @@ window.connectGoogle = async () => {
             
             localStorage.setItem('google_token', token);
             showToast('Google Connection Refreshed', 'success');
-            
-            // Refresh data immediately without page reload
             await fetchAllData();
         }
     } catch (error) {
+        // --- NEW: Filter out "Popup Closed" errors ---
+        if (error.code === 'auth/popup-closed-by-user' || error.message.includes('popup_closed_by_user')) {
+            console.log('User cancelled Google login.');
+            return; // Exit silently
+        }
+        
         console.error(error);
         showToast('Google Connection Failed', 'error');
     }
@@ -2775,9 +2793,7 @@ document.addEventListener('keydown', (e) => {
                 location.href = `https://ticktick.com/oauth/authorize?client_id=${TICKTICK_CLIENT_ID}&scope=tasks:read%20tasks:write&response_type=code&redirect_uri=${encodeURIComponent(TICKTICK_REDIRECT_URI)}&state=${state}`; 
             }; 
             
-            if (accessToken) fetchAllData(); 
-            else if (location.search.includes('code=')) checkAuthCode(); 
-            else document.getElementById('login-overlay').classList.remove('hidden'); 
+            if (location.search.includes('code=')) checkAuthCode(); 
             
             initDropZones(); 
         });

@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.6.0-alpha",
+    date: "2026-02-18",
+    changes: [
+        "In TaskTrackr: Consolidated the authentication and data fetching logic to prevent double-loading on startup, resolving the 'double error' toast notifications.",
+        "In TaskTrackr: Optimized the main content container padding using responsive modifiers to remove excessive vertical whitespace on Desktop while preserving Mobile navigation clearance.",
+        "In TaskTrackr: Updated the application layout to use dynamic viewport height (dvh) correctly, fixing the top gap and layout shifting issues during browser zoom."
+    ]
+},
+    {
     version: "v11.5.0-alpha",
     date: "2026-02-17",
     changes: [
