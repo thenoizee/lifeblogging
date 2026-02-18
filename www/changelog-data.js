@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.7.0-alpha",
+    date: "2026-02-18",
+    changes: [
+        "In RecipeManagr: Overhauled the Shopping List logic to allow selecting individual ingredients directly from recipe details (without adding the full recipe) and added recipe source badges to list items.",
+        "In RecipeManagr: Upgraded the Instruction Builder in the recipe editor to support reordering steps (move up/down) and inserting new steps between existing ones.",
+        "In RecipeManagr: Fixed the Search Bar positioning to ensure it remains visible while scrolling, with specific logic to prevent it from obscuring the main navigation bar on Desktop.",
+    ]
+    },
+    {
     version: "v11.6.0-alpha",
     date: "2026-02-18",
     changes: [
