@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.15.0-beta",
+    date: "2026-02-19",
+    changes: [
+        "In Analyser: Fixed a critical HTML layout bug where a missing closing tag trapped modals inside a hidden section, preventing them from appearing on screen.",
+        "In Analyser: Restored the visibility of the individual 'Delete Data Point' button when entering Edit Mode inside the data modal.",
+        "In Android Widget: Restored the logged at and refreshed time displays on Mood Widget."
+    ]
+    },
+    {
     version: "v11.14.0-beta",
     date: "2026-02-19",
     changes: [

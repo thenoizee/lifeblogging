@@ -63,7 +63,8 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
         private int widgetId;
         private AppWidgetManager manager;
         private int colorCode = Color.DKGRAY;
-        private String lastUpdatedTime;
+        private String lastRefreshedTime;
+        private String loggedTime; 
 
         FetchMoodTask(RemoteViews views, int widgetId, AppWidgetManager manager) {
             this.views = views;
@@ -89,13 +90,32 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
 
                 JSONObject json = new JSONObject(result.toString());
                 String moodVal = json.optString("attributeValue", "?");
-                String colorHex = json.optString("color", "#a1a1aa"); // Default Grey
+                String colorHex = json.optString("color", "#a1a1aa");
                 
+                // Get the raw date string from JSON (e.g., "2026-02-19 22:18")
+                String rawLoggedTime = json.optString("date", "Unknown");
+                String displayTime = rawLoggedTime;
+                
+                // Convert yyyy-MM-dd HH:mm to dd/MM/yyyy HH:mm
+                if (!"Unknown".equals(rawLoggedTime)) {
+                    try {
+                        SimpleDateFormat inputFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
+                        SimpleDateFormat outputFormat = new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault());
+                        Date parsedDate = inputFormat.parse(rawLoggedTime);
+                        if (parsedDate != null) {
+                            displayTime = outputFormat.format(parsedDate);
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+                
+                loggedTime = "Logged at: " + displayTime;
                 colorCode = Color.parseColor(colorHex);
                 
-                // Set formatted time
+                // Set formatted refresh time
                 SimpleDateFormat sdf = new SimpleDateFormat("HH:mm", Locale.getDefault());
-                lastUpdatedTime = "Updated: " + sdf.format(new Date());
+                lastRefreshedTime = "Refreshed: " + sdf.format(new Date());
 
                 return moodVal;
 
@@ -108,17 +128,17 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
         @Override
         protected void onPostExecute(String moodValue) {
             if (moodValue != null) {
-                // Success
                 views.setTextViewText(R.id.widget_mood_text, "Mood Level: " + moodValue);
                 views.setTextViewText(R.id.widget_mood_emoji, getEmojiForMood(moodValue));
-                views.setTextViewText(R.id.widget_last_updated, lastUpdatedTime);
                 
-                // FIXED ID: widget_root_layout (for background color)
+                views.setTextViewText(R.id.widget_time_logged, loggedTime);
+                views.setTextViewText(R.id.widget_last_updated, lastRefreshedTime);
+                
                 views.setInt(R.id.widget_root_layout, "setBackgroundColor", colorCode); 
             } else {
-                // Error
                 views.setTextViewText(R.id.widget_mood_text, "Network Error");
                 views.setTextViewText(R.id.widget_mood_emoji, "⚠️");
+                views.setTextViewText(R.id.widget_time_logged, "Logged at: Error");
             }
             manager.updateAppWidget(widgetId, views);
         }

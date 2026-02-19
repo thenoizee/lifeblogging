@@ -681,9 +681,7 @@ tbody tr:nth-child(even) {
             <button id="save-attribute-colors-btn" class="mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 ease-in-out shadow-lg hidden"><i class="fa-solid fa-palette mr-2"></i>Save Color Preferences</button>
         </fieldset>
     </div>
-
-
-<div id="data-modal" class="modal hidden fixed z-1000 left-0 top-0 w-full h-full overflow-auto justify-center items-center">
+</div> </div> <div id="data-modal" class="modal hidden fixed z-1000 left-0 top-0 w-full h-full overflow-auto justify-center items-center">
     <div class="modal-content w-4/5 max-w-4xl mx-auto p-5 rounded-lg shadow-lg">
         <span class="close-btn float-right text-3xl font-bold cursor-pointer">&times;</span>
         <h2 class="text-xl font-bold mb-4">Data Point Details</h2>
@@ -1154,6 +1152,8 @@ tbody tr:nth-child(even) {
     const valueFilterAttribute = document.getElementById('value-filter-attribute');
     const valueFilterMin = document.getElementById('value-filter-min');
     const valueFilterMax = document.getElementById('value-filter-max');
+    const numericalFilterContainer = document.getElementById('numerical-filter-container');
+    const stringFilterContainer = document.getElementById('string-filter-container');
     const valueFilterString = document.getElementById('value-filter-string');
     const rowsPerPageSelect = document.getElementById('rows-per-page-select');
 
@@ -1232,6 +1232,120 @@ toggleFilterBtn.addEventListener('click', () => {
         filterArrow.style.transform = 'rotate(180deg)';
     }
 });
+
+// --- Bulk Action Event Listeners ---
+
+    // Clear Selection
+    clearSelectionBtn.addEventListener('click', () => {
+        selectedDataPointIds.clear();
+        lastSelectedIndex = -1;
+        renderDataTable();
+    });
+
+    // Open Bulk Edit Tags Modal
+    bulkEditTagsBtn.addEventListener('click', () => {
+        bulkEditCount.textContent = selectedDataPointIds.size;
+        bulkAddTagsInput.value = '';
+        bulkRemoveTagsInput.value = '';
+        // CRITICAL: Remove hidden class before showing
+        bulkEditModal.classList.remove('hidden');
+        bulkEditModal.style.display = 'flex';
+    });
+
+    // Close Bulk Edit Modal
+    closeBulkEditModal.addEventListener('click', () => hideModal(bulkEditModal));
+    cancelBulkEditBtn.addEventListener('click', () => hideModal(bulkEditModal));
+
+    // Save Bulk Edit Tags
+    saveBulkChangesBtn.addEventListener('click', async () => {
+        if (selectedDataPointIds.size === 0) return;
+        
+        const addTags = bulkAddTagsInput.value.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+        const removeTags = bulkRemoveTagsInput.value.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+        
+        showMessage(`Updating tags for ${selectedDataPointIds.size} items...`, 'info', 0);
+        
+        let batch = writeBatch(db);
+        let operationCount = 0;
+        
+        const allDataPoints = Object.values(currentDataCache).flat();
+        const selectedPoints = allDataPoints.filter(dp => selectedDataPointIds.has(dp.id));
+
+        for (const dp of selectedPoints) {
+            let currentTags = new Set(dp.tags || []);
+            addTags.forEach(t => currentTags.add(t));
+            removeTags.forEach(t => currentTags.delete(t));
+            
+            const docRef = doc(db, `users/${userId}/sources/${dp.source}/data/${dp.id}`);
+            batch.update(docRef, { 
+                tags: Array.from(currentTags), 
+                datapointUpdatedBy: auth.currentUser.uid, 
+                datapointUpdatedTime: serverTimestamp() 
+            });
+            
+            operationCount++;
+            if (operationCount === 499) {
+                await batch.commit();
+                batch = writeBatch(db);
+                operationCount = 0;
+            }
+        }
+        
+        if (operationCount > 0) {
+            await batch.commit();
+        }
+        
+        showMessage("Bulk tags updated successfully!", 'success');
+        hideModal(bulkEditModal);
+        selectedDataPointIds.clear();
+        renderDataTable();
+    });
+
+    // Open Bulk Delete Modal
+    bulkDeleteBtn.addEventListener('click', () => {
+        bulkDeleteCount.textContent = selectedDataPointIds.size;
+        // CRITICAL: Remove hidden class before showing
+        bulkDeleteModal.classList.remove('hidden');
+        bulkDeleteModal.style.display = 'flex';
+    });
+
+    // Close Bulk Delete Modal
+    closeBulkDeleteModal.addEventListener('click', () => hideModal(bulkDeleteModal));
+    cancelBulkDeleteBtn.addEventListener('click', () => hideModal(bulkDeleteModal));
+
+    // Confirm Bulk Delete
+    confirmBulkDeleteBtn.addEventListener('click', async () => {
+        if (selectedDataPointIds.size === 0) return;
+        
+        showMessage(`Deleting ${selectedDataPointIds.size} items...`, 'info', 0);
+        let batch = writeBatch(db);
+        let operationCount = 0;
+
+        const allDataPoints = Object.values(currentDataCache).flat();
+        const selectedPoints = allDataPoints.filter(dp => selectedDataPointIds.has(dp.id));
+
+        for (const dp of selectedPoints) {
+            const docRef = doc(db, `users/${userId}/sources/${dp.source}/data/${dp.id}`);
+            batch.delete(docRef);
+            
+            operationCount++;
+            if (operationCount === 499) {
+                await batch.commit();
+                batch = writeBatch(db);
+                operationCount = 0;
+            }
+        }
+        
+        if (operationCount > 0) {
+            await batch.commit();
+        }
+        
+        showMessage("Bulk deletion successful!", 'success');
+        hideModal(bulkDeleteModal);
+        selectedDataPointIds.clear();
+        renderDataTable();
+    });
+
 
     window.addEventListener('tab-changed', (e) => {
     const tabId = e.detail.tabId;
@@ -2818,9 +2932,10 @@ function formatLabel(str) {
         modalReadOnlyMessage.classList.remove('hidden');
         modalEditBtn.classList.remove('hidden');
         modalSaveBtn.classList.add('hidden');
-        modalDeleteBtn.classList.add('hidden');
+        modalDeleteBtn.classList.remove('hidden'); // Fix: Show delete button immediately
         modalTagsInput.disabled = true;
 
+        dataModal.classList.remove('hidden'); // Fix: Remove Tailwind hidden class
         dataModal.style.display = 'flex';
     }
 
@@ -2913,6 +3028,15 @@ function formatLabel(str) {
                 showMessage(`Error deleting data: ${error.message}`, 'error');
             }
         }
+    });
+
+    // --- Missing Modal Helper and Data Modal Close Logic ---
+    function hideModal(modalElement) {
+        modalElement.style.display = 'none';
+        modalElement.classList.add('hidden'); // Re-adds the class to hide it
+    }
+    modalCloseBtn.addEventListener('click', () => {
+        hideModal(dataModal);
     });
 
     // --- Attribute Color Logic ---
