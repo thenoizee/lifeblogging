@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v11.12.0-beta",
+    date: "2026-02-19",
+    changes: [
+        "In TaskTrackr: Added subtask progress indicators to task cards, displaying a dynamic completion badge (e.g., 1/3) that turns green when all subtasks are finished.",
+        "In TaskTrackr: Fixed an edge-clipping bug where the blue focus ring on the Quick Add input was being cut off by the main container.",
+        "In TaskTrackr: Adjusted main application window padding so the side pane and task lists float properly above the OS desktop taskbar.",
+        "In TaskTrackr: Implemented a negative margin layout fix to seamlessly integrate the app with the external shared navigation bar without leaving dead space."
+    ]
+    },
+    {
     version: "v11.11.0-beta",
     date: "2026-02-19",
     changes: [
