@@ -110,6 +110,61 @@
         </div>
     </div>
 
+    <div id="fade-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div class="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
+                <h3 class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-stopwatch text-purple-500"></i> Fade Lights
+                </h3>
+                <button onclick="closeFadeModal()" class="w-8 h-8 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center transition">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 space-y-6">
+                <input type="hidden" id="fade-target-id">
+                <input type="hidden" id="fade-is-group">
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Duration (Minutes)</label>
+                    <div class="flex items-center gap-4">
+                        <input type="range" id="fade-duration" min="1" max="60" value="15" 
+                               oninput="document.getElementById('dur-val').innerText = this.value + ' min'"
+                               class="slider-bri w-full bg-gray-200 dark:bg-gray-600 h-2 rounded-full">
+                        <span id="dur-val" class="text-sm font-mono w-16 text-right">15 min</span>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex justify-between mb-2">
+                        <label class="text-xs font-bold text-gray-400 uppercase">Target Brightness</label>
+                        <span id="fade-bri-val" class="text-xs font-mono text-gray-500">0% (Off)</span>
+                    </div>
+                    <input type="range" id="fade-bri" min="0" max="254" value="0" 
+                           oninput="document.getElementById('fade-bri-val').innerText = Math.round((this.value/254)*100) + '%'"
+                           class="slider-bri w-full bg-gray-200 dark:bg-gray-600 h-2 rounded-full">
+                </div>
+
+                <div>
+                    <div class="flex items-center gap-2 mb-3">
+                        <input type="checkbox" id="use-fade-color" class="rounded text-purple-600 focus:ring-purple-500" onchange="toggleFadeColor(this.checked)">
+                        <label for="use-fade-color" class="text-sm font-medium">Fade Color too?</label>
+                    </div>
+                    
+                    <div id="fade-color-container" class="opacity-50 pointer-events-none transition-opacity">
+                         <input type="range" id="fade-hue" min="0" max="65535" value="0" 
+                                class="slider-hue w-full h-3 rounded-full">
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex gap-3">
+                <button onclick="closeFadeModal()" class="flex-1 py-2 rounded-lg font-medium text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition">Cancel</button>
+                <button onclick="submitFade()" class="flex-1 py-2 rounded-lg font-bold bg-purple-500 hover:bg-purple-600 text-white shadow-lg shadow-purple-500/30 transition">Start Fade</button>
+            </div>
+        </div>
+    </div>
+
     <div id="dashboard" class="container mx-auto px-4 md:px-6 hidden">
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 mt-6">
             <div class="flex items-center gap-3">
@@ -140,6 +195,7 @@
 
     <script type="module">
     import { AppNavigation } from '/shared-nav.js';
+    import { changelogData } from '/changelog-data.js';
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
@@ -148,7 +204,8 @@
     const nav = new AppNavigation({
         appName: 'LightManagr',
         appIcon: 'fa-lightbulb',
-        themeColor: 'yellow'
+        themeColor: 'yellow',
+        version: (changelogData && changelogData[0]) ? changelogData[0].version : '1.0.0'
     });
 
     const firebaseConfig = {
@@ -215,6 +272,13 @@
                 if(!cachedData) getEl('setup-panel').classList.remove('hidden');
             }
         });
+
+        // POLLING LOOP (Live Updates)
+        setInterval(() => {
+            if (!document.hidden && !isGlobalActionPending) {
+                refreshLights();
+            }
+        }, 1000);
     }
 
     window.refreshLights = async (manual = false) => {
@@ -234,13 +298,11 @@
                 const resGroups = await proxy({ endpoint: 'groups', method: 'GET' });
                 groups = resGroups.data;
             } else if (localConfig) {
-                // Set loading state without hiding existing data
                 getEl('connection-badge').innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-yellow-500"></i> Syncing...`;
                 
                 try {
-                    // Add a timeout to the fetch so it doesn't hang forever
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+                    const timeoutId = setTimeout(() => controller.abort(), 3000);
 
                     const resL = await fetch(`http://${localConfig.ip}/api/${localConfig.username}/lights`, { signal: controller.signal });
                     if(!resL.ok) throw new Error("Hub unreachable");
@@ -251,7 +313,6 @@
                     
                     clearTimeout(timeoutId);
                     
-                    // Success UI
                     getEl('connection-badge').innerHTML = `<i class="fa-solid fa-wifi text-green-500"></i> Online`;
                     getEl('connection-badge').classList.remove('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
                 } catch (err) {
@@ -266,12 +327,8 @@
             }
         } catch (e) { 
             console.error(e); 
-            // OFFLINE UI STATE
             getEl('connection-badge').innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Hub Offline`;
             getEl('connection-badge').classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
-            
-            // Do NOT clear the grid (renderData) here. 
-            // We leave the cached data on screen so it doesn't "flash" empty.
         } finally {
              const icon = document.querySelector('.fa-rotate');
              if(icon) icon.classList.remove('fa-spin');
@@ -290,10 +347,6 @@
 
         // Optimistic Update
         document.querySelectorAll('.light-card').forEach(c => {
-            const id = c.id.replace('card-', '');
-            // Simple heuristic: if id is < 100 it's likely a light, if > large number maybe group? 
-            // Better to rely on the type attribute if we had it, but for global visual updates:
-            // We just force toggle visual state
             const btn = c.querySelector('.toggle-btn');
             const span = btn?.querySelector('span');
             if(state) { 
@@ -321,16 +374,15 @@
             setTimeout(() => {
                 isGlobalActionPending = false;
                 btnOn.disabled = false; btnOff.disabled = false;
+                refreshLights(); // Force sync after global action
             }, 1000);
         }
     };
 
-    // --- THROTTLED UPDATER ---
     window.updateState = (id, body, isGroup = false) => {
         if(debounceTimers[id]) clearTimeout(debounceTimers[id]);
         
         debounceTimers[id] = setTimeout(async () => {
-            // Determine endpoint: groups use /action, lights use /state
             const endpoint = isGroup ? `groups/${id}/action` : `lights/${id}/state`;
             
             if (isRemote) {
@@ -345,39 +397,39 @@
     };
 
     window.handleToggle = (id, newState, isGroup = false) => {
+        // UI updates are handled by renderData polling, but we do optimistic update here if needed
         const card = document.getElementById(`card-${id}`);
-        if(!card) return;
-        const btn = card.querySelector('.toggle-btn');
-        const span = btn.querySelector('span');
-        const controls = card.querySelector('.controls-container');
-
-        if(newState) { 
-            card.classList.remove('light-off'); card.classList.add('light-on');
-            btn.classList.remove('bg-gray-300', 'dark:bg-gray-600'); btn.classList.add('bg-green-500');
-            span.style.transform = 'translateX(16px)';
-            controls.classList.remove('opacity-50', 'pointer-events-none');
-        } else { 
-            card.classList.add('light-off'); card.classList.remove('light-on'); 
-            btn.classList.add('bg-gray-300', 'dark:bg-gray-600'); btn.classList.remove('bg-green-500');
-            span.style.transform = 'translateX(0)';
-            controls.classList.add('opacity-50', 'pointer-events-none');
+        if(card) {
+             const btn = card.querySelector('.toggle-btn');
+             const span = btn.querySelector('span');
+             const controls = card.querySelector('.controls-container');
+             if(newState) { 
+                card.classList.remove('light-off'); card.classList.add('light-on');
+                btn.classList.remove('bg-gray-300', 'dark:bg-gray-600'); btn.classList.add('bg-green-500');
+                span.style.transform = 'translateX(16px)';
+                controls.classList.remove('opacity-50', 'pointer-events-none');
+            } else { 
+                card.classList.add('light-off'); card.classList.remove('light-on'); 
+                btn.classList.add('bg-gray-300', 'dark:bg-gray-600'); btn.classList.remove('bg-green-500');
+                span.style.transform = 'translateX(0)';
+                controls.classList.add('opacity-50', 'pointer-events-none');
+            }
         }
         window.updateState(id, { on: newState }, isGroup);
     };
 
-    // New Handlers
     window.handleHue = (id, hueVal, isGroup = false) => {
         const card = document.getElementById(`card-${id}`);
-        const color = hueSatToCss(hueVal, 254, 127);
-        card.style.setProperty('--light-color', color);
+        if(card) {
+             const color = hueSatToCss(hueVal, 254, 127);
+             card.style.setProperty('--light-color', color);
+        }
         window.updateState(id, { hue: parseInt(hueVal), sat: 254 }, isGroup);
     };
 
     window.handleBri = (id, val, isGroup = false) => {
-        // Live UI update for Brightness Text
         const label = document.getElementById(`bri-label-${id}`);
         if(label) label.innerText = Math.round((val/254)*100) + '%';
-        
         window.updateState(id, { bri: parseInt(val) }, isGroup);
     };
 
@@ -385,26 +437,72 @@
         window.updateState(id, { ct: parseInt(mireds) }, isGroup);
     };
 
+    // --- FADE LOGIC ---
+    window.openFadeModal = (id, isGroup, currentBri, currentHue) => {
+        getEl('fade-target-id').value = id;
+        getEl('fade-is-group').value = isGroup;
+        getEl('fade-modal').classList.remove('hidden');
+        
+        // Reset defaults
+        getEl('use-fade-color').checked = false;
+        toggleFadeColor(false);
+    }
+
+    window.closeFadeModal = () => {
+        getEl('fade-modal').classList.add('hidden');
+    }
+
+    window.toggleFadeColor = (checked) => {
+        const container = getEl('fade-color-container');
+        if(checked) {
+            container.classList.remove('opacity-50', 'pointer-events-none');
+        } else {
+            container.classList.add('opacity-50', 'pointer-events-none');
+        }
+    }
+
+    window.submitFade = async () => {
+        const id = getEl('fade-target-id').value;
+        const isGroup = getEl('fade-is-group').value === 'true';
+        const durationMins = parseInt(getEl('fade-duration').value);
+        const targetBri = parseInt(getEl('fade-bri').value);
+        const useColor = getEl('use-fade-color').checked;
+        const targetHue = parseInt(getEl('fade-hue').value);
+
+        // API Transition Time: 1 = 100ms.
+        // 1 min = 60000ms = 600 units.
+        const transitionTime = durationMins * 600;
+
+        const body = {
+            on: true, // Ensure it turns/stays on
+            bri: targetBri,
+            transitiontime: transitionTime
+        };
+
+        if(useColor) {
+            body.hue = targetHue;
+            body.sat = 254; // Assume full saturation for fade
+        }
+
+        window.updateState(id, body, isGroup);
+        closeFadeModal();
+        alert(`Fading over ${durationMins} minutes...`);
+    }
+
     // --- RENDERER ---
     function createCardHTML(id, item, isGroup) {
-        // Groups use 'action' object, Lights use 'state' object for current status
         const state = isGroup ? item.action : item.state;
-        
         const isOn = state.on;
         const bri = state.bri || 254;
         const hue = state.hue || 0;
         const sat = state.sat || 0;
         const ct = state.ct || 370;
 
-        // Feature detection
         let canColor = false;
         let canTemp = false;
-
-        // Group type usually isn't strict, but if it has 'hue' in action it supports color
         if (state.hue !== undefined) canColor = true;
         if (state.ct !== undefined) canTemp = true;
 
-        // Calculate current Glow Color
         let glowColor = '#fbbf24';
         if (isOn && state.colormode === 'hs') {
             glowColor = hueSatToCss(hue, sat, bri);
@@ -465,6 +563,13 @@
                              class="slider-temp w-full appearance-none">
                     </div>
                     ` : ''}
+
+                    <div class="pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+                        <button onclick="window.openFadeModal('${id}', ${isGroup}, ${bri}, ${hue})" 
+                                class="text-xs font-bold text-purple-500 hover:text-purple-600 dark:hover:text-purple-400 flex items-center gap-1 bg-purple-50 dark:bg-purple-900/30 px-3 py-1.5 rounded-lg transition">
+                            <i class="fa-solid fa-stopwatch"></i> Fade / Sleep
+                        </button>
+                    </div>
                 </div>
             </div>
             `;
@@ -476,7 +581,6 @@
         
         let html = '';
 
-        // 1. Groups Section
         if(data.groups && Object.keys(data.groups).length > 0) {
             html += `<h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-layer-group text-yellow-500"></i> Rooms & Groups</h2>`;
             html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">`;
@@ -484,7 +588,6 @@
             html += `</div>`;
         }
 
-        // 2. Lights Section
         if(data.lights && Object.keys(data.lights).length > 0) {
             html += `<h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fa-regular fa-lightbulb text-yellow-500"></i> Individual Lights</h2>`;
             html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">`;

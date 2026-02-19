@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.11.0-beta",
+    date: "2026-02-19",
+    changes: [
+        "In LightManagr: Implemented 'Live Polling' to automatically fetch and update light statuses every 1 second, ensuring the UI stays in sync with manual switch changes.",
+        "In LightManagr: Added 'Fade / Sleep' functionality. Users can now set a specific duration (in minutes) to gradually transition lights to a target brightness and color.",
+        "In LightManagr: Connected the application version number to the global changelog system."
+    ]
+    },
+    {
     version: "v11.10.0-beta",
     date: "2026-02-19",
     changes: [
