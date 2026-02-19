@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.14.0-beta",
+    date: "2026-02-19",
+    changes: [
+        "In PlantTrackr: Fixed the 'Log' shortcut on individual plant cards to properly trigger internal tab-switching and auto-select the plant instead of just changing the URL hash.",
+        "In PlantTrackr: Added a 'Progress Every (Days)' field to the Add/Edit Plant modal, allowing users to set a recurring schedule for progress photos and growth measurements.",
+        "In PlantTrackr: Enhanced the Dashboard to automatically track the last 'Progress Update' or 'Growth Check' and display upcoming or overdue progress checks in the 'Upcoming Tasks' list."
+    ]
+    },
+    {
     version: "v11.13.0-beta",
     date: "2026-02-19",
     changes: [

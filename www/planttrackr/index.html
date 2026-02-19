@@ -275,6 +275,7 @@
                                 <option value="Pest Control">Pest Control</option>
                                 <option value="Note">Note / Observation</option>
                                 <option value="Growth">Growth Check</option>
+                                <option value="Progress">Progress Update 📸</option>
                             </select>
                         </div>
                         <div>
@@ -283,10 +284,27 @@
                         </div>
                     </div>
 
-                    <div id="log-growth-group" class="hidden" style="display: none;">
-                        <label class="block text-sm font-bold mb-1">Height / Size (cm)</label>
-                        <input type="number" id="log-growth-val" class="input-std" placeholder="e.g. 15.5">
-                    </div>
+                    <div id="log-progress-extras" class="hidden space-y-4 mt-4 p-4 border rounded-lg bg-gray-50 dark:bg-gray-800/50">
+    <h3 class="font-bold text-sm text-[var(--primary)]"><i class="fa-solid fa-chart-line mr-2"></i>Progress Details</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+            <label class="block text-sm font-bold mb-1">Height / Size (cm)</label>
+            <input type="number" id="log-growth-val" class="input-std" placeholder="e.g. 15.5">
+        </div>
+        <div>
+            <label class="block text-sm font-bold mb-1">Current Health</label>
+            <select id="log-health-select" class="input-std">
+                <option value="healthy">Healthy 🌿</option>
+                <option value="sick">Sick / Struggling 🤒</option>
+                <option value="quarantine">Quarantine / Pests 🚫</option>
+            </select>
+        </div>
+    </div>
+    <div>
+        <label class="block text-sm font-bold mb-1">Progress Photo</label>
+        <input type="file" id="log-photo" accept="image/*" class="input-std">
+    </div>
+</div>
 
                     <div>
                         <label class="block text-sm font-bold mb-1">Notes</label>
@@ -400,10 +418,11 @@
     </div>
 </div>
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div><label class="text-sm font-bold">Water Every (Days)</label><input type="number" id="plant-water-freq" class="input-std"></div>
-                    <div><label class="text-sm font-bold">Feed Every (Days)</label><input type="number" id="plant-fert-freq" class="input-std"></div>
-                </div>
+                <div class="grid grid-cols-3 gap-4">
+    <div><label class="text-sm font-bold">Water Every</label><input type="number" id="plant-water-freq" class="input-std" placeholder="Days"></div>
+    <div><label class="text-sm font-bold">Feed Every</label><input type="number" id="plant-fert-freq" class="input-std" placeholder="Days"></div>
+    <div><label class="text-sm font-bold">Progress Every</label><input type="number" id="plant-prog-freq" class="input-std" placeholder="Days"></div>
+</div>
 
                 <div class="grid grid-cols-2 gap-4 mb-4">
     <div>
@@ -675,7 +694,7 @@ ${plant.snoozeUntil && plant.snoozeUntil.toDate() > new Date() ? `
 
                     <div class="grid grid-cols-2 gap-2 mt-auto">
                         <button class="btn-secondary text-sm quick-water-btn" data-id="${plant.id}"><i class="fa-solid fa-droplet text-blue-500"></i> Water</button>
-                        <button class="btn-secondary text-sm" onclick="location.hash='#log'; document.getElementById('log-plant-select').value='${plant.id}';"><i class="fa-solid fa-plus text-green-500"></i> Log</button>
+                        <button class="btn-secondary text-sm" onclick="window.dispatchEvent(new CustomEvent('tab-changed', {detail: {tabId: 'log'}})); document.getElementById('log-plant-select').value='${plant.id}';"><i class="fa-solid fa-plus text-green-500"></i> Log</button>
                     </div>
                 `;
                 list.appendChild(card);
@@ -830,6 +849,33 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
                     }
                 }
 
+                // --- Progress Check ---
+if (plant.progFreq) {
+    const lastProg = plantLogs.find(l => l.type === 'Progress' || l.type === 'Growth');
+    const lastDate = lastProg ? new Date(lastProg.date) : new Date(plant.acquired || 0);
+    const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
+    const daysOverdue = Math.floor(diffDays - plant.progFreq);
+
+    // If it's due within 7 days, or overdue, add it to the upcoming list
+    if (daysOverdue >= -7) {
+        let daysUntil = -daysOverdue;
+        if (daysUntil < 0) daysUntil = 0; // Caps overdue items to show up right away
+        
+        const dueDate = new Date(); 
+        dueDate.setDate(dueDate.getDate() + daysUntil);
+        
+        upcomingTasks.push({
+            plant, 
+            type: 'Update Progress 📸', 
+            daysUntil, 
+            date: dueDate, 
+            icon: 'fa-camera', 
+            color: 'text-purple-500', 
+            bg: 'bg-purple-100 dark:bg-purple-900'
+        });
+    }
+}
+
                 // --- Hospital Render (If Sick) ---
                 if (isSick) {
     const div = document.createElement("div");
@@ -941,27 +987,39 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
         };
 
         const renderHistory = () => {
-            const tbody = getEl("history-table-body");
-            tbody.innerHTML = "";
-            const filter = getEl("history-search").value.toLowerCase();
+    const tbody = getEl("history-table-body");
+    tbody.innerHTML = "";
+    const filter = getEl("history-search").value.toLowerCase();
 
-            state.logs.forEach(log => {
-                const plant = state.plants.find(p => p.id === log.plantId);
-                const plantName = plant ? plant.name : "Deleted Plant";
-                if (!filter || `${plantName} ${log.type} ${log.notes}`.toLowerCase().includes(filter)) {
-                    const tr = document.createElement("tr");
-                    tr.innerHTML = `
-                        <td>${new Date(log.date).toLocaleDateString()}</td>
-                        <td class="font-bold">${plantName}</td>
-                        <td>${log.type}</td>
-                        <td class="text-sm opacity-80">${log.value ? `<b>${log.value}cm</b> ` : ''}${log.notes || '-'}</td>
-                        <td><button class="text-red-400 hover:text-red-600 delete-log-btn" data-id="${log.id}"><i class="fa-solid fa-trash"></i></button></td>
-                    `;
-                    tbody.appendChild(tr);
-                }
-            });
-            document.querySelectorAll(".delete-log-btn").forEach(b => b.onclick = (e) => deleteLog(e.currentTarget.dataset.id));
-        };
+    state.logs.forEach(log => {
+        const plant = state.plants.find(p => p.id === log.plantId);
+        const plantName = plant ? plant.name : "Deleted Plant";
+        if (!filter || `${plantName} ${log.type} ${log.notes}`.toLowerCase().includes(filter)) {
+            const tr = document.createElement("tr");
+            
+            // Build details string
+            let detailsHtml = log.notes ? `<span>${log.notes}</span><br>` : '';
+            if (log.height) detailsHtml += `<span class="text-xs bg-green-100 text-green-800 px-1 rounded mr-1">↕️ ${log.height}cm</span>`;
+            if (log.health) detailsHtml += `<span class="text-xs bg-blue-100 text-blue-800 px-1 rounded">❤️ ${log.health}</span>`;
+            
+            // Build photo thumbnail if exists
+            const photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" onclick="openPhotoModal(this.src)" class="w-10 h-10 object-cover rounded cursor-zoom-in hover:opacity-80 inline-block mr-2 border">` : '';
+
+            tr.innerHTML = `
+                <td class="whitespace-nowrap">${new Date(log.date).toLocaleDateString()}</td>
+                <td class="font-bold">${plantName}</td>
+                <td><span class="bg-[var(--input-bg)] px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">${log.type}</span></td>
+                <td class="text-sm opacity-80 flex items-center">
+                    ${photoHtml}
+                    <div>${detailsHtml || '-'}</div>
+                </td>
+                <td><button class="text-red-400 hover:text-red-600 delete-log-btn" data-id="${log.id}"><i class="fa-solid fa-trash"></i></button></td>
+            `;
+            tbody.appendChild(tr);
+        }
+    });
+    document.querySelectorAll(".delete-log-btn").forEach(b => b.onclick = (e) => deleteLog(e.currentTarget.dataset.id));
+};
 
         // --- Logic Actions ---
         const quickWater = async (plantId) => {
@@ -1028,7 +1086,7 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
             const idInput = getEl("modal-plant-id");
             
             // Reset Form
-            ['plant-name', 'plant-species', 'plant-location', 'plant-water-freq', 'plant-fert-freq'].forEach(id => getEl(id).value = '');
+            ['plant-name', 'plant-species', 'plant-location', 'plant-water-freq', 'plant-fert-freq', 'plant-prog-freq'].forEach(id => getEl(id).value = '');
             getEl("plant-acquired").value = new Date().toISOString().split('T')[0];
             getEl("plant-icon").value = "fa-leaf";
             getEl("plant-health").value = "healthy";
@@ -1045,7 +1103,8 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
                     getEl("plant-position").value = plant.position || "";
                     getEl("plant-health").value = plant.health || "healthy";
                     getEl("plant-water-freq").value = plant.waterFreq || "";
-                    getEl("plant-fert-freq").value = plant.fertFreq || "";
+getEl("plant-fert-freq").value = plant.fertFreq || "";
+getEl("plant-prog-freq").value = plant.progFreq || ""; // Add this line
                     getEl("plant-acquired").value = plant.acquired || "";
                     getEl("plant-icon").value = plant.icon || "fa-leaf";
                     
@@ -1078,7 +1137,8 @@ document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsno
         health: getEl("plant-health").value,
         position: getEl("plant-position").value,
         waterFreq: parseInt(getEl("plant-water-freq").value) || 0,
-        fertFreq: parseInt(getEl("plant-fert-freq").value) || 0,
+    fertFreq: parseInt(getEl("plant-fert-freq").value) || 0,
+    progFreq: parseInt(getEl("plant-prog-freq").value) || 0, // Add this line
         acquired: getEl("plant-acquired").value,
         icon: getEl("plant-icon").value,
         updatedAt: Timestamp.now()
@@ -1542,6 +1602,11 @@ window.closePhotoModal = () => {
     document.getElementById('photo-modal-img').src = '';
 };
 
+getEl("log-type-select").addEventListener("change", (e) => {
+    const showExtras = e.target.value === "Progress" || e.target.value === "Growth";
+    toggleDisplay(getEl("log-progress-extras"), showExtras);
+});
+
 const renderWishlist = () => {
     const list = getEl("wishlist-container");
     list.innerHTML = "";
@@ -1638,6 +1703,65 @@ getEl("winter-mode-toggle").addEventListener('change', async (e) => {
         winterMode: e.target.checked 
     }, { merge: true });
 });
+
+getEl("submit-log-btn").onclick = async () => {
+    const plantId = getEl("log-plant-select").value;
+    const type = getEl("log-type-select").value;
+    const date = getEl("log-date").value;
+    const notes = getEl("log-notes").value;
+    const height = getEl("log-growth-val").value;
+    const health = getEl("log-health-select").value;
+    const fileInput = getEl("log-photo");
+    const file = fileInput ? fileInput.files[0] : null;
+
+    if (!plantId) return showMsg("Please select a plant", "error");
+
+    try {
+        showMsg("Saving log...", "success");
+        getEl("submit-log-btn").disabled = true;
+
+        let photoUrl = null;
+        if (file) {
+            const storageRef = ref(storage, `users/${state.user.uid}/logs/${Date.now()}_${file.name}`);
+            await uploadBytes(storageRef, file);
+            photoUrl = await getDownloadURL(storageRef);
+        }
+
+        const logData = {
+            plantId, 
+            type, 
+            date: new Date(date).toISOString(), 
+            notes,
+            height: height ? parseFloat(height) : null,
+            photoUrl,
+            createdAt: Timestamp.now()
+        };
+        
+        if (type === 'Progress') logData.health = health;
+
+        // Save log
+        await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), logData);
+
+        // If it's a progress update, sync the health status to the main plant profile automatically
+        if (type === 'Progress' && health) {
+            await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { health });
+        }
+
+        showMsg("Log saved successfully!");
+        
+        // Reset form
+        getEl("log-notes").value = "";
+        getEl("log-growth-val").value = "";
+        if(fileInput) fileInput.value = "";
+        toggleDisplay(getEl("log-progress-extras"), false);
+        getEl("log-type-select").value = "Water";
+
+    } catch (e) { 
+        showMsg(e.message, "error"); 
+    } finally {
+        getEl("submit-log-btn").disabled = false;
+    }
+};
 
 // --- New Snooze Logic ---
 window.openSnoozeModal = (plantId) => {
