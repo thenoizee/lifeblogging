@@ -709,12 +709,12 @@ body.bulk-active {
     </style>
 </head>
 <body>
-    <div id="app-loading-screen" style="position:fixed; inset:0; background:#f7fafc; z-index:9999; display:flex; justify-content:center; align-items:center;">
-        <div style="text-align:center; color:#e78f37;">
-            <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 3rem;"></i>
-            <p style="margin-top:1rem; font-family:sans-serif; font-weight:600;">Loading FoodTrackr...</p>
-        </div>
+    <div id="app-loading-screen" class="bg-[var(--bg-color)]" style="position:fixed; inset:0; z-index:9999; display:flex; justify-content:center; align-items:center;">
+    <div style="text-align:center; color:var(--button-bg);">
+        <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 3rem;"></i>
+        <p class="text-[var(--text-color-primary)]" style="margin-top:1rem; font-family:sans-serif; font-weight:600;">Loading FoodTrackr...</p>
     </div>
+</div>
     <div id="auth-container" style="display: none;">
         <h1>Welcome to FoodTrackr</h1>
         <p>Please log in or sign up to track your food.</p>
@@ -1666,6 +1666,11 @@ body.bulk-active {
                 </div>
             </div>
 
+            <div class="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg mb-4">
+    <button id="sd-mode-exact" class="flex-1 py-1 text-xs font-bold rounded bg-white dark:bg-gray-600 shadow-sm">Exact (g)</button>
+    <button id="sd-mode-approx" class="flex-1 py-1 text-xs font-bold text-gray-500">Approx</button>
+</div>
+
             <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl mb-6 flex-shrink-0 border border-gray-100 dark:border-gray-600">
                 <h4 class="font-bold text-sm mb-3 text-gray-600 dark:text-gray-300">Feed Entry</h4>
                 
@@ -1754,6 +1759,8 @@ import { AppNavigation } from '../shared-nav.js';
       import { getFirestore, collection, addDoc, Timestamp, doc, deleteDoc, updateDoc, getDocs, onSnapshot, query, setDoc, writeBatch, orderBy, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
       let leftovers = [];
+      const initialTheme = localStorage.getItem('theme') || 'light';
+if (initialTheme === 'dark') document.documentElement.classList.add('dark');
 
       // --- Firebase Config ---
       const firebaseConfig = {
@@ -2090,8 +2097,9 @@ const extractNutrients = (product) => {
 
           try {
               const logData = {
-                  starter, flour, water, notes, health,
+                  starter, flour, water, measurementType: sdMeasurementMode, notes, health,
                   createdAt: Timestamp.fromDate(logDate) // Use custom date
+                  
               };
 
               if (editingSourdoughId) {
@@ -2132,6 +2140,9 @@ const extractNutrients = (product) => {
                   const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'});
                   
                   const hydration = d.flour > 0 ? Math.round((d.water / d.flour) * 100) : 0;
+
+                  const measurementBadge = d.measurementType === 'approx' ? 
+    `<span class="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300 text-[9px] px-1 rounded font-bold uppercase ml-2">Approx</span>` : '';
                   
                   const getStars = (r) => {
                       r = r || 3;
@@ -2159,7 +2170,7 @@ const extractNutrients = (product) => {
                     </div>
                     <div class="text-right flex flex-col items-end gap-1">
                         <span class="inline-block bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">
-                            ${hydration}% Hyd
+                            ${hydration}% Hyd ${measurementBadge}
                         </span>
                         <div class="flex gap-2 mt-1">
                             <button class="text-xs text-gray-400 hover:text-orange-600 edit-sd-log" data-id="${docSnap.id}">
@@ -2205,6 +2216,20 @@ const extractNutrients = (product) => {
               });
           });
       };
+
+      let sdMeasurementMode = 'exact';
+
+document.getElementById('sd-mode-approx').addEventListener('click', () => {
+    sdMeasurementMode = 'approx';
+    document.getElementById('sd-mode-approx').className = 'flex-1 py-1 text-xs font-bold rounded bg-white dark:bg-gray-600 shadow-sm';
+    document.getElementById('sd-mode-exact').className = 'flex-1 py-1 text-xs font-bold text-gray-50';
+});
+
+document.getElementById('sd-mode-exact').addEventListener('click', () => {
+    sdMeasurementMode = 'exact';
+    document.getElementById('sd-mode-exact').className = 'flex-1 py-1 text-xs font-bold rounded bg-white dark:bg-gray-600 shadow-sm';
+    document.getElementById('sd-mode-approx').className = 'flex-1 py-1 text-xs font-bold text-gray-500';
+});
 
 const addToBuilder = (product) => {
     let qty = 100;
@@ -2848,104 +2873,160 @@ const renderDailyLog = () => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    ALL_SECTIONS.forEach(section => {
-        const el = document.getElementById(`log-section-${section}`);
-        if (el) el.innerHTML = '';
-    });
+    // 1. Filter logs for the day and sort them first
+    const dayLogs = foodLog
+        .filter(item => {
+            const d = item.eatenAt.toDate();
+            return d >= today && d < tomorrow;
+        })
+        .sort((a, b) => a.eatenAt.toDate() - b.eatenAt.toDate());
 
-    const todaysLog = foodLog
-      .filter(item => item.eatenAt.toDate() >= today && item.eatenAt.toDate() < tomorrow)
-      .sort((a, b) => a.eatenAt.toDate() - b.eatenAt.toDate());
+    // 2. Iterate through each UI section (Breakfast, Lunch, etc.)
+    ALL_SECTIONS.forEach(sectionId => {
+        const sectionEl = document.getElementById(`log-section-${sectionId}`);
+        if (!sectionEl) return;
+        sectionEl.innerHTML = '';
 
-    todaysLog.forEach(item => {
-        const itemDiv = document.createElement('div');
-        // CHANGE 1: Use 'flex-col' to stack content vertically
-        itemDiv.className = 'log-item flex flex-col group'; 
-        itemDiv.dataset.id = item.id;
-        
-        const imageUrl = (item.imageUrl && item.imageUrl.startsWith('http')) ? item.imageUrl : PLACEHOLDER_IMG;
-        
-        const checkboxHTML = isBulkMode 
-            ? `<div class="pr-3 pt-2 flex items-start"><input type="checkbox" class="bulk-item-checkbox accent-orange-600 w-5 h-5 cursor-pointer" data-id="${item.id}"></div>` 
-            : '';
+        // 3. Get items specifically for this section
+        const sectionItems = dayLogs.filter(item => {
+            let s = item.section || 'breakfast';
+            if (s === 'meals') s = 'breakfast';
+            if (s === 'snacks') s = 'brunch';
+            return s === sectionId;
+        });
 
-        // Icon Logic (Ensures icons appear correctly)
-        let sourceIcon = '';
-        let subText = item.brands || item.source || '';
-        const src = (item.source || '').toLowerCase();
-        
-        if (item.restaurantName) {
-            sourceIcon = '<i class="fa-solid fa-utensils text-[10px] mr-1"></i>';
-            subText = item.restaurantName;
-        } 
-        else if (src.includes('home')) sourceIcon = '<i class="fa-solid fa-house-chimney text-[10px] mr-1"></i>';
-        else if (src.includes('takeaway')) sourceIcon = '<i class="fa-solid fa-motorcycle text-[10px] mr-1"></i>';
-        else if (src.includes('generic')) sourceIcon = '<i class="fa-solid fa-apple-whole text-[10px] mr-1"></i>';
-        else if (src.includes('brand')) sourceIcon = '<i class="fa-solid fa-tag text-[10px] mr-1"></i>';
-        else if (src.includes('leftover')) sourceIcon = '<i class="fa-solid fa-cookie-bite text-[10px] mr-1"></i>';
-        else if (src.includes('meal')) sourceIcon = '<i class="fa-solid fa-layer-group text-[10px] mr-1"></i>';
+        // 4. Render items with grouping logic
+        sectionItems.forEach((item, index) => {
+            const itemDiv = document.createElement('div');
+            
+            // --- GROUPING LOGIC START ---
+            // Check if this item is part of a Meal (Source starts with "Meal:")
+            const isMeal = (item.source || '').startsWith('Meal:');
+            
+            // Check neighbours to determine visual grouping
+            const prevItem = sectionItems[index - 1];
+            const nextItem = sectionItems[index + 1];
+            
+            const isPrevSameMeal = prevItem && (prevItem.source === item.source) && isMeal;
+            const isNextSameMeal = nextItem && (nextItem.source === item.source) && isMeal;
 
-        // CHANGE 2: New Layout Structure
-        itemDiv.innerHTML = `
-            <div class="flex w-full items-start">
-                ${checkboxHTML}
+            // Base Classes
+            let classes = 'log-item flex flex-col group transition-all duration-200';
+            
+            if (isMeal) {
+                // Add a colored indicator on the left for meals
+                classes += ' border-l-4 border-l-blue-400 dark:border-l-blue-500';
                 
-                <div class="flex items-start overflow-hidden flex-grow cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded p-1 transition-colors" onclick="openProductModalFromLog('${item.id}')" title="View Details">
-                    <img src="${imageUrl}" alt="${item.name}" class="log-item-image mt-1 w-12 h-12">
-                    
-                    <div class="flex-grow min-w-0 flex flex-col justify-center gap-1 pl-3">
-                        <span class="font-semibold text-base leading-snug break-words text-gray-900 dark:text-gray-100">${item.name}</span>
-                        
-                        <div class="text-xs text-[var(--text-color-secondary)] flex items-center mt-0.5">
-                            <span class="opacity-70 mr-1 flex items-center text-orange-600 dark:text-orange-400">${sourceIcon}</span> 
-                            <span class="italic break-all">${subText}</span>
-                        </div>
+                if (isPrevSameMeal) {
+                    // Middle or End of group: Connect to the item above
+                    classes += ' rounded-t-none border-t-0 mt-0'; 
+                } else {
+                    // Start of group: Standard top margin
+                    classes += ' mt-2'; 
+                }
 
-                        <div class="text-xs flex items-center gap-2 mt-1">
-                            <span class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded font-mono border border-gray-200 dark:border-gray-600">
-                                ${(item.quantity || 100)}g
-                            </span>
-                            <span class="font-bold text-orange-600 dark:text-orange-400">
-                                ${item.calories.toFixed(0)} kcal
-                            </span>
+                if (isNextSameMeal) {
+                    // Start or Middle of group: Connect to the item below
+                    classes += ' rounded-b-none mb-0 shadow-none border-b-gray-100 dark:border-b-gray-700'; 
+                } else {
+                    // End of group: Standard bottom margin
+                    classes += ' mb-2'; 
+                }
+            } else {
+                // Standard item spacing
+                classes += ' mb-2'; 
+            }
+            // --- GROUPING LOGIC END ---
+
+            itemDiv.className = classes;
+            itemDiv.dataset.id = item.id;
+
+            // Prepare Content Variables
+            const imageUrl = (item.imageUrl && item.imageUrl.startsWith('http')) ? item.imageUrl : PLACEHOLDER_IMG;
+            const checkboxHTML = isBulkMode 
+                ? `<div class="pr-3 pt-2 flex items-start"><input type="checkbox" class="bulk-item-checkbox accent-orange-600 w-5 h-5 cursor-pointer" data-id="${item.id}"></div>` 
+                : '';
+
+            // Icon & Subtext Logic
+            let sourceIcon = '';
+            let subText = item.brands || item.source || '';
+            const src = (item.source || '').toLowerCase();
+            const groupedBadge = (item.items && item.items.length > 0) ? 
+                `<span class="ml-2 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 text-[9px] px-1 rounded font-bold uppercase">Composite</span>` : '';
+
+            if (isMeal) {
+                 sourceIcon = '<i class="fa-solid fa-layer-group text-[10px] mr-1 text-blue-500"></i>';
+                 // Clean up the "Meal: " prefix for display
+                 subText = item.source.replace('Meal: ', '');
+            } else if (item.restaurantName) {
+                sourceIcon = '<i class="fa-solid fa-utensils text-[10px] mr-1"></i>';
+                subText = item.restaurantName;
+            } else if (src.includes('home')) sourceIcon = '<i class="fa-solid fa-house-chimney text-[10px] mr-1"></i>';
+            else if (src.includes('takeaway')) sourceIcon = '<i class="fa-solid fa-motorcycle text-[10px] mr-1"></i>';
+            else if (src.includes('generic')) sourceIcon = '<i class="fa-solid fa-apple-whole text-[10px] mr-1"></i>';
+            else if (src.includes('brand')) sourceIcon = '<i class="fa-solid fa-tag text-[10px] mr-1"></i>';
+            else if (src.includes('leftover')) sourceIcon = '<i class="fa-solid fa-cookie-bite text-[10px] mr-1"></i>';
+
+            // HTML for Composite Ingredients (if applicable)
+            const ingredientsHTML = (item.items && item.items.length > 0) ? `
+                <div class="mt-2 p-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-dashed border-gray-200 dark:border-gray-700">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase mb-1">Includes:</p>
+                    <ul class="text-[10px] space-y-0.5 text-[var(--text-color-secondary)]">
+                        ${item.items.map(ing => `<li>• ${ing.name} <span class="opacity-70">(${Math.round(ing.quantity)}g)</span></li>`).join('')}
+                    </ul>
+                </div>
+            ` : '';
+
+            // Construct Inner HTML
+            itemDiv.innerHTML = `
+                <div class="flex w-full items-start">
+                    ${checkboxHTML}
+                    <div class="flex items-start overflow-hidden flex-grow cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded p-1 transition-colors" onclick="openProductModalFromLog('${item.id}')" title="View Details">
+                        <img src="${imageUrl}" alt="${item.name}" class="log-item-image mt-1 w-12 h-12">
+                        <div class="flex-grow min-w-0 flex flex-col justify-center gap-1 pl-3">
+                            <span class="font-semibold text-base leading-snug break-words text-gray-900 dark:text-gray-100">${item.name} ${groupedBadge}</span>
+                            <div class="text-xs text-[var(--text-color-secondary)] flex items-center mt-0.5">
+                                <span class="opacity-70 mr-1 flex items-center text-orange-600 dark:text-orange-400">${sourceIcon}</span> 
+                                <span class="italic break-all">${subText}</span>
+                            </div>
+                            <div class="text-xs flex items-center gap-2 mt-1">
+                                <span class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded font-mono border border-gray-200 dark:border-gray-600">
+                                    ${(item.quantity || 100)}g
+                                </span>
+                                <span class="font-bold text-orange-600 dark:text-orange-400">
+                                    ${item.calories.toFixed(0)} kcal
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+                ${ingredientsHTML}
+                <div class="flex justify-between gap-2 mt-3 pt-2 border-t border-gray-100 dark:border-gray-700 w-full ${isBulkMode ? 'opacity-30' : ''}">
+                     <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md text-orange-600 dark:text-orange-400 split-log-item flex items-center justify-center gap-2 hover:bg-orange-50 dark:hover:bg-gray-700" data-action="split-item">
+                        <i class="fa-solid fa-cookie-bite pointer-events-none"></i> <span class="pointer-events-none">Split</span>
+                     </button>
+                     <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="move-copy">
+                        <i class="fa-solid fa-clone pointer-events-none"></i> <span class="pointer-events-none">Move</span>
+                     </button>
+                     <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="edit-daily">
+                        <i class="fa-solid fa-pencil pointer-events-none"></i> <span class="pointer-events-none">Edit</span>
+                     </button>
+                     <button class="destructive-button text-xs py-1.5 px-0 flex-1 rounded-md delete-log-item flex items-center justify-center gap-2" data-action="delete-daily">
+                        <i class="fa-solid fa-trash pointer-events-none"></i> <span class="pointer-events-none">Del</span>
+                     </button>
+                </div>
+            `;
 
-            <div class="flex justify-between gap-2 mt-3 pt-2 border-t border-gray-100 dark:border-gray-700 w-full ${isBulkMode ? 'opacity-30' : ''}">
-                 <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md text-orange-600 dark:text-orange-400 split-log-item flex items-center justify-center gap-2 hover:bg-orange-50 dark:hover:bg-gray-700" data-action="split-item">
-                    <i class="fa-solid fa-cookie-bite pointer-events-none"></i> <span class="pointer-events-none">Split</span>
-                 </button>
-                 <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="move-copy">
-                    <i class="fa-solid fa-clone pointer-events-none"></i> <span class="pointer-events-none">Move</span>
-                 </button>
-                 <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="edit-daily">
-                    <i class="fa-solid fa-pencil pointer-events-none"></i> <span class="pointer-events-none">Edit</span>
-                 </button>
-                 <button class="destructive-button text-xs py-1.5 px-0 flex-1 rounded-md delete-log-item flex items-center justify-center gap-2" data-action="delete-daily">
-                    <i class="fa-solid fa-trash pointer-events-none"></i> <span class="pointer-events-none">Del</span>
-                 </button>
-            </div>
-        `;
-
-        let section = item.section || 'breakfast';
-        if (section === 'meals') section = 'breakfast';
-        if (section === 'snacks') section = 'brunch';
-        if (!ALL_SECTIONS.includes(section)) section = 'breakfast';
-
-        const sectionEl = document.getElementById(`log-section-${section}`);
-        if (sectionEl) sectionEl.appendChild(itemDiv);
-        else document.getElementById('log-section-breakfast').appendChild(itemDiv);
+            sectionEl.appendChild(itemDiv);
+        });
     });
-    
+
     initSortable();
-
-if (isBulkMode) {
-    document.querySelectorAll('.bulk-item-checkbox').forEach(cb => {
-        cb.addEventListener('change', updateBulkButtonState);
-    });
-}
+    if (isBulkMode) {
+        document.querySelectorAll('.bulk-item-checkbox').forEach(cb => {
+            cb.addEventListener('change', updateBulkButtonState);
+        });
+    }
 };
 
 // --- NEW: History State ---
@@ -3892,12 +3973,19 @@ const renderRecentFoods = () => {
         const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
         const imageUrl = product.image_front_small_url || product.image_front_thumb_url || 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png';
         const hasServing = product.serving_size || product.serving_quantity;
+        // CHANGE THIS:
+const isGrouped = product.items && product.items.length > 0; // Use product, not food
+const groupedBadge = isGrouped ? 
+    `<span class="absolute top-2 left-2 bg-indigo-500 text-white text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-tighter">
+        <i class="fa-solid fa-layer-group mr-1"></i>Grouped
+    </span>` : '';
 
         // Star Icon Logic
         const starIconClass = isFavorite ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400 hover:text-yellow-400';
 
         card.innerHTML = `
             <div class="w-20 h-20 flex-shrink-0 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-100 dark:border-gray-600 p-1 overflow-hidden relative">
+                ${groupedBadge}
                 <img src="${imageUrl}" class="w-full h-full object-contain">
             </div>
             
@@ -5516,6 +5604,12 @@ window.addEventListener('hashchange', () => {
     if (hash && document.getElementById(`tab-content-${hash}`)) {
         switchTab(hash);
     }
+});
+
+document.getElementById('sd-mode-exact').addEventListener('click', () => {
+    sdMeasurementMode = 'exact';
+    document.getElementById('sd-mode-exact').className = 'flex-1 py-1 text-xs font-bold rounded bg-white dark:bg-gray-600 shadow-sm';
+    document.getElementById('sd-mode-approx').className = 'flex-1 py-1 text-xs font-bold text-gray-500';
 });
 
 

@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.8.0-beta",
+    date: "2026-02-19",
+    changes: [
+        "In FoodTrackr: Implemented Sourdough feeding modes, allowing users to toggle between 'Exact (g)' for weighed measurements and 'Approx' for estimated entries.",
+        "In FoodTrackr: Added a visual 'Grouped' badge and an expandable ingredient list to log entries, making it easy to identify items comprised of multiple ingredients from 'My Foods'.",
+        "In FoodTrackr: Synchronized the initial app loading screen with the user's Dark/Light mode theme preference to provide a seamless visual experience from the first paint.",
+    ]
+    },
+    {
     version: "v11.7.0-alpha",
     date: "2026-02-18",
     changes: [
