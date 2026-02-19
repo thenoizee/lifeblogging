@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.9.0-beta",
+    date: "2026-02-19",
+    changes: [
+        "In RecipeManagr: Refactored the application layout to a fixed-height structure with a dedicated scrollable content area, ensuring the search bar and toolbars remain permanently sticky at the top.",
+        "In RecipeManagr: Fixed a race condition in the routing logic, ensuring that deep links (hashed URLs) correctly open the specific recipe modal immediately upon page load.",
+        "In RecipeManagr: Added a version number link to the top-right header that navigates directly to the global changelog."
+    ]
+    },
+    {
     version: "v11.8.0-beta",
     date: "2026-02-19",
     changes: [
