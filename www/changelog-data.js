@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v11.10.0-beta",
+    date: "2026-02-19",
+    changes: [
+        "In Lifeblogging Hub: Tightened the dashboard layout with reduced padding, smaller gaps, and compact cards to ensure all applications fit on a single screen without scrolling.",
+        "In Lifeblogging Hub: Fixed the authentication screen layout to ensure the login card is perfectly centered vertically and horizontally within the viewport."
+    ]
+    },
+    {
     version: "v11.9.0-beta",
     date: "2026-02-19",
     changes: [
