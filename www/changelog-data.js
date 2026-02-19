@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v11.13.0-beta",
+    date: "2026-02-19",
+    changes: [
+        "In Hub: Added an edit mode (pen icon) to the main grid that allows users to seamlessly toggle the visibility of individual apps, saving these preferences locally.",
+        "In Dashboard: Enhanced the layout editing mode to include a visibility toggle (eye icon) on each widget's header, allowing individual widgets to be hidden or shown alongside the drag-and-drop functionality.",
+        "In Dashboard: Fixed a bug in the Kitchen widget where a conflicting background listener was aggressively overwriting display logic; it now correctly shows recent meals if cooked within the last 3 days, or suggests a random recipe if it has been longer.",
+        "In RecipeManagr: Fixed a critical synchronization issue where logging a cook only saved to the sub-history and failed to update the main recipe file's 'lastCooked' date, ensuring it now immediately syncs with the Dashboard Kitchen widget.",
+        "In RecipeManagr: Resolved a CSS layout conflict with Tailwind's flexbox classes that caused the 'Add Recipe' and 'Timeline' tabs to incorrectly stack at the absolute bottom of the page instead of properly hiding the main recipe list.",
+    ]
+    },
+    {
     version: "v11.12.0-beta",
     date: "2026-02-19",
     changes: [
