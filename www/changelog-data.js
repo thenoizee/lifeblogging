@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v11.18.2-alpha",
+    date: "2026-02-20",
+    changes: [
+        "In PlantTrackr: Bug fix 2 - Android Gallery/Camera fixes.",
+    ]
+    },
+    {
     version: "v11.18.1-alpha",
     date: "2026-02-20",
     changes: [
