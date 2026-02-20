@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v11.16.1-alpha",
+    date: "2026-02-20",
+    changes: [
+        "In Dashboard: Bug fix - updated Trakt API url request to use new secure proxy.",
+    ]
+    },
+    {
     version: "v11.16.0-alpha",
     date: "2026-02-20",
     changes: [
