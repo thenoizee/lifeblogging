@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.18.0-alpha",
+    date: "2026-02-20",
+    changes: [
+        "In PlantTrackr: Implemented client-side image compression to drastically reduce mobile photo file sizes before uploading, improving speed and preventing browser crashes.",
+        "In PlantTrackr: Added the HTML5 'capture' attribute to photo inputs, allowing mobile users to open their device's rear-facing camera directly instead of navigating the file gallery.",
+        "In PlantTrackr: Upgraded the notification system to display a persistent 'Saving...' message during image uploads, preventing the illusion of failed/faded uploads on slower mobile networks."
+    ]
+    },
+    {
     version: "v11.17.0-alpha",
     date: "2026-02-20",
     changes: [

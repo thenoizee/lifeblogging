@@ -322,7 +322,7 @@
 
                         <div>
                             <label class="block text-sm font-bold mb-1">Progress Photo <span class="text-xs font-normal opacity-60">(Optional)</span></label>
-                            <input type="file" id="log-photo" accept="image/*" class="input-std">
+                            <input type="file" id="log-photo" accept="image/*" capture="environment" class="input-std">
                         </div>
                     </div>
 
@@ -572,7 +572,7 @@
                     </div>
                     <div>
                         <label class="text-sm font-bold">Custom Photo (Optional)</label>
-                        <input type="file" id="plant-photo" accept="image/*" class="input-std">
+                        <input type="file" id="plant-photo" accept="image/*" capture="environment" class="input-std">
                         <p class="text-xs opacity-50 mt-1">Uploading overrides the icon.</p>
                     </div>
                 </div>
@@ -709,15 +709,43 @@
         };
 
         const getEl = (id) => document.getElementById(id);
-        const showMsg = (msg, type = "success") => {
+        
+        let msgTimeout;
+        const showMsg = (msg, type = "success", duration = 3000) => {
             const box = getEl("message-box");
             box.textContent = msg;
             box.className = `message-box show ${type === 'error' ? 'bg-red-500' : 'bg-[var(--primary)]'}`;
-            setTimeout(() => box.classList.remove("show"), 3000);
+            clearTimeout(msgTimeout);
+            if (duration > 0) {
+                msgTimeout = setTimeout(() => box.classList.remove("show"), duration);
+            }
         };
+
         const toggleDisplay = (el, show) => {
             if (show) { el.classList.remove('hidden'); el.style.display = ''; } 
             else { el.classList.add('hidden'); el.style.display = 'none'; }
+        };
+
+        const compressImage = (file, maxWidth = 1200) => {
+            return new Promise((resolve) => {
+                if (!file || !file.type.match(/image.*/)) return resolve(file);
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height, 1);
+                        if (ratio >= 1) return resolve(file);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width * ratio;
+                        canvas.height = img.height * ratio;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        canvas.toBlob((blob) => resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() })), 'image/jpeg', 0.8);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
         };
 
         const lightIcons = { low: 'fa-cloud', medium: 'fa-cloud-sun', high: 'fa-sun' };
@@ -1295,18 +1323,20 @@
             if (!data.name) return showMsg("Name required", "error");
 
             try {
-                showMsg("Saving...", "success"); 
+                getEl("save-plant-btn").disabled = true;
+                showMsg("Saving plant...", "success", 0); // 0 duration = stays until finished
 
                 if (file) {
-                    const storageRef = ref(storage, `users/${state.user.uid}/plants/${Date.now()}_${file.name}`);
-                    await uploadBytes(storageRef, file);
+                    const compressedFile = await compressImage(file);
+                    const storageRef = ref(storage, `users/${state.user.uid}/plants/${Date.now()}_${compressedFile.name}`);
+                    await uploadBytes(storageRef, compressedFile);
                     const photoUrl = await getDownloadURL(storageRef);
                     data.photoUrl = photoUrl;
                 }
 
                 if (id) {
                     await updateDoc(doc(db, `users/${state.user.uid}/plants`, id), data);
-                    showMsg("Plant updated");
+                    showMsg("Plant updated", "success", 3000);
                 } else {
                     data.createdAt = Timestamp.now();
                     const docRef = await addDoc(collection(db, `users/${state.user.uid}/plants`), data);
@@ -1315,14 +1345,16 @@
                         plantId: docRef.id, type: "Added", date: new Date().toISOString(), 
                         notes: `Welcome home, ${data.name}!`, createdAt: Timestamp.now()
                     });
-                    showMsg("Plant added");
+                    showMsg("Plant added", "success", 3000);
                 }
                 toggleDisplay(getEl("plant-modal"), false);
                 fileInput.value = ""; 
 
             } catch (e) { 
                 console.error(e);
-                showMsg("Error saving: " + e.message, "error"); 
+                showMsg("Error saving: " + e.message, "error", 4000); 
+            } finally {
+                getEl("save-plant-btn").disabled = false;
             }
         };
         // --- Locations Logic ---
@@ -1882,13 +1914,14 @@
                     if (!plantId) return showMsg("Please select a plant", "error");
 
                     try {
-                        showMsg("Saving log...", "success");
                         getEl("submit-log-btn").disabled = true;
+                        showMsg("Saving log...", "success", 0); // 0 duration = stays until finished
 
                         let photoUrl = null;
                         if (file) {
-                            const storageRef = ref(storage, `users/${state.user.uid}/logs/${Date.now()}_${file.name}`);
-                            await uploadBytes(storageRef, file);
+                            const compressedFile = await compressImage(file);
+                            const storageRef = ref(storage, `users/${state.user.uid}/logs/${Date.now()}_${compressedFile.name}`);
+                            await uploadBytes(storageRef, compressedFile);
                             photoUrl = await getDownloadURL(storageRef);
                         }
 
@@ -1907,7 +1940,7 @@
                             await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { health });
                         }
 
-                        showMsg("Log saved successfully!");
+                        showMsg("Log saved successfully!", "success", 3000);
                         
                         // Reset Form fields
                         getEl("log-notes").value = "";
@@ -1918,7 +1951,7 @@
                         getEl("log-type-select").value = "Water";
 
                     } catch (e) { 
-                        showMsg(e.message, "error"); 
+                        showMsg(e.message, "error", 4000); 
                     } finally {
                         getEl("submit-log-btn").disabled = false;
                     }
