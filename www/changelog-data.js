@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v11.17.0-alpha",
+    date: "2026-02-20",
+    changes: [
+        "In PlantTrackr: Introduced a standalone 'Locations' manager to define environments (e.g., greenhouse, patio) with specific attributes like seasonal temperatures, humidity, and light sources.",
+        "In PlantTrackr: Added 'Positions/Zones' to Locations (e.g., Window Sill vs. Kitchen Island), which dynamically populate the dropdown when adding or editing a plant.",
+        "In PlantTrackr: Plants now automatically inherit and display environmental conditions (like light levels) from their assigned Location by default.",
+        "In PlantTrackr: Expanded care routines and dashboard reminders to include Misting, Pruning, and Repotting, as well as seasonal Overwintering prep and Weather alerts.",
+        "In PlantTrackr: Revamped Progress logging by making photos, notes, and sizing optional, refining plant health statuses, and adding 'Worth Noticing' tags (e.g., New Leaves, New Flowers).",
+        "In PlantTrackr: Renamed the 'History' tab to 'Journal' and streamlined the workflow to allow creating new Locations directly from the Add Plant modal."
+    ]
+    },
+    {
     version: "v11.16.1-alpha",
     date: "2026-02-20",
     changes: [
