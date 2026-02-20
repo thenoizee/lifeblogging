@@ -2,7 +2,16 @@
 
 export const changelogData = [
     {
-    version: "v11.15.0-beta",
+    version: "v11.16.0-alpha",
+    date: "2026-02-20",
+    changes: [
+        "In VidTrackr: Implemented a custom Firebase Cloud Function proxy to route all Trakt API requests, completely eliminating persistent CORS errors.",
+        "In VidTrackr: Bypassed aggressive ad-blockers and browser shields (like Brave) that were falsely blocking Trakt synchronization data.",
+        "In VidTrackr: Updated internal routing and OAuth redirect URIs to properly support the new /www/ directory structure.",
+    ]
+    },
+    {
+    version: "v11.15.0-alpha",
     date: "2026-02-19",
     changes: [
         "In Analyser: Fixed a critical HTML layout bug where a missing closing tag trapped modals inside a hidden section, preventing them from appearing on screen.",
@@ -11,7 +20,7 @@ export const changelogData = [
     ]
     },
     {
-    version: "v11.14.0-beta",
+    version: "v11.14.0-alpha",
     date: "2026-02-19",
     changes: [
         "In PlantTrackr: Fixed the 'Log' shortcut on individual plant cards to properly trigger internal tab-switching and auto-select the plant instead of just changing the URL hash.",
@@ -20,7 +29,7 @@ export const changelogData = [
     ]
     },
     {
-    version: "v11.13.0-beta",
+    version: "v11.13.0-alpha",
     date: "2026-02-19",
     changes: [
         "In Hub: Added an edit mode (pen icon) to the main grid that allows users to seamlessly toggle the visibility of individual apps, saving these preferences locally.",
@@ -31,7 +40,7 @@ export const changelogData = [
     ]
     },
     {
-    version: "v11.12.0-beta",
+    version: "v11.12.0-alpha",
     date: "2026-02-19",
     changes: [
         "In TaskTrackr: Added subtask progress indicators to task cards, displaying a dynamic completion badge (e.g., 1/3) that turns green when all subtasks are finished.",
@@ -41,7 +50,7 @@ export const changelogData = [
     ]
     },
     {
-    version: "v11.11.0-beta",
+    version: "v11.11.0-alpha",
     date: "2026-02-19",
     changes: [
         "In LightManagr: Implemented 'Live Polling' to automatically fetch and update light statuses every 1 second, ensuring the UI stays in sync with manual switch changes.",
@@ -50,7 +59,7 @@ export const changelogData = [
     ]
     },
     {
-    version: "v11.10.0-beta",
+    version: "v11.10.0-alpha",
     date: "2026-02-19",
     changes: [
         "In Lifeblogging Hub: Tightened the dashboard layout with reduced padding, smaller gaps, and compact cards to ensure all applications fit on a single screen without scrolling.",
@@ -58,7 +67,7 @@ export const changelogData = [
     ]
     },
     {
-    version: "v11.9.0-beta",
+    version: "v11.9.0-alpha",
     date: "2026-02-19",
     changes: [
         "In RecipeManagr: Refactored the application layout to a fixed-height structure with a dedicated scrollable content area, ensuring the search bar and toolbars remain permanently sticky at the top.",
@@ -67,7 +76,7 @@ export const changelogData = [
     ]
     },
     {
-    version: "v11.8.0-beta",
+    version: "v11.8.0-alpha",
     date: "2026-02-19",
     changes: [
         "In FoodTrackr: Implemented Sourdough feeding modes, allowing users to toggle between 'Exact (g)' for weighed measurements and 'Approx' for estimated entries.",
@@ -1762,7 +1771,7 @@ export const changelogData = [
     ]
     },
     {
-    version: "v9.62.0-beta",
+    version: "v9.62.0-alpha",
     date: "2025-12-23",
     changes: [
         "In TaskTrackr: Added 'Project Color Picker' - Visual color grid in the project management modal for easier list identification.",
@@ -2224,7 +2233,7 @@ export const changelogData = [
     ]
     },
     {
-    "version": "v9.25.0-beta",
+    "version": "v9.25.0-alpha",
     "date": "2025-10-22",
     "changes": [
         "In the Template Generator: Redesigned the template selection on the 'Use Templates' page with a two-panel layout, featuring a folder list on the left and a template list on the right for easier navigation.",

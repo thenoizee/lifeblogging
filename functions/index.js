@@ -275,3 +275,37 @@ exports.getLatestMood = onRequest({ cors: true }, async (req, res) => {
     res.status(500).json({ error: "An error occurred while fetching the mood data." });
   }
 });
+
+// ==========================================
+// 5. TRAKT PROXY (Bypass CORS & Ad Blockers)
+// ==========================================
+exports.traktProxy = onRequest({ cors: true }, async (req, res) => {
+  // req.url grabs the exact path and query string sent by your frontend
+  // Example: "/sync/history?limit=12"
+  const targetUrl = `https://api.trakt.tv${req.url}`;
+  
+  // Forward the required headers sent from the frontend
+  const headers = {
+    "Content-Type": "application/json",
+    "trakt-api-version": "2",
+    "trakt-api-key": req.headers["trakt-api-key"], 
+    "Authorization": req.headers["authorization"]
+  };
+
+  try {
+    const response = await axios({
+      method: req.method,
+      url: targetUrl,
+      headers: headers,
+      // Only include body data for POST, PUT, DELETE
+      data: ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) ? req.body : undefined
+    });
+
+    // Return the successful data to the frontend
+    res.status(response.status).send(response.data);
+    
+  } catch (error) {
+    logger.error("Trakt Proxy Error on:", targetUrl, error.response?.data || error.message);
+    res.status(error.response?.status || 500).send(error.response?.data || { error: "Trakt Proxy Failed" });
+  }
+});
