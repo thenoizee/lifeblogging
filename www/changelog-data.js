@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v11.18.1-alpha",
+    date: "2026-02-20",
+    changes: [
+        "In PlantTrackr: Bug fix.",
+    ]
+    },
+    {
     version: "v11.18.0-alpha",
     date: "2026-02-20",
     changes: [
