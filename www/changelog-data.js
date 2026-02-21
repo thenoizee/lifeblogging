@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v11.19.0-alpha",
+    date: "2026-02-21",
+    changes: [
+        "In FoodTrackr: Added bulk move and copy functionality for grouped meals, allowing users to transfer entire meals at once from the daily log.",
+        "In FoodTrackr: Redesigned the log food entry form into a cleaner, card-based layout separated by Food Details, Meal & Time, Portion Size, and Macronutrients.",
+        "In FoodTrackr: Made the 'Log Food' and 'Save Favorite' action buttons sticky at the bottom of the screen to eliminate excessive scrolling.",
+        "In FoodTrackr: Wrapped the Brand and Country search filters into a collapsible 'Advanced Filters' dropdown to save vertical space on mobile devices.",
+        "In FoodTrackr: Fixed a routing bug where direct URL hash links (like #log-food or #history) would be incorrectly overridden by the dashboard on initial load."
+    ]
+    },
+    {
     version: "v11.18.2-alpha",
     date: "2026-02-20",
     changes: [
