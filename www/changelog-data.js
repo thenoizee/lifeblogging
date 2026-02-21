@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v11.20.0-alpha",
+    date: "2026-02-21",
+    changes: [
+        "In PlantTrackr: Relocated the 'Log Care' form directly onto the Dashboard tab for quicker access and removed the standalone Log tab.",
+        "In PlantTrackr: Added new Location and Plant dropdown filters to the Journal tab to easily narrow down past care logs.",
+        "In PlantTrackr: Updated image handling throughout the app (Dashboard, Garden, and Infirmary) to automatically display the most recent photo of a plant from its care logs.",
+        "In PlantTrackr: Added automatic 'Progress Update' log generation to the Journal whenever a new photo is uploaded during plant creation or editing.",
+        "In PlantTrackr: Added a 'Remove' button inside the Edit Plant modal to allow users to easily delete a plant's custom photo.",
+        "In PlantTrackr: Fixed a JavaScript initialization bug that prevented the application from loading by correcting the execution order of helper functions."
+    ]
+    },
+    {
     version: "v11.19.0-alpha",
     date: "2026-02-21",
     changes: [
