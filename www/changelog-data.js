@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v11.21.0-alpha",
+    date: "2026-02-21",
+    changes: [
+        "In VidTrackr: Fixed a critical bug that caused a 'Failed to load seasons' error on show detail pages by correctly defining the showProgress variable scope.",
+        "In VidTrackr: Added a new toggle button on the Seasons grid to allow users to seamlessly show or hide special episodes (Season 0).",
+        "In VidTrackr: Updated the 'Continue Watching' queue and 'Series Progress' statistics to automatically respect the user's show/hide specials preference.",
+        "In VidTrackr: Introduced color-coded visual badges to easily identify significant episode types like 'Series Premiere', 'Midseason Finale', and 'Series Finale'.",
+        "In VidTrackr: Integrated the new episode type badges into the Episode Detail View, 'Continue Watching' Dashboard cards, and 'Recently Watched' Dashboard cards."
+    ]
+    },
+    {
     version: "v11.20.0-alpha",
     date: "2026-02-21",
     changes: [

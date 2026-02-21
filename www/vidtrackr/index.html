@@ -330,6 +330,7 @@ input[type=range]::-moz-range-thumb {
     let progressChartInstance = null;
     let isAuthErrorHandling = false;
     let currentItemForList = null;
+    let showSpecials = localStorage.getItem('vidtrackr_specials') === 'true'; // ADD THIS LINE
 
     // --- NEW: Navigation Initialization ---
     const currentVersion = (changelogData && changelogData.length > 0) ? changelogData[0].version : 'v1.0';
@@ -788,6 +789,18 @@ window.openScrobbleModal = (data) => {
     }
 };
 
+window.toggleSpecials = () => {
+            showSpecials = !showSpecials;
+            localStorage.setItem('vidtrackr_specials', showSpecials);
+            
+            // Reload the view based on where we are
+            if (location.hash.startsWith('#detail/show')) {
+                const parts = location.hash.split('/');
+                renderDetail(parts[1], parts[2], parts[4]);
+            }
+            if (document.getElementById('up-next-container')) loadUpNext();
+        };
+
 // Add/Update this global function
 window.removeProgress = async (playbackId) => {
     if(!confirm('Drop this item from your "Continue Watching" list?')) return;
@@ -1165,6 +1178,14 @@ loadCalendar();
                 const dateTimeDisplay = `${dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})} @ ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
                 const myRating = userRatings.get(parseInt(id));
                 const ratingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 text-[10px] ml-2 bg-black/50 px-1.5 rounded"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
+                let typeBadge = '';
+                if (type === 'episode' && h.episode.episode_type && h.episode.episode_type !== 'standard') {
+                    const formatType = h.episode.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    let typeColor = 'bg-purple-900/80 text-purple-200 border-purple-700';
+                    if (h.episode.episode_type.includes('finale')) typeColor = 'bg-red-900/80 text-red-200 border-red-700';
+                    if (h.episode.episode_type.includes('premiere')) typeColor = 'bg-blue-900/80 text-blue-200 border-blue-700';
+                    typeBadge = `<span class="text-[8px] ${typeColor} border px-1 py-0.5 rounded uppercase font-bold tracking-wide shadow-sm ml-2 align-middle inline-block flex-shrink-0">${formatType}</span>`;
+                }
 
                 return `
                     <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer animate-fade" onclick="location.hash='${targetHash}'">
@@ -1172,7 +1193,7 @@ loadCalendar();
                             <img src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:scale-110" onerror="this.src='${PLACEHOLDER_IMG}'">
                             <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
                             <div class="absolute bottom-0 left-0 p-4 w-full">
-                                <h4 class="text-white font-bold truncate shadow-black drop-shadow-md text-sm md:text-base">${title}</h4>
+                                <h4 class="text-white font-bold truncate shadow-black drop-shadow-md text-sm md:text-base flex items-center">${title} ${typeBadge}</h4>
                                 <div class="flex items-center justify-between mt-1">
                                     <div class="flex items-center overflow-hidden">
                                         <span class="text-xs text-gray-300 font-mono truncate">${subTitle}</span>
@@ -1320,7 +1341,7 @@ async function loadUpNext() {
                     // Skip if we already have a resume item for this show
                     if(resumeItems.find(r => r.type === 'episode' && r.show.ids.trakt == id)) return;
                     
-                    const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=false&count_specials=false&extended=full`);
+                    const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=${showSpecials}&count_specials=${showSpecials}&extended=full`);
                     if (progress.next_episode) {
                          nextEpisodes.push({ 
                              type: 'episode', isResume: false,
@@ -1362,6 +1383,14 @@ async function loadUpNext() {
                 const sub = isMovie ? (item.movie?.year || item.year) : `S${data.season} E${data.number}`;
                 const img = getImage(item, null, true);
                 const progress = item.progress || 0;
+                let typeBadge = '';
+                if (!isMovie && data.episode_type && data.episode_type !== 'standard') {
+                    const formatType = data.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    let typeColor = 'bg-purple-900/50 text-purple-300 border-purple-800';
+                    if (data.episode_type.includes('finale')) typeColor = 'bg-red-900/50 text-red-300 border-red-800';
+                    if (data.episode_type.includes('premiere')) typeColor = 'bg-blue-900/50 text-blue-300 border-blue-800';
+                    typeBadge = `<span class="text-[9px] ${typeColor} border px-1 py-0.5 rounded uppercase font-bold tracking-wide shadow-sm ml-2 align-middle inline-block">${formatType}</span>`;
+                }
                 
                 const jsonStr = JSON.stringify({
                     ids: data.ids, 
@@ -1396,7 +1425,7 @@ async function loadUpNext() {
                     </div>
                     <div class="w-2/3 p-3 flex flex-col justify-center bg-[var(--card)] relative">
                         ${showTitle ? `<h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5 truncate">${showTitle}</h4>` : ''}
-                        <h3 class="font-bold text-sm leading-tight mb-1 line-clamp-1 text-gray-200 group-hover:text-white transition">${title}</h3>
+                        <h3 class="font-bold text-sm leading-tight mb-1 line-clamp-1 text-gray-200 group-hover:text-white transition flex items-center">${title} ${typeBadge}</h3>
                         <p class="text-gray-500 text-xs mb-3">${sub} ${item.isResume ? `<span class="text-blue-400 ml-1">(${Math.round(progress)}%)</span>` : ''}</p>
                         <div class="mt-auto relative z-10">
                              ${actionBtns}
@@ -1580,7 +1609,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 const isEpisode = type === 'episode';
                 
                 // FIX 1: Initialize collectionList to empty array to prevent ReferenceError
-                let item, notes, history = [], related = [], showInfo = null, people = null, comments = null, collectionList = [];
+                let item, notes, history = [], related = [], showInfo = null, people = null, comments = null, collectionList = [], showProgress = null;
                 let localWlSnap = null; 
 
                 const fetchCommentsSafe = (url) => fetchDirect(url).catch(err => { console.warn("Comments unavailable", err); return []; });
@@ -1699,6 +1728,16 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
                 const titleText = isEpisode ? `${item.season}x${item.number}: ${item.title}` : item.title;
                 const fullTitle = isEpisode ? `${showInfo.title}: ${item.title}` : item.title;
+
+                let epTypeBadgeHtml = '';
+                if (isEpisode && item.episode_type && item.episode_type !== 'standard') {
+                    const formatType = item.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    let typeColor = 'text-purple-300 border-purple-800';
+                    if (item.episode_type.includes('finale')) typeColor = 'text-red-300 border-red-800';
+                    if (item.episode_type.includes('premiere')) typeColor = 'text-blue-300 border-blue-800';
+                    epTypeBadgeHtml = `<span class="bg-gray-800/80 backdrop-blur ${typeColor} px-3 py-1 rounded border font-bold uppercase tracking-wider text-[10px] flex items-center shadow-lg"><i class="fa-solid fa-star text-[10px] mr-1 opacity-70"></i> ${formatType}</span>`;
+                }
+
                 const runtimeStr = item.runtime ? `${Math.floor(item.runtime/60)}h ${item.runtime%60}m` : 'N/A';
                 
                 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -1806,6 +1845,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                             <div class="flex flex-wrap items-center gap-3 text-sm font-medium">
                                 <a href="#detail/show/${showInfo.ids.trakt}/season/${item.season}" class="bg-gray-800/80 hover:bg-gray-700 backdrop-blur text-white px-3 py-1 rounded border border-gray-600 transition">Season ${item.season}</a>
                                 <span class="bg-gray-800/80 backdrop-blur text-gray-300 px-3 py-1 rounded border border-gray-600">Ep ${item.number}</span>
+                                ${epTypeBadgeHtml}
                                 ${statusBadge} ${myRatingHtml}
                             </div>
                         </div>
@@ -1968,8 +2008,16 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                         const seasons = await fetchDirect(`/shows/${id}/seasons?extended=full,images`);
                         const mainShowPoster = getImage(item, null, true);
                         window.renderSeasonsGrid = () => { 
-                            const validSeasons = seasons.filter(s => s.number > 0);
-                            mount.innerHTML = `<h2 class="text-2xl font-bold mb-6 border-l-4 border-yellow-500 px-4">Seasons</h2><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">${validSeasons.map(s => {
+                            const validSeasons = seasons.filter(s => showSpecials ? true : s.number > 0);
+                            
+                            // Add a toggle button to the UI
+                            const toggleHtml = `
+                                <button onclick="window.toggleSpecials()" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg border border-gray-700 transition flex items-center gap-2">
+                                    <i class="fa-solid ${showSpecials ? 'fa-toggle-on text-green-500' : 'fa-toggle-off'}"></i> ${showSpecials ? 'Specials Included' : 'Specials Hidden'}
+                                </button>
+                            `;
+
+                            mount.innerHTML = `<div class="flex items-center justify-between mb-6"><h2 class="text-2xl font-bold border-l-4 border-yellow-500 px-4">Seasons</h2>${toggleHtml}</div><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">${validSeasons.map(s => {
                                 let sImg = getImage(s); if(sImg === PLACEHOLDER_IMG) sImg = mainShowPoster;
                                 let isFullyWatched = false;
                                 let progressHtml = '';
@@ -1991,15 +2039,30 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                             mount.innerHTML = `<div class="flex items-center gap-3 mb-6"><div class="animate-spin rounded-full h-6 w-6 border-2 border-yellow-500 border-t-transparent"></div> <span class="text-gray-400">Loading Season ${seasonNum}...</span></div>`;
                             const episodes = await fetchDirect(`/shows/${showId}/seasons/${seasonNum}/episodes?extended=full,images,user_data`);
                             mount.innerHTML = `<div class="flex items-center justify-between mb-6"><h2 class="text-2xl font-bold border-l-4 border-yellow-500 px-4">Season ${seasonNum}</h2><button onclick="window.renderSeasonsGrid()" class="text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition"><i class="fa-solid fa-arrow-left"></i> Back to Seasons</button></div><div class="space-y-4">${episodes.map(ep => {
+                                
                                 const epRating = ep.user_rating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded">You: ${ep.user_rating}</span>` : '';
                                 const epPlayback = userPlayback.get(parseInt(ep.ids.trakt));
                                 const pbHtml = epPlayback ? `<div class="mt-2 w-full bg-gray-800 rounded-full h-1"><div class="bg-blue-500 h-1 rounded-full" style="width: ${epPlayback.progress}%"></div></div><p class="text-[10px] text-blue-400 mt-1">${Math.round(epPlayback.progress)}% resumed</p>` : '';
-                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='#detail/episode/${ep.ids.trakt}'"><img src="${getImage(ep, 'episode')}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><h4 class="font-bold text-lg text-gray-100 truncate hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='#detail/episode/${ep.ids.trakt}'">${ep.title || 'Episode ' + ep.number}</h4><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}</div><button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, type: 'episode', runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check mr-2"></i> Log</button></div></div></div>`;
+                                
+                                // NEW LOGIC: Determine Episode Type Badge
+                                let typeBadge = '';
+                                if (ep.episode_type && ep.episode_type !== 'standard') {
+                                    const formatType = ep.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                    let typeColor = 'bg-purple-900/50 text-purple-300 border-purple-800';
+                                    if (ep.episode_type.includes('finale')) typeColor = 'bg-red-900/50 text-red-300 border-red-800';
+                                    if (ep.episode_type.includes('premiere')) typeColor = 'bg-blue-900/50 text-blue-300 border-blue-800';
+                                    typeBadge = `<span class="text-[10px] ${typeColor} border px-1.5 py-0.5 rounded uppercase font-bold tracking-wide shadow-sm ml-3 flex-shrink-0">${formatType}</span>`;
+                                }
+
+                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='#detail/episode/${ep.ids.trakt}'"><img src="${getImage(ep, 'episode')}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><div class="flex items-center"><h4 class="font-bold text-lg text-gray-100 truncate hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='#detail/episode/${ep.ids.trakt}'">${ep.title || 'Episode ' + ep.number}</h4>${typeBadge}</div><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}</div><button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, type: 'episode', runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check mr-2"></i> Log</button></div></div></div>`;
                             }).join('')}</div>`;
                             mount.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         };
                         if(initialSeason) { await window.loadEpisodes(id, initialSeason); }
-                    } catch(e) { mount.innerHTML = `<p class="text-red-500">Failed to load seasons.</p>`; }
+                    } catch(e) { 
+    console.error("Season load error:", e); 
+    mount.innerHTML = `<p class="text-red-500">Failed to load seasons.</p>`; 
+}
                 }
 
                 // --- DELAYED STREMIO LOADING (Updated) ---
@@ -2334,7 +2397,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                     // Fetch this batch in parallel
                     const batchResults = await Promise.all(batch.map(async (item) => {
                         try {
-                            const prog = await fetchDirect(`/shows/${item.show.ids.trakt}/progress/watched?hidden=false&specials=false&count_specials=false`);
+                            const prog = await fetchDirect(`/shows/${item.show.ids.trakt}/progress/watched?hidden=false&specials=${showSpecials}&count_specials=${showSpecials}`);
                             return { ...item, stats: prog };
                         } catch(e) { return null; }
                     }));
