@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v11.22.0-alpha",
+        date: "2026-02-22",
+        changes: [
+            "In FoodTrackr: Added a new 'Grams/Unit' override field to allow users to quickly redefine custom serving sizes on the fly without needing to edit the base food.",
+            "In FoodTrackr: Introduced bold, color-coded source badges (e.g., Home Cooked, Takeaway, Composite) in the Daily Log, History views, and Food Details Modal for easy visual scanning.",
+            "In FoodTrackr: Upgraded the 'Copy Logs' functionality to flawlessly retain deep metadata, including custom food sources and serving unit definitions.",
+            "In FoodTrackr: Fixed a bug that prevented custom food sources like 'Home Cooked' or 'Takeaway' from saving correctly to the database during log entry.",
+            "In FoodTrackr: Fixed an issue where the Confirmation Modal would fail to display when deleting items from the History tab due to HTML structure constraints.",
+        ]
+    },
+    {
     version: "v11.21.0-alpha",
     date: "2026-02-21",
     changes: [
