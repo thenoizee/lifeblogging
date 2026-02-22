@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.23.0-alpha",
+    date: "2026-02-22",
+    changes: [
+        "In VidTrackr: Fixed an issue where opening special episodes (Season 0) in the Stremio mobile app would crash or fail to load.",
+        "In VidTrackr: Implemented dynamic user-agent detection for Stremio links, routing mobile users through the Stremio Web portal to gracefully bypass native intent bugs.",
+        "In VidTrackr: Maintained direct native app launch behavior (stremio:///) for desktop users clicking 'Open in Stremio'."
+    ]
+    },
+    {
         version: "v11.22.0-alpha",
         date: "2026-02-22",
         changes: [
