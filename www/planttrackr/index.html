@@ -393,6 +393,16 @@
             </div>
         </div>
 
+        <div id="tab-content-graveyard" class="tab-content hidden animate-fade">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                <h1 class="text-3xl font-bold text-gray-500 dark:text-gray-400">
+                    <i class="fa-solid fa-skull mr-2"></i>Plant Graveyard
+                </h1>
+            </div>
+            <p class="mb-6 opacity-70">May they rest in compost. Plants marked as dead or archived appear here.</p>
+            <div id="graveyard-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+
         <div id="tab-content-settings" class="tab-content hidden animate-fade">
             <h1 class="text-3xl font-bold mb-6">Settings</h1>
             <div class="card p-6 mb-6">
@@ -565,6 +575,18 @@
                             <option value="sick-other">Sick - Other 🤒</option>
                         </select>
                     </div>
+                    <div>
+                        <label class="text-sm font-bold">Status</label>
+                        <select id="plant-status" class="input-std">
+                            <option value="alive" selected>Alive & Kicking</option>
+                            <option value="dead">Dead / Archived 🪦</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="text-sm font-bold">Background / History</label>
+                    <textarea id="plant-background" class="input-std" rows="2" placeholder="Where is it from? Was it a gift? Any history?"></textarea>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
@@ -887,9 +909,10 @@
             });
             if (histPlantSelect) histPlantSelect.value = histCurVal;
 
-            let displayPlants = state.plants;
+            // Change from: let displayPlants = state.plants;
+            let displayPlants = state.plants.filter(p => p.status !== 'dead');
             if (filterLoc.value && filterLoc.value !== 'all') {
-                displayPlants = state.plants.filter(p => p.location === filterLoc.value);
+                displayPlants = displayPlants.filter(p => p.location === filterLoc.value);
             }
 
             list.innerHTML = displayPlants.length ? '' : `<p class="opacity-50 text-center col-span-3 py-8">No plants found.</p>`;
@@ -951,6 +974,49 @@
             document.querySelectorAll(".quick-water-btn").forEach(b => b.onclick = (e) => quickWater(e.currentTarget.dataset.id));
             document.querySelectorAll(".unsnooze-btn").forEach(b => b.onclick = (e) => unsnoozePlant(e.currentTarget.dataset.id));
         };
+        
+
+
+        const renderGraveyard = () => {
+            const list = getEl("graveyard-container");
+            if (!list) return;
+            list.innerHTML = "";
+
+            const deadPlants = state.plants.filter(p => p.status === 'dead');
+
+            if(deadPlants.length === 0) {
+                list.innerHTML = `<p class="col-span-3 text-center opacity-50 py-8">No casualties yet! Keep up the good work. 🪴</p>`;
+                return;
+            }
+
+            deadPlants.forEach(plant => {
+                const card = document.createElement("div");
+                card.className = "card p-4 flex flex-col grayscale opacity-80 hover:grayscale-0 hover:opacity-100 transition";
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex items-center gap-3">
+                            <div class="plant-icon-circle bg-gray-200 text-gray-500"><i class="fa-solid fa-skull"></i></div>
+                            <div>
+                                <h3 class="font-bold text-lg line-through decoration-2">${plant.name}</h3>
+                                <p class="text-xs opacity-70">${plant.species || 'Unknown'}</p>
+                            </div>
+                        </div>
+                        <button class="text-gray-400 hover:text-[var(--primary)] edit-plant-btn" data-id="${plant.id}"><i class="fa-solid fa-pen"></i></button>
+                    </div>
+                    ${plant.background ? `<p class="text-sm italic mt-2 opacity-80 border-l-2 pl-2 border-gray-400">" ${plant.background} "</p>` : ''}
+                    <p class="text-xs opacity-50 mt-4 text-right">RIP</p>
+                `;
+                list.appendChild(card);
+            });
+
+            // Make sure graveyard items can be edited/resurrected
+            list.querySelectorAll(".edit-plant-btn").forEach(b => b.onclick = (e) => openPlantModal(e.currentTarget.dataset.id));
+        };
+
+
+
+
         const renderDashboard = () => {
             const waterList = getEl("dashboard-water-list");
             const fertList = getEl("dashboard-fert-list");
@@ -971,7 +1037,7 @@
             const upcomingTasks = [];
             let hasSickPlants = false;
 
-            state.plants.forEach(plant => {
+            state.plants.filter(p => p.status !== 'dead').forEach(plant => {
                 const isSick = plant.health && (plant.health.startsWith('sick') || plant.health === 'bad');
                 if (isSick) hasSickPlants = true;
 
@@ -1323,6 +1389,8 @@
             getEl("plant-icon").value = "fa-leaf";
             getEl("plant-health").value = "healthy";
             getEl('plant-photo-name').innerHTML = ''; // Add this line
+            getEl("plant-status").value = "alive";
+            getEl("plant-background").value = "";
 
             if (plantId) {
                 const plant = state.plants.find(p => p.id === plantId);
@@ -1345,6 +1413,8 @@
                 getEl("plant-repot-freq").value = plant.repotFreq || "";
                 getEl("plant-weather").checked = plant.weatherAlerts || false;
                 getEl("plant-overwinter").checked = plant.overwinter || false;
+                getEl("plant-status").value = plant.status || "alive";
+            getEl("plant-background").value = plant.background || "";
                 
                 // Populate positions dropdown before setting its value
                 const posSelect = getEl("plant-position");
@@ -1399,6 +1469,11 @@
                 repotFreq: parseInt(getEl("plant-repot-freq").value) || 0,
                 weatherAlerts: getEl("plant-weather").checked,
                 overwinter: getEl("plant-overwinter").checked,
+                
+                // Add these two new lines:
+                status: getEl("plant-status").value,
+                background: getEl("plant-background").value,
+                
                 updatedAt: Timestamp.now()
             };
             
@@ -1420,7 +1495,19 @@
                 }
 
                 if (id) {
+                    // Find the plant as it is right now before the update
+                    const existingPlant = state.plants.find(p => p.id === id);
+                    
+                    // Update the plant
                     await updateDoc(doc(db, `users/${state.user.uid}/plants`, id), data);
+                    
+                    // If it wasn't dead before, but is dead now, log it in history!
+                    if (existingPlant && existingPlant.status !== 'dead' && data.status === 'dead') {
+                        await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                            plantId: id, type: "Archived", date: new Date().toISOString(), 
+                            notes: `Moved to Graveyard 🪦`, createdAt: Timestamp.now()
+                        });
+                    }
                     
                     if (file) {
                         await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
@@ -1614,7 +1701,7 @@
                 container.appendChild(el);
             });
 
-            state.plants.filter(p => p.location === location).forEach(plant => {
+            state.plants.filter(p => p.location === location && p.status !== 'dead').forEach(plant => {
                 const el = document.createElement("div");
                 const x = plant.layoutX !== undefined ? plant.layoutX : 50;
                 const y = plant.layoutY !== undefined ? plant.layoutY : 50;
@@ -1965,7 +2052,9 @@
                         { id: 'wishlist',  label: 'Wishlist',  icon: 'fa-star' }, 
                         { id: 'layout',    label: 'Layout',    icon: 'fa-map' },
                         { id: 'history',   label: 'Journal',   icon: 'fa-book' },
-                        { id: 'settings',  label: 'Settings',  icon: 'fa-gear' }
+                        { id: 'settings',  label: 'Settings',  icon: 'fa-gear' },
+                        // Add this new tab configuration:
+                        { id: 'graveyard', label: 'Graveyard', icon: 'fa-skull' }
                     ],
                     onThemeChange: async (newTheme) => {
                         await setDoc(doc(db, 'users', user.uid, 'settings', 'theme'), { theme: newTheme }, { merge: true });
@@ -2137,6 +2226,7 @@
                     renderPlants(); 
                     renderDashboard();
                     renderLayout(); 
+                    renderGraveyard(); // Add this line!
                 });
 
                 state.unsubLocs = onSnapshot(collection(db, `users/${user.uid}/plant_locations`), snap => {

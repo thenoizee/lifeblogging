@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v11.24.0-alpha",
+    date: "2026-02-23",
+    changes: [
+        "In PlantTrackr: Added a 'Plant Background/History' text field to the plant modal to record origin stories and notes for individual plants.",
+        "In PlantTrackr: Introduced a 'Status' toggle allowing users to mark a plant as 'Alive & Kicking' or 'Dead / Archived'.",
+        "In PlantTrackr: Added a new 'Plant Graveyard' tab to respectfully display all plants that have been marked as dead.",
+        "In PlantTrackr: Updated the Dashboard, Garden list, and Layout views to automatically hide plants that are marked as dead.",
+        "In PlantTrackr: Implemented automatic Journal/History logging that records an 'Archived' entry with the exact date a plant is moved to the Graveyard."
+    ]
+    },
+    {
     version: "v11.23.0-alpha",
     date: "2026-02-22",
     changes: [
