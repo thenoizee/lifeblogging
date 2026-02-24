@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v11.27.0-alpha",
+    date: "2026-02-24",
+    changes: [
+        "In Label Generator: Added a direct 'Export as PDF' feature using html2pdf.js to generate high-quality label sheets natively without routing through the browser print dialog.",
+        "In Label Generator: Upgraded the data import panel with a dedicated drop-zone, allowing users to drag and drop CSV files directly to load variables.",
+        "In Label Generator: Added the Montserrat web font to the typography module options.",
+        "In Label Generator: Integrated live dynamic layout thumbnails into the Settings and Manual Grid panels to provide real-time visual feedback on layout density.",
+        "In Label Generator: Added a 'Reset to Default' failsafe button to safely clear customized layout constraints and restore standard sheet defaults.",
+        "In Label Generator: Fixed a visual bug where the right and bottom grid lines were missing by converting conditional boundaries to CSS outlines.",
+        "In Label Generator: Updated the initialization sequence to default to calculating layout dimensions by Grid (Rows/Columns) rather than arbitrary Label Sizes."
+    ]
+    },
+    {
     version: "v11.26.0-alpha",
     date: "2026-02-24",
     changes: [

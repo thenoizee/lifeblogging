@@ -7,7 +7,9 @@
     <link rel="icon" href="/favicons/print.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono&family=Lora&family=Merriweather&family=Playfair+Display&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Roboto+Mono&family=Lora&family=Merriweather&family=Playfair+Display&display=swap" rel="stylesheet">
     <style>
         :root {
             --paper-width: 210mm;
@@ -34,8 +36,7 @@
         body { font-family: 'Inter', sans-serif; }
         
         #label-grid-container {
-            border-right: 1px solid #ddd;
-            border-bottom: 1px solid #ddd;
+            /* Remove the border-right and border-bottom entirely */
         }
 
         /* Common styles for both on-screen and print pages */
@@ -63,8 +64,9 @@
 
         .label {
             height: var(--label-height);
-            border-top: 1px solid #ddd;
-            border-left: 1px solid #ddd;
+            /* Remove border-top and border-left */
+            outline: 1px solid #ddd;        /* Add this */
+            outline-offset: -1px;           /* Add this */
             border-radius: var(--corner-radius);
             overflow: hidden;
             cursor: pointer;
@@ -320,6 +322,10 @@
                                     <select id="presets" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500"></select>
                                     <button id="savePresetButton" class="mt-1 px-3 py-1 text-sm bg-sky-500 text-white rounded-md shadow-sm hover:bg-sky-600 transition duration-150">Save</button>
                                 </div>
+                                <div class="flex justify-between items-start mt-2">
+                                    <div id="presetPreview" class="text-xs text-gray-500 flex-1"></div>
+                                    <button id="resetTemplateBtn" class="text-xs text-red-600 hover:text-red-800 underline py-1">Reset to Default</button>
+                                </div>
                             </div>
                             <div id="envelopeControls" class="hidden space-y-3">
                                 <div class="grid grid-cols-2 gap-4">
@@ -376,6 +382,9 @@
                                 </div>
                                 <div><label for="startPosition" class="block text-sm font-medium text-gray-700">Start filling at Label #</label><input type="number" id="startPosition" value="1" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500"></div>
                                 <p class="text-xs text-gray-500">Used for CSV/Serial import on partial sheets.</p>
+                                
+                                <div id="manualGridPreview" class="pt-4 mt-2 border-t border-gray-200 text-xs text-gray-500 w-full flex flex-col items-center"></div>
+
                             </div>
                         </div>
                         <div class="p-4 border rounded-lg bg-gray-50">
@@ -408,7 +417,18 @@
                     <div class="p-4 border rounded-lg bg-gray-50">
                         <h2 class="text-lg font-semibold mb-3">Typography & Alignment</h2>
                         <div class="space-y-3">
-                            <div><label for="fontFamily" class="block text-sm font-medium text-gray-700">Font</label><select id="fontFamily" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500"><option value="'Inter', sans-serif" selected>Inter (Sans-serif)</option><option value="'Lora', serif">Lora (Serif)</option><option value="'Merriweather', serif">Merriweather (Serif)</option><option value="'Playfair Display', serif">Playfair Display (Serif)</option><option value="'Roboto Mono', monospace">Roboto Mono (Monospace)</option><option value="Arial, sans-serif">Arial</option><option value="'Times New Roman', Times, serif">Times New Roman</option></select></div>
+                            <div><label for="fontFamily" class="block text-sm font-medium text-gray-700">Font</label>
+                                <select id="fontFamily" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500">
+                                    <option value="'Inter', sans-serif" selected>Inter (Sans-serif)</option>
+                                    <option value="'Montserrat', sans-serif">Montserrat (Sans-serif)</option>
+                                    <option value="'Lora', serif">Lora (Serif)</option>
+                                    <option value="'Merriweather', serif">Merriweather (Serif)</option>
+                                    <option value="'Playfair Display', serif">Playfair Display (Serif)</option>
+                                    <option value="'Roboto Mono', monospace">Roboto Mono (Monospace)</option>
+                                    <option value="Arial, sans-serif">Arial</option>
+                                    <option value="'Times New Roman', Times, serif">Times New Roman</option>
+                                </select>
+                            </div>
                             <div class="grid grid-cols-2 gap-4">
                                 <div><label for="fontSize" class="block text-sm font-medium text-gray-700">Font Size (pt)</label><input type="number" id="fontSize" value="12" min="6" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500"></div>
                                 <div class="flex items-end space-x-2">
@@ -425,13 +445,15 @@
                     <div class="p-4 border rounded-lg bg-gray-50">
                         <h2 class="text-lg font-semibold mb-3">Content & Data (Field Mapping)</h2>
                         <div class="space-y-3">
-                            <div>
-                                <label for="csvFile" class="block text-sm font-medium text-gray-700">Import Data (CSV)</label>
-                                <p class="text-xs text-gray-500 mb-1">Each row populates one label.</p>
-                                <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100"/>
-                                <div class="flex items-center mt-2">
-                                    <input id="csvHasHeader" type="checkbox" checked class="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500">
-                                    <label for="csvHasHeader" class="ml-2 block text-sm font-medium text-gray-700">First row is a header (Field Names)</label>
+                            <div id="csvDropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-sky-50 transition-colors cursor-pointer">
+                                <label for="csvFile" class="block text-sm font-medium text-gray-700 pointer-events-none">Import Data (CSV)</label>
+                                <p class="text-xs text-gray-500 mb-3 mt-1 pointer-events-none">Drag and drop your file here, or click to browse.</p>
+                                <input type="file" id="csvFile" accept=".csv" class="hidden"/>
+                                <button id="browseCsvBtn" class="text-sm px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 pointer-events-none">Browse Files</button>
+                                <p id="csvFileName" class="text-xs text-sky-600 mt-2 font-medium"></p>
+                                <div class="flex items-center justify-center mt-4">
+                                    <input id="csvHasHeader" type="checkbox" checked class="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500" onclick="event.stopPropagation()">
+                                    <label for="csvHasHeader" class="ml-2 block text-sm font-medium text-gray-700" onclick="event.stopPropagation()">First row is a header</label>
                                 </div>
                             </div>
                             <details id="serializationGroup" class="pt-2 border-t mt-4">
@@ -463,6 +485,8 @@
                             <button id="clearManual" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 mt-2 col-span-2">Clear Manual Edits</button>
                         </div>
                         <button id="printButton" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-sky-600 hover:bg-sky-700"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v6a2 2 0 002 2h1v-4a1 1 0 011-1h8a1 1 0 011 1v4h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd" /></svg>Print Selected Labels</button>
+                        
+                        <button id="exportPdfButton" class="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 mt-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clip-rule="evenodd" /></svg>Export as PDF</button>
                     </div>
                 </div>
             </div>
@@ -521,7 +545,23 @@
                 serialEnd: document.getElementById('serialEnd'),
                 serialIncrement: document.getElementById('serialIncrement'),
             };
-            const actions = { selectAll: document.getElementById('selectAll'), deselectAll: document.getElementById('deselectAll'), printButton: document.getElementById('printButton') };
+
+            document.getElementById('resetTemplateBtn').addEventListener('click', () => {
+                if(confirm("Reset layout settings to default?")) {
+                    controls.templateType.value = 'labelSheet';
+                    controls.templateType.dispatchEvent(new Event('input'));
+                    applyPreset('avery_L7163');
+                    controls.presets.value = 'avery_L7163';
+                }
+            });
+
+
+            const actions = { 
+                selectAll: document.getElementById('selectAll'), 
+                deselectAll: document.getElementById('deselectAll'), 
+                printButton: document.getElementById('printButton'),
+                exportPdfButton: document.getElementById('exportPdfButton') // Add this
+            };
             const labelGrid = document.getElementById('label-grid');
             const root = document.documentElement;
             
@@ -540,6 +580,48 @@
     const historyStack = [];
     let historyPointer = -1;
     let historyDebounceTimer = null;
+
+    // --- Reset Template Logic ---
+    const resetBtn = document.getElementById('resetTemplateBtn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            if(confirm("Reset layout settings to default?")) {
+                controls.templateType.value = 'labelSheet';
+                controls.templateType.dispatchEvent(new Event('input'));
+                applyPreset('avery_L7163');
+                controls.presets.value = 'avery_L7163';
+            }
+        });
+    }
+
+    // --- Dynamic Thumbnail Generator ---
+    const renderThumbnails = () => {
+        const type = controls.templateType.value;
+        const presetPrev = document.getElementById('presetPreview');
+        const manualPrev = document.getElementById('manualGridPreview');
+
+        if (type === 'envelope') {
+            if (presetPrev) presetPrev.innerHTML = '';
+            if (manualPrev) manualPrev.innerHTML = '';
+            return;
+        }
+
+        const r = parseInt(controls.rows.value, 10) || 1;
+        const c = parseInt(controls.cols.value, 10) || 1;
+        const w = parseFloat(controls.labelWidth.value) || 1;
+        const h = parseFloat(controls.labelHeight.value) || 1;
+        const total = r * c;
+
+        // Draw the mini grid using CSS
+        let html = `<div style="display:grid; grid-template-columns: repeat(${c}, 1fr); gap: 1px; width: 60px; background: #cbd5e1; border: 1px solid #cbd5e1; padding: 1px; margin-bottom: 4px;">`;
+        for(let i=0; i<Math.min(total, 100); i++) {
+            html += `<div style="background: white; aspect-ratio: ${w}/${h};"></div>`;
+        }
+        html += `</div><p>${r} x ${c} (${total} labels)</p>`;
+
+        if (presetPrev) presetPrev.innerHTML = html;
+        if (manualPrev) manualPrev.innerHTML = html; // Syncs to Tab 2 as well
+    };
 
     const saveHistory = () => {
         // Remove any future history if we are in the middle of the stack
@@ -964,6 +1046,7 @@
                 root.style.setProperty('--font-weight', controls.fontBold.dataset.active === 'true' ? 'bold' : 'normal');
                 root.style.setProperty('--font-style', controls.fontItalic.dataset.active === 'true' ? 'italic' : 'normal');
                 renderPreview();
+                renderThumbnails(); // <-- NEW: Updates thumbnails instantly on any layout change
             };
 
             const applyPreset = async (key) => {
@@ -1003,13 +1086,28 @@
                     controls.gridRowGap.value = p.rowGap; 
                     controls.gridColumnGap.value = p.colGap;
                     controls.cornerRadius.value = p.cornerRadius || 0;
-                    // When applying a preset, it's usually based on label size, not grid
-                    controls.layoutModeLabel.checked = true;
+                    
+                    // Default to calculating by grid instead of label size
+                    controls.layoutModeGrid.checked = true;
                 } else if (type === 'envelope') {
                     controls.envelopeWidth.value = p.width; 
                     controls.envelopeHeight.value = p.height;
                     controls.envelopeWidth.disabled = true; 
                     controls.envelopeHeight.disabled = true;
+                }
+
+                // Generate Visual Thumbnail
+                const previewDiv = document.getElementById('presetPreview');
+                if (p && p.cols && p.rows && type !== 'envelope') {
+                    const total = p.rows * p.cols;
+                    let html = `<div style="display:grid; grid-template-columns: repeat(${p.cols}, 1fr); gap: 1px; width: 60px; background: #cbd5e1; border: 1px solid #cbd5e1; padding: 1px; margin-bottom: 4px;">`;
+                    for(let i=0; i<Math.min(total, 65); i++) {
+                        html += `<div style="background: white; aspect-ratio: ${p.width}/${p.height};"></div>`;
+                    }
+                    html += `</div><p>${p.rows} x ${p.cols} (${total} labels)</p>`;
+                    previewDiv.innerHTML = html;
+                } else {
+                    previewDiv.innerHTML = '';
                 }
                 updateAllStyles();
             };
@@ -1111,7 +1209,8 @@
                 if (type === 'suspensionTab') {
                     controls.labelWidth.value = 54;
                     controls.labelHeight.value = 14;
-                    controls.layoutModeLabel.checked = true;
+                    // Default to Grid instead of Label
+                    controls.layoutModeGrid.checked = true;
                     controls.presets.value = 'custom';
                 }
                 
@@ -1140,116 +1239,182 @@
 
             controls.fontBold.addEventListener('click', () => { controls.fontBold.dataset.active = !(controls.fontBold.dataset.active === 'true'); updateAllStyles(); });
             controls.fontItalic.addEventListener('click', () => { controls.fontItalic.dataset.active = !(controls.fontItalic.dataset.active === 'true'); updateAllStyles(); });
+            // --- Drag and Drop Logic ---
+            const csvDropZone = document.getElementById('csvDropZone');
+            const csvFileName = document.getElementById('csvFileName');
+
+            csvDropZone.addEventListener('click', () => controls.csvFile.click());
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                csvDropZone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
+            });
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                csvDropZone.addEventListener(eventName, () => csvDropZone.classList.add('bg-sky-100', 'border-sky-400'));
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                csvDropZone.addEventListener(eventName, () => csvDropZone.classList.remove('bg-sky-100', 'border-sky-400'));
+            });
+
+            csvDropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                if (dt.files && dt.files.length > 0) {
+                    controls.csvFile.files = dt.files;
+                    csvFileName.textContent = dt.files[0].name;
+                    handleCsvUpload({ target: controls.csvFile });
+                }
+            });
+
+            controls.csvFile.addEventListener('change', (e) => {
+                if(e.target.files.length > 0) csvFileName.textContent = e.target.files[0].name;
+                handleCsvUpload(e);
+            });
+            // ---------------------------
             controls.csvFile.addEventListener('change', handleCsvUpload);
             actions.selectAll.addEventListener('click', () => { document.querySelectorAll('.label').forEach(l => l.classList.add('selected')); if(generateDataArray().length === 1 && generateDataArray()[0].MANUAL_CONTENT !== undefined) renderPreview(); });
             actions.deselectAll.addEventListener('click', () => { document.querySelectorAll('.label').forEach(l => l.classList.remove('selected')); if(generateDataArray().length === 1 && generateDataArray()[0].MANUAL_CONTENT !== undefined) renderPreview(); });
             
-            actions.printButton.addEventListener('click', () => {
-                const printArea = document.getElementById('print-area');
-                printArea.innerHTML = '';
-                printArea.className = (controls.templateType.value === 'suspensionTab' && controls.printCutLines.checked) ? 'print-borders-on' : '';
-                
-                const dataToPrint = generateDataArray();
-                const startPos = Math.max(0, parseInt(controls.startPosition.value, 10) - 1);
-                const padding = Array(startPos).fill(null);
-                const finalData = padding.concat(dataToPrint);
+            // --- Shared Output Generator (Print & PDF) ---
+            const processOutput = (isPdf) => {
+                const btn = isPdf ? actions.exportPdfButton : actions.printButton;
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = isPdf ? "Generating PDF..." : "Preparing Print...";
+                btn.disabled = true;
 
-                // --- FIX 1: Check manualOverrides in the "Empty" validation ---
-                const hasManualData = Object.keys(manualOverrides).length > 0;
-                
-                if (finalData.length === 0 && controls.contentTemplate.value.trim() === '' && !hasManualData) {
-                     alert("There is no data to print. Please enter text in the Content Template, import a CSV, use Auto-Increment, or type manually into a label.");
-                     return;
-                }
-                
-                const labelsPerPage = getLabelsPerPage();
-                const isPureManualMode = dataToPrint.length === 1 && dataToPrint[0].MANUAL_CONTENT !== undefined;
-                
-                // Get selected labels from the preview grid
-                const selectedIndexes = Array.from(document.querySelectorAll('#label-grid .label.selected')).map(l => parseInt(l.dataset.index, 10));
-
-                if (selectedIndexes.length === 0) {
-                    alert("No labels are selected. Please select at least one label to print.");
-                    return;
-                }
-
-                // --- FIX 2: Calculate pages based on the furthest selected label ---
-                // If I select label #20, I need to print enough pages to reach #20, even if I only have 1 item of data.
-                const maxIndex = Math.max(...selectedIndexes);
-                const totalPages = Math.ceil((maxIndex + 1) / labelsPerPage);
-
-                for (let i = 0; i < totalPages; i++) {
-                    const page = document.createElement('div');
-                    page.className = 'print-page';
-                    
-                    let pageHasContent = false;
-
-                    for (let j = 0; j < labelsPerPage; j++) {
-                        const globalIndex = (i * labelsPerPage) + j;
-                        const printLabel = document.createElement('div');
-                        printLabel.className = 'label print-label';
+                setTimeout(() => {
+                    try {
+                        const printArea = document.getElementById('print-area');
                         
-                        // Copy Styles
-                        printLabel.style.fontSize = root.style.getPropertyValue('--font-size');
-                        printLabel.style.fontFamily = root.style.getPropertyValue('--font-family');
-                        printLabel.style.fontWeight = root.style.getPropertyValue('--font-weight');
-                        printLabel.style.fontStyle = root.style.getPropertyValue('--font-style');
-                        printLabel.style.alignItems = root.style.getPropertyValue('--align-items'); 
-                        printLabel.style.justifyContent = root.style.getPropertyValue('--justify-content'); 
-                        printLabel.style.textAlign = root.style.getPropertyValue('--justify-content'); 
-
-                        let content = '';
-                        let hasContent = false;
+                        // Safely strip inline styles so CSS handles the hiding/showing
+                        printArea.style.removeProperty('position');
+                        printArea.style.removeProperty('left');
+                        printArea.style.removeProperty('top');
                         
-                        // Check if this specific label index is selected
-                        if (selectedIndexes.includes(globalIndex)) {
-                            // --- FIX 3: Prioritize Manual Overrides ---
-                            if (manualOverrides[globalIndex] !== undefined) {
-                                content = manualOverrides[globalIndex];
-                                hasContent = true;
-                            }
-                            else if (isPureManualMode) {
-                                content = generateLabelContent(dataToPrint[0], globalIndex + 1); 
-                                hasContent = true;
-                            } else {
-                                const dataItem = finalData[globalIndex];
-                                if (dataItem) {
-                                    content = generateLabelContent(dataItem, globalIndex + 1);
-                                    if (content.trim() !== '') {
-                                        hasContent = true;
+                        printArea.innerHTML = '';
+                        printArea.className = (controls.templateType.value === 'suspensionTab' && controls.printCutLines.checked) ? 'print-borders-on' : '';
+                        
+                        const dataToPrint = generateDataArray();
+                        const startPos = Math.max(0, parseInt(controls.startPosition.value, 10) - 1);
+                        const padding = Array(startPos).fill(null);
+                        const finalData = padding.concat(dataToPrint);
+
+                        const hasManualData = Object.keys(manualOverrides).length > 0;
+                        
+                        if (finalData.length === 0 && controls.contentTemplate.value.trim() === '' && !hasManualData) {
+                             alert("There is no data to output. Please enter text, import a CSV, or type manually.");
+                             btn.innerHTML = originalHtml; btn.disabled = false;
+                             return;
+                        }
+                        
+                        const labelsPerPage = getLabelsPerPage();
+                        const isPureManualMode = dataToPrint.length === 1 && dataToPrint[0].MANUAL_CONTENT !== undefined;
+                        const selectedIndexes = Array.from(document.querySelectorAll('#label-grid .label.selected')).map(l => parseInt(l.dataset.index, 10));
+
+                        if (selectedIndexes.length === 0) {
+                            alert("No labels are selected.");
+                            btn.innerHTML = originalHtml; btn.disabled = false;
+                            return;
+                        }
+
+                        const maxIndex = Math.max(...selectedIndexes);
+                        const totalPages = Math.ceil((maxIndex + 1) / labelsPerPage);
+
+                        for (let i = 0; i < totalPages; i++) {
+                            const page = document.createElement('div');
+                            page.className = 'print-page';
+                            let pageHasContent = false;
+
+                            for (let j = 0; j < labelsPerPage; j++) {
+                                const globalIndex = (i * labelsPerPage) + j;
+                                const printLabel = document.createElement('div');
+                                printLabel.className = 'label print-label';
+                                
+                                printLabel.style.fontSize = root.style.getPropertyValue('--font-size');
+                                printLabel.style.fontFamily = root.style.getPropertyValue('--font-family');
+                                printLabel.style.fontWeight = root.style.getPropertyValue('--font-weight');
+                                printLabel.style.fontStyle = root.style.getPropertyValue('--font-style');
+                                printLabel.style.alignItems = root.style.getPropertyValue('--align-items'); 
+                                printLabel.style.justifyContent = root.style.getPropertyValue('--justify-content'); 
+                                printLabel.style.textAlign = root.style.getPropertyValue('--justify-content'); 
+
+                                let content = '', hasContent = false;
+                                
+                                if (selectedIndexes.includes(globalIndex)) {
+                                    if (manualOverrides[globalIndex] !== undefined) {
+                                        content = manualOverrides[globalIndex]; hasContent = true;
+                                    } else if (isPureManualMode) {
+                                        content = generateLabelContent(dataToPrint[0], globalIndex + 1); hasContent = true;
+                                    } else {
+                                        const dataItem = finalData[globalIndex];
+                                        if (dataItem) {
+                                            content = generateLabelContent(dataItem, globalIndex + 1);
+                                            if (content.trim() !== '') hasContent = true;
+                                        }
                                     }
                                 }
-                            }
-                        }
 
-                        if (hasContent) {
-                            printLabel.innerHTML = content;
-                            printLabel.classList.add('has-content');
-                            pageHasContent = true;
-
-                            if (printLabel.querySelector('.barcode')) {
-                                const svg = printLabel.querySelector('.barcode');
-                                JsBarcode(svg, svg.dataset.value, { displayValue: true, margin: 2, fontSize: 8, height: 25, width: 1.5, textMargin: 0, background: 'transparent' });
+                                if (hasContent) {
+                                    printLabel.innerHTML = content;
+                                    printLabel.classList.add('has-content');
+                                    pageHasContent = true;
+                                    if (printLabel.querySelector('.barcode')) {
+                                        const svg = printLabel.querySelector('.barcode');
+                                        JsBarcode(svg, svg.dataset.value, { displayValue: true, margin: 2, fontSize: 8, height: 25, width: 1.5, textMargin: 0, background: 'transparent' });
+                                    }
+                                } else { printLabel.classList.add('not-selected'); }
+                                page.appendChild(printLabel);
                             }
-                        } else {
-                             printLabel.classList.add('not-selected');
+                            if (pageHasContent) printArea.appendChild(page);
                         }
                         
-                        page.appendChild(printLabel);
-                    }
-                    
-                    if (pageHasContent) {
-                        printArea.appendChild(page);
-                    }
-                }
-                
-                if (printArea.childElementCount === 0) {
-                     alert("The selected labels do not have any content to print.");
-                     return;
-                }
+                        if (printArea.childElementCount === 0) {
+                             alert("The selected labels do not have any content.");
+                             btn.innerHTML = originalHtml; btn.disabled = false;
+                             return;
+                        }
 
-                window.print();
-            });
+                        if (isPdf) {
+                            const isLandscape = controls.orientation.value === 'landscape';
+                            const paperType = controls.paperSize.value === 'Letter' ? 'letter' : 'a4';
+                            
+                            // Temporarily bring into view for html2pdf rendering
+                            printArea.style.position = 'relative';
+                            printArea.style.left = '0';
+                            printArea.style.top = '0';
+                            
+                            html2pdf().set({
+                                margin: 0, filename: 'labels.pdf', image: { type: 'jpeg', quality: 0.98 },
+                                html2canvas: { scale: 2, useCORS: true },
+                                jsPDF: { unit: 'mm', format: paperType, orientation: isLandscape ? 'landscape' : 'portrait' }
+                            }).from(printArea).save().then(() => {
+                                printArea.style.removeProperty('position');
+                                printArea.style.removeProperty('left');
+                                printArea.style.removeProperty('top');
+                                btn.innerHTML = originalHtml; btn.disabled = false;
+                            }).catch(err => {
+                                console.error("PDF generation failed:", err);
+                                alert("Failed to generate PDF. Check console for details.");
+                                btn.innerHTML = originalHtml; btn.disabled = false;
+                            });
+                        } else {
+                            // Give the DOM a tiny fraction of a second to apply the inline-style removals
+                            setTimeout(() => {
+                                window.print();
+                                btn.innerHTML = originalHtml; btn.disabled = false;
+                            }, 50);
+                        }
+                    } catch (error) {
+                        console.error("Output Generation Error:", error);
+                        alert("An error occurred generating the output: " + error.message);
+                        btn.innerHTML = originalHtml; btn.disabled = false;
+                    }
+                }, 50);
+            };
+
+            actions.printButton.addEventListener('click', () => processOutput(false));
+            actions.exportPdfButton.addEventListener('click', () => processOutput(true));
+            
 
             async function populatePresets() {
                 const type = controls.templateType.value; 
