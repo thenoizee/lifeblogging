@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v11.26.0-alpha",
+    date: "2026-02-24",
+    changes: [
+        "In TaskTrackr: Secured OAuth credentials by completely removing the exposed TickTick Client Secret from the frontend code and migrating it to Google Cloud Secret Manager.",
+        "In Backend: Created a new secure 'tickTickProxy' Firebase Cloud Function with explicit CORS handling to safely route all TaskTrackr API requests and bypass browser/adblocker restrictions.",
+    ]
+    },
+    {
     version: "v11.25.0-alpha",
     date: "2026-02-24",
     changes: [

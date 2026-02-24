@@ -309,3 +309,37 @@ exports.traktProxy = onRequest({ cors: true }, async (req, res) => {
     res.status(error.response?.status || 500).send(error.response?.data || { error: "Trakt Proxy Failed" });
   }
 });
+
+// ==========================================
+// 6. TICKTICK (TASKTRACKR) PROXY
+// ==========================================
+exports.tickTickProxy = onRequest((req, res) => {
+  // Use explicit CORS wrapper to guarantee preflight success
+  cors(req, res, async () => {
+    // Corrected to api.ticktick.com
+    const targetUrl = `https://api.ticktick.com${req.url}`;
+    
+    // Forward the Authorization header (Bearer token) sent from your frontend
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": req.headers["authorization"]
+    };
+
+    try {
+      const response = await axios({
+        method: req.method,
+        url: targetUrl,
+        headers: headers,
+        // Only include body data for request methods that use it
+        data: ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) ? req.body : undefined
+      });
+
+      // Return the successful data to the frontend
+      res.status(response.status).send(response.data);
+      
+    } catch (error) {
+      logger.error("TickTick Proxy Error on:", targetUrl, error.response?.data || error.message);
+      res.status(error.response?.status || 500).send(error.response?.data || { error: "TickTick Proxy Failed" });
+    }
+  });
+});
