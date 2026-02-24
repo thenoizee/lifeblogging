@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.25.0-alpha",
+    date: "2026-02-24",
+    changes: [
+        "In FoodTrackr: Fixed an issue where logging foods or meals would default to the current day instead of inheriting the currently selected date on the dashboard.",
+        "In FoodTrackr: Introduced a 'Log Meal' modal allowing users to specify the exact date, time, and meal section when logging saved meals (includes smart auto-guessing based on the current time).",
+        "In FoodTrackr: Added a 'Delete Grouped Meal' modal that prompts users with options to either delete an entire meal group, delete a single item, or break the meal apart into standalone items.",
+    ]
+    },
+    {
     version: "v11.24.0-alpha",
     date: "2026-02-23",
     changes: [

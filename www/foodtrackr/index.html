@@ -1718,7 +1718,7 @@ body.bulk-active {
 
     </div> 
     
-    <div id="confirmation-modal" class="modal-overlay hidden" style="z-index: 1100;">
+<div id="confirmation-modal" class="modal-overlay hidden" style="z-index: 1100;">
     <div class="modal-container w-full max-w-sm text-center">
         <div class="mb-4 text-red-500 bg-red-100 dark:bg-red-900/30 p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto">
             <i class="fa-solid fa-trash-can text-2xl"></i>
@@ -1730,6 +1730,54 @@ body.bulk-active {
             <button id="cancel-confirm-btn" class="secondary-button py-2">Cancel</button>
             <button id="confirm-action-btn" class="destructive-button py-2">Yes, Delete</button>
         </div>
+    </div>
+</div>
+
+<div id="delete-group-modal" class="modal-overlay hidden" style="z-index: 1100;">
+    <div class="modal-container w-full max-w-sm text-center">
+        <div class="mb-4 text-red-500 bg-red-100 dark:bg-red-900/30 p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto">
+            <i class="fa-solid fa-layer-group text-2xl"></i>
+        </div>
+        <h2 class="text-xl font-bold mb-2">Delete Grouped Meal?</h2>
+        <p class="text-sm text-[var(--text-color-secondary)] mb-6">This item is part of a grouped meal. How would you like to proceed?</p>
+        
+        <div class="flex flex-col gap-3">
+            <button id="btn-delete-entire-group" class="destructive-button py-2">Delete Entire Meal</button>
+            <button id="btn-delete-single-item" class="destructive-button py-2 bg-red-400 hover:bg-red-500">Delete Only This Item</button>
+            <button id="btn-keep-standalone" class="main-button py-2">Break Apart into Standalone Items</button>
+            <button id="btn-cancel-group-delete" class="secondary-button py-2">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="quick-log-meal-modal" class="modal-overlay hidden" style="z-index: 1200;">
+    <div class="modal-container w-full max-w-sm text-left">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold">Log Meal</h2>
+            <button id="close-quick-log-meal-btn" class="text-2xl font-bold text-[var(--text-color-secondary)] hover:text-[var(--text-color-primary)]">&times;</button>
+        </div>
+        
+        <p class="text-sm text-[var(--text-color-secondary)] mb-4">Logging: <span id="quick-log-meal-name" class="font-bold text-orange-600 dark:text-orange-400"></span></p>
+
+        <div class="input-group">
+            <label>Date & Time</label>
+            <input type="datetime-local" id="quick-log-meal-datetime">
+        </div>
+        
+        <div class="input-group">
+            <label>Meal Section</label>
+            <select id="quick-log-meal-section">
+                <option value="breakfast">Breakfast</option>
+                <option value="brunch">Brunch</option>
+                <option value="lunch">Lunch</option>
+                <option value="afternoon_tea">Afternoon Tea</option>
+                <option value="dinner">Dinner</option>
+                <option value="puddings">Puddings</option>
+                <option value="drinks">Drinks</option>
+            </select>
+        </div>
+        
+        <button id="confirm-quick-log-meal-btn" class="main-button w-full mt-4">Log Meal</button>
     </div>
 </div>
     
@@ -3443,9 +3491,41 @@ document.getElementById('history-search-input').addEventListener('input', () => 
 };
 
 
+let pendingGroupDeleteItems = [];
+let itemToDeleteId = null;
+
 const handleDeleteLogItem = (itemId) => {
     if (!itemId) return;
-    
+    const itemToDelete = foodLog.find(item => item.id === itemId);
+    if (!itemToDelete) return;
+
+    // Check if the item belongs to a meal
+    const isGroupedMeal = itemToDelete.source && itemToDelete.source.startsWith('Meal: ');
+
+    if (isGroupedMeal) {
+        const itemDate = itemToDelete.eatenAt.toDate();
+        const startOfDay = new Date(itemDate);
+        startOfDay.setHours(0,0,0,0);
+        const endOfDay = new Date(startOfDay);
+        endOfDay.setDate(endOfDay.getDate() + 1);
+
+        // Find all items that are part of this exact meal group on the same day
+        const itemsInGroup = foodLog.filter(i =>
+            i.source === itemToDelete.source &&
+            i.section === itemToDelete.section &&
+            i.eatenAt.toDate() >= startOfDay &&
+            i.eatenAt.toDate() < endOfDay
+        );
+
+        if (itemsInGroup.length > 1) {
+            pendingGroupDeleteItems = itemsInGroup;
+            itemToDeleteId = itemId;
+            document.getElementById('delete-group-modal').classList.remove('hidden');
+            return;
+        }
+    }
+
+    // Standard single-item delete fallback
     showConfirm('Are you sure you want to delete this log entry?', async () => {
         try {
             await deleteDoc(doc(db, `users/${user.uid}/foodLog`, itemId));
@@ -3456,6 +3536,52 @@ const handleDeleteLogItem = (itemId) => {
         }
     });
 };
+
+// Modal Listeners
+document.getElementById('btn-delete-entire-group')?.addEventListener('click', async () => {
+    const batch = writeBatch(db);
+    pendingGroupDeleteItems.forEach(item => {
+        batch.delete(doc(db, `users/${user.uid}/foodLog`, item.id));
+    });
+    try {
+        await batch.commit();
+        showToast(`Deleted meal (${pendingGroupDeleteItems.length} items).`, 'success');
+    } catch (error) {
+        showToast('Failed to delete meal.', 'error');
+    }
+    document.getElementById('delete-group-modal').classList.add('hidden');
+});
+
+document.getElementById('btn-delete-single-item')?.addEventListener('click', async () => {
+    if (!itemToDeleteId) return;
+    try {
+        await deleteDoc(doc(db, `users/${user.uid}/foodLog`, itemToDeleteId));
+        showToast('Single item deleted.', 'success');
+    } catch (error) {
+        showToast('Failed to delete item.', 'error');
+    }
+    document.getElementById('delete-group-modal').classList.add('hidden');
+});
+
+document.getElementById('btn-keep-standalone')?.addEventListener('click', async () => {
+    const batch = writeBatch(db);
+    pendingGroupDeleteItems.forEach(item => {
+        const ref = doc(db, `users/${user.uid}/foodLog`, item.id);
+        // Remove the "Meal: " prefix to detach them from the group visually and logically
+        batch.update(ref, { source: 'Manual Entry' }); 
+    });
+    try {
+        await batch.commit();
+        showToast('Meal broken into standalone items.', 'success');
+    } catch (error) {
+        showToast('Failed to separate meal.', 'error');
+    }
+    document.getElementById('delete-group-modal').classList.add('hidden');
+});
+
+document.getElementById('btn-cancel-group-delete')?.addEventListener('click', () => {
+    document.getElementById('delete-group-modal').classList.add('hidden');
+});
 
 const copyBtn = document.getElementById('copy-yesterday-btn');
 if (copyBtn) {
@@ -3725,14 +3851,12 @@ const renderMyMealsQuickList = () => {
             </div>
         `;
         
-        card.addEventListener('click', async () => {
+        card.addEventListener('click', () => {
             if (typeof isMealBuilderMode !== 'undefined' && isMealBuilderMode) {
                 meal.items.forEach(item => addToBuilder(item));
                 showToast(`Added items from ${meal.name}`);
             } else {
-                if (confirm(`Log "${meal.name}"?`)) {
-                    await logMeal(meal.id);
-                }
+                openLogMealModal(meal.id);
             }
         });
         listEl.appendChild(card);
@@ -4556,11 +4680,14 @@ const toggleQuickFavorite = async (product, event) => {
     }
 };
 
-// --- FIX: Missing selectFoodItem function ---
-      const selectFoodItem = (item, qty = 100) => {
+const selectFoodItem = (item, qty = 100) => {
           // 1. Prepare UI: Hide lists, show form
           restoreSourceUI(item.source, item.restaurantName || item.brands);
           document.querySelectorAll('.subtab-content').forEach(el => el.classList.add('hidden'));
+          
+          // ADD THIS LINE HERE:
+          setDefaultDateTime();
+
           document.getElementById('search-results').classList.add('hidden');
           document.getElementById('search-controls').classList.add('hidden');
           document.getElementById('entry-form-section').classList.remove('hidden');
@@ -5131,27 +5258,81 @@ document.getElementById('bulk-copy-btn').addEventListener('click', () => execute
             });
         };
 
-        const logMeal = async (mealId) => {
-             const meal = meals.find(m => m.id === mealId);
-             if (meal) {
-                 const batch = writeBatch(db);
-                 const logTime = document.getElementById('log-datetime').value ? new Date(document.getElementById('log-datetime').value) : new Date();
-                 const logTimestamp = Timestamp.fromDate(logTime);
-                 const now = Timestamp.now();
-                 meal.items.forEach(item => {
-                   const docRef = doc(collection(db, `users/${user.uid}/foodLog`));
-                   batch.set(docRef, {
-                       ...item,
-                       section: document.getElementById('log-section').value || 'breakfast', 
-                       eatenAt: logTimestamp, createdAt: now, updatedAt: now,
-                       createdBy: user.email, updatedBy: user.email,
-                       source: `Meal: ${meal.name}`
-                     });
-                 });
-                 await batch.commit();
-                 showToast(`${meal.name} logged!`);
-             }
-        };
+        let pendingLogMealId = null;
+
+const openLogMealModal = (mealId) => {
+    const meal = meals.find(m => m.id === mealId);
+    if (!meal) return;
+    
+    pendingLogMealId = mealId;
+    document.getElementById('quick-log-meal-name').textContent = meal.name;
+
+    // Inherit the date from the dashboard calendar, but use current time
+    const targetDate = new Date(currentDashboardDate);
+    const now = new Date();
+    targetDate.setHours(now.getHours(), now.getMinutes());
+    document.getElementById('quick-log-meal-datetime').value = toLocalISOString(targetDate);
+
+    // Auto-guess the meal section based on the current time
+    const hour = now.getHours();
+    let section = 'breakfast';
+    if (hour >= 11 && hour < 15) section = 'lunch';
+    else if (hour >= 15 && hour < 17) section = 'afternoon_tea';
+    else if (hour >= 17 && hour < 22) section = 'dinner';
+    else if (hour >= 22) section = 'puddings';
+    document.getElementById('quick-log-meal-section').value = section;
+
+    document.getElementById('quick-log-meal-modal').classList.remove('hidden');
+};
+
+document.getElementById('close-quick-log-meal-btn').addEventListener('click', () => {
+    document.getElementById('quick-log-meal-modal').classList.add('hidden');
+    pendingLogMealId = null;
+});
+
+document.getElementById('confirm-quick-log-meal-btn').addEventListener('click', async () => {
+    if (!pendingLogMealId) return;
+    const meal = meals.find(m => m.id === pendingLogMealId);
+    if (!meal) return;
+
+    const btn = document.getElementById('confirm-quick-log-meal-btn');
+    btn.disabled = true;
+    btn.textContent = "Logging...";
+
+    const dtVal = document.getElementById('quick-log-meal-datetime').value;
+    const section = document.getElementById('quick-log-meal-section').value;
+    const logTimestamp = Timestamp.fromDate(new Date(dtVal));
+    const now = Timestamp.now();
+
+    const batch = writeBatch(db);
+    
+    meal.items.forEach(item => {
+        const docRef = doc(collection(db, `users/${user.uid}/foodLog`));
+        batch.set(docRef, {
+            ...item,
+            section: section,
+            eatenAt: logTimestamp, 
+            createdAt: now, 
+            updatedAt: now,
+            createdBy: user.email, 
+            updatedBy: user.email,
+            source: `Meal: ${meal.name}`
+        });
+    });
+
+    try {
+        await batch.commit();
+        showToast(`${meal.name} logged successfully!`, "success");
+        document.getElementById('quick-log-meal-modal').classList.add('hidden');
+        pendingLogMealId = null;
+    } catch (e) {
+        console.error("Error logging meal:", e);
+        showToast("Failed to log meal.", "error");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Log Meal";
+    }
+});
         
         let pendingMealItems = []; 
 
@@ -5721,9 +5902,7 @@ document.getElementById('save-favorite-btn').addEventListener('click', async () 
                     formSection.scrollIntoView({ behavior: 'smooth' });
                 }
             } else if (action === 'log-meal') {
-                if (confirm('Are you sure you want to log this meal?')) {
-                    await logMeal(id);
-                }
+                openLogMealModal(id);
             } else if (action === 'delete-meal') {
                 if (confirm('Are you sure you want to delete this meal?')) {
                      try { await deleteDoc(doc(db, `users/${user.uid}/meals`, id)); } 
