@@ -1868,8 +1868,95 @@ const renderTaskCard = (task) => {
         window.toggleSelectionMode = () => { isSelectionMode = !isSelectionMode; renderApp(); };
         window.toggleTaskSelection = (id, event) => { /*...*/ if (event) event.stopPropagation(); if (event && event.shiftKey) event.preventDefault(); const visibleTasks = getFilteredTasks(); const currentIndex = visibleTasks.findIndex(t => t.id === id); if (event && event.shiftKey && lastSelectedId) { if(window.getSelection) window.getSelection().removeAllRanges(); const lastIndex = visibleTasks.findIndex(t => t.id === lastSelectedId); if (lastIndex !== -1 && currentIndex !== -1) { const start = Math.min(lastIndex, currentIndex); const end = Math.max(lastIndex, currentIndex); for(let i = start; i <= end; i++) { selectedTasks.add(visibleTasks[i].id); } } } else { if (selectedTasks.has(id)) { selectedTasks.delete(id); lastSelectedId = null; } else { selectedTasks.add(id); lastSelectedId = id; } } updateBulkToolbar(); renderApp(); };
         window.clearSelection = () => { selectedTasks.clear(); renderApp(); updateBulkToolbar(); };
-        const updateBulkToolbar = () => { /*...*/ const bar = document.getElementById('bulk-toolbar'); const count = document.getElementById('bulk-count'); count.textContent = selectedTasks.size; if (selectedTasks.size > 0) { bar.classList.remove('translate-y-24', 'opacity-0'); } else { bar.classList.add('translate-y-24', 'opacity-0'); } };
-        window.bulkAction = async (action, dateValue = null) => { /*...*/ if (selectedTasks.size === 0) return; showLoader(); const tasksToUpdate = Array.from(selectedTasks); let newDateISO = null; let shouldRemoveDate = false; const now = new Date(); if (action === 'today') { newDateISO = now.toISOString(); } else if (action === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } else if (action === 'inbox') { shouldRemoveDate = true; } else if (action === 'specific' && dateValue) { newDateISO = new Date(dateValue).toISOString(); } try { await Promise.all(tasksToUpdate.map(async (tid) => { const task = taskCache.find(t => t.id === tid); if (!task) return; if (action === 'delete') { await api(`/project/${task.projectId}/task/${task.id}`, 'DELETE'); const idx = taskCache.findIndex(t => t.id === tid); if (idx > -1) taskCache.splice(idx, 1); } else { const payload = { projectId: task.projectId, title: task.title }; if (shouldRemoveDate) { task.dueDate = null; payload.dueDate = null; } else if (newDateISO) { task.dueDate = newDateISO; payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); } await api(`/task/${tid}`, 'POST', payload); } })); localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache)); showToast(`Updated ${tasksToUpdate.length} tasks`); window.clearSelection(); renderApp(); } catch (e) { console.error(e); showToast('Error performing bulk action', 'error'); } hideLoader(); };
+        const updateBulkToolbar = () => { 
+            const bar = document.getElementById('bulk-toolbar'); 
+            const count = document.getElementById('bulk-count'); 
+            count.textContent = selectedTasks.size; 
+            
+            // Populate dynamic project list into the bulk action dropdown
+            const bulkProjectSelect = document.getElementById('bulk-project-select');
+            if (bulkProjectSelect) {
+                bulkProjectSelect.innerHTML = `<option value="" disabled selected>Move to Project</option>` + 
+                    Object.entries(projectMap).map(([id, p]) => `<option value="${id}">${escapeHtml(p.name)}</option>`).join('');
+            }
+
+            if (selectedTasks.size > 0) { 
+                bar.classList.remove('translate-y-24', 'opacity-0'); 
+            } else { 
+                bar.classList.add('translate-y-24', 'opacity-0'); 
+            } 
+        };
+
+        window.bulkAction = async (action, value = null) => { 
+            if (selectedTasks.size === 0) return; 
+            showLoader(); 
+            const tasksToUpdate = Array.from(selectedTasks); 
+            let newDateISO = null; 
+            let shouldRemoveDate = false; 
+            const now = new Date(); 
+
+            if (action === 'today') { newDateISO = now.toISOString(); } 
+            else if (action === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
+            else if (action === 'inbox') { shouldRemoveDate = true; } 
+            else if (action === 'nodate') { shouldRemoveDate = true; } // <--- Added this line
+            else if (action === 'specific' && value) { newDateISO = new Date(value).toISOString(); }
+            
+            try { 
+                await Promise.all(tasksToUpdate.map(async (tid) => { 
+                    const task = taskCache.find(t => t.id === tid); 
+                    if (!task) return; 
+                    
+                    if (action === 'delete') { 
+                        await api(`/project/${task.projectId}/task/${task.id}`, 'DELETE'); 
+                        const idx = taskCache.findIndex(t => t.id === tid); 
+                        if (idx > -1) taskCache.splice(idx, 1); 
+                    } 
+                    else if (action === 'complete') {
+                        // Mark task status as completed using existing logic
+                        await window.completeTask(task.projectId, task.id, null);
+                    } 
+                    else { 
+                        const payload = { projectId: task.projectId, title: task.title }; 
+                        
+                        if (shouldRemoveDate) { 
+                            task.dueDate = null; payload.dueDate = null; 
+                        } else if (newDateISO) { 
+                            task.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); 
+                            payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); 
+                        } 
+                        
+                        // Handle Project / Labels reassignment
+                        if (action === 'project' && value) {
+                            task.projectId = value;
+                            payload.projectId = value;
+                        } 
+                        // Handle Priority reassignment
+                        else if (action === 'priority' && value !== null) {
+                            task.priority = parseInt(value);
+                            payload.priority = parseInt(value);
+                        }
+
+                        await api(`/task/${tid}`, 'POST', payload); 
+                    } 
+                })); 
+                
+                // Cleanup and reset UI
+                localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache)); 
+                showToast(`Updated ${tasksToUpdate.length} tasks`); 
+                window.clearSelection(); 
+                
+                const prjSel = document.getElementById('bulk-project-select');
+                if (prjSel) prjSel.value = "";
+                const priSel = document.getElementById('bulk-priority-select');
+                if (priSel) priSel.value = "";
+
+                renderApp(); 
+            } catch (e) { 
+                console.error(e); 
+                showToast('Error performing bulk action', 'error'); 
+            } 
+            hideLoader(); 
+        };
 
         const renderTimeline = (tasks) => { /*...*/ tasks.sort((a,b) => new Date(a.dueDate || '9999-12-31') - new Date(b.dueDate || '9999-12-31')); let html = '<div class="relative pl-8 space-y-8 min-h-[500px]">'; html += '<div class="timeline-line"></div>'; let lastDate = ''; if (tasks.length === 0) { html = `<div class="text-center p-12 text-gray-500"><p class="text-lg font-bold">No tasks to display on timeline.</p></div>`; } else { tasks.forEach(task => { let dateStr = task.dueDate ? new Date(task.dueDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'No Date'; if (dateStr !== lastDate) { const color = task.dueDate && new Date(task.dueDate) < new Date() ? 'text-red-400' : 'text-blue-400'; html += `<div class="relative mt-8"> <span class="absolute -left-[39px] mt-1.5 h-4 w-4 rounded-full border border-gray-700 bg-gray-900 z-10"></span> <h3 class="text-sm font-bold ${color} mb-4 ml-2 uppercase tracking-wider">${dateStr}</h3> </div>`; lastDate = dateStr; } html += `<div class="relative group ml-2 mb-4"> <span class="absolute -left-[45px] top-6 h-2 w-2 rounded-full bg-gray-600 group-hover:bg-[var(--primary)] transition z-10"></span> ${renderTaskCard(task)} </div>`; }); html += '</div>'; } els.content.innerHTML = html; };
         window.handleSortableDrop = async (evt) => { /*...*/ const taskId = evt.item.getAttribute('data-task-id'); const toSection = evt.to.getAttribute('data-section'); const fromSection = evt.from.getAttribute('data-section'); if (toSection === fromSection) return; const task = taskCache.find(t => t.id === taskId); if (!task) return; let newDate = null; let removeDate = false; const now = new Date(); if (toSection === 'today' || toSection === 'overdue') { newDate = now; } else if (toSection === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDate = tmrw; } else if (toSection === 'later') { const nextWeek = new Date(now); nextWeek.setDate(nextWeek.getDate() + 7); newDate = nextWeek; } else if (toSection === 'noDate') { removeDate = true; } else if (toSection === 'completed') { window.completeTask(task.projectId, task.id, null); return; } if (newDate || removeDate) { if (removeDate) task.dueDate = null; else task.dueDate = newDate.toISOString().replace(/\.\d{3}Z$/, '+0000'); renderApp(); try { const payload = { projectId: task.projectId, title: task.title, dueDate: task.dueDate }; await api(`/task/${task.id}`, 'POST', payload); showToast(`Moved to ${toSection}`); } catch (e) { console.error(e); showToast('Failed to save changes', 'error'); } } };
@@ -3028,12 +3115,39 @@ document.addEventListener('keydown', (e) => {
 
     <div id="bulk-toolbar" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white dark:bg-[#1f2937] text-gray-900 dark:text-gray-100 border border-gray-600 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 z-50 transition-all duration-300 translate-y-24 opacity-0">
         <div class="flex items-center gap-2 border-r border-gray-600 pr-4 mr-2"><span id="bulk-count" class="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">0</span><span class="text-sm font-bold text-gray-300">Selected</span></div>
+        
         <button onclick="window.bulkAction('today')" class="text-gray-400 hover:text-black dark:hover:text-white flex flex-col items-center group" title="Move to Today"><i class="fa-solid fa-calendar-day text-lg group-hover:text-blue-500 transition"></i><span class="text-[10px] font-bold mt-1">Today</span></button>
         <button onclick="window.bulkAction('tomorrow')" class="text-gray-400 hover:text-white flex flex-col items-center group" title="Move to Tomorrow"><i class="fa-solid fa-sun text-lg group-hover:text-yellow-500 transition"></i><span class="text-[10px] font-bold mt-1">Tomorrow</span></button>
-        <div class="relative group"><button onclick="document.getElementById('bulk-date-picker').showPicker()" class="text-gray-400 hover:text-white flex flex-col items-center group" title="Pick Date"><i class="fa-regular fa-calendar text-lg group-hover:text-green-500 transition"></i><span class="text-[10px] font-bold mt-1">Pick Date</span></button><input type="date" id="bulk-date-picker" onchange="window.bulkAction('specific', this.value)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"></div>
+        
+        <div class="relative group"><button onclick="document.getElementById('bulk-date-picker').showPicker()" class="text-gray-400 hover:text-white flex flex-col items-center group" title="Pick Date"><i class="fa-regular fa-calendar text-lg group-hover:text-green-500 transition"></i><span class="text-[10px] font-bold mt-1">Date</span></button><input type="date" id="bulk-date-picker" onchange="window.bulkAction('specific', this.value)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"></div>
+        
+        <button onclick="window.bulkAction('nodate')" class="text-gray-400 hover:text-red-400 flex flex-col items-center group" title="Clear Date">
+            <i class="fa-solid fa-calendar-xmark text-lg transition"></i>
+            <span class="text-[10px] font-bold mt-1">No Date</span>
+        </button>
+
         <div class="w-px h-8 bg-gray-600 mx-1"></div>
+        
+        <select id="bulk-project-select" onchange="window.bulkAction('project', this.value)" class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs font-bold border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 outline-none focus:border-purple-500 transition cursor-pointer max-w-[130px] truncate shadow-sm">
+            </select>
+
+        <select id="bulk-priority-select" onchange="window.bulkAction('priority', this.value)" class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs font-bold border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 outline-none focus:border-orange-500 transition cursor-pointer max-w-[90px] shadow-sm">
+            <option value="" disabled selected>Priority</option>
+            <option value="5">High</option>
+            <option value="3">Medium</option>
+            <option value="1">Low</option>
+            <option value="0">None</option>
+        </select>
+
+        <div class="w-px h-8 bg-gray-600 mx-1"></div>
+
+        <button onclick="window.bulkAction('complete')" class="text-gray-400 hover:text-green-500 flex flex-col items-center group" title="Complete Tasks">
+            <i class="fa-solid fa-check-double text-lg transition"></i>
+            <span class="text-[10px] font-bold mt-1">Done</span>
+        </button>
         <button onclick="window.bulkAction('delete')" class="text-gray-400 hover:text-red-500 flex flex-col items-center group" title="Delete"><i class="fa-solid fa-trash text-lg transition"></i><span class="text-[10px] font-bold mt-1">Trash</span></button>
-        <button onclick="window.clearSelection()" class="ml-4 text-xs font-bold text-gray-500 hover:text-white border border-gray-600 px-2 py-1 rounded hover:bg-gray-700 transition">Cancel</button>
+        
+        <button onclick="window.clearSelection()" class="ml-2 text-xs font-bold text-gray-500 hover:text-white border border-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-700 transition">Cancel</button>
     </div>
 
     <div id="context-menu" class="fixed z-50 bg-white dark:bg-[#1f2937] text-gray-900 dark:text-gray-200 border border-gray-700 rounded-lg shadow-2xl py-1 w-48 hidden flex-col max-h-[90vh] overflow-y-auto">

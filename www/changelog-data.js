@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v11.29.0-alpha",
+    date: "2026-02-25",
+    changes: [
+        "In TaskTrackr: Redesigned the bulk action project and priority selector dropdowns with explicit styling to resolve contrast and readability issues in both light and dark modes.",
+        "In TaskTrackr: Added a 'No Date' button to the bulk edit toolbar allowing users to easily remove due dates from multiple selected tasks at once."
+    ]
+    },
+    {
     version: "v11.28.0-alpha",
     date: "2026-02-25",
     changes: [
