@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v11.30.0-alpha",
+    date: "2026-02-25",
+    changes: [
+        "In FoodTrackr: Redesigned the bulk action bar into a floating pill shape at the bottom of the screen to match the TaskTrackr aesthetic.",
+    ]
+    },
+    {
     version: "v11.29.0-alpha",
     date: "2026-02-25",
     changes: [
