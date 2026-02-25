@@ -415,6 +415,11 @@
                         <label for="scheduled-time" class="text-xs font-bold uppercase text-gray-500"><i class="fa-regular fa-clock mr-1"></i>Time</label>
                         <input type="time" id="scheduled-time" class="text-sm border-none bg-transparent focus:ring-0 py-0 pl-0 font-medium text-indigo-600 cursor-pointer">
                     </div>
+                    <div class="h-4 w-px bg-gray-300 dark:bg-gray-700"></div>
+                    <button id="clear-fields-btn" class="text-xs font-bold text-red-500 hover:text-red-700 flex items-center gap-1 transition-colors">
+                        <i class="fa-solid fa-eraser"></i> Clear Fields
+                    </button>
+                    
                 </div>
             </div>
 
@@ -443,9 +448,12 @@
                             <button id="copy-subject-button" class="text-gray-400 hover:text-indigo-600 transition" title="Copy Subject"><i class="fa-regular fa-copy"></i></button>
                         </div>
 
-                        <div class="relative flex-grow overflow-hidden">
+                        <div class="relative flex-grow overflow-hidden flex flex-col">
                             <div id="generated-text" class="email-content-area p-6 h-full overflow-y-auto whitespace-pre-wrap outline-none" contenteditable="true"></div>
                             
+                            <div id="text-stats" class="absolute bottom-4 left-4 text-xs font-medium text-[var(--secondary)] bg-[var(--card)] px-2 py-1 rounded shadow-sm border border-[var(--border-color)]">
+                                0 words | 0 chars
+                            </div>
                             <div class="absolute bottom-4 right-4 flex gap-2">
                                 <button id="load-to-gmail-button" class="hidden bg-red-600 text-white p-3 rounded-full shadow-lg hover:bg-red-700 hover:scale-105 transition" title="Open in Gmail">
                                     <i class="fa-brands fa-google"></i>
@@ -612,7 +620,12 @@
                             <textarea id="template-body" class="w-full p-3 text-sm font-mono leading-relaxed bg-[var(--input-bg)] text-[var(--text)] border border-[var(--border-color)] rounded flex-grow min-h-[300px]" placeholder="Hi {{Name}}..." required></textarea>
                             
                             <div id="dynamic-fields-container" class="space-y-2 pl-2 border-l-2 border-gray-200 dark:border-gray-700 mt-4"></div>
-                        </div>
+                            
+                            <div id="placeholder-validation-container" class="mt-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded border border-[var(--border-color)] text-xs hidden">
+                                <h5 class="font-bold text-[var(--secondary)] uppercase tracking-wide mb-2 text-[10px]">Placeholder Check</h5>
+                                <ul id="placeholder-validation-list" class="space-y-1.5"></ul>
+                            </div>
+                            </div>
 
                         <div id="live-preview-pane" class="hidden lg:flex flex-col w-1/2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-[var(--border-color)] p-4 transition-all sticky top-0 h-[fit-content]">
                             <div class="flex justify-between items-center mb-3">
@@ -780,6 +793,8 @@ const updateManagerPreview = () => {
     
     document.getElementById('preview-subject').innerHTML = highlight(subject);
     document.getElementById('preview-body').innerHTML = highlight(body) || '<span class="text-gray-400 italic">Start typing...</span>';
+    
+    if (typeof validatePlaceholders === 'function') validatePlaceholders();
 };
         
         window.onload = function() {
@@ -858,7 +873,7 @@ const updateManagerPreview = () => {
     ui.use.copySubjectButton.addEventListener('click', () => copyToClipboard(ui.use.generatedSubjectInput.value, "Subject copied!"));
     ui.use.loadToGmailButton.addEventListener('click', createGmailDraft);
     
-    ui.use.fieldsContainer.addEventListener('input', liveGenerateText);
+    ui.use.fieldsContainer.addEventListener('input', () => liveGenerateText(false));
     
     ui.manage.form.addEventListener('submit', handleSaveTemplate);
     ui.manage.cancelEditButton.addEventListener('click', cancelEdit);
@@ -913,6 +928,19 @@ const updateManagerPreview = () => {
             duplicateAsNewTemplate(selectedTemplateId, version);
         }
     });
+
+    const clearFieldsBtn = document.getElementById('clear-fields-btn');
+    if (clearFieldsBtn) {
+        clearFieldsBtn.addEventListener('click', () => {
+            ui.use.pronounPreset.value = "";
+            ui.use.scheduledTimeInput.value = "";
+            document.querySelectorAll('#fields-container .dynamic-field').forEach(input => {
+                input.value = "";
+                input.readOnly = false;
+            });
+            liveGenerateText(false);
+        });
+    }
 
     ui.manage.bodyTextarea.addEventListener('dragover', e => e.preventDefault());
     ui.manage.bodyTextarea.addEventListener('drop', handleDrop);
@@ -986,7 +1014,12 @@ window.addEventListener('tab-changed', (e) => {
                 localStorage.setItem('userTemplates', JSON.stringify(userTemplates));
             } catch (e) { console.error("Error parsing or migrating user templates:", e); }
             
-            allTemplates = [...defaultTemplates.map(t => ({...t, versions: migrateTemplates([t])[0].versions })), ...userTemplates];
+            // REPLACED LOGIC: Only use defaults if the user hasn't made any templates
+            if (userTemplates.length > 0) {
+                allTemplates = [...userTemplates];
+            } else {
+                allTemplates = [...defaultTemplates.map(t => ({...t, versions: migrateTemplates([t])[0].versions }))];
+            }
             
             renderFolderList();
             renderTemplateList();
@@ -1372,6 +1405,14 @@ function resetSelectionUI() {
                 ui.use.loadToGmailButton.classList.remove('hidden');
             }
 
+            // Add Word/Character count
+            const charCount = bodyText.length;
+            const wordCount = bodyText.trim() === "" ? 0 : bodyText.trim().split(/\s+/).length;
+            const textStats = document.getElementById('text-stats');
+            if (textStats) {
+                textStats.innerText = `${wordCount} words | ${charCount} chars`;
+            }
+
             if (autoCopy && bodyText) {
                 copyToClipboard(bodyText, "Body copied automatically!");
             }
@@ -1609,6 +1650,8 @@ function resetSelectionUI() {
             } else {
                 ui.manage.placeholdersWrapper.classList.add('hidden');
             }
+            
+            if (typeof validatePlaceholders === 'function') validatePlaceholders();
         }
 
         function insertPlaceholder(textToInsert) {
@@ -1617,6 +1660,58 @@ function resetSelectionUI() {
             textarea.value = textarea.value.substring(0, start) + textToInsert + textarea.value.substring(end);
             textarea.selectionStart = textarea.selectionEnd = start + textToInsert.length;
             textarea.focus();
+        }
+
+        function validatePlaceholders() {
+            const body = ui.manage.bodyTextarea.value || '';
+            const subject = ui.manage.subjectInput.value || '';
+            const fullText = subject + " " + body;
+            
+            const definedFields = Array.from(ui.manage.fieldsContainer.querySelectorAll('.field-name'))
+                                     .map(input => input.value.trim()).filter(Boolean);
+            
+            const standardPronouns = Object.keys(PRONOUN_PLACEHOLDERS);
+            standardPronouns.push('Greeting'); // Treat Greeting as standard
+            
+            // Extract all placeholders used in text
+            const usedPlaceholders = [];
+            const regex = /{{\s*([^}]+?)\s*}}/g;
+            let match;
+            while ((match = regex.exec(fullText)) !== null) {
+                usedPlaceholders.push(match[1]);
+            }
+            
+            const validationList = document.getElementById('placeholder-validation-list');
+            const validationContainer = document.getElementById('placeholder-validation-container');
+            if (!validationList || !validationContainer) return;
+            
+            validationList.innerHTML = '';
+            
+            // 1. Check defined fields usage
+            definedFields.forEach(field => {
+                const count = usedPlaceholders.filter(p => p === field).length;
+                const li = document.createElement('li');
+                if (count === 0) {
+                    li.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-yellow-500 w-4"></i> Field <strong>${field}</strong> is defined but not used.`;
+                } else {
+                    li.innerHTML = `<i class="fa-solid fa-check text-green-500 w-4"></i> Field <strong>${field}</strong> used ${count} time(s).`;
+                }
+                validationList.appendChild(li);
+            });
+            
+            // 2. Check for undefined placeholders in text
+            const undefinedPlaceholders = new Set(usedPlaceholders.filter(p => !definedFields.includes(p) && !standardPronouns.includes(p)));
+            undefinedPlaceholders.forEach(p => {
+                const li = document.createElement('li');
+                li.innerHTML = `<i class="fa-solid fa-circle-xmark text-red-500 w-4"></i> <strong>{{${p}}}</strong> is used but not defined in fields!`;
+                validationList.appendChild(li);
+            });
+            
+            if (definedFields.length > 0 || usedPlaceholders.length > 0) {
+                validationContainer.classList.remove('hidden');
+            } else {
+                validationContainer.classList.add('hidden');
+            }
         }
         
         function handleDrop(e) { e.preventDefault(); if (e.target.id === 'template-subject') return; const textToInsert = e.dataTransfer.getData('text/plain'); if (/\{\{.+?\}\}/.test(textToInsert)) insertPlaceholder(textToInsert); }
@@ -1706,7 +1801,7 @@ window.cancelEdit = cancelEdit;
         async function deleteTemplate(templateId) { if (!confirm("Are you sure you want to permanently delete this template and all its versions?")) return; let userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]'); userTemplates = userTemplates.filter(t => t.id !== templateId); await saveAndSyncTemplates(userTemplates); }
         
         function useVersion(templateId, versionNumber) { 
-            switchTab('use-templates'); 
+            if (typeof nav !== 'undefined') nav.switchTab('use-templates'); 
             const family = allTemplates.find(t => t.id === templateId);
             if (family) {
                 selectedFolder = family.folder || 'Uncategorized';
@@ -1763,14 +1858,31 @@ window.cancelEdit = cancelEdit;
                 item.className = `p-2 rounded cursor-pointer border-l-4 transition hover:bg-gray-100 dark:hover:bg-gray-800 ${isActive ? 'bg-gray-100 dark:bg-gray-800 border-blue-500' : 'border-transparent'}`;
                 
                 item.innerHTML = `
-                    <div class="font-bold text-sm truncate text-[var(--text)]">${template.name}</div>
-                    <div class="text-[10px] text-gray-400 flex justify-between">
-                        <span>v${Math.max(...template.versions.map(v=>v.version))}</span>
-                        ${template.isArchived ? '<span class="text-yellow-600">Archived</span>' : ''}
+                    <div class="flex justify-between items-center w-full">
+                        <div class="overflow-hidden flex-grow pr-2">
+                            <div class="font-bold text-sm truncate text-[var(--text)]">${template.name}</div>
+                            <div class="text-[10px] text-gray-400 flex gap-2">
+                                <span>v${Math.max(...template.versions.map(v=>v.version))}</span>
+                                ${template.isArchived ? '<span class="text-yellow-600">Archived</span>' : ''}
+                            </div>
+                        </div>
+                        <button class="use-template-btn shrink-0 p-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded hover:bg-indigo-100 dark:hover:bg-indigo-800 transition shadow-sm border border-transparent hover:border-indigo-200 dark:hover:border-indigo-700" title="Use Template" data-id="${template.id}">
+                            <i class="fa-solid fa-play text-xs"></i>
+                        </button>
                     </div>
                 `;
                 
-                item.onclick = () => useLatestVersionForEdit(template.id);
+                item.onclick = (e) => {
+                    const useBtn = e.target.closest('.use-template-btn');
+                    if (useBtn) {
+                        e.stopPropagation(); // Prevent the edit function from firing
+                        const templateId = useBtn.dataset.id;
+                        const latestVersion = Math.max(...template.versions.map(v => v.version));
+                        useVersion(templateId, latestVersion);
+                    } else {
+                        useLatestVersionForEdit(template.id);
+                    }
+                };
                 templateListDiv.appendChild(item);
             });
             folderContainer.appendChild(templateListDiv);

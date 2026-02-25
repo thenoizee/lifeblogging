@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v11.28.0-alpha",
+    date: "2026-02-25",
+    changes: [
+        "In Template Generator: Added a 'Use template' play button to the Manage tab to quickly load a specific template into the Use workspace.",
+        "In Template Generator: Fixed an issue where the generated text would automatically copy to the clipboard on every single keystroke.",
+        "In Template Generator: Added a 'Clear Fields' button to quickly reset all manual inputs, pronouns, and time presets.",
+        "In Template Generator: Introduced a live placeholder validation panel that counts tag usage and warns users about unused fields or undefined {{tags}} in the text.",
+        "In Template Generator: Added a real-time word and character counter to the bottom of the generated text window.",
+        "In Template Generator: Updated the template initialization so default placeholder templates are hidden once a user creates their own custom templates.",
+    ]
+    },
+    {
     version: "v11.27.0-alpha",
     date: "2026-02-24",
     changes: [
