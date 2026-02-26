@@ -23,10 +23,14 @@ const urlsToCache = [
   '/palette/index.html', 
   '/tasktrackr/index.html',
   
-  // --- SUBFOLDERS ---
+// --- SUBFOLDERS ---
   '/vidtrackr/',
   '/vidtrackr/index.html',
   '/vidtrackr/api_keys.js',
+  
+  // ADD THESE LINES:
+  '/moneymanagr/',
+  '/moneymanagr/index.html',
   
   // --- ASSETS ---
   '/recipemanagr/style.css',

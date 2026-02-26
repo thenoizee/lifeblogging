@@ -26,6 +26,7 @@ export class AppNavigation {
             { name: 'Warranty', url: '/warrantytrackr', icon: 'fa-shield-halved', color: 'bg-emerald-600' },
             { name: 'PetManagr', url: '/petmanagr', icon: 'fa-paw', color: 'bg-indigo-600' },
             { name: 'PlantTrackr', url: '/planttrackr', icon: 'fa-leaf', color: 'bg-green-600' },
+            { name: 'MoneyManagr', url: '/moneymanagr', icon: 'fa-piggy-bank', color: 'bg-emerald-500' },
         ];
 
         this.hubTools = [

@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.32.0-alpha",
+    date: "2026-02-26",
+    changes: [
+        "In MoneyManagr: Introduced 'MoneyManagr' to the Lifeblogging suite for tracking personal finances, shared expenses, and budgets.",
+        "In Dashboard: Added a new 'Finance' widget to display the overall net balance calculated from all active money pots.",
+        "In Hub: Integrated MoneyManagr into the main hub grid, shared app navigation, and Service Worker for offline caching."
+    ]
+    },
+    {
     version: "v11.31.0-alpha",
     date: "2026-02-26",
     changes: [
