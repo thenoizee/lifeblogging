@@ -343,3 +343,31 @@ exports.tickTickProxy = onRequest((req, res) => {
     }
   });
 });
+
+// ==========================================
+// 7. PLANTTRACKR PROXIES (Growstuff & Perenual)
+// ==========================================
+exports.growstuffProxy = onRequest({ cors: true }, async (req, res) => {
+  // Routes to Growstuff instead of OpenFarm
+  const targetUrl = `https://www.growstuff.org${req.url}`;
+  
+  try {
+    const response = await axios.get(targetUrl);
+    res.status(response.status).send(response.data);
+  } catch (error) {
+    logger.error("Growstuff Proxy Error on:", targetUrl, error.response?.data || error.message);
+    res.status(error.response?.status || 500).send(error.response?.data || { error: "Growstuff Proxy Failed" });
+  }
+});
+
+exports.perenualProxy = onRequest({ cors: true }, async (req, res) => {
+  const targetUrl = `https://perenual.com${req.url}`;
+  
+  try {
+    const response = await axios.get(targetUrl);
+    res.status(response.status).send(response.data);
+  } catch (error) {
+    logger.error("Perenual Proxy Error on:", targetUrl, error.response?.data || error.message);
+    res.status(error.response?.status || 500).send(error.response?.data || { error: "Perenual Proxy Failed" });
+  }
+});

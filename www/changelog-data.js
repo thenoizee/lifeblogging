@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.31.0-alpha",
+    date: "2026-02-26",
+    changes: [
+        "In PlantTrackr: Added a new 'Lawn & Grass Care' widget to the Dashboard to track mowing frequency, monitor upcoming cuts, and easily log when the grass was last cut.",
+        "In PlantTrackr: Integrated a 'Plant Database' auto-fill feature into the Add/Edit Plant modal, allowing users to search for a plant and automatically apply sunlight, watering, and background advice.",
+        "In PlantTrackr: Added dual API support for the database search, utilizing the free Growstuff API by default, with an option to connect a custom Perenual API key via the Settings tab for expanded houseplant coverage."
+    ]
+},
+    {
     version: "v11.30.0-alpha",
     date: "2026-02-25",
     changes: [
