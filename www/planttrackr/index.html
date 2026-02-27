@@ -53,6 +53,9 @@
         @media (max-width: 768px) {
             body { padding-bottom: 80px; }
         }
+
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
         .card {
             background-color: var(--card);
@@ -150,6 +153,8 @@
         
         <div id="tab-content-dashboard" class="tab-content animate-fade">
             <h1 class="text-3xl font-bold mb-6">Dashboard</h1>
+            
+            <div id="dashboard-weather-banner" class="mb-8 hidden"></div>
 
             <section id="dashboard-hospital-section" class="card p-6 mb-8 border-2 border-red-100 dark:border-red-900 hidden">
                 <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-red-600 dark:text-red-400">
@@ -188,11 +193,14 @@
                 </div>
             </section>
 
-            <section class="card p-6 mb-8 bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800">
-                <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-[var(--primary)]">
-                    <i class="fa-solid fa-pen-to-square"></i> Quick Log Care
-                </h2>
-                <div class="space-y-4">
+            <section class="card p-6 mb-8">
+                <button type="button" onclick="document.getElementById('quick-log-body').classList.toggle('hidden'); this.querySelector('.chevron-icon').classList.toggle('rotate-180');" class="w-full flex justify-between items-center text-left">
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <i class="fa-solid fa-pen-to-square text-[var(--primary)]"></i> Quick Log Care
+                    </h2>
+                    <i class="fa-solid fa-chevron-down transition-transform chevron-icon opacity-50"></i>
+                </button>
+                <div id="quick-log-body" class="hidden space-y-4 mt-6 pt-4 border-t border-[var(--border)]">
                     <div>
                         <label class="block text-sm font-bold mb-1">Select Plant</label>
                         <select id="log-plant-select" class="input-std"></select>
@@ -822,12 +830,32 @@
             document.documentElement.classList.remove('dark');
         }
 
-        // Update the state object to include lawn and apiKeys:
+        // Update the state object to include lawn, apiKeys, location, and weather:
         const state = {
             user: null, plants: [], logs: [], structures: [], wishlist: [], locations: [],
-            lawn: null, apiKeys: null, // <-- NEW FIELDS
+            lawn: null, apiKeys: null, location: null, weather: null, // <-- NEW FIELDS
             unsubPlants: null, unsubLogs: null, unsubStructs: null, unsubWish: null, unsubLocs: null,
             nav: null, themeUnsubscribe: null 
+        };
+        
+        // Fetch weather data for the dashboard using Open-Meteo
+        const fetchWeather = async () => {
+            if (!state.location || !state.location.latitude || !state.location.longitude) return;
+            try {
+                // Added hourly metrics to the API URL
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${state.location.latitude}&longitude=${state.location.longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,uv_index_max,wind_speed_10m_max,precipitation_probability_max&hourly=temperature_2m,precipitation_probability&timezone=auto`);
+                if (!res.ok) throw new Error("API request failed");
+                const data = await res.json();
+                if (data.error) throw new Error(data.reason);
+                
+                state.weather = data.daily;
+                state.weatherHourly = data.hourly; // Save the hourly array
+                renderDashboard();
+            } catch (e) {
+                console.error("Failed to fetch weather", e);
+                state.weather = { error: true, message: e.message }; 
+                renderDashboard();
+            }
         };
 
         const getLatestPlantPhoto = (plant) => {
@@ -1096,12 +1124,105 @@
 
 
         const renderDashboard = () => {
+            const weatherBanner = getEl("dashboard-weather-banner");
             const waterList = getEl("dashboard-water-list");
             const fertList = getEl("dashboard-fert-list");
             const hospitalSection = getEl("dashboard-hospital-section");
             const hospitalList = getEl("dashboard-hospital-list");
             const upcomingList = getEl("dashboard-upcoming-list");
             const recentList = getEl("dashboard-recent-list");
+
+            // Build Weather Banner
+            if (state.location && state.location.latitude) {
+                if (state.weather && state.weather.temperature_2m_min) {
+                    const minTemp = state.weather.temperature_2m_min[0];
+                    const maxTemp = state.weather.temperature_2m_max[0];
+                    const rain = state.weather.precipitation_sum[0];
+                    
+                    const uv = state.weather.uv_index_max ? state.weather.uv_index_max[0] : 0;
+                    const wind = state.weather.wind_speed_10m_max ? state.weather.wind_speed_10m_max[0] : 0;
+                    
+                    // Contextual Badge Logic (Now includes actual data values)
+                    const uvText = uv <= 2 ? `Low UV (${uv})` : uv <= 5 ? `Mod UV (${uv})` : uv <= 7 ? `High UV ⚠️ (${uv})` : `Extreme UV 🛑 (${uv})`;
+                    const uvColor = uv <= 5 ? 'text-green-600 dark:text-green-400' : uv <= 7 ? 'text-orange-500' : 'text-red-500';
+
+                    const windText = wind < 15 ? `Calm 🍃 (${wind} km/h)` : wind < 30 ? `Breezy 💨 (${wind} km/h)` : `Strong Winds ⚠️ (${wind} km/h)`;
+                    const windColor = wind < 30 ? 'text-gray-600 dark:text-gray-400' : 'text-orange-500';
+
+                    const tempText = maxTemp < 10 ? `Cold ❄️ (${maxTemp}°C)` : maxTemp < 20 ? `Mild 🌤️ (${maxTemp}°C)` : maxTemp < 30 ? `Warm ☀️ (${maxTemp}°C)` : `Hot 🔥 (${maxTemp}°C)`;
+                    const tempColor = maxTemp < 10 ? 'text-blue-500' : maxTemp < 30 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500';
+
+                    // Build Hourly UI
+                    let hourlyHtml = '';
+                    if (state.weatherHourly && state.weatherHourly.time) {
+                        const now = new Date();
+                        // Find the index in the hourly array closest to the current time
+                        let startIndex = state.weatherHourly.time.findIndex(t => new Date(t).getTime() > now.getTime()) - 1;
+                        if (startIndex < 0) startIndex = 0;
+                        
+                        const nextHours = state.weatherHourly.time.slice(startIndex, startIndex + 5).map((t, i) => {
+                            const idx = startIndex + i;
+                            const timeDate = new Date(t);
+                            
+                            // Force 12-hour format with AM/PM (e.g. "2 PM") using en-US locale
+                            const timeLabel = i === 0 ? 'Now' : timeDate.toLocaleTimeString('en-US', {hour: 'numeric', hour12: true}); 
+                            
+                            const temp = state.weatherHourly.temperature_2m[idx];
+                            const precip = state.weatherHourly.precipitation_probability[idx];
+                            
+                            return `
+                                <div class="flex flex-col items-center justify-center p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-blue-100 dark:border-blue-800/50 min-w-[65px] flex-1">
+                                    <span class="text-[10px] uppercase font-bold opacity-70 mb-1 whitespace-nowrap">${timeLabel}</span>
+                                    <span class="text-sm font-bold">${Math.round(temp)}°</span>
+                                    <span class="text-[10px] text-cyan-500 mt-1 font-bold flex items-center gap-1"><i class="fa-solid fa-droplet"></i> ${precip}%</span>
+                                </div>
+                            `;
+                        }).join('');
+                        hourlyHtml = `<div class="flex gap-2 mt-4 md:mt-0 overflow-x-auto pb-1 w-full hide-scrollbar">${nextHours}</div>`;
+                    }
+                    
+                    weatherBanner.innerHTML = `
+                        <div class="bg-blue-50 border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 rounded-lg p-4 shadow-sm">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <i class="fa-solid ${rain > 0 ? 'fa-cloud-rain' : 'fa-cloud-sun'} text-4xl text-blue-500"></i>
+                                        <div>
+                                            <h3 class="font-bold text-lg text-blue-800 dark:text-blue-300">${state.location.name || 'Saved Location'}</h3>
+                                            <div class="flex items-center gap-3 text-sm font-semibold text-blue-900 dark:text-blue-200">
+                                                <span title="High Temp"><i class="fa-solid fa-arrow-up text-red-400"></i> ${maxTemp}°C</span>
+                                                <span title="Low Temp"><i class="fa-solid fa-arrow-down text-blue-400"></i> ${minTemp}°C</span>
+                                                <span title="Total Rain"><i class="fa-solid fa-droplet text-cyan-500"></i> ${rain}mm</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="flex flex-wrap gap-2 mt-3">
+                                        <span class="px-2.5 py-1 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-800/50 rounded-full text-[10px] font-bold shadow-sm ${tempColor}">${tempText}</span>
+                                        <span class="px-2.5 py-1 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-800/50 rounded-full text-[10px] font-bold shadow-sm ${uvColor}">${uvText}</span>
+                                        <span class="px-2.5 py-1 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-800/50 rounded-full text-[10px] font-bold shadow-sm ${windColor}">${windText}</span>
+                                    </div>
+                                </div>
+
+                                <div class="w-full md:w-auto md:max-w-[50%]">
+                                    ${hourlyHtml}
+                                </div>
+                                
+                            </div>
+                        </div>
+                    `;
+                    toggleDisplay(weatherBanner, true);
+                } else if (state.weather && state.weather.error) {
+                    weatherBanner.innerHTML = `<div class="p-4 text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center gap-2 border border-red-200 dark:border-red-800"><i class="fa-solid fa-triangle-exclamation"></i> Error loading weather: ${state.weather.message}</div>`;
+                    toggleDisplay(weatherBanner, true);
+                } else {
+                    weatherBanner.innerHTML = `<div class="p-4 text-sm opacity-60 flex items-center gap-2"><i class="fa-solid fa-spinner fa-spin"></i> Fetching daily overview...</div>`;
+                    toggleDisplay(weatherBanner, true);
+                }
+            } else {
+                toggleDisplay(weatherBanner, false);
+            }
 
             waterList.innerHTML = "";
             fertList.innerHTML = "";
@@ -1250,11 +1371,29 @@
                     upcomingTasks.push({ plant, type: 'Needs Overwinter Prep ❄️', daysUntil: 0, date: now, icon: 'fa-snowflake', color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900' });
                 }
 
-                // --- Weather Alert Placeholder ---
+                // --- Live Weather Alerts Integration ---
                 if (plant.weatherAlerts && plant.location && state.locations.find(l=>l.id===plant.location)?.type === 'outside') {
-                    // Just an example static reminder for outdoor plants if alerts are checked. 
-                    // To do true live alerts, you'd integrate a weather API here.
-                    upcomingTasks.push({ plant, type: 'Monitor Weather 🌤️', daysUntil: 0, date: now, icon: 'fa-cloud-sun-rain', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-800' });
+                    if (state.weather && state.weather.temperature_2m_min && state.weather.temperature_2m_min.length > 0) {
+                        const minTemp = state.weather.temperature_2m_min[0];
+                        const maxTemp = state.weather.temperature_2m_max[0];
+                        const rain = state.weather.precipitation_sum[0];
+                        
+                        if (minTemp <= 4) {
+                             upcomingTasks.push({ plant, type: `Frost Warning (${minTemp}°C) ❄️`, daysUntil: 0, date: now, icon: 'fa-snowflake', color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-900' });
+                        } else if (maxTemp >= 35) {
+                             upcomingTasks.push({ plant, type: `Heat Warning (${maxTemp}°C) ☀️`, daysUntil: 0, date: now, icon: 'fa-sun', color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-900' });
+                        } else if (rain > 10) {
+                             upcomingTasks.push({ plant, type: `Heavy Rain Expected (${rain}mm) 🌧️`, daysUntil: 0, date: now, icon: 'fa-cloud-rain', color: 'text-cyan-500', bg: 'bg-cyan-100 dark:bg-cyan-900' });
+                        } else {
+                            upcomingTasks.push({ plant, type: 'Weather Clear Today 🌤️', daysUntil: 0, date: now, icon: 'fa-cloud-sun', color: 'text-green-500', bg: 'bg-green-100 dark:bg-green-900' });
+                        }
+                    } else if (state.weather && state.weather.error) {
+                        upcomingTasks.push({ plant, type: 'Weather Unavailable 🌤️', daysUntil: 0, date: now, icon: 'fa-triangle-exclamation', color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-900' });
+                    } else if (state.location && state.location.latitude) {
+                        upcomingTasks.push({ plant, type: 'Fetching Weather... 🌤️', daysUntil: 0, date: now, icon: 'fa-cloud-sun-rain', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-800' });
+                    } else {
+                        upcomingTasks.push({ plant, type: 'Location not set for Weather 🌤️', daysUntil: 0, date: now, icon: 'fa-map-pin', color: 'text-gray-500', bg: 'bg-gray-100 dark:bg-gray-800' });
+                    }
                 }
 
                 if (isSick) {
@@ -2303,6 +2442,19 @@
             state.apiKeys = snap.exists() ? snap.data() : null;
             const keyInput = document.getElementById("setting-perenual-key");
             if(keyInput && state.apiKeys?.perenual) keyInput.value = state.apiKeys.perenual;
+        });
+
+        onSnapshot(doc(db, 'users', state.user.uid, 'settings', 'location'), async (snap) => {
+            const data = snap.exists() ? snap.data() : null;
+            
+            if (data && data.latitude) {
+                state.location = data;
+                await fetchWeather();
+            } else {
+                state.location = null;
+                state.weather = null;
+                renderDashboard(); // <-- Fixed: Removed window. check
+            }
         });
 
                 onSnapshot(doc(db, 'users', state.user.uid, 'settings', 'general'), (snap) => {

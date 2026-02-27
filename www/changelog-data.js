@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v11.33.0-alpha",
+    date: "2026-02-27",
+    changes: [
+        "In PlantTrackr: Integrated the global account location setting to fetch live local weather data via the Open-Meteo API.",
+        "In PlantTrackr: Added a dynamic Weather Overview banner to the Dashboard displaying daily High/Low temperatures, total precipitation, UV index, and wind speed alongside contextual warning badges.",
+        "In PlantTrackr: Integrated live weather alerts (Frost Warning, Heat Warning, Heavy Rain) into the 'Upcoming Tasks' list for outdoor plants.",
+        "In PlantTrackr: Redesigned the 'Quick Log Care' widget into a collapsible accordion to improve Dashboard space management and consistency."
+    ]
+    },
+    {
     version: "v11.32.0-alpha",
     date: "2026-02-26",
     changes: [
