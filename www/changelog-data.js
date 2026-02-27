@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v11.34.0-alpha",
+        date: "2026-02-27",
+        changes: [
+            "In RecipeManagr: Improved responsive layout for tablets and iPads, allowing the recipe details modal to stack cleanly in portrait mode while utilizing the full 3-column layout in landscape.",
+            "In RecipeManagr: Increased touch target sizes globally for checkboxes, selection dropdowns, and buttons to improve touch usability on mobile and tablet devices.",
+            "In RecipeManagr: Optimized the Cook Mode and Shopping Planner sidebars to proportionally scale down on portrait tablets, preventing the main content from being squished.",
+            "In RecipeManagr: Adjusted the advanced filters menu to use a 2-column grid on tablets to prevent text clipping.",
+            "In RecipeManagr: Increased the size of the floating 'Add to Meal Plan' button on recipe cards for easier tapping."
+        ]
+    },
+    {
     version: "v11.33.0-alpha",
     date: "2026-02-27",
     changes: [
