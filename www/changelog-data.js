@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v11.40.0-alpha",
+    date: "2026-02-28",
+    changes: [
+        "In MoneyManagr: Introduced a 'Gifts (Write Off)' category that logs transactions with a $0.00 impact on a person's balance.",
+        "In MoneyManagr: Updated transaction editing and deletion logic to correctly recalculate and refund balances when switching to or from a Gift.",
+        "In MoneyManagr: Added the ability to create custom transaction categories with personalized icons.",
+        "In MoneyManagr: Enhanced the CSV importer with duplicate detection against existing ledgers and pending inboxes, including a new modal to review ignored duplicates.",
+        "In MoneyManagr: Added an optional Bank Name input during CSV imports to automatically prefix transaction descriptions.",
+        "In MoneyManagr: Added X (Years) and Y (Projected Savings) axis labels to the Time Machine projection chart."
+    ]
+    },
+    {
     version: "v11.39.0-alpha",
     date: "2026-02-28",
     changes: [

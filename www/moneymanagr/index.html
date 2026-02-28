@@ -185,9 +185,12 @@
                     </button>
                 </div>
                 
-                <div id="pending-imports-alert" class="hidden mt-3 text-center">
-                    <button onclick="openPendingTransactions()" class="text-xs font-bold text-blue-600 underline">
+                <div id="pending-imports-alert" class="hidden mt-3 text-center flex flex-col gap-2">
+                    <button onclick="openPendingTransactions()" class="text-sm font-bold text-blue-600 underline">
                         View Pending Transactions
+                    </button>
+                    <button id="view-duplicates-btn" onclick="openDuplicatesModal()" class="text-xs font-bold text-orange-500 underline hidden">
+                        View Ignored Duplicates
                     </button>
                 </div>
                 </div>
@@ -214,6 +217,14 @@
                         <i class="fa-solid fa-gear"></i>
                     </div>
                     <h3 class="font-bold">App Settings</h3>
+                </div>
+                <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+                    <span class="text-sm font-bold">Dark Mode</span>
+                    <button onclick="document.documentElement.classList.toggle('dark')" class="bg-gray-200 dark:bg-gray-700 px-4 py-1 rounded-full text-xs font-bold">Toggle</button>
+                </div>
+                <div class="mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+                    <span class="text-sm font-bold block mb-2">Custom Categories</span>
+                    <button onclick="document.getElementById('category-modal').classList.remove('hidden')" class="secondary-button w-full text-sm">Manage Categories</button>
                 </div>
                 <div>
                     <label class="text-xs font-bold text-gray-400 uppercase mb-2 block">Currency Symbol</label>
@@ -425,6 +436,33 @@
         </div>
     </div>
 
+    <div id="category-modal" class="modal-overlay hidden" style="z-index: 130;">
+        <div class="modal-container">
+            <h2 class="text-xl font-bold mb-4">Add Custom Category</h2>
+            <div class="input-group mb-4">
+                <label>Category Name</label>
+                <input type="text" id="custom-cat-name" placeholder="e.g. Pet Supplies">
+            </div>
+            <div class="input-group mb-4">
+                <label>Icon (FontAwesome Class)</label>
+                <input type="text" id="custom-cat-icon" placeholder="e.g. fa-dog" value="fa-star">
+            </div>
+            <div class="flex gap-2">
+                <button onclick="saveCustomCategory()" class="main-button">Save Category</button>
+                <button class="secondary-button" onclick="closeModal('category-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="duplicates-modal" class="modal-overlay hidden" style="z-index: 130;">
+        <div class="modal-container">
+            <h2 class="text-xl font-bold mb-4 text-orange-500"><i class="fa-solid fa-triangle-exclamation"></i> Duplicates Found</h2>
+            <p class="text-sm text-gray-500 mb-4">These transactions were ignored because they are already in your ledger or pending inbox.</p>
+            <div id="duplicates-list" class="max-h-[50vh] overflow-y-auto space-y-2 mb-4"></div>
+            <button class="secondary-button w-full" onclick="closeModal('duplicates-modal')">Close</button>
+        </div>
+    </div>
+
     <div id="deposit-modal" class="modal-overlay hidden" style="z-index: 105;">
         <div class="modal-container">
             <div class="bg-gray-100 dark:bg-gray-700 p-1 rounded-xl flex mb-6">
@@ -465,6 +503,11 @@
             <p class="text-sm text-gray-500 mb-4">Upload a .CSV file from your bank.</p>
             
             <input type="file" id="csv-file-input" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 mb-4"/>
+
+            <div class="input-group mb-4">
+                <label>Bank Name (Optional tag)</label>
+                <input type="text" id="import-bank-name" placeholder="e.g. Chase, Monzo...">
+            </div>
 
             <div id="import-mapping" class="hidden bg-gray-50 dark:bg-gray-800 p-4 rounded-xl mb-4 text-sm">
                 <p class="font-bold mb-2">Confirm Columns:</p>
@@ -577,7 +620,7 @@
         let currentActionTxn = null;
         let currentEditingLog = null;
 
-        const categories = [
+        let defaultCategories = [
             { id: 'savings', label: 'Savings', icon: 'fa-piggy-bank' },
             { id: 'income', label: 'Income', icon: 'fa-wallet' },
             { id: 'food', label: 'Food', icon: 'fa-utensils' },
@@ -587,8 +630,11 @@
             { id: 'bills', label: 'Bills', icon: 'fa-file-invoice-dollar' },
             { id: 'fun', label: 'Fun', icon: 'fa-gamepad' },
             { id: 'shopping', label: 'Shop', icon: 'fa-bag-shopping' },
+            { id: 'gifts', label: 'Gifts (Write Off)', icon: 'fa-gift' },
             { id: 'other', label: 'Other', icon: 'fa-circle-question' }
         ];
+        let categories = [...defaultCategories];
+        let duplicatesDuringImport = [];
 
         const initNav = () => {
             nav = new AppNavigation({
@@ -673,6 +719,13 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
                 onSnapshot(query(collection(db, `users/${user.uid}/moneyBudgets`)), (snap) => {
                     budgets = snap.docs.map(d => ({id: d.id, ...d.data()}));
                     renderBudgetProgress();
+                });
+
+                onSnapshot(query(collection(db, `users/${user.uid}/moneyCategories`)), (snap) => {
+                    const customCats = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    categories = [...defaultCategories, ...customCats];
+                    setupCategoryGrid();
+                    setupActionModal();
                 });
 
                 const savedPending = localStorage.getItem(`moneymanagr_pending_${user.uid}`);
@@ -781,7 +834,6 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
         document.getElementById('txn-update-btn').addEventListener('click', async () => {
             if(!currentEditingLog) return;
             
-            // 1. Prevent double-clicking while saving
             const btn = document.getElementById('txn-update-btn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
@@ -790,38 +842,43 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
             const oldPotId = currentEditingLog.potId;
             const amount = currentEditingLog.amount; 
             
-            // 2. Re-calculate the original balance impact
-            const balanceImpact = amount < 0 ? Math.abs(amount) : -amount; 
-            
             let logUpdates = {
                 knownAs: document.getElementById('txn-edit-known-as').value.trim(),
                 category: document.getElementById('txn-edit-category').value
             };
 
+            // Gifts have 0 balance impact. Calculate old and new impacts to handle moving to/from write-offs.
+            const oldImpact = currentEditingLog.category === 'gifts' ? 0 : (amount < 0 ? Math.abs(amount) : -amount);
+            const newImpact = logUpdates.category === 'gifts' ? 0 : (amount < 0 ? Math.abs(amount) : -amount);
+
             try {
+                const dbPromises = [];
+
                 if(newPotId !== oldPotId) {
-                    const dbPromises = [];
-                    
-                    // Safely check if the old pot actually existed before trying to reverse it
+                    // Changing assigned person
                     if(oldPotId && oldPotId !== 'personal') {
-                        dbPromises.push(updateDoc(doc(db, `users/${user.uid}/moneyPots`, oldPotId), { balance: increment(-balanceImpact) }));
+                        dbPromises.push(updateDoc(doc(db, `users/${user.uid}/moneyPots`, oldPotId), { balance: increment(-oldImpact) }));
                     }
                     
                     if(newPotId !== 'personal') {
                         const newPot = pots.find(p => p.id === newPotId);
-                        dbPromises.push(updateDoc(doc(db, `users/${user.uid}/moneyPots`, newPotId), { balance: increment(balanceImpact) }));
+                        dbPromises.push(updateDoc(doc(db, `users/${user.uid}/moneyPots`, newPotId), { balance: increment(newImpact) }));
                         logUpdates.potName = newPot.name;
                     } else {
                         logUpdates.potName = 'Personal Ledger';
                     }
-                    
                     logUpdates.potId = newPotId;
-                    
-                    // Run both balance updates at the exact same time so the UI doesn't lag
-                    await Promise.all(dbPromises);
+                } else {
+                    // Same person, but category might have changed to/from 'gifts'
+                    if (oldPotId !== 'personal' && oldImpact !== newImpact) {
+                        const difference = newImpact - oldImpact;
+                        dbPromises.push(updateDoc(doc(db, `users/${user.uid}/moneyPots`, oldPotId), { balance: increment(difference) }));
+                    }
                 }
 
+                if (dbPromises.length > 0) await Promise.all(dbPromises);
                 await updateDoc(doc(db, `users/${user.uid}/moneyLogs`, currentEditingLog.id), logUpdates);
+                
                 showToast("Transaction Updated!");
                 closeModal('transaction-details-modal');
                 
@@ -846,10 +903,12 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
                  try {
                      const potId = currentEditingLog.potId;
                      const amount = currentEditingLog.amount;
-                     const balanceImpact = amount < 0 ? Math.abs(amount) : -amount;
+                     
+                     // If it was a gift, there is no balance impact to reverse
+                     const balanceImpact = currentEditingLog.category === 'gifts' ? 0 : (amount < 0 ? Math.abs(amount) : -amount);
                      
                      // Reverse the balance impact if it was linked to a valid person
-                     if(potId && potId !== 'personal') {
+                     if(potId && potId !== 'personal' && balanceImpact !== 0) {
                          await updateDoc(doc(db, `users/${user.uid}/moneyPots`, potId), { balance: increment(-balanceImpact) });
                      }
                      
@@ -990,8 +1049,9 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
             reader.onload = (e) => {
                 const lines = e.target.result.split('\n');
                 let newImports = [];
+                duplicatesDuringImport = []; // Reset duplicates array
+                const bankName = document.getElementById('import-bank-name').value.trim();
                 
-                // Build a set of existing hashes to detect duplicates instantly
                 const existingHashes = new Set(logs.map(l => l.txHash));
 
                 for(let i=1; i<lines.length; i++) {
@@ -1005,23 +1065,36 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
                     
                     if(isNaN(amount) || !rawDate) continue;
 
-                    // Create unique fingerprint for the transaction
+                    let finalDesc = bankName ? `[${bankName}] ${rawDesc}` : rawDesc;
                     const txHash = `${rawDate}_${rawDesc}_${amount}`;
                     
-                    if (existingHashes.has(txHash)) continue; // Skip existing statements
-                    if (pendingTransactions.some(p => p.hash === txHash)) continue; // Skip if already in pending
-
-                    newImports.push({ 
+                    const transactionObj = { 
                         id: Date.now() + i, 
                         date: rawDate, 
-                        desc: rawDesc, 
+                        desc: finalDesc, 
                         amount: amount,
                         hash: txHash 
-                    });
+                    };
+
+                    if (existingHashes.has(txHash) || pendingTransactions.some(p => p.hash === txHash)) {
+                        duplicatesDuringImport.push(transactionObj);
+                        continue;
+                    }
+
+                    newImports.push(transactionObj);
                 }
                 
                 pendingTransactions = [...pendingTransactions, ...newImports];
                 localStorage.setItem(`moneymanagr_pending_${user.uid}`, JSON.stringify(pendingTransactions));
+                
+                const dupBtn = document.getElementById('view-duplicates-btn');
+                if (duplicatesDuringImport.length > 0) {
+                    dupBtn.classList.remove('hidden');
+                    dupBtn.textContent = `View Ignored Duplicates (${duplicatesDuringImport.length})`;
+                } else {
+                    dupBtn.classList.add('hidden');
+                }
+
                 closeModal('import-modal');
                 updatePendingAlert();
                 openPendingTransactions();
@@ -1115,7 +1188,8 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
                 const potId = document.getElementById('action-pot-select').value;
                 const pot = pots.find(p => p.id === potId);
                 
-                const balanceChange = amt < 0 ? Math.abs(amt) : -amt;
+                // If it's a gift write-off, the balance change is 0
+                const balanceChange = category === 'gifts' ? 0 : (amt < 0 ? Math.abs(amt) : -amt);
 
                 await updateDoc(doc(db, `users/${user.uid}/moneyPots`, potId), { balance: increment(balanceChange) });
                 
@@ -1406,6 +1480,30 @@ window.openDepositModal = (potId, potName, type = 'deposit') => {
             }
             renderBudgetProgress();
         };
+        window.saveCustomCategory = async () => {
+            const name = document.getElementById('custom-cat-name').value;
+            const icon = document.getElementById('custom-cat-icon').value || 'fa-star';
+            if(!name) return;
+            const id = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            await addDoc(collection(db, `users/${user.uid}/moneyCategories`), { id, label: name, icon });
+            document.getElementById('custom-cat-name').value = '';
+            closeModal('category-modal');
+            showToast("Custom Category Added");
+        };
+
+        window.openDuplicatesModal = () => {
+            const list = document.getElementById('duplicates-list');
+            list.innerHTML = duplicatesDuringImport.map(dup => `
+                <div class="bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 flex justify-between">
+                    <div>
+                        <p class="font-bold text-sm truncate max-w-[200px]">${dup.desc}</p>
+                        <p class="text-[10px] text-gray-500">${dup.date}</p>
+                    </div>
+                    <span class="font-bold text-sm">${dup.amount.toFixed(2)}</span>
+                </div>
+            `).join('');
+            document.getElementById('duplicates-modal').classList.remove('hidden');
+        };
         const renderBudgetProgress = () => {
             const container = document.getElementById('budget-list');
             if(!container) return;
@@ -1499,7 +1597,22 @@ window.openDepositModal = (potId, potName, type = 'deposit') => {
                     labels: Array.from({length: years}, (_, i) => `Year ${i+1}`),
                     datasets: [{ data: data, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4, pointRadius: 0 }]
                 },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false } } }
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { legend: { display: false } }, 
+                    scales: { 
+                        x: { 
+                            display: true, 
+                            title: { display: true, text: 'Years', font: { weight: 'bold' } } 
+                        }, 
+                        y: { 
+                            display: true, 
+                            title: { display: true, text: `Projected Savings (${currency})`, font: { weight: 'bold' } },
+                            ticks: { callback: (val) => currency + val.toLocaleString() }
+                        } 
+                    } 
+                }
             });
         };
         document.getElementById('proj-deposit').addEventListener('input', updateProjection);
