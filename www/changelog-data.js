@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v11.37.0-alpha",
+    date: "2026-02-28",
+    changes: [
+        "In TaskTrackr: Added Google Calendar integration to seamlessly pull events from the next 3 months directly alongside existing tasks.",
+        "In TaskTrackr: Upgraded the Calendar tab UI to display Google Calendar items as distinct, full-width text bars with start times instead of standard task dots.",
+        "In TaskTrackr: Added Google Calendar as a distinct, color-coded source in the Settings/Connections modal and the project sidebar for easy filtering.",
+        "In TaskTrackr: Enforced read-only protection on calendar events to prevent accidental completions or schedule modifications.",
+        "In TaskTrackr: Fixed a keyboard shortcut conflict where pressing 'n' while typing in the task description box incorrectly triggered the 'New Task' modal.",
+        "In TaskTrackr: Improved Google API permission handling to gracefully catch 403 Forbidden errors and prompt the user to reconnect for missing scopes.",
+        "In TaskTrackr: Smartly hid the subtasks UI section in the side pane when viewing Google Calendar events.",
+        "In TaskTrackr: Disabled drag-and-drop functionality for calendar events in the Kanban and Calendar views to prevent read-only API errors.",
+    ]
+},
+    {
         version: "v11.36.0-alpha",
         date: "2026-02-28",
         changes: [
