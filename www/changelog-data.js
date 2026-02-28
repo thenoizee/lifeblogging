@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v11.39.0-alpha",
+    date: "2026-02-28",
+    changes: [
+        "In PlantTrackr: Implemented weather-aware watering logic that automatically delays watering frequencies by 2 days for outdoor plants when rain is detected.",
+        "In PlantTrackr: Redesigned the dashboard to be more compact by merging 'Action Required' lists into a single view.",
+        "In PlantTrackr: Added a sticky Floating Action Button (FAB) for instant access to care logging from anywhere in the app.",
+        "In PlantTrackr: Converted the Quick Log system from an inline form into a dedicated, globally accessible popup modal.",
+        "In PlantTrackr: Made plant cards across the Garden, Dashboard, and Infirmary views fully clickable to instantly open the Quick Log modal pre-filled with that plant's data.",
+        "In PlantTrackr: Fixed an issue where the 'Log' button on Garden cards was unresponsive.",
+    ]
+    },
+    {
     version: "v11.38.0-alpha",
     date: "2026-02-28",
     changes: [
