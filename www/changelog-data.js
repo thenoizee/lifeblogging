@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+        version: "v11.36.0-alpha",
+        date: "2026-02-28",
+        changes: [
+            "In MoneyManagr: Fixed a critical logic error where imported and manual transaction amounts were incorrectly inverted, resulting in reversed 'Owed to you' and 'You owe' balances.",
+            "In MoneyManagr: Relocated the CSV Import & Export tools from the secondary Tools tab to the main Home dashboard for quicker access.",
+            "In MoneyManagr: Upgraded the Personal Ledger to be fully interactive, allowing users to tap it to view a dedicated transaction history modal.",
+            "In MoneyManagr: Transactions displayed inside individual Pot histories or the Personal Ledger are now clickable, opening the edit/move transaction modal.",
+            "In MoneyManagr: Clarified the manual transaction UI by renaming the deposit/withdrawal toggles to 'I Paid (They Owe)' and 'They Paid (I Owe)'.",
+            "In MoneyManagr: Added a bypass to the account deletion safeguard, allowing users to forcefully delete a person with a non-zero 'ghost' balance and automatically sweep orphaned logs.",
+            "In MoneyManagr: Improved the reliability of updating and moving existing transactions by adding safe promise execution and preventing double-clicks via loading states."
+        ]
+    },
+    {
         version: "v11.35.0-alpha",
         date: "2026-02-28",
         changes: [
