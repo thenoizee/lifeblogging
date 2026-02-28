@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v11.35.0-alpha",
+        date: "2026-02-28",
+        changes: [
+            "In LightManagr: Fixed an authentication issue where the Philips Hue callback URL was incorrectly routing to a legacy directory path.",
+            "In LightManagr: Resolved 500 Internal Server Errors during cloud syncing by implementing proper Firebase HttpsError handling in the proxy cloud functions.",
+            "In LightManagr: Introduced intelligent device mapping to automatically assign specific UI icons and labels based on the Hue room class (e.g., Living Room, Bedroom) and device type (e.g., Smart Plug, Lightstrip).",
+            "In LightManagr: Cleaned up the interface by automatically hiding unsupported controls, such as brightness and color sliders, for smart plugs and basic bulbs.",
+            "In LightManagr: Added an 'Offline' badge and disabled interactive controls for unreachable devices (such as when the physical wall switch is turned off)."
+        ]
+    },
+    {
         version: "v11.34.0-alpha",
         date: "2026-02-27",
         changes: [

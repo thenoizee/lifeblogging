@@ -490,18 +490,60 @@
     }
 
     // --- RENDERER ---
+    function getHueDeviceMeta(item, isGroup) {
+        let icon = 'fa-lightbulb';
+        let label = 'Smart Light';
+
+        if (isGroup) {
+            // Hue uses 'class' for room types (e.g., 'Living room', 'Bedroom')
+            label = item.class || item.type || 'Group'; 
+            const classStr = (item.class || '').toLowerCase();
+            
+            if (classStr.includes('tv') || classStr.includes('living')) icon = 'fa-tv';
+            else if (classStr.includes('kitchen')) icon = 'fa-kitchen-set';
+            else if (classStr.includes('bed')) icon = 'fa-bed';
+            else if (classStr.includes('bath')) icon = 'fa-bath';
+            else if (classStr.includes('office') || classStr.includes('computer')) icon = 'fa-desktop';
+            else if (classStr.includes('garden') || classStr.includes('outdoor')) icon = 'fa-tree';
+            else if (item.type === 'Zone') icon = 'fa-chart-pie';
+            else icon = 'fa-layer-group';
+        } else {
+            label = item.productname || item.type || 'Light';
+            const typeStr = (item.type || '').toLowerCase();
+            const prodStr = (item.productname || '').toLowerCase();
+            
+            if (typeStr.includes('plug') || prodStr.includes('plug')) {
+                icon = 'fa-plug';
+                label = 'Smart Plug';
+            } else if (typeStr.includes('strip') || prodStr.includes('strip')) {
+                icon = 'fa-tape';
+            } else if (prodStr.includes('play')) {
+                icon = 'fa-tv';
+            } else if (prodStr.includes('spot') || prodStr.includes('gu10')) {
+                icon = 'fa-bullseye';
+            }
+        }
+        return { icon, label };
+    }
+
     function createCardHTML(id, item, isGroup) {
         const state = isGroup ? item.action : item.state;
         const isOn = state.on;
-        const bri = state.bri || 254;
-        const hue = state.hue || 0;
-        const sat = state.sat || 0;
-        const ct = state.ct || 370;
-
+        
+        // Smart handling for missing properties (e.g. Smart Plugs don't have brightness)
+        const canBri = state.bri !== undefined;
         let canColor = false;
         let canTemp = false;
         if (state.hue !== undefined) canColor = true;
         if (state.ct !== undefined) canTemp = true;
+        
+        const bri = state.bri || 254;
+        const hue = state.hue || 0;
+        const sat = state.sat || 0;
+        const ct = state.ct || 370;
+        
+        // Groups don't have reachable state, only individual lights do
+        const isReachable = isGroup ? true : (item.state.reachable !== false); 
 
         let glowColor = '#fbbf24';
         if (isOn && state.colormode === 'hs') {
@@ -510,32 +552,36 @@
             glowColor = ct < 300 ? '#dcf4ff' : '#ffb76b';
         }
 
-        const icon = isGroup ? 'fa-layer-group' : (item.type && item.type.includes('Strip') ? 'fa-tape' : 'fa-lightbulb');
-        const itemType = isGroup ? 'Room/Group' : (item.productname || item.type);
+        const meta = getHueDeviceMeta(item, isGroup);
+        const offlineBadge = !isReachable ? `<span class="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm z-10">Offline</span>` : '';
 
         return `
             <div id="card-${id}" 
                  style="--light-color: ${glowColor}; --light-color-dim: ${glowColor}4D"
-                 class="light-card bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 ${isOn ? 'light-on' : 'light-off'}">
+                 class="light-card bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 ${isOn && isReachable ? 'light-on' : 'light-off'} relative">
                 
+                ${offlineBadge}
+
                 <div class="flex justify-between items-start mb-6">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xl">
-                            <i class="fa-solid ${icon} text-gray-400"></i>
+                    <div class="flex items-center gap-3 w-3/4">
+                        <div class="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xl flex-shrink-0">
+                            <i class="fa-solid ${meta.icon} text-gray-400"></i>
                         </div>
                         <div class="overflow-hidden">
-                            <h3 class="font-bold text-gray-900 dark:text-white leading-tight truncate pr-2">${item.name}</h3>
-                            <span class="text-xs text-gray-400 font-medium truncate block">${itemType}</span>
+                            <h3 class="font-bold text-gray-900 dark:text-white leading-tight truncate pr-2" title="${item.name}">${item.name}</h3>
+                            <span class="text-xs text-gray-400 font-medium truncate block" title="${meta.label}">${meta.label}</span>
                         </div>
                     </div>
                     
                     <button onclick="window.handleToggle('${id}', ${!isOn}, ${isGroup})" 
-                        class="toggle-btn w-12 h-8 rounded-full transition-colors relative flex-shrink-0 ${isOn ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}">
+                        ${!isReachable ? 'disabled' : ''}
+                        class="toggle-btn w-12 h-8 rounded-full transition-colors relative flex-shrink-0 ${isOn ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'} ${!isReachable ? 'opacity-50 cursor-not-allowed' : ''}">
                         <span class="absolute top-1 left-1 bg-white w-6 h-6 rounded-full shadow-sm transition-transform duration-200" style="transform: ${isOn ? 'translateX(16px)' : 'translateX(0)'}"></span>
                     </button>
                 </div>
 
-                <div class="controls-container space-y-5 ${!isOn ? 'opacity-50 pointer-events-none' : ''}">
+                <div class="controls-container space-y-5 ${(!isOn || !isReachable) ? 'opacity-50 pointer-events-none' : ''}">
+                    ${canBri ? `
                     <div>
                         <div class="flex justify-between text-xs text-gray-400 mb-1 font-bold uppercase">
                             <span>Brightness</span>
@@ -545,6 +591,7 @@
                             oninput="window.handleBri('${id}', this.value, ${isGroup})"
                             class="slider-bri w-full bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600">
                     </div>
+                    ` : ''}
 
                     ${canColor ? `
                     <div>
@@ -566,13 +613,13 @@
 
                     <div class="pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-end">
                         <button onclick="window.openFadeModal('${id}', ${isGroup}, ${bri}, ${hue})" 
-                                class="text-xs font-bold text-purple-500 hover:text-purple-600 dark:hover:text-purple-400 flex items-center gap-1 bg-purple-50 dark:bg-purple-900/30 px-3 py-1.5 rounded-lg transition">
+                                ${!canBri ? 'disabled class="hidden"' : `class="text-xs font-bold text-purple-500 hover:text-purple-600 dark:hover:text-purple-400 flex items-center gap-1 bg-purple-50 dark:bg-purple-900/30 px-3 py-1.5 rounded-lg transition"`}>
                             <i class="fa-solid fa-stopwatch"></i> Fade / Sleep
                         </button>
                     </div>
                 </div>
             </div>
-            `;
+        `;
     }
 
     function renderData(data) {

@@ -1,4 +1,4 @@
-const { onRequest, onCall } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { setGlobalOptions } = require("firebase-functions/v2/options");
@@ -93,12 +93,12 @@ exports.hueLogin = onRequest((req, res) => {
   res.redirect(authUrl);
 });
 
-// B. TOKEN EXCHANGE (FIXED)
+// B. TOKEN EXCHANGE
 exports.hueTokenExchange = onCall(async (request) => {
   const code = request.data.code;
   
   if (!code) {
-      throw new Error("Missing auth code");
+      throw new HttpsError("invalid-argument", "Missing auth code"); // UPDATED
   }
 
   try {
@@ -117,7 +117,7 @@ exports.hueTokenExchange = onCall(async (request) => {
     // --- FIX IS HERE: We only destructure tokens, NOT username ---
     const { access_token, refresh_token } = response.data;
 
-    if (!request.auth) throw new Error("User must be logged in.");
+    if (!request.auth) throw new HttpsError("unauthenticated", "User must be logged in."); // UPDATED
     
     // We save the tokens to the database
     await admin.firestore().collection('users').doc(request.auth.uid).collection('services').doc('hue').set({
@@ -129,23 +129,23 @@ exports.hueTokenExchange = onCall(async (request) => {
     return { success: true };
     
   } catch (error) {
-    // Improved logging to see exact API response if it fails again
-    logger.error("Hue Exchange Failed", error.response?.data || error.message);
-    throw new Error('Failed to exchange token');
+     logger.error("Hue Proxy Error", error.response?.data || error.message);
+     
+     // UPDATE: Use HttpsError instead of standard Error
+     throw new HttpsError('internal', "Failed to send command to Hue.");
   }
 });
 
-// C. PROXY: Controls lights using the saved DB token
+// C. PROXY
 exports.hueProxy = onCall(async (request) => {
-  if (!request.auth) throw new Error("Must be logged in");
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be logged in"); // UPDATED
 
-  // 1. Get tokens from DB
   const db = admin.firestore();
   const snapshot = await db.collection('users').doc(request.auth.uid).collection('services').doc('hue').get();
   const data = snapshot.data();
   
   if (!data || !data.accessToken) {
-      throw new Error("Hue not linked. Please connect first.");
+      throw new HttpsError("failed-precondition", "Hue not linked. Please connect first."); // UPDATED
   }
 
   const { accessToken, username } = data;
@@ -176,9 +176,9 @@ exports.hueProxy = onCall(async (request) => {
   }
 });
 
-// D. MANUAL SYNC: Saves a username to the DB (Call this from frontend)
+// D. MANUAL SYNC
 exports.saveHueUsername = onCall(async (request) => {
-    if (!request.auth) throw new HttpsError('unauthenticated', "Login required");
+    if (!request.auth) throw new HttpsError('unauthenticated', "Login required"); // Now this will work because it's imported!
     const username = request.data.username;
     
     await admin.firestore().collection('users').doc(request.auth.uid).collection('services').doc('hue').set({
