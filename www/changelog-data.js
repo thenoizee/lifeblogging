@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v11.38.0-alpha",
+    date: "2026-02-28",
+    changes: [
+        "In Analyser: Upgraded the Data Table UI to match the modernized styling and functionality of the FoodTrackr history table.",
+        "In Analyser: Added a custom scrollbar to the Data Table for improved visual aesthetics and usability.",
+        "In Analyser: Implemented sticky headers with a backdrop blur effect for a better scrolling experience in the Data Table.",
+        "In Analyser: Added visual sort indicator icons to column headers to clearly display the active sorting column and direction.",
+        "In Analyser: Improved row hover styling and implemented sticky bulk-action checkboxes for easier large-scale data management.",
+        "In Analyser: Cleaned up redundant legacy CSS in favor of responsive Tailwind utility classes."
+    ]
+    },
+    {
     version: "v11.37.0-alpha",
     date: "2026-02-28",
     changes: [
