@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v11.41.0-alpha",
+    date: "2026-03-01",
+    changes: [
+        "In PlantTrackr: Added pot material (Plastic, Terracotta, Ceramic, In Ground) and pot size attributes to plant profiles.",
+        "In PlantTrackr: Rewrote watering schedule logic to dynamically adjust based on pot material, pot size, sunlight exposure, and ambient humidity.",
+        "In PlantTrackr: Updated repotting schedule calculations to automatically shorten intervals for plants housed in smaller pots.",
+        "In PlantTrackr: Merged the Wishlist and Graveyard screens into the main Garden tab via a new sub-navigation toggle.",
+        "In PlantTrackr: Combined the Locations list and the Map Builder into a single, unified 'Spaces' tab.",
+        "In PlantTrackr: Introduced a 'Task Forecast' modal on plant cards that provides a mathematical breakdown explaining exactly how upcoming care schedules are calculated."
+    ]
+    },
+    {
     version: "v11.40.0-alpha",
     date: "2026-02-28",
     changes: [
