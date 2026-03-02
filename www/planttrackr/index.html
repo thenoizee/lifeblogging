@@ -164,11 +164,14 @@
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
                 <section class="card p-4 lg:col-span-2 flex flex-col">
                     <div class="flex justify-between items-center mb-3">
-                        <h2 class="text-lg font-bold flex items-center gap-2 text-[var(--primary)]">
-                            <i class="fa-solid fa-clipboard-list"></i> Action Required
-                        </h2>
-                        <button onclick="window.openLawnModal()" class="text-xs btn-secondary py-1 px-2" title="Manage Lawn"><i class="fa-solid fa-scissors mr-1"></i> Lawn Settings</button>
-                    </div>
+    <h2 class="text-lg font-bold flex items-center gap-2 text-[var(--primary)]">
+        <i class="fa-solid fa-clipboard-list"></i> Action Required
+    </h2>
+    <div>
+        <button onclick="window.openLawnModal()" class="text-xs btn-secondary py-1 px-2" title="Manage Lawn"><i class="fa-solid fa-scissors mr-1"></i> Lawn</button>
+        <button onclick="window.openCompostModal()" class="text-xs btn-secondary py-1 px-2 ml-1" title="Manage Compost"><i class="fa-solid fa-recycle mr-1"></i> Compost</button>
+    </div>
+</div>
                     <div id="dashboard-care-combined-list" class="space-y-2 flex-grow">
                         <p class="text-sm opacity-60">Checking needs...</p>
                     </div>
@@ -455,6 +458,32 @@
     </div>
 </div>
 
+<div class="grid grid-cols-2 gap-4 mt-4">
+    <div>
+        <label class="text-sm font-bold">Soil Type</label>
+        <select id="plant-soil-type" class="input-std">
+            <option value="standard">Standard Potting Mix</option>
+            <option value="well-draining">Well-draining (Cactus/Succulent)</option>
+            <option value="moisture-retaining">Moisture Retaining (Coco coir/Peat)</option>
+        </select>
+    </div>
+    <div>
+        <label class="text-sm font-bold">Distance to Window</label>
+        <select id="plant-window-dist" class="input-std">
+            <option value="windowsill">Windowsill / Direct</option>
+            <option value="near">Near (< 1m)</option>
+            <option value="far">Far (1-2m)</option>
+            <option value="very-far">Very Far (> 2m)</option>
+        </select>
+    </div>
+</div>
+<div class="flex gap-4 mt-4 mb-4">
+    <label class="flex items-center gap-2 cursor-pointer text-sm font-bold">
+        <input type="checkbox" id="plant-has-saucer" class="w-4 h-4 text-[var(--primary)] bg-[var(--input-bg)] border-[var(--border)] rounded focus:ring-[var(--primary)]">
+        Has Saucer / Water Reservoir
+    </label>
+</div>
+
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="text-sm font-bold">Light Condition</label>
@@ -683,6 +712,27 @@
         </div>
     </div>
 
+    <div id="compost-modal" class="modal-overlay hidden" style="display: none; z-index: 60;">
+    <div class="modal-content animate-fade max-w-sm border-2 border-orange-500">
+        <button class="absolute top-4 right-4 text-2xl hover:text-red-500 close-modal-btn" onclick="document.getElementById('compost-modal').style.display='none'">&times;</button>
+        <h2 class="text-2xl font-bold mb-4 text-orange-600"><i class="fa-solid fa-recycle"></i> Compost Care</h2>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="text-sm font-bold">Turning Frequency (Days)</label>
+                <input type="number" id="compost-freq" class="input-std" placeholder="e.g. 14" value="14">
+                <p class="text-xs opacity-60 mt-1">How often should you aerate the compost barrel?</p>
+            </div>
+            <button onclick="window.logCompostTurn()" class="btn-primary w-full bg-orange-600 hover:bg-orange-700">
+                <i class="fa-solid fa-check mr-2"></i> Log Turn Today
+            </button>
+            <button onclick="window.saveCompostSettings()" class="btn-secondary w-full">
+                Just Save Settings
+            </button>
+        </div>
+    </div>
+</div>
+
     <div id="api-search-modal" class="modal-overlay hidden" style="display: none; z-index: 70;">
         <div class="modal-content animate-fade">
             <button class="absolute top-4 right-4 text-2xl hover:text-red-500 close-modal-btn" onclick="document.getElementById('api-search-modal').style.display='none'">&times;</button>
@@ -815,11 +865,11 @@
 
         // Update the state object to include lawn, apiKeys, location, and weather:
         const state = {
-            user: null, plants: [], logs: [], structures: [], wishlist: [], locations: [],
-            lawn: null, apiKeys: null, location: null, weather: null, // <-- NEW FIELDS
-            unsubPlants: null, unsubLogs: null, unsubStructs: null, unsubWish: null, unsubLocs: null,
-            nav: null, themeUnsubscribe: null 
-        };
+    user: null, plants: [], logs: [], structures: [], wishlist: [], locations: [],
+    lawn: null, compost: null, apiKeys: null, location: null, weather: null,
+    unsubPlants: null, unsubLogs: null, unsubStructs: null, unsubWish: null, unsubLocs: null,
+    nav: null, themeUnsubscribe: null 
+};
         
         // Fetch weather data for the dashboard using Open-Meteo
         const fetchWeather = async () => {
@@ -1342,6 +1392,18 @@ if (locObj && (locObj.type === 'outside' || locObj.type === 'patio' || locObj.ty
     }
 }
 
+// 5. NEW: Plant Metrics (Soil, Window, Saucer)
+if (plant.soilType === 'well-draining') freq -= 1; 
+if (plant.soilType === 'moisture-retaining') freq += 2; 
+
+if (plant.windowDist === 'windowsill') freq -= 1; 
+if (plant.windowDist === 'far' || plant.windowDist === 'very-far') freq += 1;
+
+if (plant.hasSaucer) freq += 1; 
+
+// Make sure it doesn't drop below 1 day after the new math
+freq = Math.max(1, freq);
+
                     if (isSnoozed) {
                         const diffMs = snoozeDate - now;
                         const daysUntil = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
@@ -1536,6 +1598,31 @@ checkFreq(repotDays, 'Repot', 'fa-bucket', 'text-amber-700', 'bg-amber-100 dark:
                 }
             }
 
+            // Process Compost into Action Required
+if (state.compost) {
+    const lastTurn = state.compost.lastTurn ? new Date(state.compost.lastTurn) : null;
+    if (lastTurn) {
+        const daysSince = Math.floor((new Date() - lastTurn) / (1000 * 60 * 60 * 24));
+        const freq = state.compost.turnFreq || 14;
+        if (daysSince >= freq) {
+            careItemsCount++;
+            const div = document.createElement("div");
+            div.className = "flex justify-between items-center bg-orange-50 dark:bg-orange-900/20 p-2.5 rounded-lg border border-orange-100 dark:border-orange-800";
+            div.innerHTML = `
+                <div class="flex items-center">
+                    <div class="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-800 flex items-center justify-center mr-3 text-orange-600 dark:text-orange-300"><i class="fa-solid fa-recycle"></i></div>
+                    <div>
+                        <p class="font-bold text-sm">Compost <span class="text-xs font-normal opacity-70 ml-1">needs turning</span></p>
+                        <p class="text-xs text-orange-600 font-bold">${daysSince - freq} days overdue</p>
+                    </div>
+                </div>
+                <button onclick="window.openCompostModal()" class="btn-primary bg-orange-600 hover:bg-orange-700 p-1.5 rounded text-xs"><i class="fa-solid fa-recycle"></i></button>
+            `;
+            if (combinedCareList) combinedCareList.appendChild(div);
+        }
+    }
+}
+
             if (careItemsCount === 0 && combinedCareList) {
                 combinedCareList.innerHTML = `<div class="text-center p-6 bg-[var(--input-bg)] rounded-lg text-green-600 flex flex-col items-center justify-center h-full"><i class="fa-solid fa-check-circle mb-2 text-3xl"></i><p class="text-sm font-bold">All caught up!</p><p class="text-xs opacity-70 mt-1">Your garden is looking great.</p></div>`;
             }
@@ -1715,6 +1802,9 @@ checkFreq(repotDays, 'Repot', 'fa-bucket', 'text-amber-700', 'bg-amber-100 dark:
             getEl("plant-background").value = "";
             getEl("plant-pot-type").value = "plastic";
 getEl("plant-pot-size").value = "";
+getEl("plant-soil-type").value = "standard";
+getEl("plant-window-dist").value = "near";
+getEl("plant-has-saucer").checked = false;
 
             if (plantId) {
                 const plant = state.plants.find(p => p.id === plantId);
@@ -1741,6 +1831,9 @@ getEl("plant-position").value = plant.position || "";
                 getEl("plant-overwinter").checked = plant.overwinter || false;
                 getEl("plant-status").value = plant.status || "alive";
             getEl("plant-background").value = plant.background || "";
+            getEl("plant-soil-type").value = plant.soilType || "standard";
+getEl("plant-window-dist").value = plant.windowDist || "near";
+getEl("plant-has-saucer").checked = plant.hasSaucer || false;
                 
                 // Populate positions dropdown before setting its value
                 const posSelect = getEl("plant-position");
@@ -1786,8 +1879,10 @@ getEl("plant-position").value = plant.position || "";
     
     // ADD THESE TWO LINES:
     potType: getEl("plant-pot-type").value,
-    potSize: parseInt(getEl("plant-pot-size").value) || null,
-    
+potSize: parseInt(getEl("plant-pot-size").value) || null,
+soilType: getEl("plant-soil-type").value,     // NEW
+windowDist: getEl("plant-window-dist").value, // NEW
+hasSaucer: getEl("plant-has-saucer").checked, // NEW
     health: getEl("plant-health").value,
     position: getEl("plant-position").value,
                 waterFreq: parseInt(getEl("plant-water-freq").value) || 0,
@@ -2358,11 +2453,22 @@ getEl("plant-position").value = plant.position || "";
         wFreq = Math.max(1, wFreq); // Floor limit
         
         if (locObj && (locObj.type === 'outside' || locObj.type === 'patio' || locObj.type === 'greenhouse')) {
-            if (state.weather && state.weather.precipitation_sum && state.weather.precipitation_sum[0] > 1) {
-                wFreq += 2; 
-                mathLog += `<li>🌧️ Rain Delay (+2): <b>${wFreq} days</b></li>`;
-            }
-        }
+    if (state.weather && state.weather.precipitation_sum && state.weather.precipitation_sum[0] > 1) {
+        wFreq += 2; 
+        mathLog += `<li>🌧️ Rain Delay (+2): <b>${wFreq} days</b></li>`;
+    }
+}
+
+// NEW: Soil, Window, Saucer breakdown
+if (plant.soilType === 'well-draining') { wFreq -= 1; mathLog += `<li>🏜️ Well-draining Soil (-1): <b>${wFreq} days</b></li>`; }
+if (plant.soilType === 'moisture-retaining') { wFreq += 2; mathLog += `<li>🧽 Moisture Retaining (+2): <b>${wFreq} days</b></li>`; }
+
+if (plant.windowDist === 'windowsill') { wFreq -= 1; mathLog += `<li>🪟 Windowsill (-1): <b>${wFreq} days</b></li>`; }
+if (plant.windowDist === 'far' || plant.windowDist === 'very-far') { wFreq += 1; mathLog += `<li>🛋️ Away from Window (+1): <b>${wFreq} days</b></li>`; }
+
+if (plant.hasSaucer) { wFreq += 1; mathLog += `<li>🍽️ Has Saucer (+1): <b>${wFreq} days</b></li>`; }
+
+wFreq = Math.max(1, wFreq); // Re-apply floor limit
         
         const waterDiff = getDiff('Water', wFreq);
         
@@ -2495,6 +2601,33 @@ getEl("plant-position").value = plant.position || "";
                 toggleDisplay(getEl('lawn-modal'), false);
             } catch(e) { showMsg(e.message, 'error'); }
         };
+
+        // Compost Barrel Functions
+window.openCompostModal = () => {
+    getEl('compost-freq').value = state.compost?.turnFreq || 14;
+    toggleDisplay(getEl('compost-modal'), true);
+};
+
+window.logCompostTurn = async () => {
+    try {
+        await setDoc(doc(db, `users/${state.user.uid}/settings/compost`), {
+            lastTurn: new Date().toISOString(),
+            turnFreq: parseInt(getEl('compost-freq').value) || 14
+        }, { merge: true });
+        showMsg("Compost barrel turned!");
+        toggleDisplay(getEl('compost-modal'), false);
+    } catch(e) { showMsg(e.message, 'error'); }
+};
+
+window.saveCompostSettings = async () => {
+    try {
+        await setDoc(doc(db, `users/${state.user.uid}/settings/compost`), {
+            turnFreq: parseInt(getEl('compost-freq').value) || 14
+        }, { merge: true });
+        showMsg("Compost settings saved!");
+        toggleDisplay(getEl('compost-modal'), false);
+    } catch(e) { showMsg(e.message, 'error'); }
+};
 
         window.saveApiKeys = async () => {
             try {
@@ -2689,6 +2822,11 @@ getEl("plant-position").value = plant.position || "";
             state.lawn = snap.exists() ? snap.data() : null;
             if (window.renderDashboard) renderDashboard();
         });
+
+        onSnapshot(doc(db, 'users', state.user.uid, 'settings', 'compost'), (snap) => {
+    state.compost = snap.exists() ? snap.data() : null;
+    if (window.renderDashboard) renderDashboard();
+});
 
         onSnapshot(doc(db, 'users', state.user.uid, 'settings', 'apikeys'), (snap) => {
             state.apiKeys = snap.exists() ? snap.data() : null;

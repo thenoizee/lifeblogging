@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v11.42.0-alpha",
+        date: "2026-03-02",
+        changes: [
+            "In PlantTrackr: Added new environmental attributes to plant profiles, including Soil Type, Distance to Window, and Saucer/Water Reservoir presence.",
+            "In PlantTrackr: Enhanced the dynamic watering schedule logic to automatically adjust based on soil drainage, window proximity, and saucer water retention.",
+            "In PlantTrackr: Updated the Task Forecast modal to display the mathematical breakdown for the new soil, window, and saucer watering modifiers.",
+            "In PlantTrackr: Introduced a new Compost Care tracking feature to the Dashboard to log and remind about compost barrel turning/aeration frequency."
+        ]
+    },
+    {
     version: "v11.41.0-alpha",
     date: "2026-03-01",
     changes: [
