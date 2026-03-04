@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v11.43.0-alpha",
+        date: "2026-03-04",
+        changes: [
+            "In MoneyManagr: Updated primary colour themeing to blue from emerald.",
+            "In Loggr: Update name of 'Logger' to 'Loggr' to match existing naming convention throughout app.",
+        ]
+    },
+    {
         version: "v11.42.0-alpha",
         date: "2026-03-02",
         changes: [

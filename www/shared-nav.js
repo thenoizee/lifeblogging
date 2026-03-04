@@ -19,14 +19,14 @@ export class AppNavigation {
             { name: 'VidTrackr', url: '/vidtrackr', icon: 'fa-ticket', color: 'bg-red-600' },
             { name: 'MediManagr', url: '/medimanagr', icon: 'fa-pills', color: 'bg-pink-600' },
             { name: 'PodTrackr', url: '/podtrackr', icon: 'fa-podcast', color: 'bg-purple-600' },
-            { name: 'Logger', url: '/log', icon: 'fa-pen-to-square', color: 'bg-green-600' },
+            { name: 'Loggr', url: '/log', icon: 'fa-pen-to-square', color: 'bg-green-600' },
             { name: 'Analyser', url: '/analyser', icon: 'fa-chart-line', color: 'bg-indigo-600' },
             { name: 'Hydration', url: '/hydrationtrackr', icon: 'fa-droplet', color: 'bg-cyan-600' },
             { name: 'Vehicle', url: '/vehiclemanagr', icon: 'fa-car-tunnel', color: 'bg-zinc-600' },
             { name: 'Warranty', url: '/warrantytrackr', icon: 'fa-shield-halved', color: 'bg-emerald-600' },
             { name: 'PetManagr', url: '/petmanagr', icon: 'fa-paw', color: 'bg-indigo-600' },
             { name: 'PlantTrackr', url: '/planttrackr', icon: 'fa-leaf', color: 'bg-green-600' },
-            { name: 'MoneyManagr', url: '/moneymanagr', icon: 'fa-piggy-bank', color: 'bg-emerald-500' },
+            { name: 'MoneyManagr', url: '/moneymanagr', icon: 'fa-piggy-bank', color: 'bg-blue-500' },
         ];
 
         this.hubTools = [
