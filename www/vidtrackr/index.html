@@ -718,7 +718,7 @@ if (headerRight) {
         };
 
         window.toggleLocalWatchlist = async (id, type, btn, dataJson) => {
-            if (!currentUser) return showToast("Please login to use Local Watchlist", "error");
+            if (!currentUser) return showToast("Please login to use VidTrackr Watchlist", "error");
             
             const isRemoving = btn.classList.contains('bg-red-600');
             const originalHtml = btn.innerHTML;
@@ -728,15 +728,13 @@ if (headerRight) {
             try {
                 if (isRemoving) {
                     await deleteDoc(docRef);
-                    showToast('Removed from Local Watchlist');
+                    showToast('Removed from VidTrackr Watchlist');
                     // UI Update
                     btn.classList.remove('bg-red-600', 'hover:bg-red-500', 'text-white');
                     btn.classList.add('bg-green-600', 'hover:bg-green-500', 'text-white');
-                    btn.innerHTML = `<i class="fa-solid fa-folder-plus"></i> Local WL`;
+                    btn.innerHTML = `<i class="fa-solid fa-folder-plus"></i> VidTrackr Watchlist`;
                 } else {
-                    // Save minimal data needed to render card
                     const itemData = JSON.parse(decodeURIComponent(dataJson));
-                    // Construct a wrapper that createCardHtml understands: { type: 'movie', movie: { ... } }
                     const payload = {
                         type: type,
                         [type]: itemData,
@@ -744,15 +742,15 @@ if (headerRight) {
                     };
                     
                     await setDoc(docRef, payload);
-                    showToast('Saved to Local Watchlist (Unlimited)');
+                    showToast('Saved to VidTrackr Watchlist');
                     // UI Update
                     btn.classList.remove('bg-green-600', 'hover:bg-green-500');
                     btn.classList.add('bg-red-600', 'hover:bg-red-500');
-                    btn.innerHTML = `<i class="fa-solid fa-folder-minus"></i> Local WL`;
+                    btn.innerHTML = `<i class="fa-solid fa-folder-minus"></i> VidTrackr Watchlist`;
                 }
             } catch (e) {
                 console.error(e);
-                showToast('Failed to update Local Watchlist', 'error');
+                showToast('Failed to update VidTrackr Watchlist', 'error');
                 btn.innerHTML = originalHtml;
             }
         };
@@ -891,20 +889,28 @@ window.removeProgress = async (playbackId) => {
             const data = (type && item[type]) ? item[type] : item;
             const extract = (val) => { if (!val) return null; if (Array.isArray(val)) return extract(val[0]); if (typeof val === 'string') return val; return null; };
 
-            if (!data.images) return PLACEHOLDER_IMG;
             let url = null;
-            if (preferLandscape) {
-                if (type === 'episode') url = extract(data.images.screenshot?.medium) || extract(data.images.screenshot?.full);
-                else url = extract(data.images.fanart?.medium) || extract(data.images.fanart?.full);
-                if (!url) url = extract(data.images.thumb?.full);
+            if (data && data.images) {
+                if (preferLandscape) {
+                    if (type === 'episode') url = extract(data.images.screenshot?.medium) || extract(data.images.screenshot?.full);
+                    else url = extract(data.images.fanart?.medium) || extract(data.images.fanart?.full);
+                    if (!url) url = extract(data.images.thumb?.full);
+                }
+                if (!url) {
+                    if (type === 'episode') url = extract(data.images.screenshot?.medium) || extract(data.images.screenshot?.full) || extract(data.images.screenshot);
+                    else if (type === 'person') url = extract(data.images.headshot?.medium) || extract(data.images.headshot?.full) || extract(data.images.headshot);
+                    else url = extract(data.images.poster?.medium) || extract(data.images.poster?.full) || extract(data.images.poster);
+                }
+                if (!url) url = extract(data.images.thumb);
+                if (!url) url = extract(data.images.fanart);
             }
-            if (!url) {
-                if (type === 'episode') url = extract(data.images.screenshot?.medium) || extract(data.images.screenshot?.full) || extract(data.images.screenshot);
-                else if (type === 'person') url = extract(data.images.headshot?.medium) || extract(data.images.headshot?.full) || extract(data.images.headshot);
-                else url = extract(data.images.poster?.medium) || extract(data.images.poster?.full) || extract(data.images.poster);
+            
+            // FALLBACK: If episode and no image found, use Show Fanart/Poster
+            if (!url && type === 'episode' && item.show && item.show.images) {
+                if (preferLandscape) url = extract(item.show.images.fanart?.medium) || extract(item.show.images.fanart?.full);
+                if (!url) url = extract(item.show.images.poster?.medium) || extract(item.show.images.poster?.full);
             }
-            if (!url) url = extract(data.images.thumb);
-            if (!url) url = extract(data.images.fanart);
+
             if (!url) return PLACEHOLDER_IMG;
             if (!url.startsWith('http') && !url.startsWith('//')) return `https://${url}`;
             return url;
@@ -1338,14 +1344,13 @@ async function loadUpNext() {
             
             await Promise.all(uniqueShowIds.map(async (id) => {
                 try {
-                    // Skip if we already have a resume item for this show
                     if(resumeItems.find(r => r.type === 'episode' && r.show.ids.trakt == id)) return;
-                    
-                    const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=${showSpecials}&count_specials=${showSpecials}&extended=full`);
+                    // Updated the fetch call to include 'images'
+                    const progress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=${showSpecials}&count_specials=${showSpecials}&extended=full,images`);
                     if (progress.next_episode) {
                          nextEpisodes.push({ 
                              type: 'episode', isResume: false,
-                             show: { title: watchedShows.find(s => s.show.ids.trakt == id).show.title, ids: { trakt: id } }, 
+                             show: { title: watchedShows.find(s => s.show.ids.trakt == id).show.title, ids: { trakt: id }, images: watchedShows.find(s => s.show.ids.trakt == id).show.images }, 
                              episode: progress.next_episode, ids: progress.next_episode.ids, 
                              title: progress.next_episode.title, images: progress.next_episode.images 
                          });
@@ -1417,24 +1422,28 @@ async function loadUpNext() {
                 }
 
                 return `
-                <div class="card p-0 rounded-xl flex overflow-hidden border ${item.isResume ? 'border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.15)]' : 'border-gray-800'} hover:border-[var(--primary)] transition cursor-pointer shadow-lg group relative animate-fade" onclick="location.hash='#detail/${item.type}/${data.ids.trakt}'">
-                    <div class="w-1/3 relative bg-gray-900">
+                <div class="card p-0 rounded-xl flex flex-row overflow-hidden border ${item.isResume ? 'border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.15)]' : 'border-gray-800'} hover:border-[var(--primary)] transition cursor-pointer shadow-lg group relative animate-fade" onclick="location.hash='#detail/${item.type}/${data.ids.trakt}'">
+                    
+                    <div class="w-[40%] sm:w-1/3 aspect-video relative bg-gray-900 flex-shrink-0">
                         <img src="${img}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition" onerror="this.src='${PLACEHOLDER_IMG}'">
                         ${item.isResume ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-700"><div class="bg-blue-500 h-full shadow-[0_0_5px_#3b82f6]" style="width: ${progress}%"></div></div>` : ''}
                         <div class="absolute top-2 left-2 ${item.isResume ? 'bg-blue-600' : 'bg-black/70'} text-white px-1.5 py-0.5 rounded text-[10px] font-bold shadow uppercase tracking-wider">${item.isResume ? 'Resume' : 'Up Next'}</div>
                     </div>
-                    <div class="w-2/3 p-3 flex flex-col justify-center bg-[var(--card)] relative">
+                    
+                    <div class="w-[60%] sm:w-2/3 p-3 flex flex-col bg-[var(--card)] relative">
                         ${showTitle ? `<h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5 truncate">${showTitle}</h4>` : ''}
                         <h3 class="font-bold text-sm leading-tight mb-1 line-clamp-1 text-gray-200 group-hover:text-white transition flex items-center">${title} ${typeBadge}</h3>
                         <p class="text-gray-500 text-xs mb-3">${sub} ${item.isResume ? `<span class="text-blue-400 ml-1">(${Math.round(progress)}%)</span>` : ''}</p>
-                        <div class="mt-auto relative z-10">
+                        
+                        <div class="mt-auto relative z-10 pt-2 border-t border-gray-800/50">
                              ${actionBtns}
                         </div>
                     </div>
                 </div>`;
             };
 
-            const html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${items.map(createCard).join('')}</div>`;
+            // Updated Grid: Changed to lg:grid-cols-2 and xl:grid-cols-3 so the horizontal cards have enough room to breathe
+            const html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2><div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">${items.map(createCard).join('')}</div>`;
             container.innerHTML = html;
             container.classList.remove('hidden');
         }
@@ -1879,9 +1888,9 @@ if (type === 'episode' && showInfo && showInfo.ids.imdb) {
                                     ${isTraktWl ? '<i class="fa-solid fa-trash-can"></i>' : '<i class="fa-solid fa-bookmark"></i>'}
                                 </button>
 
-                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="w-full sm:w-auto px-4 py-3 rounded-lg font-bold transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}" title="Local Watchlist">
-                                    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i>' : '<i class="fa-solid fa-folder-plus"></i>'}
-                                </button>
+                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="w-full sm:w-auto px-4 py-3 rounded-lg font-bold transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}" title="VidTrackr Watchlist">
+    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i>' : '<i class="fa-solid fa-folder-plus"></i>'}
+</button>
 
                                 <button onclick="window.checkIn('${item.ids.trakt}', 'episode')" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-lg font-bold border border-purple-500 transition flex items-center justify-center" title="Check In Now"><i class="fa-solid fa-map-pin"></i></button>
                                 <button onclick="window.skipEpisode('${item.ids.trakt}')" class="bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white px-4 py-3 rounded-lg font-bold border border-gray-600 transition flex items-center justify-center" title="Skip / Mark Filler"><i class="fa-solid fa-ban"></i></button>
@@ -1934,8 +1943,8 @@ if (type === 'episode' && showInfo && showInfo.ids.imdb) {
                                 </button>
 
                                 <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', '${type}', this, '${safeJson}')" class="w-full text-center py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}">
-                                    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> Local WL (Unlimited)' : '<i class="fa-solid fa-folder-plus"></i> Local WL (Unlimited)'}
-                                </button>
+    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> VidTrackr Watchlist' : '<i class="fa-solid fa-folder-plus"></i> VidTrackr Watchlist'}
+</button>
 
                                 <button onclick="window.checkIn('${item.ids.trakt}', '${type}')" class="w-full text-center bg-purple-900/40 hover:bg-purple-800 text-purple-300 py-2 rounded-lg font-bold text-xs transition border border-purple-800 flex items-center justify-center gap-2"><i class="fa-solid fa-map-pin"></i> Check In Now</button>
                                 <button onclick="window.openAddToList('${item.ids.trakt}', '${type}')" class="w-full text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold text-xs transition border border-gray-600 flex items-center justify-center gap-2"><i class="fa-solid fa-list-ul"></i> Add to List</button>
@@ -2319,7 +2328,7 @@ if (type === 'episode' && showInfo && showInfo.ids.imdb) {
                     <h2 class="text-2xl font-bold border-l-4 border-[var(--primary)] px-3">Your Library</h2>
                     <div class="flex bg-gray-900/50 p-1 rounded-lg border border-gray-700 overflow-x-auto">
                         <button id="tab-wl" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'watchlist' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('watchlist')">Trakt Watchlist</button>
-                        <button id="tab-local" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'local' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('local')">Local WL <span class="text-[10px] bg-white/20 px-1 rounded ml-1">Unlimited</span></button>
+                        <button id="tab-local" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'local' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('local')">VidTrackr Watchlist <span class="text-[10px] bg-white/20 px-1 rounded ml-1">Unlimited</span></button>
                         <button id="tab-lists" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'lists' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('lists')">Custom Lists</button>
                     </div>
                 </div>
@@ -2349,14 +2358,14 @@ if (type === 'episode' && showInfo && showInfo.ids.imdb) {
             container.innerHTML = `<div class="text-center py-10"><div class="animate-spin rounded-full h-10 w-10 border-4 border-[var(--primary)] border-t-transparent inline-block"></div></div>`;
             
             if (!currentUser) {
-                container.innerHTML = `<p class="text-center text-red-400">Please sign in to view your local watchlist.</p>`;
+                container.innerHTML = `<p class="text-center text-red-400">Please sign in to view your VidTrackr watchlist.</p>`;
                 return;
             }
 
             try {
                 const querySnapshot = await getDocs(collection(db, `users/${currentUser.uid}/watchlist`));
                 if (querySnapshot.empty) {
-                    container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-folder-open text-6xl mb-4 opacity-50"></i><p>Your local watchlist is empty.</p><p class="text-xs mt-2 text-gray-600">Items added here do not sync to Trakt.</p></div>`;
+                    container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-folder-open text-6xl mb-4 opacity-50"></i><p>Your VidTrackr watchlist is empty.</p><p class="text-xs mt-2 text-gray-600">Items added here do not sync to Trakt.</p></div>`;
                     return;
                 }
 
@@ -2376,7 +2385,7 @@ if (type === 'episode' && showInfo && showInfo.ids.imdb) {
                 container.innerHTML = gridHtml;
             } catch (e) {
                 console.error(e);
-                container.innerHTML = `<p class="text-center text-red-500">Failed to load local watchlist.</p>`;
+                container.innerHTML = `<p class="text-center text-red-500">Failed to load VidTrackr watchlist.</p>`;
             }
         }
 

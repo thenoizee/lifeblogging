@@ -2,7 +2,17 @@
 
 export const changelogData = [
     {
-    version: "v11.44.0-alpha", // Update with your actual version number
+    version: "v11.45.0-alpha", 
+    date: "2026-03-04",
+    changes: [
+        "In VidTrackr: Renamed 'Local Watchlist' to 'VidTrackr Watchlist' across the entire application for better brand consistency.",
+        "In VidTrackr: Redesigned the 'Continue Watching' dashboard cards to use a compact horizontal layout, preventing excessive empty space on desktop screens.",
+        "In VidTrackr: Updated the 'Up Next' cards to properly fetch and display 16:9 episode screenshot artwork.",
+        "In VidTrackr: Added smart image fallbacks to automatically use the main show's fanart when specific episode screenshots are missing from Trakt."
+    ]
+    },
+    {
+    version: "v11.44.0-alpha",
     date: "2026-03-04",
     changes: [
         "In TaskTrackr: Grouped the Focus Timer and Brain Notes (Scratchpad) buttons together in the top right main toolbar.",
