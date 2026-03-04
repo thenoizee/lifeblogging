@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v11.44.0-alpha", // Update with your actual version number
+    date: "2026-03-04",
+    changes: [
+        "In TaskTrackr: Grouped the Focus Timer and Brain Notes (Scratchpad) buttons together in the top right main toolbar.",
+        "In TaskTrackr: Upgraded the sync status indicator to be permanently visible in the sidebar, displaying a persistent cloud icon when idle.",
+        "In TaskTrackr: Removed the floating side-toggle button for the Brain Dump drawer, as it is now accessible from the top toolbar."
+    ]
+    },
+    {
         version: "v11.43.0-alpha",
         date: "2026-03-04",
         changes: [
