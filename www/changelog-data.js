@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v11.45.1-alpha", 
+    date: "2026-03-05",
+    changes: [
+        "In Label Generator: Bug fix.",
+    ]
+    },
+    {
     version: "v11.45.0-alpha", 
     date: "2026-03-04",
     changes: [
