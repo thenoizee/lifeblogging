@@ -10,6 +10,10 @@ export class AppNavigation {
         this.search = config.search || null; 
         this.onThemeChange = config.onThemeChange || null;
         
+        // ADD THESE LINES:
+        this.notifications = [];
+        this.unreadCount = 0;
+        
         this.hubApps = [
             { name: 'Dashboard', url: '/dashboard', icon: 'fa-gauge-high', color: 'bg-slate-700' },
             { name: 'RouteTrackr', url: '/routetrackr', icon: 'fa-map-location-dot', color: 'bg-lime-600' },
@@ -163,6 +167,23 @@ export class AppNavigation {
                         </div>
                         ` : ''}
 
+                        <div class="relative group" id="nav-notifications-container">
+                            <button id="nav-bell-btn" class="relative w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all">
+                                <i class="fa-regular fa-bell"></i>
+                                <span id="nav-bell-badge" class="hidden absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></span>
+                            </button>
+                            
+                            <div id="nav-notifications-menu" class="hidden absolute top-full right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-[100] transform origin-top-right transition-all duration-200">
+                                <div class="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/80">
+                                    <h3 class="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Notifications</h3>
+                                    <button id="nav-clear-notifications" class="text-[10px] text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline">Clear All</button>
+                                </div>
+                                <div id="nav-notifications-list" class="max-h-64 overflow-y-auto p-2 flex flex-col gap-1">
+                                    <div class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">No new notifications</div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div id="nav-user-avatar" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-help" title="Logged in as: ${this.userEmail}">
                             ${userInitial}
                         </div>
@@ -240,6 +261,66 @@ export class AppNavigation {
         }
     }
 
+    addNotification(notification) {
+        this.notifications.unshift({
+            title: notification.title || 'New Notification',
+            body: notification.body || '',
+            time: new Date(),
+            read: false
+        });
+        
+        // Keep only the latest 20 notifications to save memory
+        if (this.notifications.length > 20) this.notifications.pop();
+        
+        this.unreadCount++;
+        this.updateNotificationBadge();
+        this.renderNotificationsList();
+    }
+
+    updateNotificationBadge() {
+        const badge = document.getElementById('nav-bell-badge');
+        const bellIcon = document.querySelector('#nav-bell-btn i');
+        
+        if (badge && bellIcon) {
+            if (this.unreadCount > 0) {
+                badge.classList.remove('hidden');
+                bellIcon.classList.replace('fa-regular', 'fa-solid'); // Solid bell when unread
+                bellIcon.classList.add('animate-pulse', `text-${this.themeColor}-500`);
+            } else {
+                badge.classList.add('hidden');
+                bellIcon.classList.replace('fa-solid', 'fa-regular');
+                bellIcon.classList.remove('animate-pulse', `text-${this.themeColor}-500`);
+            }
+        }
+    }
+
+    markNotificationsAsRead() {
+        if (this.unreadCount === 0) return;
+        this.unreadCount = 0;
+        this.notifications.forEach(n => n.read = true);
+        this.updateNotificationBadge();
+    }
+
+    renderNotificationsList() {
+        const listEl = document.getElementById('nav-notifications-list');
+        if (!listEl) return;
+
+        if (this.notifications.length === 0) {
+            listEl.innerHTML = `<div class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">No new notifications</div>`;
+            return;
+        }
+
+        listEl.innerHTML = this.notifications.map(notif => `
+            <div class="p-2 rounded-lg ${notif.read ? 'opacity-70' : `bg-${this.themeColor}-50 dark:bg-${this.themeColor}-900/20`} hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors border border-transparent ${!notif.read ? `dark:border-${this.themeColor}-900/50 border-${this.themeColor}-100` : ''}">
+                <div class="flex justify-between items-start mb-0.5">
+                    <span class="text-xs font-bold text-gray-800 dark:text-gray-200">${notif.title}</span>
+                    <span class="text-[9px] text-gray-400">${notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+                <div class="text-[10px] text-gray-600 dark:text-gray-400 leading-tight">${notif.body}</div>
+            </div>
+        `).join('');
+    }
+
     attachEvents() {
         const handleTabClick = (e) => {
             const btn = e.target.closest('button');
@@ -271,6 +352,38 @@ export class AppNavigation {
                 if (!dropBtn.contains(e.target) && !dropMenu.contains(e.target)) dropMenu.classList.add('hidden');
             });
         }
+
+        // Add this inside attachEvents()
+        const bellBtn = document.getElementById('nav-bell-btn');
+        const notifMenu = document.getElementById('nav-notifications-menu');
+        const clearNotifsBtn = document.getElementById('nav-clear-notifications');
+
+        if (bellBtn && notifMenu) {
+            bellBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                notifMenu.classList.toggle('hidden');
+                this.markNotificationsAsRead();
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!bellBtn.contains(e.target) && !notifMenu.contains(e.target)) {
+                    notifMenu.classList.add('hidden');
+                }
+            });
+            
+            clearNotifsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.notifications = [];
+                this.renderNotificationsList();
+            });
+        }
+
+        // Listen for a custom event triggered by FCM when a message arrives
+        window.addEventListener('app-new-notification', (e) => {
+            if (e.detail) {
+                this.addNotification(e.detail);
+            }
+        });
 
         const themeBtn = document.getElementById('nav-theme-toggle');
         if(themeBtn) {

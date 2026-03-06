@@ -220,6 +220,9 @@
                     <span id="clock-date" class="clock-date">Loading...</span>
                 </div>
             </div>
+            <button id="test-notif-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg mt-4 shadow">
+    Enable Notifications
+</button>
         </div>
 
         <div class="mb-4 flex gap-2 max-w-2xl">
@@ -426,6 +429,19 @@
     <div id="message-box" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-full shadow-2xl text-white font-semibold transition-all duration-300 opacity-0 translate-y-10" role="alert"></div>
 
     <script>
+        // ADD THIS BLOCK TO REGISTER YOUR SERVICE WORKER
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(err => {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+
         try {
             const savedTheme = localStorage.getItem('theme');
             const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -455,8 +471,9 @@
         import { changelogData } from '/changelog-data.js';
         import { AppNavigation } from '/shared-nav.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
         import { getAuth, onAuthStateChanged, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const nav = new AppNavigation({
             appName: 'Lifeblogging Hub',
@@ -481,6 +498,7 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+        const messaging = getMessaging(app);
 
         const el = (id) => document.getElementById(id);
         const els = {
@@ -522,6 +540,80 @@
             });
         };
         els.search.addEventListener('input', handleSearch);
+
+        
+
+// Listen for messages when the app is actively focused
+onMessage(messaging, (payload) => {
+    showMessage(`New Notification: ${payload.notification.title}`, 'success');
+    window.dispatchEvent(new CustomEvent('app-new-notification', { 
+        detail: {
+            title: payload.notification.title,
+            body: payload.notification.body
+        } 
+    }));
+});
+
+// ADD THIS NEW BLOCK: Listen for messages forwarded from the background Service Worker
+const channel = new BroadcastChannel('app-notifications');
+channel.addEventListener('message', (event) => {
+    const payload = event.data;
+    // We don't show the toast message here because sw.js already showed a system popup, 
+    // but we DO want to update the bell with the new data!
+    window.dispatchEvent(new CustomEvent('app-new-notification', { 
+        detail: {
+            title: payload.notification.title,
+            body: payload.notification.body
+        } 
+    }));
+});
+
+// Single, clean function for the test button that saves to Firestore
+document.getElementById('test-notif-btn').addEventListener('click', async () => {
+    try {
+        const permission = await Notification.requestPermission();
+        
+        if (permission === 'granted') {
+            const registration = await navigator.serviceWorker.ready;
+            
+            const token = await getToken(messaging, { 
+                vapidKey: 'BD7BGKbn0qPtzT0iUfEBjzaw35JJJQHeUVPlX3Ib-4nRiWDqRh6JvupxWwM9xTfiYIFIKqwWNmMl7QD-UNCJVJs',
+                serviceWorkerRegistration: registration
+            });
+
+            if (token) {
+                console.log('FCM Token:', token);
+                
+                // NEW: Save the token to Firestore if the user is logged in
+                if (auth.currentUser) {
+                    try {
+                        await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'notifications'), {
+                            fcmToken: token,
+                            updatedAt: new Date()
+                        }, { merge: true });
+                        
+                        showMessage('Notifications enabled and linked to your account!', 'success');
+                    } catch (dbError) {
+                        console.error('Error saving token to Firestore:', dbError);
+                        showMessage('Enabled locally, but failed to link to account.', 'error');
+                    }
+                } else {
+                    showMessage('Notifications enabled locally (Guest mode).', 'success');
+                }
+                
+            } else {
+                alert('Failed to get token.');
+            }
+        } else {
+            alert('Permission denied by user/browser.');
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+        console.error('Full Token Error:', e);
+    }
+});
+
+
 
         // --- HUB APP VISIBILITY LOGIC ---
         let isEditingHub = false;

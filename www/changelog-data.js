@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v12.0.0-alpha", 
+    date: "2026-03-06",
+    changes: [
+        "In Hub: Integrated Firebase Cloud Messaging to request notification permissions and generate unique FCM device tokens.",
+        "In Shared Nav: Added a global Notification Bell with a dropdown interface to view, clear, and manage active notifications.",
+        "In Shared Nav: Implemented a live unread counter and pulse animation for the Notification Bell.",
+        "In Service Worker: Updated the offline caching logic to strictly ignore POST requests, fixing cache errors caused by Firebase database syncs.",
+        "In Service Worker: Re-engineered the installation process to cache files individually, ensuring the Service Worker installs successfully even if a single asset 404s.",
+    ]
+    },
+    {
     version: "v11.45.1-alpha", 
     date: "2026-03-05",
     changes: [

@@ -1,8 +1,8 @@
-// Import the changelog data to get the latest version
-importScripts('/changelog-data.js');
+const LATEST_VERSION = "1.0.0"; 
 
-// Use the latest version from the changelog for the cache name
-const LATEST_VERSION = changelogData[0].version;
+importScripts('https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging-compat.js');
+
 const CACHE_NAME = `lifeblogging-hub-${LATEST_VERSION}`;
 const EXTERNAL_CACHE_NAME = `lifeblogging-external-${LATEST_VERSION}`;
 
@@ -47,26 +47,63 @@ const urlsToCache = [
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
-  'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
+  'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js',
+// ADD THESE 3 LINES to your existing urlsToCache array:
+  'https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js',
+  'https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging-compat.js'
 ];
+
+firebase.initializeApp({
+    apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
+    projectId: "sammy-7298f",
+    messagingSenderId: "963185683535",
+    appId: "1:963185683535:web:807df8941feba46c208e3a"
+});
+
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage((payload) => {
+    console.log('[sw.js] Received background message ', payload);
+    const notificationTitle = payload.notification.title;
+    const notificationOptions = {
+        body: payload.notification.body,
+        icon: '/icons/icon-192x192.png'
+    };
+    self.registration.showNotification(notificationTitle, notificationOptions);
+
+    // ADD THESE TWO LINES: Broadcast the message to the open app
+    const channel = new BroadcastChannel('app-notifications');
+    channel.postMessage(payload);
+});
 
 self.addEventListener('install', event => {
   self.skipWaiting(); 
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
+      .then(async cache => {
         console.log('Opened cache');
-        // We use addAll. If one fails (e.g. temporary network blip), the install fails.
-        // This ensures we have everything needed for offline.
-        return cache.addAll(urlsToCache);
+        // Add items one by one so a single 404 doesn't break the whole installation
+        for (let url of urlsToCache) {
+            try {
+                await cache.add(url);
+            } catch (error) {
+                console.error(`[sw.js] Failed to cache: ${url}`, error);
+            }
+        }
       })
   );
 });
 
 self.addEventListener('fetch', event => {
+  // 1. IGNORE NON-GET REQUESTS (Fixes the POST error for Firebase calls)
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   const url = new URL(event.request.url);
 
-  // 1. NETWORK FIRST: For main pages and data that changes often
+  // 2. NETWORK FIRST: For main pages and data that changes often
   if (url.pathname.endsWith('index.html') || url.pathname.endsWith('/') || url.pathname.includes('changelog-data')) {
     event.respondWith(
       fetch(event.request)
@@ -75,8 +112,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 2. RUNTIME CACHING FOR EXTERNAL ASSETS (Fonts, Firebase chunks, Tailwind extensions)
-  // This catches things we didn't explicitly list in urlsToCache (like woff2 font files)
+  // 3. RUNTIME CACHING FOR EXTERNAL ASSETS (Fonts, Firebase chunks, Tailwind extensions)
   if (url.hostname.includes('gstatic.com') || 
       url.hostname.includes('googleapis.com') || 
       url.hostname.includes('tailwindcss.com') || 
@@ -99,7 +135,6 @@ self.addEventListener('fetch', event => {
           });
           return networkResponse;
         }).catch(() => {
-            // Determine fallback logic if needed
             return null;
         });
       })
@@ -107,7 +142,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 3. CACHE FIRST: For everything else (Local CSS, Images, JS libs)
+  // 4. CACHE FIRST: For everything else (Local CSS, Images, JS libs)
   event.respondWith(
     caches.match(event.request)
       .then(response => {
