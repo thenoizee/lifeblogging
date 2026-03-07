@@ -16,7 +16,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js', { type: 'module' })
+                navigator.serviceWorker.register('/sw.js')
                     .then(registration => console.log('Service Worker registered successfully:', registration))
                     .catch(err => console.log('Service Worker registration failed:', err));
             });
@@ -350,7 +350,8 @@
         import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, where, orderBy, Timestamp, getDocs, writeBatch, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- CONSTANTS ---
-        const DB_COLLECTION = 'hydrationtrackr';
+        const DB_COLLECTION = 'foodLog'; 
+        const LEGACY_COLLECTION = 'hydrationtrackr'; // <--- Change this if your old DB was called 'water' or something else!
         const firebaseConfig = {
             apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
             authDomain: "sammy-7298f.firebaseapp.com",
@@ -375,6 +376,7 @@
         let editingLogId = null;
         let historyViewMode = 'week';
         let historyCursorDate = new Date();
+        let globalLogs = []; // NEW: Unified state for dashboard and history
         let currentHistoryLogs = [];
         
         // App Settings State (Defaults)
@@ -507,6 +509,7 @@
         }
 
         // --- DATA LISTENERS ---
+        // --- DATA LISTENERS ---
         function setupListeners() {
             const settingsDocRef = doc(db, 'users', currentUser.uid, 'settings', 'water');
             
@@ -530,46 +533,168 @@
                 document.getElementById('reminder-interval').value = appSettings.reminders?.interval || 60;
                 document.getElementById('reminder-options').classList.toggle('hidden', !appSettings.reminders?.enabled);
                 
-                refreshDashboard(); 
                 setupReminders(appSettings.reminders);
+            });
+
+            // --- DUAL DATABASE MERGER WITH DEBUGGING ---
+            const LEGACY_COLLECTION = 'hydrationtrackr'; // <--- Try 'waterLog' or 'water'. Check Firebase console if this fails!
+            let newLogs = [];
+            let oldLogs = [];
+
+            const mergeLogs = () => {
+                globalLogs = [...newLogs, ...oldLogs]
+                    .filter(log => log.section === 'drinks' || log.uploadedApp === 'HydrationTrackr' || log.attributeName)
+                    .sort((a, b) => b.dateObj - a.dateObj);
+                
+                console.log("Total Merged Water Logs Ready For Display:", globalLogs.length);
+                currentHistoryLogs = globalLogs;
+                refreshDashboard();
+                if (!document.getElementById('tab-content-history').classList.contains('hidden')) renderHistory();
+            };
+
+            // Listen to unified FoodTrackr DB
+            onSnapshot(query(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`)), (snap) => {
+                console.log(`Fetched from new ${DB_COLLECTION}:`, snap.docs.length, "items");
+                newLogs = snap.docs.map(doc => {
+                    const data = doc.data();
+                    const ts = data.eatenAt || data.date;
+                    data.dateObj = (ts && typeof ts.toDate === 'function') ? ts.toDate() : new Date();
+                    return { id: doc.id, ...data };
+                });
+                mergeLogs();
+            });
+
+            // Listen to old Hydration DB to recover past logs
+            onSnapshot(query(collection(db, `users/${currentUser.uid}/${LEGACY_COLLECTION}`)), (snap) => {
+                console.log(`Fetched from legacy ${LEGACY_COLLECTION}:`, snap.docs.length, "items");
+                oldLogs = snap.docs.map(doc => {
+                    const data = doc.data();
+                    const ts = data.eatenAt || data.date;
+                    data.dateObj = (ts && typeof ts.toDate === 'function') ? ts.toDate() : new Date();
+                    return { id: doc.id, ...data, isLegacy: true }; // Tag as legacy so edit/delete works correctly
+                });
+                mergeLogs();
             });
         }
         
         function refreshDashboard() {
-            if(waterLogUnsubscribe) waterLogUnsubscribe();
-            
             const range = getTodayRange();
+            let total = 0;
             
-            const q = query(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`), 
-                where('date', '>=', Timestamp.fromDate(range.start)),
-                where('date', '<', Timestamp.fromDate(range.end))
-            );
-            
-            waterLogUnsubscribe = onSnapshot(q, (snapshot) => {
-                let total = 0;
-                snapshot.forEach(doc => {
-                    const log = doc.data();
-                    const amount = log.attributeValue !== undefined ? log.attributeValue : log.amount;
-                    const drinkType = log.attributeName || 'water';
+            // USE SYNCHRONOUS GLOBAL DATA
+            globalLogs.forEach(log => {
+                if (log.dateObj >= range.start && log.dateObj < range.end) {
+                    const amount = log.quantity !== undefined ? log.quantity : (log.attributeValue || log.amount || 0);
+                    const drinkType = log.name || log.attributeName || 'water';
                     const factor = appSettings.drinkFactors[drinkType] ?? 1;
                     total += amount * factor;
-                });
-                
-                const dispTotal = formatVol(total);
-                const dispGoal = formatVol(appSettings.dailyGoal);
-                
-                ui.todayTotal.textContent = dispTotal;
-                ui.todayGoal.textContent = dispGoal;
-                
-                const percentage = dispGoal > 0 ? Math.round((total / appSettings.dailyGoal) * 100) : 0;
-                const remaining = Math.max(0, dispGoal - dispTotal);
-                
-                ui.todayProgress.style.width = `${Math.min(percentage, 100)}%`;
-                ui.todayPercentage.textContent = percentage;
-                ui.todayRemaining.textContent = remaining;
-                
-                updateStreaks(); 
+                }
             });
+            
+            const dispTotal = formatVol(total);
+            const dispGoal = formatVol(appSettings.dailyGoal);
+            
+            ui.todayTotal.textContent = dispTotal;
+            ui.todayGoal.textContent = dispGoal;
+            
+            const percentage = dispGoal > 0 ? Math.round((total / appSettings.dailyGoal) * 100) : 0;
+            const remaining = Math.max(0, dispGoal - dispTotal);
+            
+            ui.todayProgress.style.width = `${Math.min(percentage, 100)}%`;
+            ui.todayPercentage.textContent = percentage;
+            ui.todayRemaining.textContent = remaining;
+            
+            updateStreaks(); 
+        }
+
+        function renderHistory() {
+            if(!currentUser) return;
+            
+            const allLogs = currentHistoryLogs;
+
+            let startDate, endDate;
+            if (historyViewMode === 'all') {
+                if(allLogs.length > 0) {
+                    startDate = allLogs[allLogs.length - 1].dateObj;
+                    endDate = allLogs[0].dateObj;
+                } else { startDate = new Date(); endDate = new Date(); }
+            } else {
+                const range = getDateRangeForMode(historyViewMode, historyCursorDate);
+                startDate = range.start; endDate = range.end;
+            }
+            
+            const ukDate = { day: '2-digit', month: '2-digit' };
+            const rangeStr = historyViewMode === 'day' ? startDate.toLocaleDateString() : 
+                             `${startDate.toLocaleDateString(undefined, ukDate)} - ${endDate.toLocaleDateString(undefined, ukDate)}`;
+            document.getElementById('hist-date-range').textContent = historyViewMode === 'all' ? "All Time" : rangeStr;
+
+            const filteredLogs = allLogs.filter(l => {
+                const d = l.dateObj;
+                return d >= startDate && d <= endDate;
+            });
+
+            let totalVolume = 0;
+            const chartMap = new Map(); 
+            
+             if (historyViewMode === 'day') for(let i=0; i<24; i++) chartMap.set(i.toString().padStart(2,'0')+':00', 0);
+             else if (historyViewMode === 'week') {
+                 for(let d=new Date(startDate); d<=endDate; d.setDate(d.getDate()+1)) chartMap.set(d.toISOString().split('T')[0], 0);
+             }
+
+            filteredLogs.forEach(log => {
+                const amount = log.quantity !== undefined ? log.quantity : (log.attributeValue || 0);
+                const drinkType = log.name || log.attributeName || 'water';
+                const factor = appSettings.drinkFactors[drinkType] || 1;
+                const vol = amount * factor;
+                totalVolume += vol;
+                
+                const d = log.dateObj;
+                let key = d.toISOString().split('T')[0];
+                if(historyViewMode === 'day') key = d.getHours().toString().padStart(2,'0')+':00';
+                
+                if(chartMap.has(key)) chartMap.set(key, chartMap.get(key) + vol);
+                else if (historyViewMode === 'all' || historyViewMode === 'year' || historyViewMode === 'month') {
+                     chartMap.set(key, (chartMap.get(key) || 0) + vol);
+                }
+            });
+
+            document.getElementById('hist-total').textContent = formatVol(totalVolume);
+            
+            const tbody = document.querySelector('#history-table-container');
+            tbody.innerHTML = `<table class="w-full text-left divide-y dark:divide-gray-700">${
+                filteredLogs.map(log => {
+                    const dateObj = log.dateObj;
+                    const dateDisplay = historyViewMode === 'day' 
+                        ? dateObj.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+                        : dateObj.toLocaleString([], {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+                    
+                    const amount = log.quantity !== undefined ? log.quantity : log.attributeValue;
+                    const drinkType = log.name || log.attributeName || 'water';
+                    
+                    const isFoodTrackr = log.uploadedApp === 'FoodTrackr' || (!log.uploadedApp && log.section === 'drinks' && !log.attributeName);
+                    
+                    const sourceBadge = isFoodTrackr ? 
+                        `<span class="ml-2 text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">FoodTrackr</span>` : '';
+                    
+                    const editBtn = isFoodTrackr 
+                        ? `<button class="text-gray-300 dark:text-gray-600 cursor-not-allowed" onclick="alert('Please edit this entry directly in FoodTrackr to ensure macro tracking remains accurate.')" title="Locked"><i class="fa-solid fa-lock"></i></button>` 
+                        : `<button class="text-gray-400 hover:text-blue-500 transition-colors" onclick="openEdit('${log.id}')"><i class="fa-solid fa-pen"></i></button>`;
+
+                    return `
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <td class="p-3 text-sm font-medium whitespace-nowrap">${dateDisplay}</td>
+                        <td class="p-3 capitalize flex items-center gap-2">
+                            ${getDrinkIcon(drinkType)}
+                            <span>${drinkType}</span>
+                            ${sourceBadge}
+                        </td>
+                        <td class="p-3 font-bold">${formatVol(amount)}${appSettings.units}</td>
+                        <td class="p-3 text-right">${editBtn}</td>
+                    </tr>
+                `}).join('')
+            }</table>`;
+            
+            updateChart(chartMap);
         }
 
         // --- RENDERING UI ---
@@ -688,15 +813,24 @@
             try {
                 const now = Timestamp.now();
                 const logEntry = {
-                    attributeName: drinkType,
-                    attributeValue: amount,
+                    name: drinkType,                 // New format
+                    attributeName: drinkType,        // Legacy support
+                    quantity: amount,                // New format
+                    displayAmount: amount,
+                    displayUnit: 'ml',
+                    unit: 'ml',
+                    attributeValue: amount,          // Legacy support
+                    calories: 0, protein: 0, carbs: 0, fat: 0, // Required for FoodTrackr macros
+                    section: 'drinks',               // Maps to FoodTrackr's drinks category
                     status: "drank",
                     notes: notes,
                     tags: tags,
-                    date: entryDate ? Timestamp.fromDate(new Date(entryDate)) : now,
+                    eatenAt: entryDate ? Timestamp.fromDate(new Date(entryDate)) : now, // New format
+                    date: entryDate ? Timestamp.fromDate(new Date(entryDate)) : now,    // Legacy support
                     dailyGoal: appSettings.dailyGoal,
                     createdAt: now,
-                    uploadedApp: "HydrationTrackr",
+                    uploadedApp: "HydrationTrackr",  // Cross-app Metadata
+                    source: "HydrationTrackr"        // Explicitly visible source
                 };
                 await addDoc(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`), logEntry);
                 updateStreaks();
@@ -770,87 +904,6 @@
             };
             return map[type] || map.other;
         };
-
-        async function renderHistory() {
-            if(!currentUser) return;
-            const historyQuery = query(collection(db, `users/${currentUser.uid}/${DB_COLLECTION}`), orderBy('date', 'desc'));
-            const snapshot = await getDocs(historyQuery);
-            const allLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
-            currentHistoryLogs = allLogs;
-
-            let startDate, endDate;
-            if (historyViewMode === 'all') {
-                if(allLogs.length > 0) {
-                    startDate = allLogs[allLogs.length - 1].date.toDate();
-                    endDate = allLogs[0].date.toDate();
-                } else { startDate = new Date(); endDate = new Date(); }
-            } else {
-                const range = getDateRangeForMode(historyViewMode, historyCursorDate);
-                startDate = range.start; endDate = range.end;
-            }
-            
-            const ukDate = { day: '2-digit', month: '2-digit' };
-            const rangeStr = historyViewMode === 'day' ? startDate.toLocaleDateString() : 
-                             `${startDate.toLocaleDateString(undefined, ukDate)} - ${endDate.toLocaleDateString(undefined, ukDate)}`;
-            document.getElementById('hist-date-range').textContent = historyViewMode === 'all' ? "All Time" : rangeStr;
-
-            const filteredLogs = allLogs.filter(l => {
-                const d = l.date.toDate();
-                return d >= startDate && d <= endDate;
-            });
-
-            let totalVolume = 0;
-            const chartMap = new Map(); 
-            
-             if (historyViewMode === 'day') for(let i=0; i<24; i++) chartMap.set(i.toString().padStart(2,'0')+':00', 0);
-             else if (historyViewMode === 'week') {
-                 for(let d=new Date(startDate); d<=endDate; d.setDate(d.getDate()+1)) chartMap.set(d.toISOString().split('T')[0], 0);
-             }
-
-            filteredLogs.forEach(log => {
-                const amount = log.attributeValue;
-                const factor = appSettings.drinkFactors[log.attributeName] || 1;
-                const vol = amount * factor;
-                totalVolume += vol;
-                
-                const d = log.date.toDate();
-                let key = d.toISOString().split('T')[0];
-                if(historyViewMode === 'day') key = d.getHours().toString().padStart(2,'0')+':00';
-                
-                if(chartMap.has(key)) chartMap.set(key, chartMap.get(key) + vol);
-                else if (historyViewMode === 'all' || historyViewMode === 'year' || historyViewMode === 'month') {
-                     chartMap.set(key, (chartMap.get(key) || 0) + vol);
-                }
-            });
-
-            document.getElementById('hist-total').textContent = formatVol(totalVolume);
-            
-            // --- UPDATED TABLE RENDER (Dark Mode + Date + Icons) ---
-            const tbody = document.querySelector('#history-table-container');
-            tbody.innerHTML = `<table class="w-full text-left divide-y dark:divide-gray-700">${
-                filteredLogs.map(log => {
-                    const dateObj = log.date.toDate();
-                    // If viewing 'Day' mode, only show Time. Otherwise show Date & Time.
-                    const dateDisplay = historyViewMode === 'day' 
-                        ? dateObj.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
-                        : dateObj.toLocaleString([], {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
-                    
-                    return `
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                        <td class="p-3 text-sm font-medium whitespace-nowrap">${dateDisplay}</td>
-                        <td class="p-3 capitalize flex items-center gap-2">
-                            ${getDrinkIcon(log.attributeName)}
-                            <span>${log.attributeName}</span>
-                        </td>
-                        <td class="p-3 font-bold">${formatVol(log.attributeValue)}${appSettings.units}</td>
-                        <td class="p-3 text-right"><button class="text-gray-400 hover:text-blue-500 transition-colors" onclick="openEdit('${log.id}')"><i class="fa-solid fa-pen"></i></button></td>
-                    </tr>
-                `}).join('')
-            }</table>`;
-            
-            updateChart(chartMap);
-        }
         
         function updateChart(chartMap) {
              const ctx = document.getElementById('history-chart').getContext('2d');
@@ -894,8 +947,11 @@
                 return new Date(date - tzoffset).toISOString().slice(0, 16);
             };
 
-            document.getElementById('edit-datetime').value = toLocalISOString(log.date.toDate());
-            document.getElementById('edit-amount').value = formatVol(log.attributeValue); 
+            // FIX: Use safe dateObj to prevent crash
+            document.getElementById('edit-datetime').value = toLocalISOString(log.dateObj); 
+            
+            const amount = log.quantity !== undefined ? log.quantity : log.attributeValue;
+            document.getElementById('edit-amount').value = formatVol(amount); 
             document.getElementById('edit-notes').value = log.notes || '';
             
             ui.editDrinkTypeSelect.innerHTML = '';
@@ -906,10 +962,41 @@
                 opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
                 ui.editDrinkTypeSelect.appendChild(opt);
             });
-            ui.editDrinkTypeSelect.value = log.attributeName;
+            ui.editDrinkTypeSelect.value = log.name || log.attributeName || 'water';
 
             ui.editLogModal.classList.remove('hidden');
         };
+
+        document.getElementById('save-edit-btn').addEventListener('click', async () => {
+             if (!editingLogId) return;
+             const val = parseInt(document.getElementById('edit-amount').value);
+             const mlVal = parseVol(val); 
+             
+             try {
+                const docRef = doc(db, `users/${currentUser.uid}/${DB_COLLECTION}`, editingLogId);
+                const dtVal = Timestamp.fromDate(new Date(document.getElementById('edit-datetime').value));
+                const typeVal = document.getElementById('edit-drink-type').value;
+                
+                await updateDoc(docRef, {
+                    date: dtVal,
+                    eatenAt: dtVal,
+                    attributeName: typeVal,
+                    name: typeVal,
+                    attributeValue: mlVal,
+                    quantity: mlVal,
+                    notes: document.getElementById('edit-notes').value
+                });
+                ui.editLogModal.classList.add('hidden');
+             } catch(e) { console.error(e); alert("Update failed"); }
+        });
+        
+        document.getElementById('delete-log-btn').addEventListener('click', async () => {
+             if (!editingLogId) return;
+             if(confirm("Delete this log?")) {
+                 await deleteDoc(doc(db, `users/${currentUser.uid}/${DB_COLLECTION}`, editingLogId));
+                 ui.editLogModal.classList.add('hidden');
+             }
+        });
 
         function setDefaultDateTime() {
             const now = new Date();
@@ -938,33 +1025,6 @@
         document.getElementById('hist-next-btn').addEventListener('click', () => navigateHistory(1));
         
         document.getElementById('cancel-edit-btn').addEventListener('click', () => ui.editLogModal.classList.add('hidden'));
-        
-        document.getElementById('save-edit-btn').addEventListener('click', async () => {
-             if (!editingLogId) return;
-             const val = parseInt(document.getElementById('edit-amount').value);
-             const mlVal = parseVol(val); 
-             
-             try {
-                const docRef = doc(db, `users/${currentUser.uid}/${DB_COLLECTION}`, editingLogId);
-                await updateDoc(docRef, {
-                    date: Timestamp.fromDate(new Date(document.getElementById('edit-datetime').value)),
-                    attributeName: document.getElementById('edit-drink-type').value,
-                    attributeValue: mlVal,
-                    notes: document.getElementById('edit-notes').value
-                });
-                ui.editLogModal.classList.add('hidden');
-                renderHistory();
-             } catch(e) { console.error(e); alert("Update failed"); }
-        });
-        
-        document.getElementById('delete-log-btn').addEventListener('click', async () => {
-             if (!editingLogId) return;
-             if(confirm("Delete this log?")) {
-                 await deleteDoc(doc(db, `users/${currentUser.uid}/${DB_COLLECTION}`, editingLogId));
-                 ui.editLogModal.classList.add('hidden');
-                 renderHistory();
-             }
-        });
         
         document.getElementById("sign-in-btn").addEventListener("click", () => signInWithEmailAndPassword(auth, document.getElementById("email").value, document.getElementById("password").value));
         document.getElementById("sign-up-btn").addEventListener("click", () => createUserWithEmailAndPassword(auth, document.getElementById("email").value, document.getElementById("password").value));

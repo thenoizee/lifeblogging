@@ -2944,6 +2944,8 @@ const renderDailyLog = () => {
     // 1. Filter logs for the day and sort them first
     const dayLogs = foodLog
         .filter(item => {
+            // SAFEGUARD: Ensure eatenAt exists before calling toDate()
+            if (!item.eatenAt || typeof item.eatenAt.toDate !== 'function') return false; 
             const d = item.eatenAt.toDate();
             return d >= today && d < tomorrow;
         })
@@ -3048,10 +3050,17 @@ const renderDailyLog = () => {
             // Construct Inner HTML
 
             let badgeColors = 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600';
-            if (src.includes('home')) badgeColors = 'bg-pink-100 text-pink-700 border-pink-200 dark:bg-pink-900/40 dark:text-pink-300';
+            
+            // NEW: Intercept HydrationTrackr items
+            if (item.uploadedApp === 'HydrationTrackr') {
+                sourceIcon = '<i class="fa-solid fa-droplet text-[10px] mr-1"></i>';
+                subText = 'HydrationTrackr';
+                badgeColors = 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/40 dark:text-cyan-300';
+            } else if (src.includes('home')) badgeColors = 'bg-pink-100 text-pink-700 border-pink-200 dark:bg-pink-900/40 dark:text-pink-300';
             else if (src.includes('takeaway') || src.includes('restaurant')) badgeColors = 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300';
             else if (src.includes('generic')) badgeColors = 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/40 dark:text-green-300';
             else if (isMeal) badgeColors = 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300';
+
             itemDiv.innerHTML = `
                 <div class="flex w-full items-start">
                     ${checkboxHTML}
@@ -3077,18 +3086,27 @@ const renderDailyLog = () => {
                 </div>
                 ${ingredientsHTML}
                 <div class="flex justify-between gap-2 mt-3 pt-2 border-t border-gray-100 dark:border-gray-700 w-full ${isBulkMode ? 'opacity-30' : ''}">
-                     <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md text-orange-600 dark:text-orange-400 split-log-item flex items-center justify-center gap-2 hover:bg-orange-50 dark:hover:bg-gray-700" data-action="split-item">
-                        <i class="fa-solid fa-cookie-bite pointer-events-none"></i> <span class="pointer-events-none">Split</span>
-                     </button>
-                     <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="move-copy">
-                        <i class="fa-solid fa-clone pointer-events-none"></i> <span class="pointer-events-none">Move</span>
-                     </button>
-                     <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="edit-daily">
-                        <i class="fa-solid fa-pencil pointer-events-none"></i> <span class="pointer-events-none">Edit</span>
-                     </button>
-                     <button class="destructive-button text-xs py-1.5 px-0 flex-1 rounded-md delete-log-item flex items-center justify-center gap-2" data-action="delete-daily">
-                        <i class="fa-solid fa-trash pointer-events-none"></i> <span class="pointer-events-none">Del</span>
-                     </button>
+                     ${(item.uploadedApp === 'HydrationTrackr' || (item.attributeName && !item.section)) ? 
+                        `<button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md flex items-center justify-center gap-2 opacity-50 cursor-not-allowed" onclick="alert('Please edit this drink directly in HydrationTrackr.')" title="Locked">
+                            <i class="fa-solid fa-lock"></i> <span class="pointer-events-none">Locked</span>
+                        </button>
+                        <button class="destructive-button text-xs py-1.5 px-0 flex-1 rounded-md delete-log-item flex items-center justify-center gap-2" data-action="delete-daily">
+                            <i class="fa-solid fa-trash pointer-events-none"></i> <span class="pointer-events-none">Del</span>
+                        </button>` 
+                     : 
+                        `<button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md text-orange-600 dark:text-orange-400 split-log-item flex items-center justify-center gap-2 hover:bg-orange-50 dark:hover:bg-gray-700" data-action="split-item">
+                            <i class="fa-solid fa-cookie-bite pointer-events-none"></i> <span class="pointer-events-none">Split</span>
+                         </button>
+                         <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="move-copy">
+                            <i class="fa-solid fa-clone pointer-events-none"></i> <span class="pointer-events-none">Move</span>
+                         </button>
+                         <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="edit-daily">
+                            <i class="fa-solid fa-pencil pointer-events-none"></i> <span class="pointer-events-none">Edit</span>
+                         </button>
+                         <button class="destructive-button text-xs py-1.5 px-0 flex-1 rounded-md delete-log-item flex items-center justify-center gap-2" data-action="delete-daily">
+                            <i class="fa-solid fa-trash pointer-events-none"></i> <span class="pointer-events-none">Del</span>
+                         </button>`
+                     }
                 </div>
             `;
 
@@ -3215,7 +3233,11 @@ const renderHistoryTable = () => {
             let subText = item.brands || item.source || '';
             const src = ((item.source || '') + ' ' + (item.brands || '')).toLowerCase();
 
-            if (item.restaurantName) { sourceIcon = '<i class="fa-solid fa-utensils mr-1"></i>'; subText = item.restaurantName; } 
+            // NEW: Intercept HydrationTrackr items for history table
+            if (item.uploadedApp === 'HydrationTrackr') {
+                sourceIcon = '<i class="fa-solid fa-droplet mr-1"></i>';
+                subText = 'HydrationTrackr';
+            } else if (item.restaurantName) { sourceIcon = '<i class="fa-solid fa-utensils mr-1"></i>'; subText = item.restaurantName; }
             else if (src.includes('home')) sourceIcon = '<i class="fa-solid fa-house-chimney mr-1"></i>';
             else if (src.includes('takeaway')) sourceIcon = '<i class="fa-solid fa-motorcycle mr-1"></i>';
             else if (src.includes('generic')) sourceIcon = '<i class="fa-solid fa-apple-whole mr-1"></i>';
@@ -3226,8 +3248,8 @@ const renderHistoryTable = () => {
             if (!subText) subText = 'Manual Entry';
 
             let badgeColors = 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
-            if (src.includes('home')) badgeColors = 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300';
-            else if (src.includes('takeaway') || src.includes('restaurant')) badgeColors = 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300';
+            if (item.uploadedApp === 'HydrationTrackr') badgeColors = 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300';
+            else if (src.includes('home')) badgeColors = 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300';
             else if (src.includes('generic')) badgeColors = 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
 
             // 2. NOW WE CAN SAFELY RENDER HTML
@@ -3267,15 +3289,24 @@ const renderHistoryTable = () => {
                 
                 <td class="p-2 sm:p-3 text-center align-middle">
                     <div class="flex items-center justify-end sm:justify-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <button class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-[var(--text-color-secondary)] move-copy-log-item" data-action="move-copy" data-id="${item.id}" title="Move/Copy">
-                            <i class="fa-solid fa-clone text-xs pointer-events-none"></i>
-                        </button>
-                        <button class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-[var(--text-color-secondary)] edit-log-item" data-action="edit-table" data-id="${item.id}" title="Edit">
-                            <i class="fa-solid fa-pencil text-xs pointer-events-none"></i>
-                        </button>
-                        <button class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 delete-log-item" data-action="delete-table" data-id="${item.id}" title="Delete">
-                            <i class="fa-solid fa-trash text-xs pointer-events-none"></i>
-                        </button>
+                        ${(item.uploadedApp === 'HydrationTrackr' || (item.attributeName && !item.section)) ? 
+                            `<button class="p-1.5 rounded text-gray-300 dark:text-gray-600 cursor-not-allowed" onclick="alert('Please edit this drink directly in HydrationTrackr.')" title="Locked">
+                                <i class="fa-solid fa-lock text-xs"></i>
+                            </button>
+                            <button class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 delete-log-item" data-action="delete-table" data-id="${item.id}" title="Delete">
+                                <i class="fa-solid fa-trash text-xs pointer-events-none"></i>
+                            </button>` 
+                        : 
+                            `<button class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-[var(--text-color-secondary)] move-copy-log-item" data-action="move-copy" data-id="${item.id}" title="Move/Copy">
+                                <i class="fa-solid fa-clone text-xs pointer-events-none"></i>
+                            </button>
+                            <button class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-[var(--text-color-secondary)] edit-log-item" data-action="edit-table" data-id="${item.id}" title="Edit">
+                                <i class="fa-solid fa-pencil text-xs pointer-events-none"></i>
+                            </button>
+                            <button class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 delete-log-item" data-action="delete-table" data-id="${item.id}" title="Delete">
+                                <i class="fa-solid fa-trash text-xs pointer-events-none"></i>
+                            </button>`
+                        }
                     </div>
                 </td>
             `;
@@ -3632,8 +3663,12 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
                 
                 const unitSelect = document.getElementById('quantity-unit');
                 unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
-                document.getElementById('quantity-amount').value = itemToEdit.quantity || 100;
-                unitSelect.value = 'g';
+                
+                // NEW: Restore the exact display amount and unit, falling back to quantity/grams
+                document.getElementById('quantity-amount').value = itemToEdit.displayAmount || itemToEdit.quantity || 100;
+                unitSelect.value = itemToEdit.displayUnit || 'g';
+                if (!unitSelect.value) unitSelect.value = 'g'; // Fallback if custom unit is missing
+                
                 document.getElementById('quantity').value = itemToEdit.quantity || 100; 
                 
                 document.getElementById('calories').value = (itemToEdit.calories || 0).toFixed(0);
@@ -3655,7 +3690,13 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
                 document.getElementById('log-section').value = section;
                 const radBtn = document.querySelector(`input[name="log-section-radio"][value="${section}"]`);
                 if(radBtn) radBtn.checked = true;
-                document.getElementById('log-datetime').value = toLocalISOString(itemToEdit.eatenAt.toDate());
+                
+                // SAFEGUARD: Check date exists before calling toDate
+                if (itemToEdit.eatenAt && typeof itemToEdit.eatenAt.toDate === 'function') {
+                    document.getElementById('log-datetime').value = toLocalISOString(itemToEdit.eatenAt.toDate());
+                } else {
+                    setDefaultDateTime(); // Fallback
+                }
 
                 currentFoodItem = {
                     baseNutrients: itemToEdit.baseNutrients, source: itemToEdit.source,
@@ -3707,7 +3748,13 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
                 }
 
                 document.getElementById('move-copy-item-name').textContent = displayName;
-                document.getElementById('move-copy-datetime').value = toLocalISOString(item.eatenAt.toDate());
+                
+                // SAFEGUARD: Check date exists
+                if (item.eatenAt && typeof item.eatenAt.toDate === 'function') {
+                    document.getElementById('move-copy-datetime').value = toLocalISOString(item.eatenAt.toDate());
+                } else {
+                    setDefaultDateTime();
+                }
                 
                 let section = item.section || 'breakfast';
                 if (!ALL_SECTIONS.includes(section)) section = 'breakfast';
@@ -5548,13 +5595,59 @@ const switchTab = (tabId) => {
                   console.error("Error getting theme:", error); applyTheme('light');
               });
 
-              const qFoodLog = query(collection(db, `users/${user.uid}/foodLog`), orderBy("eatenAt", "desc"));
-              onSnapshot(qFoodLog, (snapshot) => {
-                  foodLog = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+              // --- DUAL DATABASE MERGER ---
+              // NOTE: If your old hydration database was called 'water' instead of 'waterLog', change it here!
+              const LEGACY_WATER_COLLECTION = 'hydrationtrackr'; 
+              
+              let mainFoodLogs = [];
+              let legacyWaterLogs = [];
+
+              // Function to combine, sort safely, and render
+              const mergeAndRenderFood = () => {
+                  const combined = [...mainFoodLogs, ...legacyWaterLogs];
+                  
+                  // Safely sort in memory to avoid Firestore dropping items missing 'eatenAt'
+                  foodLog = combined.sort((a, b) => {
+                      const timeA = (a.eatenAt && typeof a.eatenAt.toDate === 'function') ? a.eatenAt.toDate().getTime() : 0;
+                      const timeB = (b.eatenAt && typeof b.eatenAt.toDate === 'function') ? b.eatenAt.toDate().getTime() : 0;
+                      return timeB - timeA;
+                  });
+                  
                   renderDashboard(); 
                   renderDailyLog(); 
                   renderHistoryTable();
                   renderFrequentFoods();
+              };
+
+              // 1. Listen to unified FoodTrackr DB
+              onSnapshot(query(collection(db, `users/${user.uid}/foodLog`)), (snap) => {
+                  mainFoodLogs = snap.docs.map(doc => {
+                      const data = doc.data();
+                      // Normalizer: If eatenAt is missing, fallback to legacy date
+                      if (!data.eatenAt && data.date) data.eatenAt = data.date; 
+                      return { id: doc.id, ...data };
+                  }).filter(log => log.eatenAt); // Ensure it has a valid date object
+                  
+                  mergeAndRenderFood();
+              });
+
+              // 2. Listen to old Hydration DB to recover past logs and inject them into FoodTrackr
+              onSnapshot(query(collection(db, `users/${user.uid}/${LEGACY_WATER_COLLECTION}`)), (snap) => {
+                  legacyWaterLogs = snap.docs.map(doc => {
+                      const data = doc.data();
+                      
+                      // Convert legacy hydration logs to look exactly like FoodTrackr drinks
+                      if (!data.eatenAt && data.date) data.eatenAt = data.date;
+                      data.section = 'drinks';
+                      data.name = data.name || data.attributeName || 'Water';
+                      data.quantity = data.quantity !== undefined ? data.quantity : (data.attributeValue || 0);
+                      data.calories = 0; data.protein = 0; data.carbs = 0; data.fat = 0;
+                      data.uploadedApp = "HydrationTrackr"; // Retroactively tag them for the cyan badge
+                      
+                      return { id: doc.id, ...data };
+                  }).filter(log => log.eatenAt);
+                  
+                  mergeAndRenderFood();
               });
 
               const qFavs = query(collection(db, `users/${user.uid}/favoriteFoods`));
@@ -5676,6 +5769,11 @@ const switchTab = (tabId) => {
                  fat: parseFloat(document.getElementById('fat').value) || 0,
                  quantity: parseFloat(document.getElementById('quantity').value) || 100, 
                  
+                 // NEW: Save the specific unit and display amount for accurate editing
+                 displayAmount: parseFloat(document.getElementById('quantity-amount').value) || 100,
+                 displayUnit: document.getElementById('quantity-unit').value || 'g',
+                 uploadedApp: "FoodTrackr", // NEW: Cross-app Metadata
+                 
                  fiber: parseFloat(document.getElementById('fiber').value) || 0,
                  sugar: parseFloat(document.getElementById('sugar').value) || 0,
                  sodium: parseFloat(document.getElementById('sodium').value) || 0,
@@ -5687,17 +5785,16 @@ const switchTab = (tabId) => {
                  updatedAt: Timestamp.fromDate(now),
                  updatedBy: user.email,
                  
-                 // CHANGE THESE TWO LINES:
-                 source: finalSource, // Was: currentFoodItem.source
-                 brands: brandsVal,   // Was: currentFoodItem.brands
+                 source: finalSource,
+                 brands: brandsVal,   
                  
                  restaurantName: (sourceType === 'Takeaway' || sourceType === 'Restaurant') ? restaurantName : null,
                  baseNutrients: currentFoodItem.baseNutrients,
-              imageUrl: currentFoodItem.imageUrl,
-              servingUnits: currentFoodItem.servingUnits || null,
+                 imageUrl: currentFoodItem.imageUrl,
+                 servingUnits: currentFoodItem.servingUnits || null,
               
-              ingredients: currentFoodItem.ingredients || null,
-              allergens: currentFoodItem.allergens || null
+                 ingredients: currentFoodItem.ingredients || null,
+                 allergens: currentFoodItem.allergens || null
           };
 
           if (!foodData.name || isNaN(foodData.calories)) {

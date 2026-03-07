@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v13.0.0-alpha", 
+    date: "2026-03-07",
+    changes: [
+        "In HydrationTrackr & FoodTrackr: Unified the backend database collection (`foodLog`) to allow seamless real-time data syncing between both apps.",
+        "In HydrationTrackr: Upgraded the water logging payload to include zeroed macro fields and `drinks` categorizations to ensure strict compatibility with FoodTrackr.",
+        "In FoodTrackr & HydrationTrackr: Implemented dynamic UI badges and icons in the history tables to clearly identify which app a log originated from.",
+        "In FoodTrackr & HydrationTrackr: Re-engineered database listeners to dynamically normalize legacy timestamps (`date`) into the modern format (`eatenAt`), preventing crashes and restoring missing historical data.",
+        "In FoodTrackr & HydrationTrackr: Locked cross-app editing to protect data and macro integrity, directing users to the original app to make modifications.",
+        "In HydrationTrackr: Fixed a Service Worker registration bug that was preventing background caching and offline support."
+    ]
+    },
+    {
     version: "v12.0.0-alpha", 
     date: "2026-03-06",
     changes: [
