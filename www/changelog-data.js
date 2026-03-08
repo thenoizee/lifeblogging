@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v13.1.0-alpha", 
+    date: "2026-03-08",
+    changes: [
+        "In PDF Tools: Added a new 'Split to Multiple' tool, allowing users to visually split a PDF into multiple files using an interactive thumbnail grid and click-to-cut scissors.",
+        "In PDF Tools: Added a new 'Remove Blank Pages' tool that automatically detects and deletes empty pages by analyzing both text content and visual pixel noise.",
+        "In Text Generator (Work): Introduced an 'Archive' button to the template manager, enabling users to easily toggle the archived status of their templates directly from the list."
+    ]
+    },
+    {
     version: "v13.0.0-alpha", 
     date: "2026-03-07",
     changes: [
