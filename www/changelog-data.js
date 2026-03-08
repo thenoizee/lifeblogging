@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v13.2.0-alpha", 
+    date: "2026-03-08",
+    changes: [
+        "System-Wide: Upgraded the notification bell to persist alerts across page reloads and apps using local storage, complete with instant cross-tab synchronization.",
+        "System-Wide: Introduced actionable notifications that support clickable links and routing, allowing alerts to direct users to specific apps to resolve issues.",
+        "In TaskTrackr: Added actionable alerts that trigger when TickTick or Google Tasks sessions expire, providing a direct link to reconnect the services."
+    ]
+    },
+    {
     version: "v13.1.0-alpha", 
     date: "2026-03-08",
     changes: [

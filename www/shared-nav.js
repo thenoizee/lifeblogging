@@ -10,9 +10,13 @@ export class AppNavigation {
         this.search = config.search || null; 
         this.onThemeChange = config.onThemeChange || null;
         
-        // ADD THESE LINES:
-        this.notifications = [];
-        this.unreadCount = 0;
+        // In the constructor:
+        const storedNotifs = JSON.parse(localStorage.getItem('app_notifications') || '[]');
+        this.notifications = storedNotifs.map(n => ({
+            ...n, 
+            time: new Date(n.time) // <--- CRITICAL: Turns the string back into a Date
+        })); 
+        this.unreadCount = this.notifications.filter(n => !n.read).length;
         
         this.hubApps = [
             { name: 'Dashboard', url: '/dashboard', icon: 'fa-gauge-high', color: 'bg-slate-700' },
@@ -47,7 +51,6 @@ export class AppNavigation {
 
         this.init();
     }
-    // ... [Rest of class remains the same] ...
     init() {
         this.injectGlobalStyles();
         this.renderHeader();
@@ -58,6 +61,10 @@ export class AppNavigation {
         this.applyTheme(storedTheme === 'dark');
         
         this.updateActiveTab(this.activeTab);
+
+        // ADD THESE TWO LINES: Force the UI to show saved notifications on page load
+        this.updateNotificationBadge();
+        this.renderNotificationsList();
     }
 
     updateUser(email) {
@@ -266,13 +273,17 @@ export class AppNavigation {
             title: notification.title || 'New Notification',
             body: notification.body || '',
             time: new Date(),
-            read: false
+            read: false,
+            actionUrl: notification.actionUrl || null,
+            actionEvent: notification.actionEvent || null,
+            actionText: notification.actionText || 'Resolve'
         });
         
-        // Keep only the latest 20 notifications to save memory
         if (this.notifications.length > 20) this.notifications.pop();
         
         this.unreadCount++;
+        localStorage.setItem('app_notifications', JSON.stringify(this.notifications)); // SAVE
+        
         this.updateNotificationBadge();
         this.renderNotificationsList();
     }
@@ -298,7 +309,9 @@ export class AppNavigation {
         if (this.unreadCount === 0) return;
         this.unreadCount = 0;
         this.notifications.forEach(n => n.read = true);
+        localStorage.setItem('app_notifications', JSON.stringify(this.notifications)); // SAVE
         this.updateNotificationBadge();
+        this.renderNotificationsList(); // Update UI immediately
     }
 
     renderNotificationsList() {
@@ -316,7 +329,9 @@ export class AppNavigation {
                     <span class="text-xs font-bold text-gray-800 dark:text-gray-200">${notif.title}</span>
                     <span class="text-[9px] text-gray-400">${notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
-                <div class="text-[10px] text-gray-600 dark:text-gray-400 leading-tight">${notif.body}</div>
+                <div class="text-[10px] text-gray-600 dark:text-gray-400 leading-tight mb-1">${notif.body}</div>
+                ${notif.actionUrl ? `<a href="${notif.actionUrl}" class="inline-block text-[10px] font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline mt-1">${notif.actionText}</a>` : ''}
+                ${notif.actionEvent && !notif.actionUrl ? `<button onclick="window.dispatchEvent(new Event('${notif.actionEvent}'))" class="text-[10px] font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline mt-1">${notif.actionText}</button>` : ''}
             </div>
         `).join('');
     }
@@ -353,6 +368,23 @@ export class AppNavigation {
             });
         }
 
+        // ADD THIS BLOCK: Listen for notification changes happening in other tabs/apps
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'app_notifications') {
+                const updatedNotifs = JSON.parse(e.newValue || '[]');
+                
+                // Re-parse the dates so .toLocaleTimeString() doesn't crash
+                this.notifications = updatedNotifs.map(n => ({
+                    ...n, 
+                    time: new Date(n.time) 
+                }));
+                
+                this.unreadCount = this.notifications.filter(n => !n.read).length;
+                this.updateNotificationBadge();
+                this.renderNotificationsList();
+            }
+        });
+
         // Add this inside attachEvents()
         const bellBtn = document.getElementById('nav-bell-btn');
         const notifMenu = document.getElementById('nav-notifications-menu');
@@ -371,9 +403,13 @@ export class AppNavigation {
                 }
             });
             
+            // Inside attachEvents():
             clearNotifsBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.notifications = [];
+                this.unreadCount = 0;
+                localStorage.setItem('app_notifications', '[]'); // CLEAR SAVE
+                this.updateNotificationBadge();
                 this.renderNotificationsList();
             });
         }
