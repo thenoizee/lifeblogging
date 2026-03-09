@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v13.2.1-alpha", 
+    date: "2026-03-09",
+    changes: [
+        "In LightManagr: Secured Philips Hue API credentials by removing hardcoded keys from the repository.",
+        "In LightManagr: Migrated the Hue login and token exchange endpoints to securely retrieve client IDs and secrets at runtime using Firebase Secret Manager."
+    ]
+    },
+    {
     version: "v13.2.0-alpha", 
     date: "2026-03-08",
     changes: [

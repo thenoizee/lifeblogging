@@ -16,13 +16,13 @@ setGlobalOptions({ maxInstances: 10 });
 
 // --- SECRETS & KEYS ---
 const tickTickSecret = defineSecret("TICKTICK_CLIENT_SECRET");
-const podcastIndexKey = defineSecret("PODCASTINDEX_KEY");    // New
-const podcastIndexSecret = defineSecret("PODCASTINDEX_SECRET"); // New
+const podcastIndexKey = defineSecret("PODCASTINDEX_KEY");    
+const podcastIndexSecret = defineSecret("PODCASTINDEX_SECRET"); 
 
-// TODO: ENSURE YOUR KEYS ARE HERE
-const HUE_CLIENT_ID = "61472d07-caca-4ba3-bead-4ea7a28eb7f9";     
-const HUE_CLIENT_SECRET = "a9d0d32b191081be67cf7ba3c0f472d7"; 
-const HUE_APP_ID = "lifeblogging"; 
+// New Hue Secrets
+const hueClientId = defineSecret("HUE_CLIENT_ID");
+const hueClientSecret = defineSecret("HUE_CLIENT_SECRET");
+const HUE_APP_ID = "lifeblogging";
 
 // ==========================================
 // 1. TICKTICK FUNCTION
@@ -77,9 +77,8 @@ exports.exchangeTickTickToken = onRequest(
 // ==========================================
 
 // A. LOGIN
-exports.hueLogin = onRequest((req, res) => {
+exports.hueLogin = onRequest({ secrets: [hueClientId] }, (req, res) => {
   const uid = req.query.uid; 
-  // FIX: Changed 'huemanagr' to 'lightmanagr' to match your folder name
   const redirectUri = `https://${process.env.GCLOUD_PROJECT}.web.app/lightmanagr/callback.html`;
   
   if (!uid) {
@@ -87,22 +86,21 @@ exports.hueLogin = onRequest((req, res) => {
       return;
   }
 
-  // Note: HUE_CLIENT_ID and HUE_APP_ID must be defined at the top of your file
-  const authUrl = `https://api.meethue.com/oauth2/auth?clientid=${HUE_CLIENT_ID}&appid=${HUE_APP_ID}&deviceid=lifehub_server&state=${uid}&response_type=code`;
+  const authUrl = `https://api.meethue.com/oauth2/auth?clientid=${hueClientId.value()}&appid=${HUE_APP_ID}&deviceid=lifehub_server&state=${uid}&response_type=code`;
   
   res.redirect(authUrl);
 });
 
 // B. TOKEN EXCHANGE
-exports.hueTokenExchange = onCall(async (request) => {
+exports.hueTokenExchange = onCall({ secrets: [hueClientId, hueClientSecret] }, async (request) => {
   const code = request.data.code;
   
   if (!code) {
-      throw new HttpsError("invalid-argument", "Missing auth code"); // UPDATED
+      throw new HttpsError("invalid-argument", "Missing auth code"); 
   }
 
   try {
-    const authHeader = Buffer.from(`${HUE_CLIENT_ID}:${HUE_CLIENT_SECRET}`).toString('base64');
+    const authHeader = Buffer.from(`${hueClientId.value()}:${hueClientSecret.value()}`).toString('base64');
     
     const response = await axios.post('https://api.meethue.com/oauth2/token', null, {
       params: {
@@ -114,24 +112,20 @@ exports.hueTokenExchange = onCall(async (request) => {
       }
     });
 
-    // --- FIX IS HERE: We only destructure tokens, NOT username ---
     const { access_token, refresh_token } = response.data;
 
-    if (!request.auth) throw new HttpsError("unauthenticated", "User must be logged in."); // UPDATED
+    if (!request.auth) throw new HttpsError("unauthenticated", "User must be logged in."); 
     
-    // We save the tokens to the database
     await admin.firestore().collection('users').doc(request.auth.uid).collection('services').doc('hue').set({
       accessToken: access_token,
       refreshToken: refresh_token,
       linkedAt: new Date()
-    }, { merge: true }); // Use merge just in case
+    }, { merge: true }); 
 
     return { success: true };
     
   } catch (error) {
      logger.error("Hue Proxy Error", error.response?.data || error.message);
-     
-     // UPDATE: Use HttpsError instead of standard Error
      throw new HttpsError('internal', "Failed to send command to Hue.");
   }
 });
