@@ -1,3 +1,7 @@
+import { getApps } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
 export class AppNavigation {
     constructor(config) {
         this.appName = config.appName || 'My App';
@@ -10,13 +14,8 @@ export class AppNavigation {
         this.search = config.search || null; 
         this.onThemeChange = config.onThemeChange || null;
         
-        // In the constructor:
-        const storedNotifs = JSON.parse(localStorage.getItem('app_notifications') || '[]');
-        this.notifications = storedNotifs.map(n => ({
-            ...n, 
-            time: new Date(n.time) // <--- CRITICAL: Turns the string back into a Date
-        })); 
-        this.unreadCount = this.notifications.filter(n => !n.read).length;
+        this.notifications = []; 
+        this.unreadCount = 0;
         
         this.hubApps = [
             { name: 'Dashboard', url: '/dashboard', icon: 'fa-gauge-high', color: 'bg-slate-700' },
@@ -62,9 +61,8 @@ export class AppNavigation {
         
         this.updateActiveTab(this.activeTab);
 
-        // ADD THESE TWO LINES: Force the UI to show saved notifications on page load
-        this.updateNotificationBadge();
-        this.renderNotificationsList();
+        // Start listening to the cloud database
+        this.listenToNotifications();
     }
 
     updateUser(email) {
@@ -269,23 +267,22 @@ export class AppNavigation {
     }
 
     addNotification(notification) {
-        this.notifications.unshift({
+        const auth = getAuth();
+        const user = auth.currentUser;
+        if (!user) return; 
+
+        const db = getFirestore();
+        const notifRef = collection(db, 'users', user.uid, 'notifications');
+
+        addDoc(notifRef, {
             title: notification.title || 'New Notification',
             body: notification.body || '',
-            time: new Date(),
+            time: serverTimestamp(),
             read: false,
             actionUrl: notification.actionUrl || null,
             actionEvent: notification.actionEvent || null,
             actionText: notification.actionText || 'Resolve'
         });
-        
-        if (this.notifications.length > 20) this.notifications.pop();
-        
-        this.unreadCount++;
-        localStorage.setItem('app_notifications', JSON.stringify(this.notifications)); // SAVE
-        
-        this.updateNotificationBadge();
-        this.renderNotificationsList();
     }
 
     updateNotificationBadge() {
@@ -307,11 +304,64 @@ export class AppNavigation {
 
     markNotificationsAsRead() {
         if (this.unreadCount === 0) return;
-        this.unreadCount = 0;
-        this.notifications.forEach(n => n.read = true);
-        localStorage.setItem('app_notifications', JSON.stringify(this.notifications)); // SAVE
-        this.updateNotificationBadge();
-        this.renderNotificationsList(); // Update UI immediately
+        const auth = getAuth();
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const db = getFirestore();
+        const batch = writeBatch(db);
+
+        this.notifications.forEach(n => {
+            if (!n.read) {
+                const ref = doc(db, 'users', user.uid, 'notifications', n.id);
+                batch.update(ref, { read: true });
+            }
+        });
+
+        batch.commit().catch(err => console.error("Error marking notifications read:", err));
+    }
+
+    listenToNotifications() {
+        // Wait for Firebase to be fully initialized by the host page
+        if (getApps().length === 0) {
+            setTimeout(() => this.listenToNotifications(), 50);
+            return;
+        }
+
+        const auth = getAuth();
+        onAuthStateChanged(auth, user => {
+            if (user) {
+                const db = getFirestore();
+                const notifRef = collection(db, 'users', user.uid, 'notifications');
+                const q = query(notifRef, orderBy('time', 'desc'), limit(20));
+
+                onSnapshot(q, snapshot => {
+                    this.notifications = [];
+                    let unread = 0;
+                    
+                    snapshot.forEach(docSnap => {
+                        const data = docSnap.data();
+                        this.notifications.push({
+                            id: docSnap.id,
+                            ...data,
+                            time: data.time ? data.time.toDate() : new Date() 
+                        });
+                        if (!data.read) unread++;
+                    });
+                    
+                    this.unreadCount = unread;
+                    this.updateNotificationBadge();
+                    this.renderNotificationsList();
+                }, error => {
+                    console.error("Error listening to notifications:", error);
+                });
+            } else {
+                this.notifications = [];
+                this.unreadCount = 0;
+                this.updateNotificationBadge();
+                this.renderNotificationsList();
+            }
+        });
     }
 
     renderNotificationsList() {
@@ -368,23 +418,6 @@ export class AppNavigation {
             });
         }
 
-        // ADD THIS BLOCK: Listen for notification changes happening in other tabs/apps
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'app_notifications') {
-                const updatedNotifs = JSON.parse(e.newValue || '[]');
-                
-                // Re-parse the dates so .toLocaleTimeString() doesn't crash
-                this.notifications = updatedNotifs.map(n => ({
-                    ...n, 
-                    time: new Date(n.time) 
-                }));
-                
-                this.unreadCount = this.notifications.filter(n => !n.read).length;
-                this.updateNotificationBadge();
-                this.renderNotificationsList();
-            }
-        });
-
         // Add this inside attachEvents()
         const bellBtn = document.getElementById('nav-bell-btn');
         const notifMenu = document.getElementById('nav-notifications-menu');
@@ -404,13 +437,25 @@ export class AppNavigation {
             });
             
             // Inside attachEvents():
-            clearNotifsBtn.addEventListener('click', (e) => {
+            clearNotifsBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                this.notifications = [];
-                this.unreadCount = 0;
-                localStorage.setItem('app_notifications', '[]'); // CLEAR SAVE
-                this.updateNotificationBadge();
-                this.renderNotificationsList();
+                const auth = getAuth();
+                const user = auth.currentUser;
+                if (!user) return;
+
+                const db = getFirestore();
+                const batch = writeBatch(db);
+                const notifRef = collection(db, 'users', user.uid, 'notifications');
+                
+                try {
+                    const snapshot = await getDocs(notifRef);
+                    snapshot.docs.forEach(docSnap => {
+                        batch.delete(docSnap.ref);
+                    });
+                    await batch.commit();
+                } catch (err) {
+                    console.error("Error clearing notifications:", err);
+                }
             });
         }
 

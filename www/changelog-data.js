@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v13.3.0-alpha", 
+    date: "2026-03-09",
+    changes: [
+        "Global: Upgraded the notification system to sync in real-time across all your devices using cloud storage instead of local browser cache.",
+        "Global: Actions taken on notifications (like marking as read or clearing all) will now instantly update the notification bell on all other active devices and tabs.",
+        "Global: Fixed a race condition where the navigation bar would sometimes crash on the Hub page if it tried to load notifications before the app fully initialized."
+    ]
+    },
+    {
     version: "v13.2.1-alpha", 
     date: "2026-03-09",
     changes: [
