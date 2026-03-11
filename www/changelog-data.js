@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+        version: "v13.4.0-alpha",
+        date: "2026-03-11",
+        changes: [
+            "Global: Resolved a Firebase version mismatch preventing real-time notifications from syncing to VidTrackr and other individual apps.",
+            "VidTrackr: Reverted the Stremio link logic to strictly use the native app protocol (stremio://) instead of falling back to the web client on mobile devices."
+        ]
+    },
+    {
     version: "v13.3.0-alpha", 
     date: "2026-03-09",
     changes: [

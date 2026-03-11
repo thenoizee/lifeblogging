@@ -459,7 +459,16 @@ export class AppNavigation {
             });
         }
 
-        // Listen for a custom event triggered by FCM when a message arrives
+        // Connect to the Service Worker BroadcastChannel for FCM messages
+        const channel = new BroadcastChannel('app-notifications');
+        channel.onmessage = (event) => {
+            if (event.data && event.data.notification) {
+                // Pass the notification object to the app
+                this.addNotification(event.data.notification);
+            }
+        };
+
+        // Fallback for in-app triggered events (if you still use them elsewhere)
         window.addEventListener('app-new-notification', (e) => {
             if (e.detail) {
                 this.addNotification(e.detail);
