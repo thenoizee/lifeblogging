@@ -308,6 +308,16 @@
 
         <div id="tab-content-settings" class="tab-content hidden animate-fade">
             <h1 class="text-3xl font-bold mb-6">Settings</h1>
+
+            <div class="card p-6 mb-6">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><i class="fa-solid fa-location-crosshairs text-blue-500"></i> Weather & Location</h2>
+                <p class="text-sm opacity-70 mb-4">Your local weather forecast and environmental alerts rely on your Home Location, which is managed centrally for all apps.</p>
+                <div class="p-3 bg-[var(--input-bg)] rounded-lg flex justify-between items-center border border-[var(--border)]">
+                    <p class="text-sm font-bold" id="settings-current-location"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Checking location...</p>
+                    <a href="/account" class="btn-primary text-xs no-underline"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> Go to Account</a>
+                </div>
+            </div>
+
             <div class="card p-6 mb-6">
                 <h2 class="text-xl font-bold mb-4">Seasons</h2>
                 <div class="flex items-center justify-between">
@@ -423,9 +433,14 @@
             <div class="space-y-4">
                 <div><label class="text-sm font-bold">Name</label><input type="text" id="plant-name" class="input-std" placeholder="e.g. Monstera"></div>
 
-                <button type="button" onclick="window.openApiSearchModal()" class="btn-secondary text-xs w-full mt-1 border-dashed border-2">
-                    <i class="fa-solid fa-cloud-arrow-down mr-1"></i> Auto-fill Advice from API
-                </button>
+                <div class="flex gap-2 mt-2 mb-2">
+                    <button type="button" onclick="window.magicAutoFill()" class="btn-primary text-xs flex-1 bg-purple-600 hover:bg-purple-700 shadow-md transition-transform hover:scale-[1.02]">
+                        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Auto-Generate Care Routine
+                    </button>
+                    <button type="button" onclick="window.openApiSearchModal()" class="btn-secondary text-xs px-3 border-dashed border-2" title="Manual API Search">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </button>
+                </div>
                 
                 <div class="grid grid-cols-2 gap-4">
                     <div><label class="text-sm font-bold">Species</label><input type="text" id="plant-species" class="input-std"></div>
@@ -1293,7 +1308,10 @@ window.toggleGardenView = (view) => {
                                     <div class="flex items-center gap-3 mb-2">
                                         <i class="fa-solid ${rain > 0 ? 'fa-cloud-rain' : 'fa-cloud-sun'} text-4xl text-blue-500"></i>
                                         <div>
-                                            <h3 class="font-bold text-lg text-blue-800 dark:text-blue-300">${state.location.name || 'Saved Location'}</h3>
+                                            <h3 class="font-bold text-lg text-blue-800 dark:text-blue-300">
+                                                ${state.location.name || 'Saved Location'}
+                                                <a href="/account" class="text-[10px] ml-2 text-blue-500 dark:text-blue-400 hover:underline font-normal bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 rounded shadow-sm"><i class="fa-solid fa-gear"></i> Location Settings</a>
+                                            </h3>
                                             <div class="flex items-center gap-3 text-sm font-semibold text-blue-900 dark:text-blue-200">
                                                 <span title="High Temp"><i class="fa-solid fa-arrow-up text-red-400"></i> ${maxTemp}°C</span>
                                                 <span title="Low Temp"><i class="fa-solid fa-arrow-down text-blue-400"></i> ${minTemp}°C</span>
@@ -1625,6 +1643,22 @@ if (state.compost) {
 
             if (careItemsCount === 0 && combinedCareList) {
                 combinedCareList.innerHTML = `<div class="text-center p-6 bg-[var(--input-bg)] rounded-lg text-green-600 flex flex-col items-center justify-center h-full"><i class="fa-solid fa-check-circle mb-2 text-3xl"></i><p class="text-sm font-bold">All caught up!</p><p class="text-xs opacity-70 mt-1">Your garden is looking great.</p></div>`;
+            } else if (careItemsCount > 0) {
+                // ADDED: Link to global notification system (runs once per day)
+                const todayStr = new Date().toISOString().split('T')[0];
+                const notifKey = `planttrackr_notified_${todayStr}`;
+                
+                if (!localStorage.getItem(notifKey)) {
+                    window.dispatchEvent(new CustomEvent('app-new-notification', {
+                        detail: {
+                            title: 'Garden Action Required 🌱',
+                            body: `You have ${careItemsCount} pending tasks to check on today.`,
+                            actionUrl: '/planttrackr',
+                            actionText: 'Open PlantTrackr'
+                        }
+                    }));
+                    localStorage.setItem(notifKey, 'true');
+                }
             }
 
             toggleDisplay(hospitalSection, hasSickPlants);
@@ -2656,15 +2690,28 @@ window.saveCompostSettings = async () => {
 
             try {
                 if (apiChoice === 'growstuff') {
-                    // FIX 1: Changed ?query= to ?term=
-                    const targetUrl = `${cloudFunctionBase}/growstuffProxy/crops.json?term=${encodeURIComponent(query)}`;
+                    const slug = query.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
+                    let results = [];
                     
-                    const res = await fetch(targetUrl);
-                    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-                    const data = await res.json();
+                    // First try direct hit via slug (e.g. /crops/rainbow-chard.json)
+                    const exactRes = await fetch(`${cloudFunctionBase}/growstuffProxy/crops/${slug}.json`);
+                    if (exactRes.ok) {
+                        const cropData = await exactRes.json();
+                        if (cropData && cropData.name) results.push(cropData);
+                    }
                     
-                    // FIX 2: Added data.query to the extraction fallbacks
-                    const results = Array.isArray(data) ? data : (data.query || data.data || data.crops || []);
+                    // If no direct hit, fetch the default list and manually filter to avoid the Tomato bug
+                    if (results.length === 0) {
+                        const listRes = await fetch(`${cloudFunctionBase}/growstuffProxy/crops.json`);
+                        if (listRes.ok) {
+                            const data = await listRes.json();
+                            const allCrops = Array.isArray(data) ? data : (data.query || data.data || data.crops || []);
+                            results = allCrops.filter(c => 
+                                c.name.toLowerCase().includes(query.toLowerCase()) || 
+                                (c.scientific_name && c.scientific_name.toLowerCase().includes(query.toLowerCase()))
+                            );
+                        }
+                    }
 
                     if (results.length === 0) {
                         resContainer.innerHTML = '<p class="text-center py-4 opacity-70">No results found in Growstuff. Try Perenual!</p>';
@@ -2722,25 +2769,139 @@ window.saveCompostSettings = async () => {
             `).join('');
         };
 
-        window.applyApiData = (data) => {
-            if(data.name) getEl('plant-name').value = data.name.charAt(0).toUpperCase() + data.name.slice(1);
-            if(data.species) getEl('plant-species').value = data.species;
-            if(data.desc) getEl('plant-background').value = data.desc;
+        window.magicAutoFill = async () => {
+            const query = getEl('plant-name').value || getEl('plant-species').value;
+            if (!query) return showMsg("Please enter a plant name first!", "error");
             
+            const btn = document.querySelector('button[onclick="window.magicAutoFill()"]');
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Generating...';
+            btn.disabled = true;
+
+            try {
+                const cloudFunctionBase = 'https://us-central1-sammy-7298f.cloudfunctions.net';
+                const key = state.apiKeys?.perenual;
+                let bestMatch = null;
+
+                // 1. Try Perenual (gives the best rich data)
+                if (key) {
+                    const searchRes = await fetch(`${cloudFunctionBase}/perenualProxy/api/species-list?key=${key}&q=${encodeURIComponent(query)}`);
+                    const searchData = await searchRes.json();
+                    if (searchData.data && searchData.data.length > 0) {
+                        const basicInfo = searchData.data[0];
+                        // Fetch detailed species data
+                        const detailRes = await fetch(`${cloudFunctionBase}/perenualProxy/api/species/details/${basicInfo.id}?key=${key}`);
+                        const detailData = await detailRes.json();
+                        
+                        bestMatch = {
+                            source: 'perenual', name: basicInfo.common_name, species: basicInfo.scientific_name[0],
+                            sun: basicInfo.sunlight.join(', '), water: basicInfo.watering,
+                            careLevel: detailData.care_level, growthRate: detailData.growth_rate,
+                            indoor: detailData.indoor, desc: detailData.description
+                        };
+                    }
+                }
+
+                // 2. Fallback to Free Growstuff API
+                if (!bestMatch) {
+                    // Create a slug from the query (e.g., "Rainbow Chard" -> "rainbow-chard")
+                    const slug = query.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
+                    const searchRes = await fetch(`${cloudFunctionBase}/growstuffProxy/crops/${slug}.json`);
+                    
+                    if (searchRes.ok) {
+                        const cropData = await searchRes.json();
+                        if (cropData && cropData.name) {
+                            bestMatch = {
+                                source: 'growstuff', 
+                                name: cropData.name, 
+                                species: cropData.scientific_name || cropData.en_wikipedia_url?.split('/').pop()?.replace(/_/g, ' ') || '',
+                                sun: cropData.sun_requirements || 'Check local guidelines', 
+                                water: cropData.water_requirements || 'Check local guidelines', 
+                                desc: cropData.description || ''
+                            };
+                        }
+                    } 
+                    
+                    // If exact slug fails, try fetching the crops list and manually filtering
+                    if (!bestMatch) {
+                        const fallbackRes = await fetch(`${cloudFunctionBase}/growstuffProxy/crops.json`);
+                        if (fallbackRes.ok) {
+                            const data = await fallbackRes.json();
+                            const results = Array.isArray(data) ? data : (data.query || data.data || data.crops || []);
+                            
+                            // Prevent the "always returning Tomato" bug by explicitly matching the name
+                            const exactMatch = results.find(c => 
+                                c.name.toLowerCase().includes(query.toLowerCase()) || 
+                                (c.scientific_name && c.scientific_name.toLowerCase().includes(query.toLowerCase()))
+                            );
+
+                            if (exactMatch) {
+                                bestMatch = {
+                                    source: 'growstuff', 
+                                    name: exactMatch.name, 
+                                    species: exactMatch.scientific_name || '',
+                                    sun: exactMatch.sun_requirements || 'Check local guidelines', 
+                                    water: exactMatch.water_requirements || 'Check local guidelines', 
+                                    desc: exactMatch.description || ''
+                                };
+                            }
+                        }
+                    }
+                }
+
+                window.applyApiData(bestMatch);
+                showMsg("✨ Tailored care routine generated!", "success", 4000);
+
+            } catch (error) {
+                console.error(error);
+                showMsg("API Error: " + error.message, "error");
+            } finally {
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+            }
+        };
+
+        window.applyApiData = (data) => {
+            if(data.name && !getEl('plant-name').value) getEl('plant-name').value = data.name.charAt(0).toUpperCase() + data.name.slice(1);
+            if(data.species) getEl('plant-species').value = data.species;
+            if(data.desc && !getEl('plant-background').value) getEl('plant-background').value = data.desc;
+            
+            // 1. Light Parsing
             const sun = (data.sun || '').toLowerCase();
             if(sun.includes('full') || sun.includes('high') || sun.includes('direct')) getEl('plant-light').value = 'high';
             else if(sun.includes('shade') || sun.includes('low')) getEl('plant-light').value = 'low';
             else getEl('plant-light').value = 'medium';
 
+            // 2. Smart Routine Heuristics Engine
+            // Base defaults for a standard houseplant
+            let wFreq = 7, fFreq = 30, mFreq = 0, pFreq = 180, rFreq = 365;
+            
             if(data.water) {
                 const w = data.water.toLowerCase();
-                if(w.includes('frequent') || w.includes('high')) getEl('plant-water-freq').value = 3;
-                else if(w.includes('average') || w.includes('moderate')) getEl('plant-water-freq').value = 7;
-                else if(w.includes('minimum') || w.includes('low')) getEl('plant-water-freq').value = 14;
+                if(w.includes('frequent') || w.includes('high')) { 
+                    wFreq = 3; mFreq = 3; fFreq = 14; pFreq = 90; // Tropical/Fast growing
+                }
+                else if(w.includes('minimum') || w.includes('low')) { 
+                    wFreq = 14; mFreq = 0; fFreq = 60; pFreq = 365; rFreq = 730; // Succulent/Cactus
+                }
             }
 
+            // Refine with Perenual Growth Rate if available
+            if (data.growthRate) {
+                const gr = data.growthRate.toLowerCase();
+                if (gr === 'high') { fFreq = Math.min(fFreq, 14); pFreq = 90; rFreq = 180; } // Fast growers need more food/pots
+                if (gr === 'low') { fFreq = Math.max(fFreq, 60); rFreq = 730; } // Slow growers shouldn't be over-fed
+            }
+
+            // Apply calculated frequencies
+            getEl('plant-water-freq').value = wFreq;
+            getEl('plant-fert-freq').value = fFreq;
+            getEl('plant-mist-freq').value = mFreq || '';
+            getEl('plant-prune-freq').value = pFreq;
+            getEl('plant-repot-freq').value = rFreq;
+            getEl('plant-prog-freq').value = 14; // Default to bi-weekly check-ins
+
             toggleDisplay(getEl('api-search-modal'), false);
-            showMsg("Advice applied to form!");
         };
 
         const renderWishlist = () => {
@@ -2836,14 +2997,17 @@ window.saveCompostSettings = async () => {
 
         onSnapshot(doc(db, 'users', state.user.uid, 'settings', 'location'), async (snap) => {
             const data = snap.exists() ? snap.data() : null;
+            const locEl = document.getElementById("settings-current-location"); // Added UI ref
             
             if (data && data.latitude) {
                 state.location = data;
+                if (locEl) locEl.innerHTML = `<i class="fa-solid fa-map-pin text-[var(--primary)] mr-2"></i> ${data.name || 'Set to coordinates'}`;
                 await fetchWeather();
             } else {
                 state.location = null;
                 state.weather = null;
-                renderDashboard(); // <-- Fixed: Removed window. check
+                if (locEl) locEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-yellow-500 mr-2"></i> Location Not Set`;
+                renderDashboard(); 
             }
         });
 

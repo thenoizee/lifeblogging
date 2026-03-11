@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v13.5.0-alpha", 
+    date: "2026-03-11",
+    changes: [
+        "In PlantTrackr: Integrated 'Action Required' tasks with the global notification system, triggering a daily alert if plants need attention.",
+        "In PlantTrackr: Added a 'Magic Auto-Fill' feature that automatically generates tailored care routines (watering, feeding, pruning, repotting, misting frequencies) using Perenual and Growstuff API data.",
+        "In PlantTrackr: Fixed a search bug where the Growstuff API fallback would incorrectly default to 'Tomato' by implementing direct slug queries and strict manual filtering.",
+        "In PlantTrackr: Improved UI clarity for weather and environmental features by adding a 'Weather & Location' card in Settings and a quick link in the dashboard banner, directing users to the central Account page."
+    ]
+    },
+    {
         version: "v13.4.0-alpha",
         date: "2026-03-11",
         changes: [
