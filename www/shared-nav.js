@@ -1,6 +1,6 @@
 import { getApps } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 export class AppNavigation {
     constructor(config) {
@@ -277,6 +277,7 @@ export class AppNavigation {
         addDoc(notifRef, {
             title: notification.title || 'New Notification',
             body: notification.body || '',
+            appName: notification.appName || this.appName || null, // Added appName tracking
             time: serverTimestamp(),
             read: false,
             actionUrl: notification.actionUrl || null,
@@ -374,12 +375,21 @@ export class AppNavigation {
         }
 
         listEl.innerHTML = this.notifications.map(notif => `
-            <div class="p-2 rounded-lg ${notif.read ? 'opacity-70' : `bg-${this.themeColor}-50 dark:bg-${this.themeColor}-900/20`} hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors border border-transparent ${!notif.read ? `dark:border-${this.themeColor}-900/50 border-${this.themeColor}-100` : ''}">
-                <div class="flex justify-between items-start mb-0.5">
+            <div class="p-2 rounded-lg relative ${notif.read ? 'opacity-70' : `bg-${this.themeColor}-50 dark:bg-${this.themeColor}-900/20`} hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors border border-transparent ${!notif.read ? `dark:border-${this.themeColor}-900/50 border-${this.themeColor}-100` : ''}">
+                <button class="delete-single-notif absolute top-1 right-2 text-gray-400 hover:text-red-500" data-id="${notif.id}"><i class="fa-solid fa-xmark text-[11px]"></i></button>
+                
+                <div class="flex justify-between items-start mb-0.5 pr-5">
                     <span class="text-xs font-bold text-gray-800 dark:text-gray-200">${notif.title}</span>
-                    <span class="text-[9px] text-gray-400">${notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    <span class="text-[9px] text-gray-400">${notif.time.toLocaleDateString([], {month: 'short', day: 'numeric'})} ${notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
-                <div class="text-[10px] text-gray-600 dark:text-gray-400 leading-tight mb-1">${notif.body}</div>
+                
+                ${notif.appName ? `<div class="flex justify-between items-center mb-1"><span class="text-[9px] text-${this.themeColor}-500 font-semibold">${notif.appName}</span> <button class="clear-app-notifs text-[9px] text-gray-400 hover:text-red-500 hover:underline" data-app="${notif.appName}">Clear App</button></div>` : ''}
+                
+                <div class="notif-body-container text-[10px] text-gray-600 dark:text-gray-400 leading-tight mb-1">
+                    <div class="line-clamp-2 transition-all duration-200">${notif.body}</div>
+                    ${notif.body && notif.body.length > 65 ? `<button class="text-[9px] text-blue-500 hover:underline expand-notif-btn mt-0.5">Show more</button>` : ''}
+                </div>
+                
                 ${notif.actionUrl ? `<a href="${notif.actionUrl}" class="inline-block text-[10px] font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline mt-1">${notif.actionText}</a>` : ''}
                 ${notif.actionEvent && !notif.actionUrl ? `<button onclick="window.dispatchEvent(new Event('${notif.actionEvent}'))" class="text-[10px] font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline mt-1">${notif.actionText}</button>` : ''}
             </div>
@@ -491,6 +501,47 @@ export class AppNavigation {
         document.getElementById('nav-logout-btn').addEventListener('click', () => {
              if(window.confirm('Log out?')) window.dispatchEvent(new CustomEvent('app-logout-request'));
         });
+        // Add this inside attachEvents() at the very end
+        const listEl = document.getElementById('nav-notifications-list');
+        if (listEl) {
+            listEl.addEventListener('click', async (e) => {
+                const deleteBtn = e.target.closest('.delete-single-notif');
+                const clearAppBtn = e.target.closest('.clear-app-notifs');
+                const expandBtn = e.target.closest('.expand-notif-btn');
+                
+                const auth = getAuth();
+                const user = auth?.currentUser;
+                const db = getFirestore();
+
+                if (deleteBtn && user) {
+                    e.stopPropagation();
+                    const id = deleteBtn.dataset.id;
+                    await deleteDoc(doc(db, 'users', user.uid, 'notifications', id));
+                }
+                
+                if (clearAppBtn && user) {
+                    e.stopPropagation();
+                    const appName = clearAppBtn.dataset.app;
+                    const batch = writeBatch(db);
+                    this.notifications.filter(n => n.appName === appName).forEach(n => {
+                        batch.delete(doc(db, 'users', user.uid, 'notifications', n.id));
+                    });
+                    await batch.commit();
+                }
+
+                if (expandBtn) {
+                    e.stopPropagation();
+                    const bodyDiv = expandBtn.previousElementSibling;
+                    if (bodyDiv.classList.contains('line-clamp-2')) {
+                        bodyDiv.classList.remove('line-clamp-2');
+                        expandBtn.textContent = 'Show less';
+                    } else {
+                        bodyDiv.classList.add('line-clamp-2');
+                        expandBtn.textContent = 'Show more';
+                    }
+                }
+            });
+        }
     }
 
     switchTab(tabId) {

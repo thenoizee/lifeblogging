@@ -1459,6 +1459,40 @@ window.addEventListener('app-logout-request', () => {
         if (currentStock <= LOW_STOCK_THRESHOLD) stockClass = 'warning';
         if (currentStock <= 0) stockClass = 'danger';
         
+        // --- NEW: TRIGGER NOTIFICATIONS ---
+        const todayStr = new Date().toISOString().split('T')[0];
+        
+        // Low Stock Notification
+        if (currentStock <= LOW_STOCK_THRESHOLD) {
+            const notifKey = `notif_stock_${med.id}_${todayStr}`;
+            if (!localStorage.getItem(notifKey)) {
+                window.dispatchEvent(new CustomEvent('app-new-notification', {
+                    detail: {
+                        title: 'Low Medication Stock',
+                        body: `You are running low on ${med.name}. Only ${currentStock} remaining.`,
+                        appName: 'MediManagr'
+                    }
+                }));
+                localStorage.setItem(notifKey, 'true');
+            }
+        }
+
+        // Expiry Notification
+        if (daysToExpiry !== 'N/A' && daysToExpiry <= EXPIRY_WARNING_DAYS) {
+            const notifKey = `notif_expiry_${med.id}_${todayStr}`;
+            if (!localStorage.getItem(notifKey)) {
+                window.dispatchEvent(new CustomEvent('app-new-notification', {
+                    detail: {
+                        title: 'Medication Expiring Soon',
+                        body: `A batch of ${med.name} is expiring in ${daysToExpiry} days.`,
+                        appName: 'MediManagr'
+                    }
+                }));
+                localStorage.setItem(notifKey, 'true');
+            }
+        }
+        // --- END NOTIFICATIONS ---
+
         const card = document.createElement('div');
         card.className = `stats-box p-4 rounded-lg text-left ${stockClass || expiryClass}`;
         card.innerHTML = `
@@ -1620,6 +1654,25 @@ window.addEventListener('app-logout-request', () => {
                             doseElement.classList.add('unknown');
                             if (scheduledDateTime < new Date()) {
                                 unknownCount++;
+                                
+                                // --- UPDATE: GRACE PERIOD FOR NOTIFICATIONS ---
+                                // Add a 1-hour grace period (3600000 ms) before triggering a "missed" notification
+                                const gracePeriodMs = 60 * 60 * 1000; 
+                                
+                                if (isCurrentDayToday && (scheduledDateTime.getTime() + gracePeriodMs < new Date().getTime())) {
+                                    const notifKey = `notif_missed_${med.id}_${dayStr}_${time}`;
+                                    if (!localStorage.getItem(notifKey)) {
+                                        window.dispatchEvent(new CustomEvent('app-new-notification', {
+                                            detail: {
+                                                title: 'Missed Medication',
+                                                body: `You missed your scheduled dose of ${med.name} at ${time}.`,
+                                                appName: 'MediManagr'
+                                            }
+                                        }));
+                                        localStorage.setItem(notifKey, 'true');
+                                    }
+                                }
+                                // --- END MISSED DOSE NOTIFICATION ---
                             }
                             doseElement.addEventListener('click', () => handleLogDoseFromCalendar(med.id, toLocalISOString(scheduledDateTime)));
                         }

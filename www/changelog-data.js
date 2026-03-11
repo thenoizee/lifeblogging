@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v13.6.0-alpha", 
+        date: "2026-03-11",
+        changes: [
+            "Global Notifications: Added the ability to expand notifications for more details, delete individual alerts, and clear all notifications from a specific app. Also added dates to timestamps.",
+            "In MediManagr: Implemented automated notifications for low medication stock, expiring batches, and missed scheduled doses (including a 1-hour grace period to prevent spam).",
+            "In TaskTrackr: Integrated the Web Share Target API, allowing users to share text and URLs directly from other apps straight into the TaskTrackr quick-add input.",
+        ]
+    },
+    {
     version: "v13.5.0-alpha", 
     date: "2026-03-11",
     changes: [
