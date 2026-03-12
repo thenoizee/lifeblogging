@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v13.7.0-alpha", 
+    date: "2026-03-12",
+    changes: [
+        "In FoodTrackr: Prevented drinks synced from HydrationTrackr from being copied to other days by excluding them from the 'Copy History' and 'Copy Yesterday' modals.",
+        "In FoodTrackr: Disabled the selection of HydrationTrackr entries in 'Bulk Manage' mode, replacing the checkbox with a lock icon to prevent unintended bulk moving or copying.",
+        "In FoodTrackr: Removed the 'Log This Again' button from the product details modal for HydrationTrackr items to enforce native logging in the hydration app.",
+        "In FoodTrackr: Fixed a unit display bug where hydration items incorrectly showed 'g' (grams) instead of 'ml' (milliliters) in the Daily Log and History table views.",
+        "In FoodTrackr: Updated icon to display utensils in orange.",
+
+    ]
+    },
+    {
         version: "v13.6.0-alpha", 
         date: "2026-03-11",
         changes: [
