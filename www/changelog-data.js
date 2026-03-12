@@ -2,6 +2,21 @@
 
 export const changelogData = [
     {
+    version: "v13.8.0-alpha", 
+    date: "2026-03-12",
+    changes: [
+        "In PlantTrackr: Overhauled mobile UX by converting centered modals into native-feeling bottom sheets with slide-up animations and drag handle indicators.",
+        "In PlantTrackr: Replaced the clunky horizontal-scrolling table in the Journal tab with a responsive, card-based flex layout for mobile devices.",
+        "In PlantTrackr: Added the ability to edit existing Journal entries directly from the Journal list, reusing the Quick Log modal for seamless updates.",
+        "In PlantTrackr: Redesigned the Dashboard Weather Banner to be significantly more compact on mobile, saving vertical screen real estate while keeping the hourly forecast scrollable.",
+        "In PlantTrackr: Implemented sticky headers across Add Plant modal ensuring the Close button remains accessible when scrolling.",
+        "In PlantTrackr: Improved responsive form grids inside modals to prevent input fields from squishing together on smaller phone screens.",
+        "In PlantTrackr: Redesigned the Garden and Spaces sub-navigation tabs to act as full-width segmented controls on mobile devices.",
+        "In PlantTrackr: Added native touch feedback (scale-down press animations) to buttons, interactive plant cards, and floating action buttons.",
+        "In PlantTrackr: Adjusted the position of the Quick Log Floating Action Button (FAB) to prevent overlap with iOS swipe bars and system bottom navigation."
+    ]
+    },
+    {
     version: "v13.7.0-alpha", 
     date: "2026-03-12",
     changes: [
