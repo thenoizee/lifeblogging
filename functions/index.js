@@ -79,14 +79,17 @@ exports.exchangeTickTickToken = onRequest(
 // A. LOGIN
 exports.hueLogin = onRequest({ secrets: [hueClientId] }, (req, res) => {
   const uid = req.query.uid; 
-  const redirectUri = `https://${process.env.GCLOUD_PROJECT}.web.app/lightmanagr/callback.html`;
+  
+  // 1. Update this to your exact custom domain path
+  const redirectUri = `https://lifeblogging.app/lightmanagr/callback.html`;
   
   if (!uid) {
       res.send("Error: Missing User ID");
       return;
   }
 
-  const authUrl = `https://api.meethue.com/oauth2/auth?clientid=${hueClientId.value()}&appid=${HUE_APP_ID}&deviceid=lifehub_server&state=${uid}&response_type=code`;
+  // 2. Append the redirect_uri parameter to the URL
+  const authUrl = `https://api.meethue.com/oauth2/auth?clientid=${hueClientId.value()}&appid=${HUE_APP_ID}&deviceid=lifehub_server&state=${uid}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}`;
   
   res.redirect(authUrl);
 });

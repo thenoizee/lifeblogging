@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v13.9.0-alpha", 
+    date: "2026-03-13",
+    changes: [
+        "In LightManagr: Fixed Philips Hue authentication by explicitly setting the redirect URI to the custom domain in the Firebase cloud function.",
+        "In LightManagr: Corrected the frontend OAuth callback to properly redirect users to /lightmanagr instead of the nonexistent /huemanagr route."
+    ]
+    },
+    {
     version: "v13.8.0-alpha", 
     date: "2026-03-12",
     changes: [
