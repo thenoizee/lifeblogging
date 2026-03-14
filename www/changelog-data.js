@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v13.11.0-alpha",
+        date: "2026-03-14",
+        changes: [
+            "In PlantTrackr: Added a dedicated Plant History modal to view past journal entries directly from a plant's card.",
+            "In PlantTrackr: Implemented robust data validation checks on the plant creation and edit forms.",
+            "In PlantTrackr: Added the ability to capture photos directly with the device camera when logging quick care updates.",
+            "In PlantTrackr: Added an 'Outside (Sheltered)' location type and refined the smart rain-delay logic to ensure covered plants are not skipped for watering."
+        ]
+    },
+    {
         version: "v13.10.0-alpha",
         date: "2026-03-14",
         changes: [

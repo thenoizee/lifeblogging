@@ -441,7 +441,8 @@
                         <label class="text-sm font-bold">Type</label>
                         <select id="loc-type" class="input-std">
                             <option value="inside">Inside</option>
-                            <option value="outside">Outside</option>
+                            <option value="outside">Outside (Exposed)</option>
+                            <option value="outside-sheltered">Outside (Sheltered / Covered)</option>
                             <option value="germinator">Germinator</option>
                             <option value="patio">Patio</option>
                             <option value="greenhouse">Greenhouse</option>
@@ -744,6 +745,19 @@
         </div>
     </div>
 
+    <div id="plant-history-modal" class="modal-overlay hidden" style="display: none; z-index: 75;">
+        <div class="modal-content animate-fade">
+            <button class="absolute top-4 right-4 text-2xl hover:text-red-500 close-modal-btn" onclick="document.getElementById('plant-history-modal').style.display='none'">&times;</button>
+            <h2 class="text-2xl font-bold mb-1 flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                <i class="fa-solid fa-clock-rotate-left"></i> Plant History
+            </h2>
+            <p id="history-modal-subtitle" class="text-sm font-bold opacity-70 mb-4"></p>
+            
+            <div id="plant-history-list" class="space-y-3 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar">
+                </div>
+        </div>
+    </div>
+
     <div id="snooze-modal" class="modal-overlay hidden" style="display: none;">
         <div class="modal-content animate-fade max-w-sm">
             <button class="absolute top-4 right-4 text-2xl hover:text-red-500 close-modal-btn" onclick="document.getElementById('snooze-modal').style.display='none'">&times;</button>
@@ -902,7 +916,11 @@
                     </div>
                     <div>
                         <label class="block text-xs font-bold mb-1">Photo</label>
-                        <input type="file" id="log-photo" accept="image/*" class="text-xs">
+                        <div class="flex gap-2 mb-1">
+                            <button type="button" class="btn-secondary flex-1 py-1.5 text-xs" onclick="document.getElementById('log-photo').removeAttribute('capture'); document.getElementById('log-photo').click();"><i class="fa-solid fa-image mr-1"></i> Gallery</button>
+                            <button type="button" class="btn-secondary flex-1 py-1.5 text-xs" onclick="document.getElementById('log-photo').setAttribute('capture', 'environment'); document.getElementById('log-photo').click();"><i class="fa-solid fa-camera mr-1"></i> Camera</button>
+                        </div>
+                        <input type="file" id="log-photo" accept="image/*" class="hidden" onchange="document.getElementById('log-photo-name').innerHTML = this.files[0] ? '<i class=\'fa-solid fa-check mr-1\'></i> ' + this.files[0].name : ''">
                         <p id="log-photo-name" class="text-xs font-bold text-[var(--primary)] mt-1 truncate"></p>
                     </div>
                 </div>
@@ -1142,7 +1160,7 @@
                 card.className = "card p-4 flex flex-col justify-between hover:shadow-lg transition relative";
                 
                 const typeIcons = {
-                    inside: 'fa-house', outside: 'fa-sun', germinator: 'fa-seedling', patio: 'fa-chair', greenhouse: 'fa-tent'
+                    inside: 'fa-house', outside: 'fa-cloud-sun-rain', 'outside-sheltered': 'fa-umbrella', germinator: 'fa-seedling', patio: 'fa-chair', greenhouse: 'fa-tent'
                 };
                 const icon = typeIcons[loc.type] || 'fa-map-pin';
 
@@ -1259,6 +1277,7 @@ card.innerHTML = `
         </div>
         
         <div class="flex gap-3">
+            <button class="text-purple-400 hover:text-purple-600 transition" onclick="window.openPlantHistoryModal('${plant.id}')" title="View Plant History"><i class="fa-solid fa-clock-rotate-left"></i></button>
             <button class="text-blue-400 hover:text-blue-600 transition" onclick="window.openPlantTasksModal('${plant.id}')" title="View Forecast & Calculations"><i class="fa-solid fa-calculator"></i></button>
             <button class="text-gray-400 hover:text-[var(--primary)] edit-plant-btn" data-id="${plant.id}"><i class="fa-solid fa-pen"></i></button>
         </div>
@@ -1517,7 +1536,8 @@ freq = Math.max(1, freq);
 
 // 4. Rain Delay Logic
 let rainDelayed = false;
-if (locObj && (locObj.type === 'outside' || locObj.type === 'patio' || locObj.type === 'greenhouse')) {
+// Only apply rain delay to fully exposed outside plants. Sheltered, greenhouse, or patio won't get direct rain.
+if (locObj && locObj.type === 'outside') {
     if (state.weather && state.weather.precipitation_sum && state.weather.precipitation_sum[0] > 1) {
         freq += 2; 
         rainDelayed = true;
@@ -2043,20 +2063,42 @@ getEl("plant-has-saucer").checked = plant.hasSaucer || false;
             const fileInput = getEl("plant-photo");
             const file = fileInput.files[0];
             
+            // --- DATA VALIDATION CHECKS ---
+            const rawName = getEl("plant-name").value.trim();
+            if (!rawName) return showMsg("Plant Name is required", "error");
+
+            const validateNumber = (fieldId, fieldName) => {
+                const val = getEl(fieldId).value;
+                if (val) {
+                    const parsed = parseInt(val);
+                    if (isNaN(parsed) || parsed < 0) {
+                        showMsg(`${fieldName} must be a valid positive number`, "error");
+                        return false;
+                    }
+                }
+                return true;
+            };
+
+            if (!validateNumber("plant-pot-size", "Pot Size")) return;
+            if (!validateNumber("plant-water-freq", "Water Frequency")) return;
+            if (!validateNumber("plant-fert-freq", "Fertilizer Frequency")) return;
+            if (!validateNumber("plant-prog-freq", "Progress Frequency")) return;
+            if (!validateNumber("plant-mist-freq", "Mist Frequency")) return;
+            if (!validateNumber("plant-prune-freq", "Prune Frequency")) return;
+            if (!validateNumber("plant-repot-freq", "Repot Frequency")) return;
+
             let data = {
-    name: getEl("plant-name").value,
-    species: getEl("plant-species").value,
-    location: getEl("plant-location").value,
-    light: getEl("plant-light").value,
-    
-    // ADD THESE TWO LINES:
-    potType: getEl("plant-pot-type").value,
-potSize: parseInt(getEl("plant-pot-size").value) || null,
-soilType: getEl("plant-soil-type").value,     // NEW
-windowDist: getEl("plant-window-dist").value, // NEW
-hasSaucer: getEl("plant-has-saucer").checked, // NEW
-    health: getEl("plant-health").value,
-    position: getEl("plant-position").value,
+                name: rawName,
+                species: getEl("plant-species").value,
+                location: getEl("plant-location").value,
+                light: getEl("plant-light").value,
+                potType: getEl("plant-pot-type").value,
+                potSize: parseInt(getEl("plant-pot-size").value) || null,
+                soilType: getEl("plant-soil-type").value,
+                windowDist: getEl("plant-window-dist").value,
+                hasSaucer: getEl("plant-has-saucer").checked,
+                health: getEl("plant-health").value,
+                position: getEl("plant-position").value,
                 waterFreq: parseInt(getEl("plant-water-freq").value) || 0,
                 fertFreq: parseInt(getEl("plant-fert-freq").value) || 0,
                 progFreq: parseInt(getEl("plant-prog-freq").value) || 0,
@@ -2067,11 +2109,8 @@ hasSaucer: getEl("plant-has-saucer").checked, // NEW
                 repotFreq: parseInt(getEl("plant-repot-freq").value) || 0,
                 weatherAlerts: getEl("plant-weather").checked,
                 overwinter: getEl("plant-overwinter").checked,
-                
-                // Add these two new lines:
                 status: getEl("plant-status").value,
                 background: getEl("plant-background").value,
-                
                 updatedAt: Timestamp.now()
             };
             
@@ -2624,12 +2663,14 @@ hasSaucer: getEl("plant-has-saucer").checked, // NEW
         
         wFreq = Math.max(1, wFreq); // Floor limit
         
-        if (locObj && (locObj.type === 'outside' || locObj.type === 'patio' || locObj.type === 'greenhouse')) {
-    if (state.weather && state.weather.precipitation_sum && state.weather.precipitation_sum[0] > 1) {
-        wFreq += 2; 
-        mathLog += `<li>🌧️ Rain Delay (+2): <b>${wFreq} days</b></li>`;
-    }
-}
+        if (locObj && locObj.type === 'outside') {
+            if (state.weather && state.weather.precipitation_sum && state.weather.precipitation_sum[0] > 1) {
+                wFreq += 2; 
+                mathLog += `<li>🌧️ Exposed to Rain Delay (+2): <b>${wFreq} days</b></li>`;
+            }
+        } else if (locObj && (locObj.type === 'outside-sheltered' || locObj.type === 'patio' || locObj.type === 'greenhouse')) {
+            mathLog += `<li>☂️ Sheltered from Rain (No delay): <b>${wFreq} days</b></li>`;
+        }
 
 // NEW: Soil, Window, Saucer breakdown
 if (plant.soilType === 'well-draining') { wFreq -= 1; mathLog += `<li>🏜️ Well-draining Soil (-1): <b>${wFreq} days</b></li>`; }
@@ -2729,6 +2770,46 @@ wFreq = Math.max(1, wFreq); // Re-apply floor limit
     list.innerHTML = html;
     toggleDisplay(getEl("plant-tasks-modal"), true);
 };
+
+window.openPlantHistoryModal = (plantId) => {
+            const plant = state.plants.find(p => p.id === plantId);
+            if (!plant) return;
+            
+            getEl("history-modal-subtitle").innerHTML = `Journal entries for <span class="text-[var(--primary)]">${plant.name}</span>`;
+            const list = getEl("plant-history-list");
+            list.innerHTML = "";
+            
+            const plantLogs = state.logs.filter(l => l.plantId === plant.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+            
+            if (plantLogs.length === 0) {
+                list.innerHTML = `<div class="text-center p-6 border-2 border-dashed border-[var(--border)] rounded-lg"><p class="opacity-50 text-sm font-bold"><i class="fa-solid fa-seedling text-2xl mb-2 block"></i> No history logged yet.</p></div>`;
+            } else {
+                let html = "";
+                plantLogs.forEach(log => {
+                    let detailsHtml = log.notes ? `<p class="italic mt-1 text-sm font-medium">"${log.notes}"</p>` : '';
+                    if (log.height) detailsHtml += `<span class="inline-block text-[10px] bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold">↕️ ${log.height}cm</span>`;
+                    if (log.health) detailsHtml += `<span class="inline-block text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold capitalize">❤️ ${log.health.replace('-', ' ')}</span>`;
+                    if (log.noticing && log.noticing.length > 0) detailsHtml += `<span class="inline-block text-[10px] bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold">✨ ${log.noticing.join(', ')}</span>`;
+                    
+                    const photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" onclick="openPhotoModal(this.src)" class="w-16 h-16 object-cover rounded shadow-sm cursor-zoom-in mt-2 border border-[var(--border)]">` : '';
+
+                    html += `
+                        <div class="card p-3 border-l-4 border-purple-500 bg-purple-50 dark:bg-purple-900/10 shadow-sm relative">
+                            <div class="flex justify-between items-start mb-1">
+                                <h3 class="font-bold text-purple-700 dark:text-purple-400 text-sm uppercase tracking-wider">${log.type}</h3>
+                                <span class="text-xs opacity-70">${new Date(log.date).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}</span>
+                            </div>
+                            <div class="text-sm opacity-90">
+                                ${detailsHtml}
+                                ${photoHtml}
+                            </div>
+                        </div>
+                    `;
+                });
+                list.innerHTML = html;
+            }
+            toggleDisplay(getEl("plant-history-modal"), true);
+        };
 
         window.openPhotoModal = (src) => {
             if (!src) return;
