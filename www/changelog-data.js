@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v13.10.0-alpha",
+        date: "2026-03-14",
+        changes: [
+            "In MediManagr: Added a comprehensive Lens Usage History log to the contact lens tracker with full edit and delete capabilities.",
+            "In MediManagr: Added the ability to edit contact lens stock batches after they have been initially recorded.",
+            "In MediManagr: Added a convenient 'Log Both Lenses Used' button for quick daily tracking.",
+        ]
+    },
+    {
     version: "v13.9.0-alpha", 
     date: "2026-03-13",
     changes: [
