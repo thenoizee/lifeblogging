@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v13.12.0-alpha",
+        date: "2026-03-15",
+        changes: [
+            "In Dashboard: Added a date picker allowing you to view historical data and widget states for specific past days.",
+            "In Dashboard: Implemented a 'Live' toggle mode to easily switch between real-time recent activity and specific historical day views.",
+            "In Dashboard: Updated Firebase query listeners to dynamically filter Logs, Dailies, Medications, and Hydration data based on the selected mode and date.",
+            "In Dashboard: Added dedicated icons for Phone Screen Time (PST) and Laptop Screen Time (LST) within the Recent Activity timeline."
+        ]
+    },
+    {
         version: "v13.11.0-alpha",
         date: "2026-03-14",
         changes: [

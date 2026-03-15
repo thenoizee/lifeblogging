@@ -150,7 +150,21 @@
                     <span id="greeting-text">Dashboard</span>
                 </h1>
                 <div class="flex items-center gap-2 mt-1 text-xs text-[var(--text-secondary)] font-arial">
-                    <span id="current-date">Loading...</span>
+                    <span id="current-time">--:--:--</span>
+                    <span class="opacity-20">|</span>
+
+                    <button id="live-toggle-btn" class="bg-green-100 text-green-800 border border-green-200 px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1 dark:bg-green-900/30 dark:text-green-500 dark:border-green-700 transition-colors">
+                        <i class="fas fa-satellite-dish"></i> Live
+                    </button>
+
+                    <div id="date-picker-container" class="hidden relative flex items-center gap-2 bg-[var(--card-bg)] px-2 py-0.5 rounded border border-[var(--border-color)] shadow-sm">
+                        <i class="fa-regular fa-calendar text-indigo-500"></i>
+                        <input type="date" id="date-picker" class="bg-transparent border-none text-[var(--text-primary)] font-bold cursor-pointer outline-none text-xs" title="Select date to view">
+                    </div>
+                    
+                    <span id="live-disclaimer" class="hidden bg-yellow-100 text-yellow-800 border border-yellow-200 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 dark:bg-yellow-900/30 dark:text-yellow-500 dark:border-yellow-700">
+                        <i class="fas fa-history"></i> History
+                    </span>
                     
                     <span class="opacity-20">|</span>
                     
@@ -434,13 +448,16 @@
         const db = getFirestore(app);
         let currentUser = null;
         let unsubscribers = [];
+        let targetDate = new Date();
+        targetDate.setHours(0, 0, 0, 0);
+        let isLiveMode = true; // NEW STATE
 
         // --- UI References ---
         const ui = {
             grid: document.getElementById('dashboard-grid'),
             loginPrompt: document.getElementById('login-prompt'),
             authContainer: document.getElementById('auth-container'),
-            date: document.getElementById('current-date'),
+            time: document.getElementById('current-time'),
             greeting: document.getElementById('greeting-text'),
             moodDisplay: document.getElementById('mood-display'),
             moodText: document.getElementById('mood-text'),
@@ -470,14 +487,19 @@
             inboxContainer: document.getElementById('inbox-container'),
             warrantyList: document.getElementById('warranty-list-container'),
             vehicleList: document.getElementById('vehicle-list-container'),
+            datePicker: document.getElementById('date-picker'),
+            datePickerContainer: document.getElementById('date-picker-container'),
+            liveDisclaimer: document.getElementById('live-disclaimer'),
+            liveToggleBtn: document.getElementById('live-toggle-btn'),
         };
 
         // --- Clock Logic ---
         function updateTime() {
             const now = new Date();
-            const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
             const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
-            ui.date.innerHTML = `<i class="fa-regular fa-clock mr-1"></i> ${dateStr} <span class="opacity-50 mx-1">|</span> <span class="font-bold">${timeStr}</span>`;
+            if (ui.time) {
+                ui.time.innerHTML = `<i class="fa-regular fa-clock mr-1"></i> <span class="font-bold">${timeStr}</span>`;
+            }
         }
         setInterval(updateTime, 1000);
         updateTime();
@@ -651,6 +673,8 @@
                         else if(val === 5) { iconClass = 'fa-laugh-beam'; colorClass = 'text-green-600 border-green-600'; }
                         else { iconClass = 'fa-face-smile'; colorClass = 'text-gray-400 border-gray-400'; }
                     }
+                    else if (name === 'pst' || name.includes('phone screen')) { iconClass = 'fa-mobile-screen'; colorClass = 'text-blue-400 border-blue-400'; }
+                    else if (name === 'lst' || name.includes('laptop screen')) { iconClass = 'fa-laptop'; colorClass = 'text-purple-400 border-purple-400'; }
                     else if (name.includes('water')) { iconClass = 'fa-glass-water'; colorClass = 'text-blue-500 border-blue-500'; }
                     else if (name.includes('run') || name.includes('walk') || name.includes('steps')) { iconClass = 'fa-person-running'; colorClass = 'text-green-500 border-green-500'; }
                     else if (name.includes('code') || name.includes('dev')) { iconClass = 'fa-code'; colorClass = 'text-indigo-500 border-indigo-500'; }
@@ -676,7 +700,9 @@
                 });
             }
 
-            const todayStr = new Date().toISOString().split('T')[0];
+            // Replace the todayStr line with:
+            const dateToUse = isLiveMode ? new Date() : targetDate;
+            const todayStr = new Date(dateToUse.getTime() - (dateToUse.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
             const todaysMoodLog = allLogs.find(d => d.attributeName.toLowerCase() === 'mood' && d.date.startsWith(todayStr));
 
             if (todaysMoodLog) {
@@ -855,7 +881,9 @@
         }
 
         const renderDailies = () => {
-            const todayStr = new Date().toISOString().split('T')[0];
+            // Replace the todayStr line with:
+            const dateToUse = isLiveMode ? new Date() : targetDate;
+            const todayStr = new Date(dateToUse.getTime() - (dateToUse.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
             const counts = {};
             state.dailyLogs.forEach(d => {
                 if(d.date.startsWith(todayStr)) {
@@ -894,7 +922,9 @@
         };
 
         const renderMeds = () => {
-            const dayName = new Date().toLocaleDateString('en-US', {weekday: 'long'});
+            // Replace the dayName line with:
+            const dateToUse = isLiveMode ? new Date() : targetDate;
+            const dayName = dateToUse.toLocaleDateString('en-US', {weekday: 'long'});
             ui.medsList.innerHTML = '';
             
             let scheduledDoses = [];
@@ -1158,11 +1188,21 @@
         };
 
         const setupListeners = (uid) => {
-            const start = new Date(); start.setHours(0, 0, 0, 0);
-            const end = new Date(); end.setHours(23, 59, 59, 999);
+            const queryDate = isLiveMode ? new Date() : new Date(targetDate);
+            const start = new Date(queryDate); start.setHours(0, 0, 0, 0);
+            const end = new Date(queryDate); end.setHours(23, 59, 59, 999);
             const startTs = Timestamp.fromDate(start);
             const endTs = Timestamp.fromDate(end);
+            
+            const targetDateStr = new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
             const todayStr = start.toISOString().split('T')[0];
+
+            // Toggle UI visibility based on mode
+            ui.liveDisclaimer.classList.toggle('hidden', isLiveMode);
+            ui.datePickerContainer.classList.toggle('hidden', isLiveMode);
+            ui.liveToggleBtn.className = isLiveMode 
+                ? "bg-green-100 text-green-800 border border-green-200 px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1 dark:bg-green-900/30 dark:text-green-500 dark:border-green-700 transition-colors"
+                : "bg-[var(--card-bg)] text-[var(--text-secondary)] border border-[var(--border-color)] px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors";
 
             unsubscribers.push(onSnapshot(doc(db, 'users', uid, 'settings', 'profile'), (snap) => {
                 const name = snap.data()?.displayName;
@@ -1180,14 +1220,21 @@
                 ui.greeting.textContent = `${timeGreeting}, ${finalName}!`;
             }));
 
-            const dailiesQ = query(collection(db, `users/${uid}/sources/dailies/data`), orderBy('date', 'desc'), limit(20));
+            // If Live mode, get the 20 most recent items. If History mode, get only the items from the targetDate.
+            const dailiesQ = isLiveMode 
+                ? query(collection(db, `users/${uid}/sources/dailies/data`), orderBy('date', 'desc'), limit(20))
+                : query(collection(db, `users/${uid}/sources/dailies/data`), where('date', '>=', targetDateStr + " 00:00:00"), where('date', '<=', targetDateStr + " 23:59:59"));
+            
             unsubscribers.push(onSnapshot(dailiesQ, (snap) => {
                 state.dailyLogs = snap.docs.map(d => d.data());
                 renderLogsAndMood();
                 renderDailies(); 
             }));
 
-            const manualQ = query(collection(db, `users/${uid}/sources/manual/data`), orderBy('date', 'desc'), limit(20));
+            const manualQ = isLiveMode
+                ? query(collection(db, `users/${uid}/sources/manual/data`), orderBy('date', 'desc'), limit(20))
+                : query(collection(db, `users/${uid}/sources/manual/data`), where('date', '>=', targetDateStr + " 00:00:00"), where('date', '<=', targetDateStr + " 23:59:59"));
+            
             unsubscribers.push(onSnapshot(manualQ, (snap) => {
                 state.manualLogs = snap.docs.map(d => d.data());
                 renderLogsAndMood();
@@ -1451,7 +1498,7 @@
                 renderMeds();
             }));
 
-            const dosesQ = query(collection(db, `users/${uid}/doses`), where('date', '>=', todayStr));
+            const dosesQ = query(collection(db, `users/${uid}/doses`), where('date', '>=', targetDateStr + " 00:00:00"), where('date', '<=', targetDateStr + " 23:59:59"));
             unsubscribers.push(onSnapshot(dosesQ, (snap) => {
                 state.todayDoses = []; 
                 snap.forEach(d => {
@@ -1502,6 +1549,37 @@
 
         const refreshBtn = document.getElementById('refresh-btn');
         if(refreshBtn) refreshBtn.style.display = 'none'; 
+
+        // Setup Live Toggle Button
+        ui.liveToggleBtn.addEventListener('click', () => {
+            isLiveMode = !isLiveMode;
+            
+            if (!isLiveMode) {
+                // Default back to today's date when turning History mode on
+                targetDate = new Date();
+                targetDate.setHours(0, 0, 0, 0);
+                ui.datePicker.value = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+            }
+            
+            if (currentUser) {
+                cleanupListeners();
+                setupListeners(currentUser.uid);
+            }
+        });
+
+        // Setup Date Picker
+        ui.datePicker.value = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        
+        ui.datePicker.addEventListener('change', (e) => {
+            if (!e.target.value) return;
+            const parts = e.target.value.split('-');
+            targetDate = new Date(parts[0], parts[1] - 1, parts[2]);
+            
+            if (currentUser) {
+                cleanupListeners();
+                setupListeners(currentUser.uid);
+            }
+        });
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
