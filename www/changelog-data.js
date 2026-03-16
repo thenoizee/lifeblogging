@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v14.1.0-alpha",
+        date: "2026-03-16",
+        changes: [
+            "In Account Settings: Added a new 'Public Profile' tab to preview how the user's profile appears to others.",
+            "In Account Settings: Implemented dynamic data initialization for the public profile, displaying Account Age and a placeholder email.",
+            "In Account Settings: Mapped the user's Display Name to the public profile preview with real-time visual updates upon saving.",
+            "In Account Settings: Updated the navigation configuration to include the new Public Profile tab and 'id-card' icon."
+        ]
+    },
+    {
         version: "v14.0.0-alpha",
         date: "2026-03-16",
         changes: [
