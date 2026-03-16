@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v14.0.0-alpha",
+        date: "2026-03-16",
+        changes: [
+            "In Hub: Removed the 'Enable Notifications' button from the main dashboard to declutter the UI (relocating to Account/Settings).",
+            "In HealthManagr: Renamed the application from 'MediManagr' to 'HealthManagr', including updated icons and navigation references.",
+            "In HealthManagr: Added a new Monthly Calendar View to track contact lens usage history.",
+            "In HealthManagr: Implemented a Weekly Overview calendar to visualize left and right contact lens logging at a glance."
+        ]
+    },
+    {
         version: "v13.12.0-alpha",
         date: "2026-03-15",
         changes: [

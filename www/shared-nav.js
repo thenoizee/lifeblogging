@@ -24,7 +24,7 @@ export class AppNavigation {
             { name: 'RecipeManagr', url: '/recipemanagr', icon: 'fa-book-open', color: 'bg-teal-600' },
             { name: 'TaskTrackr', url: '/tasktrackr', icon: 'fa-check-double', color: 'bg-blue-600' },
             { name: 'VidTrackr', url: '/vidtrackr', icon: 'fa-ticket', color: 'bg-red-600' },
-            { name: 'MediManagr', url: '/medimanagr', icon: 'fa-pills', color: 'bg-pink-600' },
+            { name: 'HealthManagr', url: '/healthmanagr', icon: 'fa-notes-medical', color: 'bg-pink-600' },
             { name: 'PodTrackr', url: '/podtrackr', icon: 'fa-podcast', color: 'bg-purple-600' },
             { name: 'Loggr', url: '/log', icon: 'fa-pen-to-square', color: 'bg-green-600' },
             { name: 'Analyser', url: '/analyser', icon: 'fa-chart-line', color: 'bg-indigo-600' },

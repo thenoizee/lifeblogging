@@ -203,9 +203,15 @@
                 <div id="linked-accounts-container" class="space-y-2">
                     </div>
             </div>
-        </div>
 
-        
+            <div class="settings-card">
+                <h3 class="text-lg font-semibold mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">Push Notifications</h3>
+                <p class="text-sm text-[var(--text-color-secondary)] mb-4">Enable notifications on this device to receive alerts for low stock and missed doses in HealthManagr.</p>
+                <button id="enable-notif-btn" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 ease-in-out shadow-lg w-full text-sm flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-bell"></i> Enable Notifications
+                </button>
+            </div>
+            </div>
 
         <div id="tab-content-services" class="tab-content">
             <div class="settings-card">
@@ -404,6 +410,7 @@
             signInWithPopup
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, onSnapshot, setDoc, getDocs, collection, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
         
         import { TICKTICK_CLIENT_ID, TICKTICK_REDIRECT_URI } from '../tasktrackr/api_keys.js';
         import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI } from '../vidtrackr/api_keys.js';
@@ -425,6 +432,7 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+        const messaging = getMessaging(app);
 
         // State & Nav
         let nav = null;
@@ -475,6 +483,55 @@ const searchCityBtn = document.getElementById('search-city-btn');
 const deleteLocationBtn = document.getElementById('delete-location-btn');
 const locationDuration = document.getElementById('location-duration');
 // (updateLocationBtn and locationStatus should already be there from previous step)
+
+        const enableNotifBtn = document.getElementById('enable-notif-btn');
+
+        if (enableNotifBtn) {
+            enableNotifBtn.addEventListener('click', async () => {
+                try {
+                    const permission = await Notification.requestPermission();
+                    
+                    if (permission === 'granted') {
+                        enableNotifBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Setting up...';
+                        const registration = await navigator.serviceWorker.ready;
+                        
+                        const token = await getToken(messaging, { 
+                            vapidKey: 'BD7BGKbn0qPtzT0iUfEBjzaw35JJJQHeUVPlX3Ib-4nRiWDqRh6JvupxWwM9xTfiYIFIKqwWNmMl7QD-UNCJVJs',
+                            serviceWorkerRegistration: registration
+                        });
+
+                        if (token) {
+                            console.log('FCM Token:', token);
+                            
+                            if (auth.currentUser) {
+                                try {
+                                    await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'notifications'), {
+                                        fcmToken: token,
+                                        updatedAt: new Date()
+                                    }, { merge: true });
+                                    
+                                    showMessage('Notifications enabled and linked to your account!', 'success');
+                                } catch (dbError) {
+                                    console.error('Error saving token to Firestore:', dbError);
+                                    showMessage('Enabled locally, but failed to link to account.', 'error');
+                                }
+                            } else {
+                                showMessage('Notifications enabled locally (Guest mode).', 'success');
+                            }
+                        } else {
+                            showMessage('Failed to get token. Check console for details.', 'error');
+                        }
+                    } else {
+                        showMessage('Permission denied. Please enable them in your browser settings.', 'error');
+                    }
+                } catch (e) {
+                    showMessage('Error: ' + e.message, 'error');
+                    console.error('Full Token Error:', e);
+                } finally {
+                    enableNotifBtn.innerHTML = '<i class="fa-solid fa-bell"></i> Enable Notifications';
+                }
+            });
+        }
 
         const KNOWN_APPS = {
             'hydrationtrackr': { label: 'HydrationTrackr', paths: ['hydrationtrackr'] },
