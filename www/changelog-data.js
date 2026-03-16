@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v14.2.0-alpha",
+        date: "2026-03-16",
+        changes: [
+            "In VidTrackr: Adjusted episode banner max-height to ensure action buttons are visible on mobile and iPad screens.",
+            "In VidTrackr: Constrained movie and show poster container widths on mobile devices to prevent action buttons from being pushed off-screen.",
+            "In VidTrackr: Updated the 'Log & Rate' modal to be vertically scrollable, preventing UI cut-offs on smaller screens or in landscape orientation.",
+            "In VidTrackr: Implemented custom scrollbar styling to hide bulky native web scrollbars, maintaining a clean and immersive UI across devices."
+        ]
+    },
+    {
         version: "v14.1.0-alpha",
         date: "2026-03-16",
         changes: [
