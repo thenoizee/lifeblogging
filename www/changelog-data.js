@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v14.5.0-alpha",
+        date: "2026-03-17",
+        changes: [
+            "In FoodTrackr: Upgraded the bulk manage bar with new 'Delete Selected' and 'Save as Meal' functionality.",
+            "In FoodTrackr: Enhanced the dashboard date selection UX by replacing the dashed text link with a dedicated calendar picker button.",
+            "In FoodTrackr: Introduced a 'Preview Meal' modal allowing users to inspect the individual ingredients and macros of saved meals before logging them.",
+            "In FoodTrackr: Enabled the detailed product preview modal to open when clicking on favorite foods in the manage list and quick-log tabs.",
+        ]
+    },
+    {
         version: "v14.4.0-alpha",
         date: "2026-03-17",
         changes: [

@@ -93,8 +93,16 @@
 }
 
         #main-app-container {
-            flex: 0 0 auto; /* CHANGED: Stops container from forcing footer down */
+            flex: 1 0 auto;
             width: 100%;
+            display: flex;
+            flex-direction: column;
+            min-height: 100dvh;
+        }
+
+        /* This forces the inner content wrapper to expand, pushing the footer down */
+        #main-app-container > div:first-child {
+            flex-grow: 1;
             display: flex;
             flex-direction: column;
         }
@@ -306,12 +314,11 @@
         .site-footer {
             width: 100%;
             background-color: var(--card-bg-color);
-            /* margin-top: auto;  <-- REMOVE THIS LINE */
+            margin-top: auto;
             padding: 1.5rem;
             text-align: center;
             color: var(--text-color-secondary);
             font-size: 0.9rem;
-            margin-top: 2rem; /* Add a small fixed gap instead so it's not touching content */
         }
         .dark .site-footer {
             background-color: #1f2937;
@@ -729,7 +736,7 @@ body.bulk-active {
     </div>
 
     <div id="main-app-container" class="hidden w-full" style="display: none;">
-        <div class="max-w-[1200px] mx-auto px-4 md:pb-8">
+        <div class="max-w-[1200px] mx-auto px-4 md:pb-8 flex-grow w-full">
         
         <div id="tab-content-dashboard" class="tab-content active">
     
@@ -1160,17 +1167,17 @@ body.bulk-active {
 
     <div class="flex justify-between items-center mb-4">
         <button id="prev-day-btn" class="main-button p-2 leading-none"><i class="fa-solid fa-chevron-left"></i></button>
-        <div class="flex items-center gap-4 relative">
-            <h2 id="dashboard-date-header" 
-                class="text-2xl font-semibold text-center cursor-pointer hover:underline decoration-dashed" 
-                title="Click to change date"
-                onclick="document.getElementById('dashboard-calendar-picker').showPicker()">
+        <div class="flex items-center gap-2 relative">
+            <h2 id="dashboard-date-header" class="text-2xl font-semibold text-center select-none">
                 Today's Summary
             </h2>
             
-            <input type="date" id="dashboard-calendar-picker" class="opacity-0 absolute w-0 h-0 top-0 left-0">
+            <button type="button" class="text-orange-500 hover:text-orange-700 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-400 p-2 rounded-lg transition-colors ml-1" onclick="document.getElementById('dashboard-calendar-picker').showPicker()" title="Pick a date">
+                <i class="fa-regular fa-calendar-days text-xl"></i>
+            </button>
+            <input type="date" id="dashboard-calendar-picker" class="opacity-0 absolute w-0 h-0 top-0 left-0 pointer-events-none">
             
-            <button id="today-btn" class="secondary-button text-sm py-1 px-3">Today</button>
+            <button id="today-btn" class="secondary-button text-sm py-1.5 px-3 ml-2">Jump to Today</button>
         </div>
         <button id="next-day-btn" class="main-button p-2 leading-none"><i class="fa-solid fa-chevron-right"></i></button>
     </div>
@@ -1219,6 +1226,16 @@ body.bulk-active {
         <button id="bulk-copy-btn" class="text-gray-500 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-400 flex flex-col items-center group transition disabled:opacity-50 disabled:cursor-not-allowed" disabled title="Copy">
             <i class="fa-solid fa-copy text-lg group-hover:scale-110 transition-transform"></i>
             <span class="text-[10px] font-bold mt-1">Copy</span>
+        </button>
+
+        <button id="bulk-save-meal-btn" class="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 flex flex-col items-center group transition disabled:opacity-50 disabled:cursor-not-allowed" disabled title="Save as Meal">
+            <i class="fa-solid fa-utensils text-lg group-hover:scale-110 transition-transform"></i>
+            <span class="text-[10px] font-bold mt-1">Make Meal</span>
+        </button>
+
+        <button id="bulk-delete-btn" class="text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 flex flex-col items-center group transition disabled:opacity-50 disabled:cursor-not-allowed" disabled title="Delete">
+            <i class="fa-solid fa-trash text-lg group-hover:scale-110 transition-transform"></i>
+            <span class="text-[10px] font-bold mt-1">Delete</span>
         </button>
     </div>
     
@@ -1759,6 +1776,22 @@ body.bulk-active {
             <button id="btn-keep-standalone" class="main-button py-2">Break Apart into Standalone Items</button>
             <button id="btn-cancel-group-delete" class="secondary-button py-2">Cancel</button>
         </div>
+    </div>
+</div>
+
+<div id="preview-meal-modal" class="modal-overlay hidden" style="z-index: 1200;">
+    <div class="modal-container w-full max-w-md max-h-[90vh] flex flex-col">
+        <div class="flex justify-between items-center mb-4 flex-shrink-0">
+            <h2 class="text-xl font-bold" id="preview-meal-title">Meal Preview</h2>
+            <button id="close-preview-meal-btn" class="text-2xl font-bold text-[var(--text-color-secondary)] hover:text-[var(--text-color-primary)]">&times;</button>
+        </div>
+        <div class="overflow-y-auto flex-grow pr-2 custom-scrollbar mb-4 space-y-2" id="preview-meal-list">
+            </div>
+        <div class="flex justify-between font-bold border-t border-[var(--border-color)] pt-3 mt-auto">
+            <span>Total:</span>
+            <span id="preview-meal-total-cals" class="text-orange-600 dark:text-orange-400">0 kcal</span>
+        </div>
+        <button id="preview-log-meal-btn" class="main-button w-full mt-4">Log This Meal</button>
     </div>
 </div>
 
@@ -3418,6 +3451,52 @@ document.getElementById('history-search-input').addEventListener('input', () => 
     }
 };
 
+window.openProductModalFromFavorite = (foodId) => {
+    const item = favoriteFoods.find(i => i.id === foodId);
+    if (!item) return;
+
+    const mockProduct = {
+        product_name: item.name,
+        brands: item.brands || item.source || '',
+        _source: item.source,                  
+        _restaurantName: item.restaurantName,  
+        quantity: '100g',
+        serving_size: '100g', 
+        image_front_thumb_url: item.imageUrl,
+        ingredients_text: item.ingredients || 'No ingredients saved.',
+        allergens_from_ingredients: item.allergens || 'No allergens saved.',
+        nutriments: {
+            'energy-kcal_100g': item.baseNutrients?.calories || item.calories || 0,
+            'proteins_100g': item.baseNutrients?.protein || item.protein || 0,
+            'carbohydrates_100g': item.baseNutrients?.carbs || item.carbs || 0,
+            'fat_100g': item.baseNutrients?.fat || item.fat || 0,
+            'fiber_100g': item.baseNutrients?.fiber || item.fiber || 0,
+            'sugars_100g': item.baseNutrients?.sugar || item.sugar || 0,
+            'sodium_100g': item.baseNutrients?.sodium || item.sodium || 0,
+            'saturated-fat_100g': item.baseNutrients?.['saturated-fat'] || item['saturated-fat'] || 0,
+            'salt_100g': item.baseNutrients?.salt || item.salt || 0,
+        },
+        categories: 'Favorite Food',
+        labels: 'Saved Favorite',
+        countries: 'User Log'
+    };
+
+    showProductDetailsModal(mockProduct);
+
+    const btn = document.getElementById('select-product-btn');
+    if(btn) {
+        btn.classList.remove('hidden');
+        btn.textContent = "Log This Food";
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        newBtn.addEventListener('click', () => {
+            selectFoodItem(item, 100); 
+            document.getElementById('product-modal').classList.add('hidden');
+            document.querySelector('[data-tab="log-food"]').click();
+        });
+    }
+};
+
 
       const initSortable = () => {
           // Safety Check: Destroy existing instances if they exist
@@ -3890,7 +3969,7 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
             </div>
         `;
         card.addEventListener('click', () => {
-            selectFoodItem(food, 100);
+            window.openProductModalFromFavorite(food.id);
         });
         listEl.appendChild(card);
     });
@@ -3937,7 +4016,7 @@ const renderMyMealsQuickList = () => {
                 meal.items.forEach(item => addToBuilder(item));
                 showToast(`Added items from ${meal.name}`);
             } else {
-                openLogMealModal(meal.id);
+                openPreviewMealModal(meal);
             }
         });
         listEl.appendChild(card);
@@ -3968,11 +4047,11 @@ const renderMyMealsQuickList = () => {
 
                 card.innerHTML = `
                     <div class="flex items-center justify-between">
-                        <div class="flex items-center overflow-hidden">
-                            <img src="${imageUrl}" alt="${food.name}" class="manage-list-image">
-                            <div class="truncate">
+                        <div class="flex items-center overflow-hidden cursor-pointer hover:opacity-70 transition-opacity" onclick="window.openProductModalFromFavorite('${food.id}')" title="View Details">
+                            <img src="${imageUrl}" alt="${food.name}" class="manage-list-image pointer-events-none">
+                            <div class="truncate pointer-events-none">
                                 <h3 class="font-bold truncate">${food.name || 'Unnamed'}</h3>
-                                <p class="text-xs truncate">${food.brands || 'Manual Entry'} | ${(food.calories || 0).toFixed(0)} kcal/100g</p>
+                                <p class="text-xs truncate text-gray-500">${food.brands || 'Manual Entry'} | ${(food.calories || 0).toFixed(0)} kcal/100g</p>
                             </div>
                         </div>
                         <div class="flex gap-2 flex-shrink-0 ml-2">
@@ -4011,11 +4090,12 @@ const renderMyMealsQuickList = () => {
                              </div>
                         </div>
                         <div class="flex gap-2 flex-shrink-0 ml-2">
+                            <button class="secondary-button text-xs py-2 px-3 rounded-md" data-action="preview-meal" data-id="${meal.id}">Preview</button>
                             <button class="secondary-button text-xs py-2 px-3 rounded-md" data-action="edit-meal" data-id="${meal.id}">Rename</button>
                             <button class="destructive-button text-xs py-2 px-3 rounded-md" data-action="delete-meal" data-id="${meal.id}">Delete</button>
                         </div>
                     </div>
-                     <button class="main-button w-full" data-action="log-meal" data-id="${meal.id}">Log Meal</button>
+                     <button class="main-button w-full mt-2" data-action="log-meal" data-id="${meal.id}">Log Meal directly</button>
                 `;
                 myFoodsList.appendChild(card);
             });
@@ -4911,13 +4991,17 @@ const updateBulkButtonState = () => {
     const checkedCount = document.querySelectorAll('.bulk-item-checkbox:checked').length;
     const moveBtn = document.getElementById('bulk-move-btn');
     const copyBtn = document.getElementById('bulk-copy-btn');
+    const deleteBtn = document.getElementById('bulk-delete-btn');
+    const saveMealBtn = document.getElementById('bulk-save-meal-btn');
     
     const isActive = checkedCount > 0;
     
-    [moveBtn, copyBtn].forEach(btn => {
-        btn.disabled = !isActive;
-        btn.classList.toggle('opacity-50', !isActive);
-        btn.classList.toggle('cursor-not-allowed', !isActive);
+    [moveBtn, copyBtn, deleteBtn, saveMealBtn].forEach(btn => {
+        if(btn) {
+            btn.disabled = !isActive;
+            btn.classList.toggle('opacity-50', !isActive);
+            btn.classList.toggle('cursor-not-allowed', !isActive);
+        }
     });
     
     // Update icons + labels to match the new stacked aesthetic
@@ -5043,6 +5127,35 @@ const executeBulkAction = async (action) => {
 
 document.getElementById('bulk-move-btn').addEventListener('click', () => executeBulkAction('move'));
 document.getElementById('bulk-copy-btn').addEventListener('click', () => executeBulkAction('copy'));
+
+document.getElementById('bulk-delete-btn')?.addEventListener('click', async () => {
+    const checkboxes = document.querySelectorAll('.bulk-item-checkbox:checked');
+    if (checkboxes.length === 0) return;
+    
+    showConfirm(`Are you sure you want to delete ${checkboxes.length} items?`, async () => {
+        const batch = writeBatch(db);
+        checkboxes.forEach(cb => batch.delete(doc(db, `users/${user.uid}/foodLog`, cb.dataset.id)));
+        try {
+            await batch.commit();
+            showToast(`Deleted ${checkboxes.length} items.`, "success");
+            document.getElementById('toggle-bulk-mode-btn').click(); 
+        } catch (e) {
+            showToast("Failed to delete items.", "error");
+        }
+    });
+});
+
+document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
+    const checkboxes = document.querySelectorAll('.bulk-item-checkbox:checked');
+    if (checkboxes.length === 0) return;
+    
+    pendingMealItems = Array.from(checkboxes).map(cb => foodLog.find(i => i.id === cb.dataset.id)).filter(Boolean);
+    
+    document.getElementById('create-meal-name').value = 'My Custom Meal';
+    document.getElementById('create-meal-image').value = '';
+    document.getElementById('create-meal-modal').classList.remove('hidden');
+    document.getElementById('toggle-bulk-mode-btn').click(); 
+});
 
         const showProductDetailsModal = (product) => {
     const modal = document.getElementById('product-modal');
@@ -5376,6 +5489,43 @@ document.getElementById('bulk-copy-btn').addEventListener('click', () => execute
         };
 
         let pendingLogMealId = null;
+
+const openPreviewMealModal = (meal) => {
+    document.getElementById('preview-meal-title').textContent = meal.name;
+    const list = document.getElementById('preview-meal-list');
+    list.innerHTML = '';
+    let totalCals = 0;
+    
+    meal.items.forEach(item => {
+        totalCals += (item.calories || 0);
+        const imageUrl = (item.imageUrl && item.imageUrl.startsWith('http')) ? item.imageUrl : 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png';
+        list.innerHTML += `
+            <div class="flex items-center gap-3 bg-[var(--bg-color)] p-2 rounded-lg border border-[var(--border-color)]">
+                <img src="${imageUrl}" class="w-10 h-10 rounded object-contain bg-white shrink-0 border border-gray-100 dark:border-gray-700">
+                <div class="flex-grow min-w-0">
+                    <p class="font-semibold text-sm truncate">${item.name}</p>
+                    <p class="text-xs text-[var(--text-color-secondary)]">${item.quantity || 100}g</p>
+                </div>
+                <div class="font-mono text-sm font-bold text-orange-600 dark:text-orange-400 shrink-0">
+                    ${(item.calories || 0).toFixed(0)} kcal
+                </div>
+            </div>
+        `;
+    });
+    
+    document.getElementById('preview-meal-total-cals').textContent = totalCals.toFixed(0) + ' kcal';
+    
+    document.getElementById('preview-log-meal-btn').onclick = () => {
+        document.getElementById('preview-meal-modal').classList.add('hidden');
+        openLogMealModal(meal.id);
+    };
+    
+    document.getElementById('preview-meal-modal').classList.remove('hidden');
+};
+
+document.getElementById('close-preview-meal-btn')?.addEventListener('click', () => {
+    document.getElementById('preview-meal-modal').classList.add('hidden');
+});
 
 const openLogMealModal = (mealId) => {
     const meal = meals.find(m => m.id === mealId);
@@ -6077,6 +6227,9 @@ document.getElementById('save-favorite-btn').addEventListener('click', async () 
                 }
             } else if (action === 'log-meal') {
                 openLogMealModal(id);
+            } else if (action === 'preview-meal') {
+                const meal = meals.find(m => m.id === id);
+                if (meal) openPreviewMealModal(meal);
             } else if (action === 'delete-meal') {
                 if (confirm('Are you sure you want to delete this meal?')) {
                      try { await deleteDoc(doc(db, `users/${user.uid}/meals`, id)); } 
