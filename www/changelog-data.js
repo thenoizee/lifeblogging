@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v14.3.0-alpha",
+        date: "2026-03-17",
+        changes: [
+            "In FoodTrackr: Fixed an issue where editing a log item unintentionally dropped metadata such as ingredients, allergens, original app source, and restaurant name.",
+            "In FoodTrackr: Ensured the original app source (uploadedApp) is preserved when saving or updating an existing food log entry.",
+            "In FoodTrackr: Updated 'Save as Meal' functionality to correctly copy detailed metadata (source, restaurant name, app source, ingredients, allergens) into the child meal items.",
+            "In FoodTrackr: Fixed the leftovers split action to properly carry over product metadata to the newly created leftover item.",
+            "In FoodTrackr: Updated the 'Save Favorite' action to correctly store and preserve restaurant name and original app source metadata."
+        ]
+    },
+    {
         version: "v14.2.0-alpha",
         date: "2026-03-16",
         changes: [
