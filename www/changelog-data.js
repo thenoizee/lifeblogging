@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+        version: "v14.4.0-alpha",
+        date: "2026-03-17",
+        changes: [
+            "In Hub: Launched the new Public Profile page, allowing users to share their profile and collections via a public URL.",
+            "In Account: Added a 'Public Profile Preview' card to preview how your profile appears to others.",
+            "In Account: Introduced a master privacy setting to toggle profile visibility between public and private.",
+            "In Account: Added granular visibility toggles to individually show or hide your Garden, Pets, and Recipes collections on your public profile.",
+        ]
+    },
+    {
         version: "v14.3.0-alpha",
         date: "2026-03-17",
         changes: [
