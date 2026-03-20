@@ -190,9 +190,9 @@ export class AppNavigation {
                             </div>
                         </div>
                         
-                        <div id="nav-user-avatar" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-help" title="Logged in as: ${this.userEmail}">
+                        <a href="#" id="nav-user-avatar" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity" title="Logged in as: ${this.userEmail}">
                             ${userInitial}
-                        </div>
+                        </a>
 
                         <button id="nav-theme-toggle" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all duration-500 ease-in-out">
                             <i id="theme-icon-moon" class="fas fa-moon"></i>
@@ -502,6 +502,17 @@ export class AppNavigation {
         document.getElementById('nav-logout-btn').addEventListener('click', () => {
              if(window.confirm('Log out?')) window.dispatchEvent(new CustomEvent('app-logout-request'));
         });
+
+        const avatarBtn = document.getElementById('nav-user-avatar');
+        if (avatarBtn) {
+            avatarBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const user = getAuth().currentUser;
+                if (user) {
+                    window.location.href = `/public/index.html?id=${user.uid}`;
+                }
+            });
+        }
         // Add this inside attachEvents() at the very end
         const listEl = document.getElementById('nav-notifications-list');
         if (listEl) {

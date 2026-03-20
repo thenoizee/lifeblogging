@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v14.8.0-beta",
+        date: "2026-03-20",
+        changes: [
+            "In Shared Nav: Updated the user avatar button to link directly to the user's Public Profile instead of the Account settings.",
+            "In Account Settings: Added the ability to specify a custom FontAwesome profile icon for the Public Profile.",
+            "In Public Profile: The page now dynamically displays the user's custom FontAwesome icon if one is set, falling back to their initial."
+        ]
+    },
+    {
     version: "v14.7.0-beta",
     date: "2026-03-20",
     changes: [
