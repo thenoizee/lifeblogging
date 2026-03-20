@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v14.7.0-beta",
+    date: "2026-03-20",
+    changes: [
+        "In HealthManagr: Streamlined the main navigation by merging the standalone 'History' tab directly into the 'Record' tab.",
+        "In HealthManagr: Repositioned the toast notification popup to the bottom of the screen to prevent it from obstructing navigation elements.",
+        "In HealthManagr: Converted the Dose History section within the Record tab into a space-saving collapsible accordion panel that is closed by default.",
+        "In HealthManagr: Redesigned the 'Meds' tab layout by converting all main sections, including 'Manage Medications' and 'Stock Management', into click-to-expand accordions to reduce visual clutter."
+    ]
+    },
+    {
         version: "v14.6.0-beta",
         date: "2026-03-20",
         changes: [
