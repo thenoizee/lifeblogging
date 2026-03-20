@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v14.6.0-beta",
+        date: "2026-03-20",
+        changes: [
+            "Introduced BookTrackr: A brand new digital reading hub to track book progress, personal ratings, and library collections.",
+            "In Dashboard: Added a new dynamic 'Reading' widget that automatically syncs and displays your active book progress or total books read.",
+            "In BookTrackr: Integrated the OpenLibrary API to automatically fetch high-res covers, author tags, and page counts when searching for books.",
+            "In BookTrackr: Built a StoryGraph CSV importer allowing users to instantly migrate their existing reading history.",
+            "In BookTrackr: Created a comprehensive 'Log Progress' modal featuring an interactive page slider, 5-star rating system, and personal note logging.",
+        ]
+    },
+    {
         version: "v14.5.0-alpha",
         date: "2026-03-17",
         changes: [
