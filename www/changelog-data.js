@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v14.9.0-beta",
+    date: "2026-03-21",
+    changes: [
+        "In FoodTrackr: Added a new 'Filter by Shop' option to Advanced Filters, with preferences persisting in LocalStorage.",
+        "In FoodTrackr: Dramatically improved barcode and product number lookups by directly querying the Open Food Facts API for 6-14 digit numbers.",
+        "In FoodTrackr: Improved standard search relevance by sorting results by scan popularity (unique_scans_n) to provide more leeway.",
+        "In FoodTrackr: Added shop and store data visibility to search results cards, product details modals, frequent foods, and recent foods lists.",
+        "In FoodTrackr: Shop and store information is now actively saved to Firebase when logging daily entries or saving favorite foods.",
+        "In FoodTrackr: The History table and associated modals now display the shop/store data for previously logged items."
+    ]
+    },
+    {
         version: "v14.8.0-beta",
         date: "2026-03-20",
         changes: [

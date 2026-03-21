@@ -950,6 +950,7 @@ body.bulk-active {
             </summary>
             <div class="filters-row mt-3 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
                 <input id="filter-brand" type="text" class="filter-input bg-white dark:bg-gray-700 rounded-lg border-gray-200 dark:border-gray-600" placeholder="Filter by Brand">
+                <input id="filter-shop" type="text" class="filter-input bg-white dark:bg-gray-700 rounded-lg border-gray-200 dark:border-gray-600" placeholder="Filter by Shop">
                 <select id="filter-country" class="filter-input bg-white dark:bg-gray-700 rounded-lg border-gray-200 dark:border-gray-600">
                     <option value="">All Origins</option>
                     <option value="United Kingdom">United Kingdom</option>
@@ -3061,7 +3062,7 @@ const renderDailyLog = () => {
 
             // Icon & Subtext Logic
             let sourceIcon = '';
-            let subText = item.brands || item.source || '';
+            let subText = [item.brands, item.stores].filter(Boolean).join(' • ') || item.source || '';
             const src = ((item.source || '') + ' ' + (item.brands || '')).toLowerCase();
             const groupedBadge = (item.items && item.items.length > 0) ? 
                 `<span class="ml-2 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 text-[9px] px-1 rounded font-bold uppercase">Composite</span>` : '';
@@ -3272,7 +3273,7 @@ const renderHistoryTable = () => {
             const imageUrl = (item.imageUrl && item.imageUrl.startsWith('http')) ? item.imageUrl : PLACEHOLDER_IMG;
             
             let sourceIcon = '';
-            let subText = item.brands || item.source || '';
+            let subText = [item.brands, item.stores].filter(Boolean).join(' • ') || item.source || '';
             const src = ((item.source || '') + ' ' + (item.brands || '')).toLowerCase();
 
             // NEW: Intercept HydrationTrackr items for history table
@@ -3408,6 +3409,7 @@ document.getElementById('history-search-input').addEventListener('input', () => 
         product_name: item.name,
         brands: item.restaurantName || item.brands || item.source,
         _source: item.source,
+        _stores: item.stores || '',
         _restaurantName: item.restaurantName,
         quantity: item.quantity + unit,
         serving_size: item.quantity + unit,
@@ -3458,8 +3460,9 @@ window.openProductModalFromFavorite = (foodId) => {
     const mockProduct = {
         product_name: item.name,
         brands: item.brands || item.source || '',
-        _source: item.source,                  
-        _restaurantName: item.restaurantName,  
+        _source: item.source,
+        _stores: item.stores || '',                  
+        _restaurantName: item.restaurantName,
         quantity: '100g',
         serving_size: '100g', 
         image_front_thumb_url: item.imageUrl,
@@ -3898,7 +3901,7 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
                 ).pop();
 
                 const name = item.name || 'Unknown Food';
-                const brands = item.brands || item.source || '';
+                const brands = [item.brands, item.stores].filter(Boolean).join(' • ') || item.source || '';
                 const imageUrl = (item.imageUrl && item.imageUrl.startsWith('http')) ? item.imageUrl : PLACEHOLDER_IMG;
                 
                 const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
@@ -4113,14 +4116,19 @@ const renderMyMealsQuickList = () => {
 // --- Save/Load Filter Preferences ---
 const loadFilterPreferences = () => {
     const savedBrand = localStorage.getItem('foodTrackr_filterBrand');
+    const savedShop = localStorage.getItem('foodTrackr_filterShop');
     const savedCountry = localStorage.getItem('foodTrackr_filterCountry');
     
     if (savedBrand) document.getElementById('filter-brand').value = savedBrand;
+    if (savedShop) document.getElementById('filter-shop').value = savedShop;
     if (savedCountry) document.getElementById('filter-country').value = savedCountry;
 };
 
 document.getElementById('filter-brand').addEventListener('input', (e) => {
     localStorage.setItem('foodTrackr_filterBrand', e.target.value);
+});
+document.getElementById('filter-shop').addEventListener('input', (e) => {
+    localStorage.setItem('foodTrackr_filterShop', e.target.value);
 });
 document.getElementById('filter-country').addEventListener('change', (e) => {
     localStorage.setItem('foodTrackr_filterCountry', e.target.value);
@@ -4136,15 +4144,19 @@ const searchFood = async (isNewSearch = true) => {
 
     const query = document.getElementById('food-search').value.trim();
     const brandFilter = document.getElementById('filter-brand').value.trim();
+    const shopFilter = document.getElementById('filter-shop').value.trim();
     const countryFilter = document.getElementById('filter-country').value.trim();
     
-    if (!query && !brandFilter && !countryFilter) return;
+    // Improved barcode check (6-14 digits). If matched, we ignore other filters to prioritize instant lookup.
+    const isBarcode = /^\d{6,14}$/.test(query);
+
+    if (!query && !brandFilter && !shopFilter && !countryFilter) return;
     if (isFetching) return;
 
     if (query) saveRecentSearch(query);
 
     // 1. Generate Cache Key
-    const cacheKey = `${query}|${brandFilter}|${countryFilter}|${isNewSearch ? 1 : currentSearchPage + 1}`;
+    const cacheKey = `${query}|${brandFilter}|${shopFilter}|${countryFilter}|${isNewSearch ? 1 : currentSearchPage + 1}`;
 
     const searchResultsDiv = document.getElementById('search-results');
     const searchControlsDiv = document.getElementById('search-controls');
@@ -4172,32 +4184,42 @@ const searchFood = async (isNewSearch = true) => {
         const cachedData = searchCache.get(cacheKey);
         statusEl.textContent = "Loaded from cache.";
         setTimeout(() => statusEl.classList.add('hidden'), 500);
-        handleSearchData(cachedData, isNewSearch, searchResultsDiv, searchControlsDiv, query, brandFilter, countryFilter);
+        handleSearchData(cachedData, isNewSearch, searchResultsDiv, searchControlsDiv, query, isBarcode);
         return;
     }
 
     isFetching = true;
     
-    // CHANGED: Strict check for numeric API/Barcode. Prioritize this over filters.
-    const isBarcode = /^\d+$/.test(query);
     const pageSize = 24;
 
     let url = '';
     if (isBarcode) {
-        // Use the specific API endpoint for single product lookup by code
+        // Direct product endpoint for exact matching
         url = `https://world.openfoodfacts.org/api/v2/product/${query}`;
     } else {
-        // Standard Search
-        let params = [`search_simple=1`, `action=process`, `json=1`, `page=${currentSearchPage}`, `page_size=${pageSize}`];
+        // Added sort_by=unique_scans_n. Sorting by scan popularity drastically improves search relevance / "leeway"
+        let params = [`search_simple=1`, `action=process`, `json=1`, `page=${currentSearchPage}`, `page_size=${pageSize}`, `sort_by=unique_scans_n`];
+        
         if (query) params.push(`search_terms=${encodeURIComponent(query)}`);
-        if (brandFilter) { params.push(`tagtype_0=brands`); params.push(`tag_contains_0=contains`); params.push(`tag_0=${encodeURIComponent(brandFilter)}`); }
-        let tagIndex = brandFilter ? 1 : 0;
-        if (countryFilter) { params.push(`tagtype_${tagIndex}=countries`); params.push(`tag_contains_${tagIndex}=contains`); params.push(`tag_${tagIndex}=${encodeURIComponent(countryFilter)}`); }
+        
+        let tagIndex = 0;
+        if (brandFilter) { 
+            params.push(`tagtype_${tagIndex}=brands`, `tag_contains_${tagIndex}=contains`, `tag_${tagIndex}=${encodeURIComponent(brandFilter)}`); 
+            tagIndex++; 
+        }
+        if (shopFilter) { 
+            params.push(`tagtype_${tagIndex}=stores`, `tag_contains_${tagIndex}=contains`, `tag_${tagIndex}=${encodeURIComponent(shopFilter)}`); 
+            tagIndex++; 
+        }
+        if (countryFilter) { 
+            params.push(`tagtype_${tagIndex}=countries`, `tag_contains_${tagIndex}=contains`, `tag_${tagIndex}=${encodeURIComponent(countryFilter)}`); 
+            tagIndex++; 
+        }
         url = `https://world.openfoodfacts.org/cgi/search.pl?${params.join('&')}`;
     }
 
     try {
-        statusEl.textContent = isBarcode ? "Looking up API Number..." : "Searching OpenFoodFacts database...";
+        statusEl.textContent = isBarcode ? "Looking up product by barcode..." : "Searching OpenFoodFacts database...";
         const response = await fetch(url);
         
         statusEl.textContent = "Processing results...";
@@ -4205,7 +4227,7 @@ const searchFood = async (isNewSearch = true) => {
         
         searchCache.set(cacheKey, data);
 
-        handleSearchData(data, isNewSearch, searchResultsDiv, searchControlsDiv, query, brandFilter, countryFilter);
+        handleSearchData(data, isNewSearch, searchResultsDiv, searchControlsDiv, query, isBarcode);
         statusEl.classList.add('hidden');
     } catch (error) {
         console.error('Error fetching data:', error);
@@ -4216,9 +4238,7 @@ const searchFood = async (isNewSearch = true) => {
     }
 };
 
-// ADD THIS HELPER FUNCTION RIGHT AFTER searchFood
-const handleSearchData = (data, isNewSearch, resultsDiv, controlsDiv, query, brand, country) => {
-    const isBarcode = /^\d+$/.test(query) && !brand && !country;
+const handleSearchData = (data, isNewSearch, resultsDiv, controlsDiv, query, isBarcode) => {
     if (isNewSearch) resultsDiv.innerHTML = '';
 
     let products = [];
@@ -4233,7 +4253,7 @@ const handleSearchData = (data, isNewSearch, resultsDiv, controlsDiv, query, bra
             resultsDiv.innerHTML = `
                 <div class="col-span-full text-center py-12 text-gray-400 select-none">
                     <p class="font-medium">No products found</p>
-                    <p class="text-sm opacity-70">Try adjusting your filters.</p>
+                    <p class="text-sm opacity-70">Try adjusting your filters or checking the spelling.</p>
                 </div>`;
         } else if (document.getElementById('load-more-btn')) {
             document.getElementById('load-more-btn').remove();
@@ -4294,7 +4314,7 @@ const renderRecentFoods = () => {
             
             <div class="flex-grow min-w-0">
                 <h3 class="font-bold text-gray-900 dark:text-white text-sm leading-tight truncate pr-2">${item.name}</h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400 truncate">${item.brands || 'Manual'}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 truncate">${[item.brands, item.stores].filter(Boolean).join(' • ') || 'Manual'}</p>
                 <div class="flex items-center justify-between mt-1">
                      <span class="text-xs text-[var(--text-color-secondary)]">Last: ${item.eatenAt.toDate().toLocaleDateString()}</span>
                      <span class="text-xs font-bold text-orange-600 dark:text-orange-400 group-hover:underline">Log Again</span>
@@ -4337,6 +4357,7 @@ const renderRecentFoods = () => {
 
         const name = product.product_name || 'Unknown Food';
         const brands = product.brands || '';
+        const stores = product.stores ? ` • ${product.stores}` : '';
         const isFavorite = favoriteFoods.some(fav => fav.originalName === name && fav.brands === brands);
         const imageUrl = product.image_front_small_url || product.image_front_thumb_url || 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png';
         const hasServing = product.serving_size || product.serving_quantity;
@@ -4357,7 +4378,7 @@ const groupedBadge = isGrouped ?
             </div>
             
             <div class="flex-grow min-w-0 pr-8"> <h3 class="font-bold text-gray-900 dark:text-white text-base leading-tight truncate" title="${name}">${name}</h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400 truncate mb-2" title="${brands}">${brands}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400 truncate mb-2" title="${brands}${stores}">${brands}${stores}</p>
                 
                 <div class="flex items-center gap-2">
                      <div class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300">
@@ -4693,6 +4714,7 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
         baseNutrients, 
         source: 'Open Food Facts', 
         brands, 
+        stores: product.stores || '',
         imageUrl, 
         servingUnits: servingUnits,
         ingredients: product.ingredients_text_en || product.ingredients_text || '',
@@ -4944,7 +4966,8 @@ window.openProductModalFromLog = (itemId) => {
     const mockProduct = {
         product_name: item.name,
         brands: item.brands || item.source || '',
-        _source: item.source,                  
+        _source: item.source,
+        _stores: item.stores || '',                  
         _restaurantName: item.restaurantName,  
         quantity: (item.quantity || 100) + unit,
         serving_size: (item.quantity || 100) + unit, 
@@ -5245,6 +5268,7 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
     const categories = product.categories || 'N/A';
     const labels = product.labels || 'N/A';
     const countries = product.countries || 'N/A';
+    const stores = product.stores || product._stores || 'N/A';
     const novaGroup = product.nova_group ? `NOVA ${product.nova_group}` : 'N/A';
     const nutriscore = product.nutriscore_grade ? `Nutri-Score ${product.nutriscore_grade.toUpperCase()}` : 'N/A';
     const ecoscore = product.ecoscore_grade ? `Eco-Score ${product.ecoscore_grade.toUpperCase()}` : 'N/A';
@@ -5339,6 +5363,7 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
                 <p class="text-xs mt-2"><strong>Categories:</strong> ${categories}</p>
                 <p class="text-xs mt-2"><strong>Labels:</strong> ${labels}</p>
                 <p class="text-xs mt-2"><strong>Sold in:</strong> ${countries}</p>
+                <p class="text-xs mt-2"><strong>Shops:</strong> ${stores}</p>
             </div>
             <div class="mt-4">
                 <h3 class="font-bold mb-2">Ingredients & Allergens</h3>
@@ -5975,6 +6000,7 @@ const switchTab = (tabId) => {
                  
                  source: finalSource,
                  brands: brandsVal,   
+                 stores: currentFoodItem.stores || null,
                  
                  restaurantName: (sourceType === 'Takeaway' || sourceType === 'Restaurant') ? restaurantName : null,
                  baseNutrients: currentFoodItem.baseNutrients,
@@ -6085,6 +6111,7 @@ document.getElementById('save-favorite-btn').addEventListener('click', async () 
             salt: parseFloat(document.getElementById('salt').value) || 0,
             servingUnits: servingUnits,
             brands: currentFoodItem.brands || '',
+            stores: currentFoodItem.stores || '',
             restaurantName: currentFoodItem.restaurantName || document.getElementById('restaurant-name').value.trim() || '',
             imageUrl: currentFoodItem.imageUrl || null,
             source: currentFoodItem.source || 'Manual',
