@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LightManagr</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'128'%20height%3D'128'%20viewBox%3D'0%200%20128%20128'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g'%20x1%3D'85.35533905932738%25'%20y1%3D'85.35533905932738%25'%20x2%3D'14.644660940672615%25'%20y2%3D'14.64466094067263%25'%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D'0%25'%20style%3D'stop-color%3A%234f46e5%3Bstop-opacity%3A0'%20%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D'100%25'%20style%3D'stop-color%3A%239333ea%3Bstop-opacity%3A0'%20%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D'128'%20height%3D'128'%20rx%3D'25.6'%20fill%3D'url(%23g)'%20%2F%3E%3Cg%20transform%3D'translate(0%2C%200)%20rotate(0%2C%2064%2C%2064)'%3E%3Csvg%20x%3D'16'%20y%3D'16'%20width%3D'96'%20height%3D'96'%20viewBox%3D'0%200%20384%20512'%3E%3Cpath%20fill%3D'%23f59e0b'%20fill-opacity%3D'1'%20d%3D'M272%20384c9.6-31.9%2029.5-59.1%2049.2-86.2l0%200c5.2-7.1%2010.4-14.2%2015.4-21.4c19.8-28.5%2031.4-63%2031.4-100.3C368%2078.8%20289.2%200%20192%200S16%2078.8%2016%20176c0%2037.3%2011.6%2071.9%2031.4%20100.3c5%207.2%2010.2%2014.3%2015.4%2021.4l0%200c19.8%2027.1%2039.7%2054.4%2049.2%2086.2H272zM192%20512c44.2%200%2080-35.8%2080-80V416H112v16c0%2044.2%2035.8%2080%2080%2080zM112%20176c0%208.8-7.2%2016-16%2016s-16-7.2-16-16c0-61.9%2050.1-112%20112-112c8.8%200%2016%207.2%2016%2016s-7.2%2016-16%2016c-44.2%200-80%2035.8-80%2080z'%20%2F%3E%3C%2Fsvg%3E%3C%2Fg%3E%3C%2Fsvg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -266,7 +267,12 @@
                         if(!cachedData) getEl('setup-panel').classList.remove('hidden');
                     }
                 } catch (e) {
-                    if(!cachedData) getEl('setup-panel').classList.remove('hidden');
+                    if(!cachedData) {
+                        getEl('setup-panel').classList.remove('hidden');
+                    } else {
+                        getEl('connection-badge').innerHTML = `<a href="/account" class="hover:underline"><i class="fa-solid fa-link-slash"></i> Re-connect in Settings</a>`;
+                        getEl('connection-badge').classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
+                    }
                 }
             } else {
                 if(!cachedData) getEl('setup-panel').classList.remove('hidden');
@@ -327,7 +333,11 @@
             }
         } catch (e) { 
             console.error(e); 
-            getEl('connection-badge').innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Hub Offline`;
+            if (isRemote && (e.code === 'internal' || e.message.includes('Failed'))) {
+                getEl('connection-badge').innerHTML = `<a href="/account" class="hover:underline"><i class="fa-solid fa-link-slash"></i> Re-connect in Settings</a>`;
+            } else {
+                getEl('connection-badge').innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Hub Offline`;
+            }
             getEl('connection-badge').classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900', 'dark:text-red-200');
         } finally {
              const icon = document.querySelector('.fa-rotate');
@@ -369,7 +379,13 @@
                     method: 'PUT', body: JSON.stringify({ on: state })
                 });
             }
-        } catch (e) { alert("Command failed"); } 
+        } catch (e) { 
+            if (isRemote && (e.code === 'internal' || e.message.includes('Failed'))) {
+                alert("Hue connection error. Please re-connect your Philips Hue on the Account/Settings page.");
+            } else {
+                alert("Command failed"); 
+            }
+        } 
         finally {
             setTimeout(() => {
                 isGlobalActionPending = false;
@@ -385,13 +401,19 @@
         debounceTimers[id] = setTimeout(async () => {
             const endpoint = isGroup ? `groups/${id}/action` : `lights/${id}/state`;
             
-            if (isRemote) {
-                const proxy = httpsCallable(functions, 'hueProxy');
-                await proxy({ endpoint: endpoint, method: 'PUT', body: body });
-            } else {
-                await fetch(`http://${localConfig.ip}/api/${localConfig.username}/${endpoint}`, {
-                    method: 'PUT', body: JSON.stringify(body)
-                });
+            try {
+                if (isRemote) {
+                    const proxy = httpsCallable(functions, 'hueProxy');
+                    await proxy({ endpoint: endpoint, method: 'PUT', body: body });
+                } else {
+                    await fetch(`http://${localConfig.ip}/api/${localConfig.username}/${endpoint}`, {
+                        method: 'PUT', body: JSON.stringify(body)
+                    });
+                }
+            } catch (e) {
+                if (isRemote && (e.code === 'internal' || e.message.includes('Failed'))) {
+                    alert("Hue connection error. Please re-connect your Philips Hue on the Account/Settings page.");
+                }
             }
         }, 400); 
     };

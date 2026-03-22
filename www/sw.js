@@ -135,7 +135,7 @@ self.addEventListener('fetch', event => {
           });
           return networkResponse;
         }).catch(() => {
-            return null;
+            return Response.error();
         });
       })
     );

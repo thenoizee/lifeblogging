@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v14.10.0-beta",
+    date: "2026-03-22",
+    changes: [
+        "In Hub: Reverted the experimental Skiff theming back to the classic/standard design across the main dashboard interface.",
+        "In LightManagr: Added intuitive error handling that prompts users to re-connect/authenticate with Philips Hue in Settings if the cloud proxy fails.",
+        "In LightManagr: Update browser icon.",
+
+    ]
+    },
+    {
     version: "v14.9.0-beta",
     date: "2026-03-21",
     changes: [

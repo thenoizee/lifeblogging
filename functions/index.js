@@ -168,9 +168,9 @@ exports.hueProxy = onCall(async (request) => {
      return response.data;
      
   } catch (error) {
-     logger.error("Hue Proxy Error", error.response?.data || error.message);
-     throw new Error("Failed to send command to Hue.");
-  }
+        logger.error("Hue Proxy Error", error.response?.data || error.message);
+        throw new HttpsError("internal", "Failed to send command to Hue.");
+     }
 });
 
 // D. MANUAL SYNC
