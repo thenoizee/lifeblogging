@@ -2,7 +2,14 @@
 
 export const changelogData = [
     {
-  version: "v14.11.0-beta",
+    version: "v14.12.0-alpha",
+    date: "2026-03-22",
+    changes: [
+                "In FoodTrackr: Changed the default feeding measurement mode from 'Exact (g)' to 'Approximate' (approx) in the Sourdough Tracker.",
+    ]
+    },
+    {
+  version: "v14.11.0-alpha",
   date: "2026-03-22",
   changes: [
     "In PlantTrackr: Added a Plant Data Check tool to quickly identify plants missing crucial care metrics for smarter forecasting.",
@@ -13,7 +20,7 @@ export const changelogData = [
   ]
     },
     {
-    version: "v14.10.0-beta",
+    version: "v14.10.0-alpha",
     date: "2026-03-22",
     changes: [
         "In Hub: Reverted the experimental Skiff theming back to the classic/standard design across the main dashboard interface.",
@@ -23,7 +30,7 @@ export const changelogData = [
     ]
     },
     {
-    version: "v14.9.0-beta",
+    version: "v14.9.0-alpha",
     date: "2026-03-21",
     changes: [
         "In FoodTrackr: Added a new 'Filter by Shop' option to Advanced Filters, with preferences persisting in LocalStorage.",
@@ -35,7 +42,7 @@ export const changelogData = [
     ]
     },
     {
-        version: "v14.8.0-beta",
+        version: "v14.8.0-alpha",
         date: "2026-03-20",
         changes: [
             "In Shared Nav: Updated the user avatar button to link directly to the user's Public Profile instead of the Account settings.",
@@ -44,7 +51,7 @@ export const changelogData = [
         ]
     },
     {
-    version: "v14.7.0-beta",
+    version: "v14.7.0-alpha",
     date: "2026-03-20",
     changes: [
         "In HealthManagr: Streamlined the main navigation by merging the standalone 'History' tab directly into the 'Record' tab.",
@@ -54,7 +61,7 @@ export const changelogData = [
     ]
     },
     {
-        version: "v14.6.0-beta",
+        version: "v14.6.0-alpha",
         date: "2026-03-20",
         changes: [
             "Introduced BookTrackr: A brand new digital reading hub to track book progress, personal ratings, and library collections.",
