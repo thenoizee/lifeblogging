@@ -264,21 +264,33 @@
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <h1 class="text-3xl font-bold">My Garden</h1>
         
-        <div class="bg-gray-200 dark:bg-gray-800 p-1 rounded-lg flex gap-1 w-full md:w-auto">
+        <div class="bg-gray-200 dark:bg-gray-800 p-1 rounded-lg flex gap-1 w-full md:w-auto overflow-x-auto hide-scrollbar">
             <button onclick="window.toggleGardenView('active')" id="btn-view-active" class="flex-1 md:flex-none px-4 py-1.5 rounded-md text-sm font-bold bg-white dark:bg-gray-600 shadow-sm transition-all whitespace-nowrap">Active</button>
+            <button onclick="window.toggleGardenView('propagations')" id="btn-view-propagations" class="flex-1 md:flex-none px-4 py-1.5 rounded-md text-sm font-bold opacity-60 hover:opacity-100 transition-all whitespace-nowrap">Props</button>
             <button onclick="window.toggleGardenView('wishlist')" id="btn-view-wishlist" class="flex-1 md:flex-none px-4 py-1.5 rounded-md text-sm font-bold opacity-60 hover:opacity-100 transition-all whitespace-nowrap">Wishlist</button>
             <button onclick="window.toggleGardenView('graveyard')" id="btn-view-graveyard" class="flex-1 md:flex-none px-4 py-1.5 rounded-md text-sm font-bold opacity-60 hover:opacity-100 transition-all whitespace-nowrap">Graveyard</button>
         </div>
 
-        <div class="flex gap-2 w-full md:w-auto" id="garden-controls">
+        <div class="flex gap-2 w-full md:w-auto flex-wrap" id="garden-controls">
+            <select id="plant-sort-option" class="input-std !w-auto">
+                <option value="name">Sort: A-Z</option>
+                <option value="urgent">Sort: Needs Water</option>
+                <option value="newest">Sort: Newest</option>
+            </select>
             <select id="plant-filter-location" class="input-std !w-auto">
                 <option value="all">All Locations</option>
             </select>
+            <button onclick="window.openBulkWaterModal()" class="btn-secondary whitespace-nowrap text-blue-500 border-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/30" title="Bulk Water">
+                <i class="fa-solid fa-hand-holding-droplet"></i>
+            </button>
             <button id="open-add-plant-modal" class="btn-primary whitespace-nowrap">
                 <i class="fa-solid fa-plus"></i> Add
             </button>
             <button onclick="openWishlistModal()" id="open-add-wish-modal" class="btn-primary bg-purple-600 hover:bg-purple-700 whitespace-nowrap hidden">
                 <i class="fa-solid fa-plus"></i> Add Wish
+            </button>
+            <button onclick="window.openDataCheckModal()" class="btn-secondary whitespace-nowrap" title="Check Missing Data">
+                <i class="fa-solid fa-stethoscope text-yellow-500"></i> <span class="hidden md:inline ml-1">Data Check</span>
             </button>
         </div>
     </div>
@@ -307,6 +319,10 @@
 
     <div id="graveyard-wrapper" class="hidden">
         <div id="graveyard-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </div>
+
+    <div id="propagations-wrapper" class="hidden">
+        <div id="propagations-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
     </div>
 </div>
         
@@ -625,6 +641,7 @@
                         <label class="text-sm font-bold">Status</label>
                         <select id="plant-status" class="input-std">
                             <option value="alive" selected>Alive & Kicking</option>
+                            <option value="propagating">Propagating 🌱</option>
                             <option value="dead">Dead / Archived 🪦</option>
                         </select>
                     </div>
@@ -784,8 +801,39 @@
     </div>
 
     <div id="photo-modal" class="fixed inset-0 z-[100] bg-black/90 hidden flex items-center justify-center p-4 backdrop-blur-sm" onclick="closePhotoModal()">
-        <button class="absolute top-4 right-4 text-white text-4xl hover:text-gray-300 focus:outline-none">&times;</button>
-        <img id="photo-modal-img" src="" class="max-h-[90vh] max-w-[95vw] object-contain rounded-lg shadow-2xl" onclick="event.stopPropagation()">
+        <button class="absolute top-4 right-4 text-white text-4xl hover:text-gray-300 focus:outline-none z-50">&times;</button>
+        <button id="photo-modal-prev" class="absolute left-4 top-1/2 -translate-y-1/2 text-white text-4xl hover:text-gray-300 focus:outline-none z-50 hidden" onclick="event.stopPropagation(); window.prevGalleryPhoto()"><i class="fa-solid fa-chevron-left"></i></button>
+        <button id="photo-modal-next" class="absolute right-4 top-1/2 -translate-y-1/2 text-white text-4xl hover:text-gray-300 focus:outline-none z-50 hidden" onclick="event.stopPropagation(); window.nextGalleryPhoto()"><i class="fa-solid fa-chevron-right"></i></button>
+        <div class="relative max-h-[90vh] max-w-[95vw]" onclick="event.stopPropagation()">
+            <img id="photo-modal-img" src="" class="max-h-[90vh] max-w-[95vw] object-contain rounded-lg shadow-2xl transition-opacity duration-300">
+            <p id="photo-modal-caption" class="absolute bottom-4 left-0 right-0 text-center text-white bg-black/50 p-2 rounded text-sm hidden"></p>
+        </div>
+    </div>
+
+    <div id="bulk-water-modal" class="modal-overlay hidden" style="display: none; z-index: 60;">
+        <div class="modal-content animate-fade max-w-sm">
+            <button class="absolute top-4 right-4 text-2xl hover:text-red-500 close-modal-btn" onclick="document.getElementById('bulk-water-modal').style.display='none'">&times;</button>
+            <h2 class="text-2xl font-bold mb-4 text-blue-500"><i class="fa-solid fa-hand-holding-droplet"></i> Bulk Water</h2>
+            
+            <div class="space-y-4">
+                <button onclick="window.bulkWaterOutside()" class="btn-primary w-full bg-blue-600 hover:bg-blue-700 flex justify-between items-center">
+                    <span><i class="fa-solid fa-cloud-rain mr-2"></i> All Outside Plants</span>
+                    <span id="bulk-outside-count" class="bg-blue-800 px-2 py-0.5 rounded text-xs">0</span>
+                </button>
+                <p class="text-xs opacity-60 -mt-2 mb-4">Waters all plants in locations marked as "Outside (Exposed)".</p>
+
+                <div class="border-t border-[var(--border)] pt-4">
+                    <label class="text-sm font-bold mb-2 block">Water By Room/Location</label>
+                    <div class="flex gap-2">
+                        <select id="bulk-water-location" class="input-std flex-grow">
+                        </select>
+                        <button onclick="window.bulkWaterByLocation()" class="btn-secondary whitespace-nowrap text-blue-500 border-blue-200 hover:bg-blue-50">
+                            Water Room
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="lawn-modal" class="modal-overlay hidden" style="display: none; z-index: 60;">
@@ -850,6 +898,21 @@
             <div id="api-search-results" class="space-y-2 max-h-64 overflow-y-auto pr-2">
                 <p class="text-sm opacity-60 text-center py-4">Search for advice, sunlight, and watering tips!</p>
             </div>
+        </div>
+    </div>
+
+    <div id="data-check-modal" class="modal-overlay hidden" style="display: none; z-index: 70;">
+        <div class="modal-content animate-fade relative max-h-[80vh] flex flex-col">
+            <div class="modal-header-sticky">
+                <h2 class="text-2xl font-bold m-0 text-yellow-600 flex items-center gap-2">
+                    <i class="fa-solid fa-stethoscope"></i> Plant Data Check
+                </h2>
+                <button class="text-3xl leading-none text-gray-400 hover:text-red-500 close-modal-btn" onclick="document.getElementById('data-check-modal').style.display='none'">&times;</button>
+            </div>
+            <p class="text-sm opacity-70 mb-4 shrink-0">Plants missing crucial data that affect your smart forecasting and care schedule.</p>
+            
+            <div id="data-check-list" class="space-y-3 overflow-y-auto pr-2 hide-scrollbar flex-grow">
+                </div>
         </div>
     </div>
 
@@ -1217,9 +1280,54 @@
             });
             if (histPlantSelect) histPlantSelect.value = histCurVal;
 
-            let displayPlants = state.plants.filter(p => p.status !== 'dead');
+            const propsList = getEl("propagations-container");
+            if (propsList) {
+                propsList.innerHTML = "";
+                const props = state.plants.filter(p => p.status === 'propagating');
+                if (props.length === 0) {
+                    propsList.innerHTML = `<p class="opacity-50 text-center col-span-3 py-8">No active propagations. Cut some nodes! ✂️</p>`;
+                } else {
+                    props.forEach(plant => {
+                        const card = document.createElement("div");
+                        card.className = "card p-4 flex flex-col justify-between hover:shadow-lg transition";
+                        card.innerHTML = `
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex items-center gap-3">
+                                    <div class="plant-icon-circle bg-green-100 text-green-600"><i class="fa-solid fa-leaf"></i></div>
+                                    <div>
+                                        <h3 class="font-bold text-lg">${plant.name}</h3>
+                                        <p class="text-xs opacity-70">Propagating</p>
+                                    </div>
+                                </div>
+                                <button class="text-gray-400 hover:text-[var(--primary)] edit-plant-btn" data-id="${plant.id}"><i class="fa-solid fa-pen"></i></button>
+                            </div>
+                            <div class="mt-4 flex gap-2">
+                                <button class="flex-1 btn-secondary text-xs py-1" onclick="window.openQuickLogModal('${plant.id}')">Log Check</button>
+                            </div>
+                        `;
+                        propsList.appendChild(card);
+                    });
+                }
+            }
+
+            let displayPlants = state.plants.filter(p => p.status === 'alive');
             if (filterLoc.value && filterLoc.value !== 'all') {
                 displayPlants = displayPlants.filter(p => p.location === filterLoc.value);
+            }
+
+            const sortOpt = getEl("plant-sort-option") ? getEl("plant-sort-option").value : "name";
+            if (sortOpt === "name") {
+                displayPlants.sort((a,b) => a.name.localeCompare(b.name));
+            } else if (sortOpt === "newest") {
+                displayPlants.sort((a,b) => new Date(b.acquired || 0) - new Date(a.acquired || 0));
+            } else if (sortOpt === "urgent") {
+                displayPlants.sort((a,b) => {
+                    const aLogs = state.logs.filter(l => l.plantId === a.id && l.type === 'Water');
+                    const bLogs = state.logs.filter(l => l.plantId === b.id && l.type === 'Water');
+                    const aDate = aLogs.length ? new Date(aLogs[0].date).getTime() : 0;
+                    const bDate = bLogs.length ? new Date(bLogs[0].date).getTime() : 0;
+                    return aDate - bDate; 
+                });
             }
 
             list.innerHTML = displayPlants.length ? '' : `<p class="opacity-50 text-center col-span-3 py-8">No plants found.</p>`;
@@ -1361,7 +1469,7 @@ card.innerHTML = `
 
 
 window.toggleGardenView = (view) => {
-    const views = ['active', 'wishlist', 'graveyard'];
+    const views = ['active', 'propagations', 'wishlist', 'graveyard'];
     views.forEach(v => {
         const btn = getEl(`btn-view-${v}`);
         if (v === view) {
@@ -1374,6 +1482,7 @@ window.toggleGardenView = (view) => {
     toggleDisplay(getEl("plants-list-container"), view === 'active');
     toggleDisplay(getEl("wishlist-wrapper"), view === 'wishlist');
     toggleDisplay(getEl("graveyard-wrapper"), view === 'graveyard');
+    toggleDisplay(getEl("propagations-wrapper"), view === 'propagations');
     
     // Toggle primary action buttons
     toggleDisplay(getEl("open-add-plant-modal"), view !== 'wishlist');
@@ -1885,7 +1994,7 @@ if (state.compost) {
                     if (log.health) detailsHtml += `<span class="inline-block text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold capitalize">❤️ ${log.health.replace('-', ' ')}</span>`;
                     if (log.noticing && log.noticing.length > 0) detailsHtml += `<span class="inline-block text-[10px] bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold">✨ ${log.noticing.join(', ')}</span>`;
                     
-                    const photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" onclick="openPhotoModal(this.src)" class="w-12 h-12 md:w-10 md:h-10 object-cover rounded shadow-sm cursor-zoom-in hover:opacity-80 shrink-0 border border-[var(--border)]">` : '';
+                    const photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" onclick="openPhotoModal(this.src, '${plant.id}')" class="w-12 h-12 md:w-10 md:h-10 object-cover rounded shadow-sm cursor-zoom-in hover:opacity-80 shrink-0 border border-[var(--border)]">` : '';
 
                     row.innerHTML = `
                         <div class="col-span-2 text-xs opacity-70 flex items-center gap-2">
@@ -2791,7 +2900,7 @@ window.openPlantHistoryModal = (plantId) => {
                     if (log.health) detailsHtml += `<span class="inline-block text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold capitalize">❤️ ${log.health.replace('-', ' ')}</span>`;
                     if (log.noticing && log.noticing.length > 0) detailsHtml += `<span class="inline-block text-[10px] bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold">✨ ${log.noticing.join(', ')}</span>`;
                     
-                    const photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" onclick="openPhotoModal(this.src)" class="w-16 h-16 object-cover rounded shadow-sm cursor-zoom-in mt-2 border border-[var(--border)]">` : '';
+                    const photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" onclick="openPhotoModal(this.src, '${plant.id}')" class="w-16 h-16 object-cover rounded shadow-sm cursor-zoom-in mt-2 border border-[var(--border)]">` : '';
 
                     html += `
                         <div class="card p-3 border-l-4 border-purple-500 bg-purple-50 dark:bg-purple-900/10 shadow-sm relative">
@@ -2811,17 +2920,115 @@ window.openPlantHistoryModal = (plantId) => {
             toggleDisplay(getEl("plant-history-modal"), true);
         };
 
-        window.openPhotoModal = (src) => {
+        let galleryImages = [];
+        let galleryIndex = 0;
+
+        window.openPhotoModal = (src, plantId = null) => {
             if (!src) return;
             const modal = document.getElementById('photo-modal');
             const img = document.getElementById('photo-modal-img');
-            img.src = src;
+            const prevBtn = document.getElementById('photo-modal-prev');
+            const nextBtn = document.getElementById('photo-modal-next');
+            const caption = document.getElementById('photo-modal-caption');
+            
+            if (plantId) {
+                const plant = state.plants.find(p => p.id === plantId);
+                const plantLogs = state.logs.filter(l => l.plantId === plantId && l.photoUrl).sort((a,b) => new Date(b.date) - new Date(a.date));
+                
+                galleryImages = plantLogs.map(l => ({ url: l.photoUrl, date: new Date(l.date).toLocaleDateString() }));
+                if (plant && plant.photoUrl && !galleryImages.find(g => g.url === plant.photoUrl)) {
+                    galleryImages.push({ url: plant.photoUrl, date: 'Main Photo' });
+                }
+                
+                galleryIndex = galleryImages.findIndex(g => g.url === src);
+                if (galleryIndex === -1) galleryIndex = 0;
+                
+                if (galleryImages.length > 1) {
+                    prevBtn.classList.remove('hidden');
+                    nextBtn.classList.remove('hidden');
+                    caption.classList.remove('hidden');
+                    caption.textContent = `${galleryImages[galleryIndex].date} (${galleryIndex + 1}/${galleryImages.length})`;
+                } else {
+                    prevBtn.classList.add('hidden'); nextBtn.classList.add('hidden'); caption.classList.add('hidden');
+                }
+            } else {
+                galleryImages = [{ url: src, date: '' }];
+                galleryIndex = 0;
+                prevBtn.classList.add('hidden'); nextBtn.classList.add('hidden'); caption.classList.add('hidden');
+            }
+
+            img.src = galleryImages[galleryIndex].url;
             modal.classList.remove('hidden');
+        };
+
+        window.prevGalleryPhoto = () => {
+            if (galleryImages.length <= 1) return;
+            galleryIndex = (galleryIndex - 1 + galleryImages.length) % galleryImages.length;
+            document.getElementById('photo-modal-img').src = galleryImages[galleryIndex].url;
+            document.getElementById('photo-modal-caption').textContent = `${galleryImages[galleryIndex].date} (${galleryIndex + 1}/${galleryImages.length})`;
+        };
+
+        window.nextGalleryPhoto = () => {
+            if (galleryImages.length <= 1) return;
+            galleryIndex = (galleryIndex + 1) % galleryImages.length;
+            document.getElementById('photo-modal-img').src = galleryImages[galleryIndex].url;
+            document.getElementById('photo-modal-caption').textContent = `${galleryImages[galleryIndex].date} (${galleryIndex + 1}/${galleryImages.length})`;
         };
 
         window.closePhotoModal = () => {
             document.getElementById('photo-modal').classList.add('hidden');
             document.getElementById('photo-modal-img').src = '';
+            galleryImages = [];
+        };
+
+        window.openBulkWaterModal = () => {
+            const locSelect = getEl('bulk-water-location');
+            locSelect.innerHTML = '<option value="">-- Select Room --</option>';
+            state.locations.forEach(l => locSelect.innerHTML += `<option value="${l.id}">${l.name}</option>`);
+            
+            const outsideCount = state.plants.filter(p => p.status === 'alive' && p.location && state.locations.find(l => l.id === p.location)?.type === 'outside').length;
+            getEl('bulk-outside-count').textContent = outsideCount;
+            
+            toggleDisplay(getEl('bulk-water-modal'), true);
+        };
+
+        window.bulkWaterOutside = async () => {
+            const outsidePlants = state.plants.filter(p => p.status === 'alive' && p.location && state.locations.find(l => l.id === p.location)?.type === 'outside');
+            if (outsidePlants.length === 0) return showMsg("No exposed outside plants found!");
+            if (!confirm(`Water ${outsidePlants.length} outside plants?`)) return;
+            
+            try {
+                showMsg("Watering outside plants...", "success", 0);
+                const batchPromises = outsidePlants.map(p => 
+                    addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                        plantId: p.id, type: "Water", date: new Date().toISOString(), notes: "Bulk Water (Outside)", createdAt: Timestamp.now()
+                    }).then(() => updateDoc(doc(db, `users/${state.user.uid}/plants`, p.id), { snoozeUntil: null }))
+                );
+                await Promise.all(batchPromises);
+                showMsg(`Successfully watered ${outsidePlants.length} plants!`);
+                toggleDisplay(getEl('bulk-water-modal'), false);
+            } catch(e) { showMsg(e.message, "error"); }
+        };
+
+        window.bulkWaterByLocation = async () => {
+            const locId = getEl('bulk-water-location').value;
+            if (!locId) return showMsg("Please select a location", "error");
+            
+            const roomPlants = state.plants.filter(p => p.status === 'alive' && p.location === locId);
+            if (roomPlants.length === 0) return showMsg("No active plants in this room!");
+            if (!confirm(`Water ${roomPlants.length} plants in this room?`)) return;
+
+            try {
+                showMsg("Watering room...", "success", 0);
+                const batchPromises = roomPlants.map(p => 
+                    addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                        plantId: p.id, type: "Water", date: new Date().toISOString(), notes: "Bulk Water (Room)", createdAt: Timestamp.now()
+                    }).then(() => updateDoc(doc(db, `users/${state.user.uid}/plants`, p.id), { snoozeUntil: null }))
+                );
+                await Promise.all(batchPromises);
+                showMsg(`Successfully watered ${roomPlants.length} plants!`);
+                toggleDisplay(getEl('bulk-water-modal'), false);
+            } catch(e) { showMsg(e.message, "error"); }
         };
 
         getEl("log-type-select").addEventListener("change", (e) => {
@@ -2895,6 +3102,55 @@ window.saveCompostSettings = async () => {
             getEl('api-search-query').value = getEl('plant-name').value;
             getEl('api-search-results').innerHTML = '<p class="text-sm opacity-60 text-center py-4">Search to find advice...</p>';
             toggleDisplay(getEl('api-search-modal'), true);
+        };
+
+        window.openDataCheckModal = () => {
+            const list = getEl('data-check-list');
+            list.innerHTML = '';
+
+            let missingCount = 0;
+            state.plants.filter(p => p.status !== 'dead').forEach(plant => {
+                const missing = [];
+                if (!plant.waterFreq) missing.push("Base Water Freq");
+                if (!plant.fertFreq) missing.push("Base Fert Freq");
+                if (!plant.location) missing.push("Location");
+                if (!plant.light) missing.push("Light Condition");
+                if (!plant.potType) missing.push("Pot Type");
+                if (!plant.potSize && plant.potType !== 'ground') missing.push("Pot Size");
+                if (!plant.soilType) missing.push("Soil Type");
+
+                if (missing.length > 0) {
+                    missingCount++;
+                    const item = document.createElement("div");
+                    item.className = "card p-3 border-l-4 border-yellow-500 bg-yellow-50 dark:bg-yellow-900/10";
+                    item.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div class="flex-grow">
+                                <p class="font-bold text-sm text-[var(--text)]">${plant.name}</p>
+                                <p class="text-xs mt-1 text-gray-600 dark:text-gray-400 leading-tight">
+                                    <span class="font-bold text-red-500">Missing:</span> ${missing.join(', ')}
+                                </p>
+                            </div>
+                            <button class="btn-secondary text-xs py-1 px-3 ml-2 shrink-0 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-800" 
+                                onclick="window.toggleDisplay(document.getElementById('data-check-modal'), false); openPlantModal('${plant.id}')">
+                                <i class="fa-solid fa-pen mr-1"></i> Fix
+                            </button>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                }
+            });
+
+            if (missingCount === 0) {
+                list.innerHTML = `
+                    <div class="text-center p-8 text-green-600 dark:text-green-400 flex flex-col items-center">
+                        <i class="fa-solid fa-check-circle text-4xl mb-3"></i>
+                        <p class="font-bold text-lg">All Data Complete!</p>
+                        <p class="text-sm opacity-70 mt-1">Your smart schedules have all the info they need.</p>
+                    </div>`;
+            }
+            
+            toggleDisplay(getEl('data-check-modal'), true);
         };
 
         window.searchPlantApi = async () => {
@@ -3466,6 +3722,9 @@ window.saveCompostSettings = async () => {
         document.getElementById("layout-location-select").addEventListener("change", renderLayout);
         // Add this line so the Garden tab filter actually triggers a re-render
         document.getElementById("plant-filter-location").addEventListener("change", renderPlants);
+        if (document.getElementById("plant-sort-option")) {
+            document.getElementById("plant-sort-option").addEventListener("change", renderPlants);
+        }
         document.getElementById("history-filter-location").addEventListener("change", renderHistory);
         document.getElementById("history-filter-plant").addEventListener("change", renderHistory);
     </script>

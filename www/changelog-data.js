@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+  version: "v14.11.0-beta",
+  date: "2026-03-22",
+  changes: [
+    "In PlantTrackr: Added a Plant Data Check tool to quickly identify plants missing crucial care metrics for smarter forecasting.",
+    "In PlantTrackr: Introduced a Propagations Tracker with a dedicated 'Props' view and a new 'Propagating' plant status.",
+    "In PlantTrackr: Added Bulk Watering tools allowing users to water all exposed outside plants or bulk-water specific rooms at once.",
+    "In PlantTrackr: Upgraded the Photo Viewer to a full Gallery Slider to scroll through a plant's chronological photo history.",
+    "In PlantTrackr: Added new sorting options to the Garden tab to sort by Name, Most Urgent (Needs Water), or Newest additions."
+  ]
+    },
+    {
     version: "v14.10.0-beta",
     date: "2026-03-22",
     changes: [
