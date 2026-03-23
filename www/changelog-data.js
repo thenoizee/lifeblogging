@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+        version: "v14.13.0-alpha",
+        date: "2026-03-23",
+        changes: [
+            "Global: The Shared Navigation header now dynamically pulls and displays the latest version number directly from the changelog data.",
+            "In VehicleManagr: Added a tri-way auto-calculator to the Quick Fuel modal (calculates Total Cost, Litres, or Price/L automatically based on the other two).",
+            "In VehicleManagr: Added strict pre-save validation to the Quick Fuel modal to ensure required fields (like Station and Cost) are filled before closing.",
+            "In VehicleManagr: Fixed a data transfer bug where clearing a field in the Quick Log modal failed to clear the underlying main form.",
+            "In VehicleManagr: Fixed a save crash caused by empty optional numeric fields parsing as NaN.",
+            "In VehicleManagr: Added previously missing fields to the History Edit modal (Volume (L), Paid/L, Std Price/L, Driver, and Volume Estimate).",
+            "In VehicleManagr: Updated all numeric inputs in the History Edit modal to support decimal values."
+        ]
+    },
+    {
     version: "v14.12.0-alpha",
     date: "2026-03-22",
     changes: [

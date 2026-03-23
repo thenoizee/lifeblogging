@@ -1,6 +1,7 @@
 import { getApps } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { changelogData } from './changelog-data.js';
 
 export class AppNavigation {
     constructor(config) {
@@ -10,7 +11,7 @@ export class AppNavigation {
         this.tabs = config.tabs || []; 
         this.activeTab = config.activeTab || '';
         this.userEmail = config.userEmail || 'Guest';
-        this.version = config.version || '';
+        this.version = (changelogData && changelogData.length > 0) ? changelogData[0].version : (config.version || '');
         this.search = config.search || null; 
         this.onThemeChange = config.onThemeChange || null;
         

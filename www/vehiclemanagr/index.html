@@ -835,7 +835,7 @@ body {
 
         <div class="grid grid-cols-2 gap-3">
             <div class="space-y-1">
-                 <label class="text-blue-100 text-xs font-bold uppercase tracking-wider">Station</label>
+                 <label class="text-blue-100 text-xs font-bold uppercase tracking-wider">Station (Req)*</label>
                 <input id="qf-company" type="text" placeholder="Shell..." class="w-full bg-blue-700/30 border border-blue-400/50 focus:border-white rounded-xl p-3 text-lg font-medium outline-none placeholder-blue-400/30 transition-all" />
             </div>
             <div class="space-y-1">
@@ -1737,9 +1737,9 @@ const transferQuickData = () => {
     };
 
     for (const [qId, mainId] of Object.entries(map)) {
-        const val = document.getElementById(qId).value;
-        if(val) document.getElementById(mainId).value = val;
-    }
+                // Removed the if(val) check so that blank fields properly overwrite the main form
+                document.getElementById(mainId).value = document.getElementById(qId).value;
+            }
 
     // UPDATED: Set Date/Time from the Quick Log inputs
     document.getElementById('fuel-date').value = document.getElementById('qf-date').value;
@@ -1758,10 +1758,44 @@ window.transferToFull = () => {
     setTimeout(() => { document.getElementById('card-fuel').scrollIntoView({ behavior: 'smooth' }); }, 100);
 };
 
+// Auto-calculate missing quick fuel fields on change
+const autoCalcQuickFuel = (e) => {
+    const costEl = document.getElementById('qf-cost');
+    const litEl = document.getElementById('qf-litres');
+    const prcEl = document.getElementById('qf-price-std');
+    
+    const cost = parseFloat(costEl.value);
+    const lit = parseFloat(litEl.value);
+    const prc = parseFloat(prcEl.value);
+
+    if (e.target.id === 'qf-cost' && !isNaN(cost)) {
+        if (!isNaN(prc) && isNaN(lit)) litEl.value = (cost / prc).toFixed(2);
+        else if (!isNaN(lit) && isNaN(prc)) prcEl.value = (cost / lit).toFixed(3);
+        else if (!isNaN(lit)) prcEl.value = (cost / lit).toFixed(3);
+    } 
+    else if (e.target.id === 'qf-litres' && !isNaN(lit)) {
+        if (!isNaN(prc) && isNaN(cost)) costEl.value = (lit * prc).toFixed(2);
+        else if (!isNaN(cost) && isNaN(prc)) prcEl.value = (cost / lit).toFixed(3);
+        else if (!isNaN(cost)) prcEl.value = (cost / lit).toFixed(3);
+    } 
+    else if (e.target.id === 'qf-price-std' && !isNaN(prc)) {
+        if (!isNaN(lit) && isNaN(cost)) costEl.value = (lit * prc).toFixed(2);
+        else if (!isNaN(cost) && isNaN(lit)) litEl.value = (cost / prc).toFixed(2);
+        else if (!isNaN(lit)) costEl.value = (lit * prc).toFixed(2);
+    }
+};
+
+['qf-cost', 'qf-litres', 'qf-price-std'].forEach(id => {
+    document.getElementById(id).addEventListener('change', autoCalcQuickFuel);
+});
+
 // Bind the Quick Save button
 document.getElementById('qf-save-btn').onclick = async () => {
+    // Validate required fields BEFORE hiding the modal
+    if(!document.getElementById('qf-cost').value) return showMessage("Enter a cost", "error");
+    if(!document.getElementById('qf-company').value) return showMessage("Station is required", "error");
+    
     transferQuickData();
-    if(!document.getElementById('fuel-cost').value) return showMessage("Enter a cost", "error");
     
     // Simulate clicking the main save button
     document.getElementById('log-fuel-btn').click();
@@ -1807,8 +1841,8 @@ window.quickLog = (type) => {
 // Update log-fuel-btn handler
 document.getElementById("log-fuel-btn").onclick = () => {
     // ... (keep existing qty/total/unit logic) ...
-    const qty = parseFloat(document.getElementById('fuel-quantity').value); // Re-declare for context
-    const total = parseFloat(document.getElementById('fuel-cost').value);
+    const qty = parseFloat(document.getElementById('fuel-quantity').value) || 0; // Re-declare for context
+    const total = parseFloat(document.getElementById('fuel-cost').value) || 0;
     let unit = parseFloat(document.getElementById('fuel-price-unit').value);
     if (isNaN(unit) && qty > 0 && total > 0) unit = total / qty;
 
@@ -1816,11 +1850,11 @@ document.getElementById("log-fuel-btn").onclick = () => {
         type: 'fuel-up', 
         date: getTimestamp('fuel'), // UPDATED
         driver: document.getElementById('fuel-driver').value,
-        odometer: parseFloat(document.getElementById('odometer').value),
+        odometer: parseFloat(document.getElementById('odometer').value) || 0,
         fuelQuantity: qty,
         fuelCost: total,
-        fuelUnitPrice: parseFloat(document.getElementById('fuel-price-unit').value), // Captures the auto-calculated value
-    standardUnitPrice: parseFloat(document.getElementById('fuel-price-standard').value),
+        fuelUnitPrice: isNaN(unit) ? 0 : unit, // Captures the auto-calculated value safely
+        standardUnitPrice: parseFloat(document.getElementById('fuel-price-standard').value) || 0,
         fuelType: document.getElementById('fuel-type').value,
         company: document.getElementById('fuel-company').value,
         location: document.getElementById('fuel-location').value,
@@ -1950,7 +1984,7 @@ document.getElementById("log-expense-btn").onclick = () => saveEntry("log-expens
             const mkInput = (l, k, t, v) => `
                 <div>
                     <label class="text-xs font-bold uppercase text-gray-500 block mb-1">${l}</label>
-                    <input id="edit-${k}" type="${t}" value="${v !== undefined && v !== null ? v : ''}" class="w-full p-2 border rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:border-gray-700">
+                    <input id="edit-${k}" type="${t}" ${t === 'number' ? 'step="any"' : ''} value="${v !== undefined && v !== null ? v : ''}" class="w-full p-2 border rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:border-gray-700">
                 </div>`;
             
             const mkSelect = (l, k, opts, sel) => `
@@ -1988,19 +2022,21 @@ html += `<div class="flex gap-2">
 </div>`;
 
             if (item.type === 'fuel-up') {
-    html += mkInput('Driver', 'driver', 'text', item.driver); // NEW
+    html += mkInput('Driver', 'driver', 'text', item.driver); 
     html += mkInput('Odometer', 'odometer', 'number', item.odometer);
     html += mkInput('Cost (£)', 'fuelCost', 'number', item.fuelCost);
-    html += mkInput('Volume', 'fuelQuantity', 'number', item.fuelQuantity);
+    html += mkInput('Volume (L)', 'fuelQuantity', 'number', item.fuelQuantity);
+    html += mkInput('Paid/L (£)', 'fuelUnitPrice', 'number', item.fuelUnitPrice);
+    html += mkInput('Std Price/L (£)', 'standardUnitPrice', 'number', item.standardUnitPrice);
     html += mkInput('Company', 'company', 'text', item.company);
     html += mkInput('Location', 'location', 'text', item.location);
     html += mkSelect('Fuel Type', 'fuelType', ['Petrol', 'Premium Petrol', 'Diesel', 'Premium Diesel', 'Electric', 'LPG', 'AdBlue'], item.fuelType || 'Petrol');
     html += mkSelect('Payment', 'paymentMethod', ['Card', 'Cash', 'Corporate', 'Direct Debit'], item.paymentMethod);
     html += mkSelect('Context', 'drivingContext', ['Mixed', 'City', 'Highway', 'Sport'], item.drivingContext);
-    html += `</div><div class="grid grid-cols-3 gap-2 mt-3">`; // Changed grid cols to 3
+    html += `</div><div class="grid grid-cols-3 gap-2 mt-3">`; 
     html += mkCheckbox('Partial Fill', 'isPartial', item.isPartial);
     html += mkCheckbox('Loyalty Used', 'hasLoyaltySaving', item.hasLoyaltySaving);
-    html += mkCheckbox('Vol. Est.', 'isEstimate', item.isEstimate); // NEW
+    html += mkCheckbox('Vol. Est.', 'isEstimate', item.isEstimate); 
 }
             else if (item.type === 'service') {
                 html += mkInput('Odometer', 'odometer', 'number', item.odometer);
@@ -2097,10 +2133,17 @@ if(dVal) {
 }
 
                 if(item.type === 'fuel-up') {
-    data.driver = getVal('driver'); // NEW
-    data.odometer = parseFloat(getVal('odometer'));
-    data.fuelCost = parseFloat(getVal('fuelCost'));
-    data.fuelQuantity = parseFloat(getVal('fuelQuantity'));
+    data.driver = getVal('driver'); 
+    data.odometer = parseFloat(getVal('odometer')) || 0;
+    data.fuelCost = parseFloat(getVal('fuelCost')) || 0;
+    data.fuelQuantity = parseFloat(getVal('fuelQuantity')) || 0;
+    
+    const autoUnit = parseFloat(getVal('fuelUnitPrice'));
+    data.fuelUnitPrice = isNaN(autoUnit) ? 0 : autoUnit;
+    
+    const stdUnit = parseFloat(getVal('standardUnitPrice'));
+    data.standardUnitPrice = isNaN(stdUnit) ? 0 : stdUnit;
+
     data.company = getVal('company');
     data.location = getVal('location');
     data.fuelType = getVal('fuelType');
@@ -2108,7 +2151,7 @@ if(dVal) {
     data.drivingContext = getVal('drivingContext');
     data.isPartial = getCheck('isPartial');
     data.hasLoyaltySaving = getCheck('hasLoyaltySaving');
-    data.isEstimate = getCheck('isEstimate'); // NEW
+    data.isEstimate = getCheck('isEstimate'); 
 } else if(item.type === 'service') {
                     data.odometer = parseFloat(getVal('odometer'));
                     data.cost = parseFloat(getVal('cost'));
