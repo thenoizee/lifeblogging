@@ -139,10 +139,26 @@
                             <option value="author">Author (A-Z)</option>
                             <option value="rating">Highest Rated</option>
                         </select>
+                        <button id="bulk-toggle-btn" class="w-full md:w-auto p-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:ring-2 focus:ring-amber-500 outline-none text-sm font-bold text-gray-600 dark:text-gray-300 transition whitespace-nowrap">
+                            <i class="fa-solid fa-check-double"></i> Bulk Manage
+                        </button>
                     </div>
                 </div>
                 <div id="library-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
                     </div>
+
+                <div id="bulk-action-bar" class="fixed bottom-20 md:bottom-6 left-1/2 transform -translate-x-1/2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3 rounded-full shadow-2xl z-50 flex items-center gap-3 hidden transition-transform translate-y-20">
+                    <span id="bulk-count" class="font-bold text-sm bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full text-gray-700 dark:text-gray-300">0 Selected</span>
+                    <button id="bulk-tag-btn" class="bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900 dark:text-blue-200 text-xs font-bold px-4 py-2 rounded-full transition flex items-center gap-2">
+                        <i class="fa-solid fa-tags"></i> Add Tags
+                    </button>
+                    <button id="bulk-delete-btn" class="bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900 dark:text-red-200 text-xs font-bold px-4 py-2 rounded-full transition flex items-center gap-2">
+                        <i class="fa-solid fa-trash"></i> Delete
+                    </button>
+                    <button id="bulk-cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-300 text-xs font-bold px-4 py-2 rounded-full transition ml-2">
+                        Cancel
+                    </button>
+                </div>
             </div>
 
             <div id="tab-content-import" class="tab-content">
@@ -264,7 +280,7 @@
         import { AppNavigation } from '../shared-nav.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Config ---
         const app = initializeApp({
@@ -301,6 +317,8 @@
         let selectedStatus = 'reading';
         let currentSort = 'recent';
         let apiSearchResults = [];
+        let isBulkMode = false;
+        let selectedBooks = new Set();
 
         // --- Init Navigation ---
         const nav = new AppNavigation({
@@ -483,7 +501,25 @@
             filtered.forEach(book => {
                 const div = document.createElement('div');
                 div.className = 'book-card bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-sm border border-gray-200 dark:border-gray-700 cursor-pointer relative group';
-                div.onclick = () => window.location.hash = `#book/${book.key}`;
+                div.onclick = (e) => {
+                    if (isBulkMode) {
+                        e.preventDefault();
+                        if (selectedBooks.has(book.key)) {
+                            selectedBooks.delete(book.key);
+                            div.classList.remove('ring-4', 'ring-amber-500');
+                        } else {
+                            selectedBooks.add(book.key);
+                            div.classList.add('ring-4', 'ring-amber-500');
+                        }
+                        updateBulkActionBar();
+                    } else {
+                        window.location.hash = `#book/${book.key}`;
+                    }
+                };
+                
+                if (isBulkMode && selectedBooks.has(book.key)) {
+                    div.classList.add('ring-4', 'ring-amber-500');
+                }
                 
                 const coverUrl = getValidCover(book.cover); // Clean old URLs
                 
@@ -706,10 +742,86 @@
 
         window.deleteBook = async (key) => {
             if(!confirm("Are you sure you want to delete this book?")) return;
-            // Implementation left as exercise or simple firestore delete
-            // await deleteDoc(...) 
-            showToast("Book deleted (simulation)", "info");
+            try {
+                await deleteDoc(doc(db, `users/${currentUser.uid}/books`, key));
+                showToast("Book deleted", "info");
+                closeBookModal();
+                await loadBooks();
+                renderLibrary();
+                renderDashboard();
+            } catch (e) {
+                showToast("Error deleting book", "error");
+            }
         };
+
+        function updateBulkActionBar() {
+            document.getElementById('bulk-count').innerText = `${selectedBooks.size} Selected`;
+        }
+
+        document.getElementById('bulk-toggle-btn').addEventListener('click', () => {
+            isBulkMode = !isBulkMode;
+            selectedBooks.clear();
+            const bar = document.getElementById('bulk-action-bar');
+            const btn = document.getElementById('bulk-toggle-btn');
+            
+            if (isBulkMode) {
+                bar.classList.remove('hidden', 'translate-y-20');
+                btn.classList.add('bg-amber-100', 'text-amber-700', 'border-amber-500', 'dark:bg-amber-900', 'dark:text-amber-200');
+            } else {
+                bar.classList.add('hidden', 'translate-y-20');
+                btn.classList.remove('bg-amber-100', 'text-amber-700', 'border-amber-500', 'dark:bg-amber-900', 'dark:text-amber-200');
+            }
+            renderLibrary();
+        });
+
+        document.getElementById('bulk-cancel-btn').addEventListener('click', () => {
+            document.getElementById('bulk-toggle-btn').click();
+        });
+
+        document.getElementById('bulk-delete-btn').addEventListener('click', async () => {
+            if (selectedBooks.size === 0) return;
+            if (!confirm(`Are you sure you want to delete ${selectedBooks.size} books?`)) return;
+            
+            try {
+                for (const key of selectedBooks) {
+                    await deleteDoc(doc(db, `users/${currentUser.uid}/books`, key));
+                }
+                showToast(`Deleted ${selectedBooks.size} books`);
+                document.getElementById('bulk-toggle-btn').click();
+                await loadBooks();
+                renderLibrary();
+                renderDashboard();
+            } catch (error) {
+                showToast("Error deleting books", "error");
+            }
+        });
+
+        document.getElementById('bulk-tag-btn').addEventListener('click', async () => {
+            if (selectedBooks.size === 0) return;
+            const newTags = prompt("Enter comma-separated tags to add to selected books:");
+            if (!newTags) return;
+            
+            try {
+                for (const key of selectedBooks) {
+                    const book = booksCache.find(b => b.key === key);
+                    let existingTags = book.tags ? book.tags.split(',').map(t => t.trim()) : [];
+                    let tagsToAdd = newTags.split(',').map(t => t.trim());
+                    
+                    let combinedTags = [...new Set([...existingTags, ...tagsToAdd])].filter(t => t).join(', ');
+                    
+                    await setDoc(doc(db, `users/${currentUser.uid}/books`, key), {
+                        tags: combinedTags,
+                        updatedAt: serverTimestamp()
+                    }, { merge: true });
+                }
+                showToast(`Updated tags for ${selectedBooks.size} books`);
+                document.getElementById('bulk-toggle-btn').click();
+                await loadBooks();
+                renderLibrary();
+            } catch (error) {
+                showToast("Error updating tags", "error");
+            }
+        });
 
         // --- Import Logic (Simplified for brevity) ---
         document.getElementById('csv-input').onchange = (e) => {
@@ -718,31 +830,92 @@
             Papa.parse(file, {
                 header: true,
                 complete: async (results) => {
-                    // Similar logic to previous, but using `booksCache` refresh
                     let count = 0;
+                    const totalBooks = results.data.filter(r => r.Title).length;
                     const log = document.getElementById('import-log');
                     log.classList.remove('hidden');
-                    log.innerHTML = 'Starting import...<br>';
+                    log.innerHTML = `Starting import of ${totalBooks} books...<br>`;
                     
                     for(const row of results.data) {
                         if(!row.Title) continue;
-                        const key = 'imp_' + btoa(unescape(encodeURIComponent(row.Title + row.Authors))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
-                        const statusMap = { 'read': 'completed', 'currently-reading': 'reading', 'to-read': 'tbr' };
+                        count++;
                         
+                        // Update UI with Live Progress
+                        log.innerHTML = `<div class="font-bold text-amber-500 mb-2">Processing ${count} of ${totalBooks}...</div>`;
+                        
+                        let key = 'imp_' + btoa(unescape(encodeURIComponent(row.Title + row.Authors))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+                        const statusMap = { 'read': 'completed', 'currently-reading': 'reading', 'to-read': 'tbr' };
+                        const bookStatus = statusMap[row['Read Status']] || 'tbr';
+                        
+                        let cover = PLACEHOLDER_IMG;
+                        let isbnVal = row['ISBN/UID'];
+                        let isbn = isbnVal ? String(isbnVal).replace(/[^0-9X]/gi, '') : null;
+                        let apiSuccess = false;
+                        
+                        // 1. Try ISBN Lookup First
+                        if (isbn && (isbn.length === 10 || isbn.length === 13)) {
+                            cover = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+                            try {
+                                const res = await fetch(`https://openlibrary.org/search.json?isbn=${isbn}`);
+                                if (res.ok) {
+                                    const data = await res.json();
+                                    if (data.docs && data.docs.length > 0) {
+                                        const olBook = data.docs[0];
+                                        if (olBook.key) key = olBook.key.replace('/works/', ''); 
+                                        if (olBook.cover_i) cover = `https://covers.openlibrary.org/b/id/${olBook.cover_i}-L.jpg`;
+                                        apiSuccess = true;
+                                    }
+                                }
+                            } catch(e) { console.warn("ISBN API Lookup failed for", isbn); }
+                        }
+
+                        // 2. Fallback to Title + Author Lookup if ISBN failed or is missing
+                        if (!apiSuccess) {
+                            try {
+                                const query = encodeURIComponent(`${row.Title} ${row.Authors}`);
+                                const res = await fetch(`https://openlibrary.org/search.json?q=${query}&limit=1`);
+                                if (res.ok) {
+                                    const data = await res.json();
+                                    if (data.docs && data.docs.length > 0) {
+                                        const olBook = data.docs[0];
+                                        if (olBook.key) key = olBook.key.replace('/works/', ''); 
+                                        if (olBook.cover_i) cover = `https://covers.openlibrary.org/b/id/${olBook.cover_i}-L.jpg`;
+                                    }
+                                }
+                            } catch(e) { console.warn("Fallback Search failed for", row.Title); }
+                        }
+
+                        // 3. Map Rich Metadata
+                        let formatMap = { 'audiobook': 'audio', 'ebook': 'kindle', 'physical': 'physical' };
+                        let mappedFormat = row['Format'] ? formatMap[row['Format'].toLowerCase()] || 'physical' : 'physical';
+                        let pages = row['Number of Pages'] ? parseInt(row['Number of Pages']) : 300;
+                        let rating = row['Star Rating'] ? parseFloat(row['Star Rating']) : 0;
+                        let review = row['Review'] || '';
+                        let tags = row['Tags'] || row['Bookshelves'] || '';
+
                         await setDoc(doc(db, `users/${currentUser.uid}/books`, key), {
                             key,
                             title: row.Title,
                             author: row.Authors,
-                            status: statusMap[row['Read Status']] || 'tbr',
-                            cover: PLACEHOLDER_IMG,
-                            pagesRead: 0,
-                            totalPages: row['Number of Pages'] ? parseInt(row['Number of Pages']) : 300,
-                            imported: true
+                            status: bookStatus,
+                            cover: cover,
+                            pagesRead: bookStatus === 'completed' ? pages : 0,
+                            totalPages: pages,
+                            format: mappedFormat,
+                            rating: rating,
+                            review: review,
+                            tags: tags,
+                            imported: true,
+                            updatedAt: serverTimestamp()
                         }, { merge: true });
-                        count++;
+                        
+                        log.innerHTML += `<div class="text-gray-500 truncate mt-1"><i class="fa-solid fa-check text-green-500"></i> ${row.Title}</div>`;
                     }
-                    log.innerHTML += `<span class="text-green-500">Done! Imported ${count} books.</span>`;
+                    log.innerHTML += `<div class="text-green-500 font-bold mt-3 text-sm p-2 bg-green-500/10 rounded">Done! Successfully imported ${count} books.</div>`;
                     await loadBooks();
+                    
+                    if(document.getElementById('tab-content-dashboard').classList.contains('active')) renderDashboard();
+                    if(document.getElementById('tab-content-library').classList.contains('active')) renderLibrary();
                 }
             });
         };

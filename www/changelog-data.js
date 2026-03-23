@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+        version: "v14.15.0-alpha",
+        date: "2026-03-24",
+        changes: [
+            "In BookTrackr: Added a new 'Bulk Manage' mode to the Library tab, enabling users to select multiple books at once.",
+            "In BookTrackr: Implemented bulk deletion and bulk tagging capabilities to easily organize or clean up the library.",
+            "In BookTrackr: Upgraded the StoryGraph CSV Importer to automatically parse the ISBN/UID column.",
+            "In BookTrackr: Books imported via CSV now automatically search the OpenLibrary API to fetch high-resolution covers and correct internal linking IDs.",
+            "In BookTrackr: Supercharged the CSV Importer to extract rich metadata including Star Ratings, Reviews/Notes, Tags, and Book Formats.",
+            "In BookTrackr: Implemented a 'Fallback Search' for the CSV importer. If a book is missing an ISBN, it now smartly searches OpenLibrary via Title and Author to rescue missing covers.",
+            "In BookTrackr: Added a live UI progress counter to the importer to provide feedback during long API fetching processes."
+        ]
+    },
+    {
         version: "v14.14.0-alpha",
         date: "2026-03-23",
         changes: [
