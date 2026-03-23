@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v14.14.0-alpha",
+        date: "2026-03-23",
+        changes: [
+            "In PlantTrackr: Added an image preview and icon display when selecting a plant in the Quick Log modal.",
+            "In PlantTrackr: Expanded propagation status options to include specific methods (Water, Runner, Air Root, and Soil).",
+            "In PlantTrackr: Added a new Family Tree modal to visualize plant lineage, parent plants, and cuttings.",
+            "In PlantTrackr: Implemented local image compression to prevent low memory crashes when taking photos directly from the camera.",
+            "In PlantTrackr: Fixed a UI crashing bug in the Quick Log modal caused by missing select elements."
+        ]
+    },
+    {
         version: "v14.13.0-alpha",
         date: "2026-03-23",
         changes: [
