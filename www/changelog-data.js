@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v14.16.0-alpha",
+    date: "2026-03-23",
+    changes: [
+        "In PlantTrackr: Changed the default progress update frequency to 30 days and default watering frequency to 7 days.",
+        "In PlantTrackr: Added a text search input to the Garden view to instantly filter plants by name or species.",
+        "In PlantTrackr: Added dynamic styling to plant cards in the Garden view to highlight sick or unhealthy plants with a red tint."
+    ]
+},
+    {
         version: "v14.15.0-alpha",
         date: "2026-03-24",
         changes: [
