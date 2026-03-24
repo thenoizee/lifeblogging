@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v14.18.0-alpha",
+    date: "2026-03-24",
+    changes: [
+        "In RecipeManagr: Updated the Shopping List mode featuring a visual grid of tap-to-toggle tiles, integrated recipe badges, and a Quick Add bar.",
+        "In RecipeManagr: Flattened the UI by extracting layout, display toggles, and multi-select actions from the options cog directly into the main filter area.",
+        "In RecipeManagr: Removed the hardcoded redundant version number link in the top navigation to prevent conflicts with the AppNavigation component.",
+        "In RecipeManagr: Implemented the V1 Meal Planner tab, featuring a Monday-Sunday drag-and-drop interface, mobile-friendly assign buttons, and a 'Send Week to Shopping List' aggregator.",
+    ]
+},
+    {
   version: "v14.17.0-alpha",
   date: "2026-03-24",
   changes: [
