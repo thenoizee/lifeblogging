@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+  version: "v14.17.0-alpha",
+  date: "2026-03-24",
+  changes: [
+    "In Loggr: Made Dark Mode the default theme.",
+    "In Loggr: Implemented synchronous localStorage checks to prevent theme 'flashing' while Firebase initializes.",
+    "In Loggr: Updated theme state management to sync seamlessly between localStorage and Firestore."
+  ]
+},
+    {
     version: "v14.16.0-alpha",
     date: "2026-03-23",
     changes: [
