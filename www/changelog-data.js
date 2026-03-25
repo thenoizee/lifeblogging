@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v14.19.0-alpha",
+    date: "2026-03-25",
+    changes: [
+        "In TaskTrackr: Implemented a unified Ultra-Compact Mode across all views (Kanban, Matrix, Timeline, and List) with a strict 36px row height.",
+        "In TaskTrackr: Stripped hidden margin-top spacing to eliminate double-spacing between compact tasks in the Kanban and Matrix bodies.",
+        "In TaskTrackr: Hid metadata badges in Kanban and Matrix compact views to prioritize horizontal space so task titles remain visible and truncate correctly."
+    ]
+    },
+    {
     version: "v14.18.0-alpha",
     date: "2026-03-24",
     changes: [
