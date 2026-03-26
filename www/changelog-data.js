@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v14.20.0-alpha",
+    date: "2026-03-26",
+    changes: [
+        "In TaskTrackr: Added a dedicated standalone PWA manifest to allow installing the tool directly to the home screen.",
+        "In Lifeblogging Hub: Added App Shortcuts to the main manifest.json to enable quick-launching TaskTrackr directly from the main app icon."
+    ]
+    },
+    {
     version: "v14.19.0-alpha",
     date: "2026-03-25",
     changes: [
