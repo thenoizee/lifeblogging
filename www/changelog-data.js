@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v14.21.0-alpha",
+    date: "2026-03-26",
+    changes: [
+        "In FoodTrackr: Added the ability to mark meal ingredients as 'Optional' in the Composite Food Builder.",
+        "In FoodTrackr: Updated the Log Meal modal to present a checklist of all meal ingredients, with optional items unchecked by default."
+    ]
+    },
+    {
     version: "v14.20.0-alpha",
     date: "2026-03-26",
     changes: [

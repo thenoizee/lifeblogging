@@ -1822,6 +1822,11 @@ body.bulk-active {
                 <option value="drinks">Drinks</option>
             </select>
         </div>
+
+        <div class="mb-4">
+            <label class="block text-sm font-semibold mb-2">Include Items:</label>
+            <div id="quick-log-meal-items" class="max-h-48 overflow-y-auto space-y-2 custom-scrollbar p-1"></div>
+        </div>
         
         <button id="confirm-quick-log-meal-btn" class="main-button w-full mt-4">Log Meal</button>
     </div>
@@ -2351,7 +2356,8 @@ const addToBuilder = (product) => {
         quantity: qty,
         unit: unit,
         realGrams: servingGrams || 100,
-        imageUrl: product.image_front_thumb_url || PLACEHOLDER_IMG
+        imageUrl: product.image_front_thumb_url || PLACEHOLDER_IMG,
+        isOptional: false
     };
     
     builderItems.push(item);
@@ -2377,16 +2383,24 @@ const renderBuilderPanel = () => {
     
     builderItems.forEach((item, index) => {
         const itemCals = (item.baseNutrients.calories * (item.realGrams / 100));
-        totalCals += itemCals;
+        if (!item.isOptional) {
+            totalCals += itemCals;
+        }
         
         const row = document.createElement('div');
         row.className = 'flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-2 rounded text-sm';
         row.innerHTML = `
-            <div class="truncate flex-grow pr-2">
+            <div class="flex items-center gap-2 mr-2">
+                <label class="flex flex-col items-center text-[9px] text-gray-500 cursor-pointer" title="Optional items are unchecked by default">
+                    <input type="checkbox" id="builder-opt-${index}" class="accent-orange-500 w-3 h-3" ${item.isOptional ? 'checked' : ''}>
+                    Opt
+                </label>
+            </div>
+            <div class="truncate flex-grow pr-2 ${item.isOptional ? 'opacity-60' : ''}">
                 <span class="font-semibold block truncate">${item.name}</span>
                 <span class="text-xs text-gray-500">${item.quantity} ${item.unit} • ${Math.round(itemCals)} kcal</span>
             </div>
-            <button class="text-red-500 hover:bg-red-100 p-1 rounded" id="remove-builder-item-${index}">
+            <button class="text-red-500 hover:bg-red-100 p-1 rounded shrink-0" id="remove-builder-item-${index}">
                 <i class="fa-solid fa-times"></i>
             </button>
         `;
@@ -2395,9 +2409,13 @@ const renderBuilderPanel = () => {
             builderItems.splice(index, 1);
             renderBuilderPanel();
         });
+        document.getElementById(`builder-opt-${index}`).addEventListener('change', (e) => {
+            builderItems[index].isOptional = e.target.checked;
+            renderBuilderPanel();
+        });
     });
     
-    totalEl.textContent = `${Math.round(totalCals)} kcal`;
+    totalEl.textContent = `${Math.round(totalCals)} kcal (Base)`;
 };
 
 // Listeners
@@ -2439,7 +2457,8 @@ document.getElementById('save-builder-meal-btn').addEventListener('click', async
             sodium: (bn['sodium_100g'] || 0) * multiplier,
             'saturated-fat': (bn['saturated-fat_100g'] || 0) * multiplier,
             salt: (bn['salt_100g'] || 0) * multiplier,
-            servingUnits: [] 
+            servingUnits: [],
+            isOptional: item.isOptional || false
         };
     });
 
@@ -3994,7 +4013,7 @@ const renderMyMealsQuickList = () => {
     }
 
     meals.sort((a, b) => a.name.localeCompare(b.name)).forEach(meal => {
-        const totalCals = meal.items.reduce((sum, item) => sum + item.calories, 0);
+        const totalCals = meal.items.reduce((sum, item) => sum + (item.isOptional ? 0 : item.calories), 0);
         const card = document.createElement('div');
         card.className = 'group p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md hover:border-orange-500 dark:hover:border-orange-500 cursor-pointer flex flex-row items-center gap-3 transition-all duration-200 relative overflow-hidden';
         
@@ -4079,7 +4098,7 @@ const renderMyMealsQuickList = () => {
             const sortedMeals = [...meals].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
             sortedMeals.forEach(meal => {
-                const totalCals = (meal.items || []).reduce((sum, item) => sum + (item.calories || 0), 0);
+                const totalCals = (meal.items || []).reduce((sum, item) => sum + (item.isOptional ? 0 : (item.calories || 0)), 0);
                 const card = document.createElement('div');
                 card.className = 'p-4 border rounded-lg flex flex-col gap-2 bg-[var(--bg-color)]';
                 
@@ -5522,13 +5541,13 @@ const openPreviewMealModal = (meal) => {
     let totalCals = 0;
     
     meal.items.forEach(item => {
-        totalCals += (item.calories || 0);
+        if (!item.isOptional) totalCals += (item.calories || 0);
         const imageUrl = (item.imageUrl && item.imageUrl.startsWith('http')) ? item.imageUrl : 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png';
         list.innerHTML += `
-            <div class="flex items-center gap-3 bg-[var(--bg-color)] p-2 rounded-lg border border-[var(--border-color)]">
+            <div class="flex items-center gap-3 bg-[var(--bg-color)] p-2 rounded-lg border border-[var(--border-color)] ${item.isOptional ? 'opacity-60' : ''}">
                 <img src="${imageUrl}" class="w-10 h-10 rounded object-contain bg-white shrink-0 border border-gray-100 dark:border-gray-700">
                 <div class="flex-grow min-w-0">
-                    <p class="font-semibold text-sm truncate">${item.name}</p>
+                    <p class="font-semibold text-sm truncate">${item.name} ${item.isOptional ? '<span class="text-[10px] bg-gray-200 text-gray-600 px-1 rounded ml-1">Optional</span>' : ''}</p>
                     <p class="text-xs text-[var(--text-color-secondary)]">${item.quantity || 100}g</p>
                 </div>
                 <div class="font-mono text-sm font-bold text-orange-600 dark:text-orange-400 shrink-0">
@@ -5538,7 +5557,7 @@ const openPreviewMealModal = (meal) => {
         `;
     });
     
-    document.getElementById('preview-meal-total-cals').textContent = totalCals.toFixed(0) + ' kcal';
+    document.getElementById('preview-meal-total-cals').textContent = totalCals.toFixed(0) + ' kcal (Base)';
     
     document.getElementById('preview-log-meal-btn').onclick = () => {
         document.getElementById('preview-meal-modal').classList.add('hidden');
@@ -5574,6 +5593,24 @@ const openLogMealModal = (mealId) => {
     else if (hour >= 22) section = 'puddings';
     document.getElementById('quick-log-meal-section').value = section;
 
+    const itemsContainer = document.getElementById('quick-log-meal-items');
+    if (itemsContainer) {
+        itemsContainer.innerHTML = '';
+        meal.items.forEach((item, idx) => {
+            const isChecked = item.isOptional ? '' : 'checked';
+            const div = document.createElement('div');
+            div.className = `flex items-center justify-between p-2 bg-[var(--bg-color)] rounded border border-[var(--border-color)] ${item.isOptional ? 'opacity-75' : ''}`;
+            div.innerHTML = `
+                <label class="flex items-center gap-2 cursor-pointer flex-grow overflow-hidden">
+                    <input type="checkbox" class="meal-log-item-checkbox accent-orange-600 w-4 h-4" value="${idx}" ${isChecked}>
+                    <span class="text-sm truncate font-medium">${item.name} ${item.isOptional ? '<span class="text-[10px] text-gray-500 font-normal ml-1">(Opt)</span>' : ''}</span>
+                </label>
+                <span class="text-xs text-[var(--text-color-secondary)] ml-2 whitespace-nowrap">${item.quantity || 100}g</span>
+            `;
+            itemsContainer.appendChild(div);
+        });
+    }
+
     document.getElementById('quick-log-meal-modal').classList.remove('hidden');
 };
 
@@ -5587,6 +5624,13 @@ document.getElementById('confirm-quick-log-meal-btn').addEventListener('click', 
     const meal = meals.find(m => m.id === pendingLogMealId);
     if (!meal) return;
 
+    const selectedIndices = Array.from(document.querySelectorAll('.meal-log-item-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (selectedIndices.length === 0) {
+        showToast("Please select at least one item to log.", "error");
+        return;
+    }
+    const itemsToLog = meal.items.filter((item, idx) => selectedIndices.includes(idx));
+
     const btn = document.getElementById('confirm-quick-log-meal-btn');
     btn.disabled = true;
     btn.textContent = "Logging...";
@@ -5598,7 +5642,7 @@ document.getElementById('confirm-quick-log-meal-btn').addEventListener('click', 
 
     const batch = writeBatch(db);
     
-    meal.items.forEach(item => {
+    itemsToLog.forEach(item => {
         const docRef = doc(collection(db, `users/${user.uid}/foodLog`));
         batch.set(docRef, {
             ...item,
@@ -5680,7 +5724,8 @@ document.getElementById('confirm-quick-log-meal-btn').addEventListener('click', 
                 restaurantName: item.restaurantName || '',
                 uploadedApp: item.uploadedApp || 'FoodTrackr',
                 ingredients: item.ingredients || '',
-                allergens: item.allergens || ''
+                allergens: item.allergens || '',
+                isOptional: false
             }));
             
             const mealData = {
