@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v14.22.0-alpha",
+    date: "2026-03-27",
+    changes: [
+        "In RecipeManagr: Introduced arbitrary yield scaling, replacing fixed multipliers with a dynamic 'Target Servings' input that auto-calculates ratios.",
+        "In RecipeManagr: Fleshed out Meal Planner mode to group items explicitly by meal slots (Breakfast, Lunch, Dinner, Snacks).",
+        "In RecipeManagr: Added structured Ingredient Builder UI in the recipe editor to prep for FoodTrackr integration.",
+        "In RecipeManagr: Added a direct 'Plan' button to the recipe details modal for faster meal slot assignment.",
+        "In RecipeManagr: Enabled drag-and-drop recipe transfers between meal slots within the Meal Planner view.",
+        "In RecipeManagr: Updated Shopping List aggregation logic to accurately traverse nested meal slots in the weekly plan."
+    ]
+},
+    {
     version: "v14.21.0-alpha",
     date: "2026-03-26",
     changes: [

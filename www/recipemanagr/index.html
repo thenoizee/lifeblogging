@@ -420,11 +420,19 @@ select, button, input {
                             </div>
                         </div>
                         <div class="lg:col-span-3">
-                            <label class="flex items-center gap-2 text-sm mb-1">
-                                Ingredients 
-                                <i class="fas fa-info-circle text-gray-400" title="Use [Section Name] for headings and ## for inline tips."></i>
+                            <label class="flex items-center gap-2 text-sm mb-2">
+                                Ingredients
+                                <i class="fas fa-info-circle text-gray-400" title="Structured ingredients for FoodTrackr integration"></i>
                             </label>
-                            <textarea id="recipe-ingredients" placeholder="e.g., [Sauce]&#10;1 cup tomatoes ## fresh is best" rows="5" class="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 w-full"></textarea>
+                            <div id="ingredients-builder" class="space-y-2 mb-2"></div>
+                            <div class="flex gap-2">
+                                <button type="button" id="add-ingredient-btn" class="text-sm bg-teal-50 text-teal-700 border border-teal-200 py-1 px-3 rounded hover:bg-teal-100">
+                                    <i class="fas fa-plus"></i> Add Ingredient
+                                </button>
+                                <button type="button" id="add-ingredient-section-btn" class="text-sm bg-gray-50 text-gray-700 border border-gray-200 py-1 px-3 rounded hover:bg-gray-100">
+                                    <i class="fas fa-heading"></i> Add Section
+                                </button>
+                            </div>
                         </div>
                         <div class="lg:col-span-3">
     <label class="flex items-center gap-2 text-sm mb-2">
@@ -1282,6 +1290,14 @@ document.querySelectorAll('input[name="recipe-type"]').forEach(radio => {
         document.getElementById('instructions-builder').appendChild(createSectionRow());
     });
 
+    document.getElementById('add-ingredient-btn').addEventListener('click', () => {
+        document.getElementById('ingredients-builder').appendChild(createIngredientRow());
+    });
+    
+    document.getElementById('add-ingredient-section-btn').addEventListener('click', () => {
+        document.getElementById('ingredients-builder').appendChild(createSectionRow());
+    });
+
             if (mobileFilterToggle) {
         mobileFilterToggle.addEventListener('click', () => {
             filterContainer.classList.toggle('hidden');
@@ -1533,7 +1549,12 @@ window.switchTab = switchTab;
                             const index = parseInt(dayNum) - 1;
                             
                             if (!isNaN(index) && days[index]) {
-                                window.addRecipeToMealPlan(recipe.id, days[index]);
+                                const slots = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+                                const slotNum = prompt(`Which meal for ${days[index]}?\n1=Breakfast, 2=Lunch, 3=Dinner, 4=Snacks`, "3");
+                                const slotIndex = parseInt(slotNum) - 1;
+                                if(!isNaN(slotIndex) && slots[slotIndex]) {
+                                    window.addRecipeToMealPlan(recipe.id, days[index], slots[slotIndex]);
+                                }
                             }
                             return;
                         }
@@ -1795,7 +1816,7 @@ const adaptedFromId = document.getElementById('adapted-from-select').value;
             mealType: document.getElementById('recipe-meal-type').value,
             category: document.getElementById('recipe-category').value,
             flavorProfile: flavorProfile,
-            ingredients: parseSections(document.getElementById('recipe-ingredients').value),
+            ingredients: getIngredientsFromBuilder(),
             instructions: rawInstructions,
             notes: document.getElementById('recipe-notes').value,
             labels: document.getElementById('recipe-labels').value.split(',').map(l => l.trim()).filter(Boolean),
@@ -1867,8 +1888,9 @@ const adaptedFromId = document.getElementById('adapted-from-select').value;
                 currentRating = 0;
                 renderAddRatingStars();
                 
-                // FIX: Clear the dynamic instruction builder
-                renderInstructionBuilder([]); 
+                // FIX: Clear the dynamic builders
+                renderIngredientBuilder([]);
+                renderInstructionBuilder([]);
 
                 editingRecipeId = null;
                 importedImageUrl = null;
@@ -1939,7 +1961,7 @@ document.getElementById('flavor-savoury').checked = flavors.includes('Savoury');
                 document.getElementById('recipe-category').value = recipe.category || '';
                 document.getElementById('recipe-notes').value = recipe.notes || '';
                 document.getElementById('recipe-labels').value = (recipe.labels || []).join(', ');
-                document.getElementById('recipe-ingredients').value = formatSections(ingredientsForForm);
+                renderIngredientBuilder(ingredientsForForm);
                 // Use the raw object data, not the formatted text string
     renderInstructionBuilder(recipe.instructions || []);
                 renderAddRatingStars(recipe.rating || 0);
@@ -2073,6 +2095,92 @@ document.getElementById('flavor-savoury').checked = flavors.includes('Savoury');
                     const displayUnit = unit.toLowerCase().startsWith('h') ? 'h' : (unit.toLowerCase().startsWith('m') ? 'm' : 's');
                     return `<button class="timer-btn" data-original-text="${val}${displayUnit}" data-millis="${millis}"><i class="fas fa-stopwatch"></i> ${val}${displayUnit}</button>`;
                 });
+            };
+
+            // --- Ingredient Builder Helpers ---
+            const createIngredientRow = (data = {}) => {
+                const row = document.createElement('div');
+                row.className = 'ingredient-row flex gap-2 items-center bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-200 dark:border-gray-600 mb-2 group';
+                row.dataset.type = 'ingredient';
+
+                const amount = data.amount || '';
+                const unit = data.unit || '';
+                const name = data.name || data.text || ''; // fallback to text for legacy
+                const notes = data.notes || data.tip || '';
+
+                row.innerHTML = `
+                    <div class="flex flex-col gap-1 pt-1">
+                         <button type="button" class="move-up-btn text-gray-400 hover:text-teal-500 text-xs px-1"><i class="fas fa-chevron-up"></i></button>
+                        <button type="button" class="move-down-btn text-gray-400 hover:text-teal-500 text-xs px-1"><i class="fas fa-chevron-down"></i></button>
+                    </div>
+                    <div class="flex-grow grid grid-cols-12 gap-2">
+                        <input type="number" step="0.01" placeholder="Qty" value="${amount}" class="ing-amount col-span-3 md:col-span-2 p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 outline-none">
+                        <input type="text" placeholder="Unit" value="${unit}" class="ing-unit col-span-3 md:col-span-2 p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 outline-none">
+                        <input type="text" placeholder="Ingredient Name" value="${name}" class="ing-name col-span-6 md:col-span-4 p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 outline-none">
+                        <input type="text" placeholder="Prep / Notes (e.g. diced)" value="${notes}" class="ing-notes col-span-12 md:col-span-4 p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 outline-none">
+                    </div>
+                    <button type="button" class="remove-row-btn text-red-400 hover:text-red-600 p-1"><i class="fas fa-trash-alt"></i></button>
+                `;
+
+                row.querySelector('.move-up-btn').addEventListener('click', () => { if (row.previousElementSibling) row.previousElementSibling.before(row); });
+                row.querySelector('.move-down-btn').addEventListener('click', () => { if (row.nextElementSibling) row.nextElementSibling.after(row); });
+                row.querySelector('.remove-row-btn').addEventListener('click', () => row.remove());
+
+                return row;
+            };
+
+            const renderIngredientBuilder = (sections) => {
+                const container = document.getElementById('ingredients-builder');
+                container.innerHTML = '';
+                if (!sections || sections.length === 0) {
+                    container.appendChild(createIngredientRow());
+                    return;
+                }
+                sections.forEach(section => {
+                    if (section.section && section.section !== 'Ingredients' && section.section !== 'General') {
+                        container.appendChild(createSectionRow(section.section)); 
+                    }
+                    if (section.items) {
+                        section.items.forEach(item => {
+                            const data = typeof item === 'string' ? { text: item } : item;
+                            container.appendChild(createIngredientRow(data));
+                        });
+                    }
+                });
+            };
+
+            const getIngredientsFromBuilder = () => {
+                const container = document.getElementById('ingredients-builder');
+                const rows = container.querySelectorAll('.ingredient-row, .instruction-row[data-type="section"]');
+                
+                const sections = [];
+                let currentSection = { section: 'Ingredients', items: [] };
+
+                rows.forEach(row => {
+                    if (row.dataset.type === 'section') {
+                        if (currentSection.items.length > 0) sections.push(currentSection);
+                        const title = row.querySelector('.section-title').value.trim() || 'Section';
+                        currentSection = { section: title, items: [] };
+                    } else if (row.dataset.type === 'ingredient') {
+                        const amount = row.querySelector('.ing-amount').value;
+                        const unit = row.querySelector('.ing-unit').value.trim();
+                        const name = row.querySelector('.ing-name').value.trim();
+                        const notes = row.querySelector('.ing-notes').value.trim();
+                        
+                        if (name || amount) {
+                            const item = { 
+                                amount: amount ? parseFloat(amount) : null, 
+                                unit, 
+                                name, 
+                                tip: notes,
+                                text: `${amount} ${unit} ${name}`.trim()
+                            };
+                            currentSection.items.push(item);
+                        }
+                    }
+                });
+                if (currentSection.items.length > 0 || sections.length === 0) sections.push(currentSection);
+                return sections;
             };
 
             // --- Instruction Builder Helpers ---
@@ -2556,6 +2664,10 @@ async function showRecipeDetailsModal(recipeId) {
     
     const yieldText = typeof recipe.yield === 'object' && recipe.yield !== null ? `${recipe.yield.quantity || ''} ${recipe.yield.unit || ''}` : recipe.yield || 'N/A';
 
+    const yieldQty = (typeof recipe.yield === 'object' && recipe.yield !== null) ? Number(recipe.yield.quantity) : parseFloat(recipe.yield);
+    const hasValidYield = !isNaN(yieldQty) && yieldQty > 0;
+    const yieldUnit = (typeof recipe.yield === 'object' && recipe.yield !== null) ? (recipe.yield.unit || 'servings') : 'servings';
+
     // --- GENERATE TABS HTML ---
     const tabsHtml = window.openRecipeIds.map(id => {
         const r = recipesCache.find(x => x.id === id);
@@ -2617,14 +2729,17 @@ async function showRecipeDetailsModal(recipeId) {
                         </h4>
                         
                         <div class="flex items-center gap-2 text-xs" onclick="event.preventDefault()">
-                            <select id="scale-select" class="bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded px-1 py-1">
-                                <option value="0.5">0.5x</option>
-                                <option value="1" selected>1x</option>
-                                <option value="1.5">1.5x</option>
-                                <option value="2">2x</option>
-                                <option value="3">3x</option>
-                                <option value="4">4x</option>
-                            </select>
+                            ${hasValidYield ? `
+                                <div class="flex items-center bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded pl-1 overflow-hidden" title="Target Yield">
+                                    <input type="number" id="target-yield-input" value="${yieldQty}" min="0.1" step="0.5" class="bg-transparent w-12 text-center py-1 outline-none text-teal-600 dark:text-teal-400 font-bold">
+                                    <span class="pr-2 text-gray-500 pointer-events-none">${yieldUnit}</span>
+                                </div>
+                            ` : `
+                                <div class="flex items-center bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded pl-1 overflow-hidden" title="Scale Multiplier">
+                                    <input type="number" id="target-yield-input" value="1" min="0.1" step="0.1" class="bg-transparent w-10 text-center py-1 outline-none text-teal-600 dark:text-teal-400 font-bold">
+                                    <span class="pr-2 text-gray-500 pointer-events-none">x</span>
+                                </div>
+                            `}
                             <select id="unit-system-select" class="bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded px-1 py-1 max-w-[80px]">
                                 <option value="original">Orig</option>
                                 <option value="us_customary">US</option>
@@ -2705,8 +2820,16 @@ async function showRecipeDetailsModal(recipeId) {
             <span>Updated: ${recipe.updatedAt ? recipe.updatedAt.toDate().toLocaleDateString() : 'N/A'}</span>
         </div>
         <div class="flex flex-nowrap gap-2 overflow-x-auto pb-1 md:pb-0 justify-start md:justify-end order-1 md:order-2 w-full md:w-auto px-1 md:px-0">
-            <button onclick="window.startCookMode(localStorage.getItem('openRecipeId'), document.getElementById('scale-select')?.value, document.getElementById('unit-system-select')?.value)" class="flex-shrink-0 bg-orange-100 hover:bg-orange-200 dark:bg-orange-900/40 dark:hover:bg-orange-800 text-orange-700 dark:text-orange-300 font-bold py-2 px-3 rounded-lg text-sm"><i class="fas fa-fire-burner"></i> Cook</button>
+            <button onclick="
+                const tInput = document.getElementById('target-yield-input');
+                let calcScale = 1;
+                if (tInput && !isNaN(parseFloat(tInput.value))) {
+                    calcScale = ${hasValidYield} ? parseFloat(tInput.value) / ${yieldQty || 1} : parseFloat(tInput.value);
+                }
+                window.startCookMode(localStorage.getItem('openRecipeId'), calcScale, document.getElementById('unit-system-select')?.value)
+            " class="flex-shrink-0 bg-orange-100 hover:bg-orange-200 dark:bg-orange-900/40 dark:hover:bg-orange-800 text-orange-700 dark:text-orange-300 font-bold py-2 px-3 rounded-lg text-sm"><i class="fas fa-fire-burner"></i> Cook</button>
             <button id="modal-log-btn" class="flex-shrink-0 bg-green-100 hover:bg-green-200 dark:bg-green-900/40 dark:hover:bg-green-800 text-green-700 dark:text-green-300 font-bold py-2 px-3 rounded-lg text-sm"><i class="fas fa-check-circle"></i> Log</button>
+            <button id="modal-plan-btn" class="flex-shrink-0 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/40 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 font-bold py-2 px-3 rounded-lg text-sm"><i class="fas fa-calendar-plus"></i> Plan</button>
             <button id="modal-edit-btn" class="flex-shrink-0 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg text-sm"><i class="fas fa-edit mr-1"></i> Edit</button>
             <button id="modal-share-btn" class="flex-shrink-0 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/40 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 font-bold py-2 px-3 rounded-lg text-sm"><i class="fas fa-share-alt"></i></button>
             <button id="modal-view-history-btn" class="flex-shrink-0 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/40 dark:hover:bg-purple-800 text-purple-700 dark:text-purple-300 font-bold py-2 px-3 rounded-lg text-sm"><i class="fas fa-history"></i></button>
@@ -2780,6 +2903,22 @@ async function showRecipeDetailsModal(recipeId) {
     // Log & History
     modalContainer.querySelector('#modal-log-btn').addEventListener('click', () => showHistoryModal(recipe.id, recipe.name));
     modalContainer.querySelector('#modal-view-history-btn').addEventListener('click', () => showHistoryModal(recipe.id, recipe.name));
+
+    // Meal Plan
+    modalContainer.querySelector('#modal-plan-btn').addEventListener('click', () => {
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        const dayNum = prompt(`Which day for ${recipe.name}?\n1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun`);
+        const index = parseInt(dayNum) - 1;
+        if (!isNaN(index) && days[index]) {
+            const slots = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+            const slotNum = prompt(`Which meal for ${days[index]}?\n1=Breakfast, 2=Lunch, 3=Dinner, 4=Snacks`, "3");
+            const slotIndex = parseInt(slotNum) - 1;
+            if(!isNaN(slotIndex) && slots[slotIndex]) {
+                window.addRecipeToMealPlan(recipe.id, days[index], slots[slotIndex]);
+                closeModal(); // Optional: remove this if you want to keep the modal open after planning
+            }
+        }
+    });
     
     // Print
     modalContainer.querySelector('#modal-print-btn').addEventListener('click', () => printRecipe(recipe));
@@ -2927,16 +3066,27 @@ if (e.target.closest('.shopping-status-btn')) {
 
     // Conversion and Scaling
     const unitSelect = modalContainer.querySelector('#unit-system-select');
-    const scaleSelect = modalContainer.querySelector('#scale-select');
+    const targetYieldInput = modalContainer.querySelector('#target-yield-input');
 
     const updateIngredientsDisplay = () => {
         const system = unitSelect.value;
-        const scale = parseFloat(scaleSelect.value);
+        let scale = 1;
+        const targetVal = parseFloat(targetYieldInput.value);
+        
+        if (!isNaN(targetVal) && targetVal > 0) {
+            if (hasValidYield) {
+                scale = targetVal / yieldQty;
+            } else {
+                scale = targetVal; // Fallback to acting as a direct multiplier if no yield is defined
+            }
+        }
         convertAndRenderIngredients(recipe, system, scale);
     };
 
     unitSelect.addEventListener('change', updateIngredientsDisplay);
-    scaleSelect.addEventListener('change', updateIngredientsDisplay);
+    if (targetYieldInput) {
+        targetYieldInput.addEventListener('input', updateIngredientsDisplay); // Real-time calculation on type
+    }
 
     // Timers
     const activeIntervals = new Map();
@@ -4511,7 +4661,15 @@ document.getElementById('close-planner-btn').addEventListener('click', () => {
             }
 
             // --- Meal Planner Logic ---
-            let weeklyMealPlan = { Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [], Sunday: [] };
+            let weeklyMealPlan = { 
+                Monday: { Breakfast: [], Lunch: [], Dinner: [], Snacks: [] }, 
+                Tuesday: { Breakfast: [], Lunch: [], Dinner: [], Snacks: [] }, 
+                Wednesday: { Breakfast: [], Lunch: [], Dinner: [], Snacks: [] }, 
+                Thursday: { Breakfast: [], Lunch: [], Dinner: [], Snacks: [] }, 
+                Friday: { Breakfast: [], Lunch: [], Dinner: [], Snacks: [] }, 
+                Saturday: { Breakfast: [], Lunch: [], Dinner: [], Snacks: [] }, 
+                Sunday: { Breakfast: [], Lunch: [], Dinner: [], Snacks: [] } 
+            };
 
             async function loadMealPlan() {
                 if (!userId) return;
@@ -4519,7 +4677,14 @@ document.getElementById('close-planner-btn').addEventListener('click', () => {
                     const docRef = doc(db, 'users', userId, 'settings', 'mealPlan');
                     const snap = await getDoc(docRef);
                     if (snap.exists() && snap.data().plan) {
-                        weeklyMealPlan = snap.data().plan;
+                        const loadedPlan = snap.data().plan;
+                        for (let d in loadedPlan) {
+                            if (Array.isArray(loadedPlan[d])) {
+                                weeklyMealPlan[d] = { Breakfast: [], Lunch: [], Dinner: loadedPlan[d], Snacks: [] };
+                            } else {
+                                weeklyMealPlan[d] = { ...weeklyMealPlan[d], ...loadedPlan[d] };
+                            }
+                        }
                     }
                 } catch (e) {
                     console.error("Error loading meal plan:", e);
@@ -4535,19 +4700,20 @@ document.getElementById('close-planner-btn').addEventListener('click', () => {
                 }
             }
 
-            window.addRecipeToMealPlan = async (recipeId, day) => {
+            window.addRecipeToMealPlan = async (recipeId, day, mealSlot = 'Dinner') => {
                 if (!weeklyMealPlan[day]) return;
-                weeklyMealPlan[day].push(recipeId);
-                showNotification(`Added to ${day}!`);
+                if (!weeklyMealPlan[day][mealSlot]) weeklyMealPlan[day][mealSlot] = [];
+                weeklyMealPlan[day][mealSlot].push(recipeId);
+                showNotification(`Added to ${day} ${mealSlot}!`);
                 await saveMealPlan();
                 if (document.getElementById('meal-planner-tab-panel').classList.contains('hidden') === false) {
                     window.renderMealPlan();
                 }
             };
 
-            window.removeRecipeFromMealPlan = async (recipeId, day, index) => {
-                if (!weeklyMealPlan[day]) return;
-                weeklyMealPlan[day].splice(index, 1);
+            window.removeRecipeFromMealPlan = async (recipeId, day, mealSlot, index) => {
+                if (!weeklyMealPlan[day] || !weeklyMealPlan[day][mealSlot]) return;
+                weeklyMealPlan[day][mealSlot].splice(index, 1);
                 await saveMealPlan();
                 window.renderMealPlan();
             };
@@ -4558,61 +4724,81 @@ document.getElementById('close-planner-btn').addEventListener('click', () => {
                 grid.innerHTML = '';
 
                 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                const mealSlots = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
                 
                 days.forEach(day => {
                     const column = document.createElement('div');
-                    column.className = 'flex flex-col bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 min-h-[200px] transition-colors';
+                    column.className = 'flex flex-col bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 min-h-[400px] transition-colors overflow-hidden';
                     column.dataset.day = day;
                     
-                    // Drag Over Events
-                    column.addEventListener('dragover', (e) => {
-                        e.preventDefault(); // Necessary to allow dropping
-                        column.classList.add('bg-teal-50', 'dark:bg-teal-900/20', 'border-teal-400');
-                    });
-                    column.addEventListener('dragleave', () => {
-                        column.classList.remove('bg-teal-50', 'dark:bg-teal-900/20', 'border-teal-400');
-                    });
-                    column.addEventListener('drop', (e) => {
-                        e.preventDefault();
-                        column.classList.remove('bg-teal-50', 'dark:bg-teal-900/20', 'border-teal-400');
-                        const recipeId = e.dataTransfer.getData('text/plain');
-                        if (recipeId) {
-                            window.addRecipeToMealPlan(recipeId, day);
-                        }
-                    });
-
-                    // Header
                     const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
                     const isToday = day === today;
                     let html = `
-                        <div class="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 rounded-t-xl text-center font-bold ${isToday ? 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30' : 'text-gray-700 dark:text-gray-300'}">
+                        <div class="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-center font-bold ${isToday ? 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30' : 'text-gray-700 dark:text-gray-300'}">
                             ${day}
                         </div>
-                        <div class="p-2 space-y-2 flex-grow flex flex-col gap-2">
+                        <div class="flex-grow flex flex-col">
                     `;
 
-                    // Render planned recipes
-                    if (weeklyMealPlan[day] && weeklyMealPlan[day].length > 0) {
-                        weeklyMealPlan[day].forEach((recId, idx) => {
-                            const recipe = recipesCache.find(r => r.id === recId);
-                            if (recipe) {
-                                html += `
-                                    <div class="group relative bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600 flex items-center gap-2 cursor-pointer hover:shadow-md transition-shadow" onclick="showRecipeDetailsModal('${recipe.id}')">
-                                        ${recipe.imageUrl ? `<img src="${recipe.imageUrl}" class="w-10 h-10 object-cover rounded flex-shrink-0">` : `<div class="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0"><i class="fas fa-utensils text-gray-400"></i></div>`}
-                                        <span class="text-xs font-semibold leading-tight line-clamp-2 flex-grow">${recipe.name}</span>
-                                        <button onclick="event.stopPropagation(); window.removeRecipeFromMealPlan('${recipe.id}', '${day}', ${idx})" class="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-600 transition-opacity flex-shrink-0">
-                                            <i class="fas fa-times"></i>
-                                        </button>
-                                    </div>
-                                `;
-                            }
-                        });
-                    } else {
-                        html += `<div class="text-xs text-gray-400 text-center italic mt-4 pointer-events-none">Drop recipe here</div>`;
-                    }
+                    mealSlots.forEach(slot => {
+                        html += `
+                            <div class="flex-grow p-2 border-b border-gray-100 dark:border-gray-800 min-h-[80px] meal-slot-dropzone" data-day="${day}" data-slot="${slot}">
+                                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">${slot}</div>
+                                <div class="space-y-2">
+                        `;
+
+                        if (weeklyMealPlan[day] && weeklyMealPlan[day][slot] && weeklyMealPlan[day][slot].length > 0) {
+                            weeklyMealPlan[day][slot].forEach((recId, idx) => {
+                                const recipe = recipesCache.find(r => r.id === recId);
+                                if (recipe) {
+                                    html += `
+                                        <div draggable="true" ondragstart="event.dataTransfer.setData('text/plain', '${recipe.id}'); event.dataTransfer.setData('source-day', '${day}'); event.dataTransfer.setData('source-slot', '${slot}'); event.dataTransfer.setData('source-index', '${idx}');" class="group relative bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600 flex items-center gap-2 cursor-pointer hover:shadow-md transition-shadow" onclick="showRecipeDetailsModal('${recipe.id}')">
+                                            ${recipe.imageUrl ? `<img src="${recipe.imageUrl}" class="w-8 h-8 object-cover rounded flex-shrink-0 pointer-events-none">` : `<div class="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0 pointer-events-none"><i class="fas fa-utensils text-gray-400 text-xs"></i></div>`}
+                                            <span class="text-xs font-semibold leading-tight line-clamp-2 flex-grow">${recipe.name}</span>
+                                            <button onclick="event.stopPropagation(); window.removeRecipeFromMealPlan('${recipe.id}', '${day}', '${slot}', ${idx})" class="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-600 transition-opacity flex-shrink-0">
+                                                <i class="fas fa-times text-xs"></i>
+                                            </button>
+                                        </div>
+                                    `;
+                                }
+                            });
+                        } else {
+                            html += `<div class="text-[10px] text-gray-300 dark:text-gray-600 text-center italic mt-2 pointer-events-none drop-target-text">Drop here</div>`;
+                        }
+
+                        html += `</div></div>`;
+                    });
 
                     html += `</div>`;
                     column.innerHTML = html;
+                    
+                    const dropzones = column.querySelectorAll('.meal-slot-dropzone');
+                    dropzones.forEach(zone => {
+                        zone.addEventListener('dragover', (e) => {
+                            e.preventDefault();
+                            zone.classList.add('bg-teal-50', 'dark:bg-teal-900/20');
+                        });
+                        zone.addEventListener('dragleave', () => {
+                            zone.classList.remove('bg-teal-50', 'dark:bg-teal-900/20');
+                        });
+                        zone.addEventListener('drop', (e) => {
+                            e.preventDefault();
+                            zone.classList.remove('bg-teal-50', 'dark:bg-teal-900/20');
+                            const recipeId = e.dataTransfer.getData('text/plain');
+                            const sourceDay = e.dataTransfer.getData('source-day');
+                            const sourceSlot = e.dataTransfer.getData('source-slot');
+                            const sourceIndex = e.dataTransfer.getData('source-index');
+
+                            if (recipeId) {
+                                // If dragging from another slot within the planner, remove it from the old location first
+                                if (sourceDay && sourceSlot && sourceIndex !== "") {
+                                    weeklyMealPlan[sourceDay][sourceSlot].splice(parseInt(sourceIndex), 1);
+                                }
+                                window.addRecipeToMealPlan(recipeId, zone.dataset.day, zone.dataset.slot);
+                            }
+                        });
+                    });
+
                     grid.appendChild(column);
                 });
             };
@@ -4621,8 +4807,10 @@ document.getElementById('close-planner-btn').addEventListener('click', () => {
             document.addEventListener('click', (e) => {
                 if (e.target.closest('#send-week-to-shop-btn')) {
                     let recipesToShop = new Set();
-                    Object.values(weeklyMealPlan).forEach(dayArray => {
-                        dayArray.forEach(id => recipesToShop.add(id));
+                    Object.values(weeklyMealPlan).forEach(dayObj => {
+                        Object.values(dayObj).forEach(slotArray => {
+                            slotArray.forEach(id => recipesToShop.add(id));
+                        });
                     });
 
                     if (recipesToShop.size === 0) {
