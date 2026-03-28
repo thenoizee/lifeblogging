@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v14.24.0-alpha",
+    date: "2026-03-28",
+    changes: [
+                "In Core (sw.js) & Backend (functions): Implemented true background push notification support via Firebase Cloud Messaging, allowing HealthManagr reminders to be delivered even when the app is fully closed.",
+                "In HealthManagr: Fixed 'todayStr is not defined' error on the dashboard caused by scope constraints inside the rendering loop.",
+                "In Core (sw.js): Cleaned up old cache URLs (e.g., /medicine, /timestamp) that were causing the Service Worker installation to throw 404 network errors.",
+                "In Core (sw.js): Removed Tailwind CDN from the cache array as it intentionally blocks Service Worker fetching via CORS."
+    ]
+},
+    {
     version: "v14.23.0-alpha",
     date: "2026-03-28",
     changes: [

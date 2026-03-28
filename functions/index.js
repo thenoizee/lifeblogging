@@ -368,3 +368,118 @@ exports.perenualProxy = onRequest({ cors: true }, async (req, res) => {
     res.status(error.response?.status || 500).send(error.response?.data || { error: "Perenual Proxy Failed" });
   }
 });
+
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+
+// ==========================================
+// 8. BACKGROUND PUSH NOTIFICATIONS (CRON JOB)
+// ==========================================
+exports.healthRemindersCron = onSchedule({
+    schedule: "every 15 minutes",
+    timezone: "Europe/London" 
+}, async (event) => {
+    const db = admin.firestore();
+    const messaging = admin.messaging();
+    
+    // Get current time in London
+    const now = new Date();
+    const londonTime = new Intl.DateTimeFormat('en-GB', { 
+        timeZone: 'Europe/London',
+        hour: '2-digit', minute: '2-digit', weekday: 'long', hour12: false
+    }).formatToParts(now);
+
+    const currentHour = londonTime.find(p => p.type === 'hour').value;
+    const currentMinute = londonTime.find(p => p.type === 'minute').value;
+    const currentDay = londonTime.find(p => p.type === 'weekday').value;
+
+    try {
+        const usersSnapshot = await db.collection('users').get();
+
+        for (const userDoc of usersSnapshot.docs) {
+            const userId = userDoc.id;
+            
+            // 1. Get user's FCM Device Token
+            const notifSnapshot = await db.collection(`users/${userId}/settings`).doc('notifications').get();
+            if (!notifSnapshot.exists || !notifSnapshot.data().fcmToken) {
+                continue; 
+            }
+            
+            const deviceTokens = [notifSnapshot.data().fcmToken]; 
+            const pushPayloads = [];
+
+            // --- A. CHECK MEDICATIONS ---
+            const medsSnapshot = await db.collection(`users/${userId}/medications`).where('isArchived', '==', false).get();
+            
+            for (const medDoc of medsSnapshot.docs) {
+                const med = medDoc.data();
+                if (!med.schedule || !med.schedule.days || !med.schedule.times) continue;
+
+                if (med.schedule.days.includes(currentDay)) {
+                    const times = med.schedule.times.split(',').map(t => t.trim());
+                    
+                    for (const time of times) {
+                        // Check if current time is within 15 mins of scheduled time
+                        const [schedHour, schedMin] = time.split(':');
+                        const schedDate = new Date();
+                        schedDate.setHours(parseInt(schedHour), parseInt(schedMin), 0, 0);
+                        const diffMins = (now - schedDate) / (1000 * 60);
+
+                        // If it's precisely due in this 15 minute window
+                        if (diffMins >= 0 && diffMins < 15) {
+                            pushPayloads.push({
+                                notification: {
+                                    title: 'Medication Due',
+                                    body: `It's time to take ${med.name} (${med.dosage}).`,
+                                },
+                                data: { appName: 'HealthManagr', url: '/healthmanagr/' }
+                            });
+                        }
+                    }
+                }
+            }
+
+            // --- B. CHECK CONTACT LENSES (Trigger at 20:00 / 8 PM) ---
+            if (currentHour === "20" && parseInt(currentMinute) < 15) {
+                const todayStr = now.toISOString().split('T')[0];
+                const startOfDay = new Date(`${todayStr}T00:00:00Z`);
+                
+                const lensSnapshot = await db.collection(`users/${userId}/lenses_logs`)
+                    .where('date', '>=', startOfDay)
+                    .get();
+
+                let hasLeft = false;
+                let hasRight = false;
+
+                lensSnapshot.forEach(doc => {
+                    if (doc.data().eye === 'left') hasLeft = true;
+                    if (doc.data().eye === 'right') hasRight = true;
+                });
+
+                if (!hasLeft || !hasRight) {
+                    const missing = (!hasLeft && !hasRight) ? 'Left and Right' : (!hasLeft ? 'Left' : 'Right');
+                    pushPayloads.push({
+                        notification: {
+                            title: 'Daily Contact Lenses',
+                            body: `Don't forget to log your ${missing} contact lenses for today!`,
+                        },
+                        data: { appName: 'HealthManagr', url: '/healthmanagr/' }
+                    });
+                }
+            }
+
+            // --- C. SEND NOTIFICATIONS ---
+            if (pushPayloads.length > 0) {
+                for (const payload of pushPayloads) {
+                    const message = { ...payload, tokens: deviceTokens };
+                    try {
+                        await messaging.sendMulticast(message);
+                    } catch (err) {
+                        console.error(`Error sending push to ${userId}:`, err);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Error in healthRemindersCron:", error);
+    }
+});

@@ -12,14 +12,14 @@ const urlsToCache = [
   '/index.html',
   '/analyser/index.html',
   '/log/index.html',
-  '/medicine/index.html',
+  '/healthmanagr/index.html',
   '/changelog/index.html',
   '/converter/index.html',
-  '/timestamp/index.html',
+  '/time/index.html',
   '/account/index.html',
   '/recipemanagr/index.html',
   '/podtrackr/index.html',
-  '/hydration/index.html', 
+  '/hydrationtrackr/index.html', 
   '/palette/index.html', 
   '/tasktrackr/index.html',
   
@@ -43,12 +43,10 @@ const urlsToCache = [
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap', // Pre-cache fonts
   
   // --- CRITICAL EXTERNAL LIBS (Explicitly Cache these) ---
-  'https://cdn.tailwindcss.com',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js',
-// ADD THESE 3 LINES to your existing urlsToCache array:
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging-compat.js'
@@ -66,15 +64,51 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
     console.log('[sw.js] Received background message ', payload);
     const notificationTitle = payload.notification.title;
+    
+    // Pass the URL from the cloud function data payload to the native notification
     const notificationOptions = {
         body: payload.notification.body,
-        icon: '/icons/icon-192x192.png'
+        icon: '/icons/icon-192x192.png',
+        data: payload.data // Save the custom data (like the URL) for when the user clicks it
     };
     self.registration.showNotification(notificationTitle, notificationOptions);
 
-    // ADD THESE TWO LINES: Broadcast the message to the open app
+    // Broadcast the message to the open app, merging notification and custom data
     const channel = new BroadcastChannel('app-notifications');
-    channel.postMessage(payload);
+    channel.postMessage({
+        notification: {
+            title: notificationTitle,
+            body: payload.notification.body,
+            ...payload.data // Merges appName, url, priority, color, etc.
+        }
+    });
+});
+
+// --- NEW: Handle Notification Clicks ---
+self.addEventListener('notificationclick', (event) => {
+    console.log('[sw.js] Notification click received.');
+    event.notification.close(); // Close the native popup
+
+    // Get the URL we passed from the Cloud Function (e.g., '/healthmanagr/')
+    const targetUrl = event.notification.data && event.notification.data.url ? event.notification.data.url : '/';
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+            // Check if there is already a window/tab open with the app
+            for (let i = 0; i < windowClients.length; i++) {
+                const client = windowClients[i];
+                // If it's open, just focus it and navigate to the right tab
+                if (client.url.includes(self.registration.scope) && 'focus' in client) {
+                    client.navigate(targetUrl);
+                    return client.focus();
+                }
+            }
+            // If the app is completely closed, open a new window to the URL
+            if (clients.openWindow) {
+                return clients.openWindow(targetUrl);
+            }
+        })
+    );
 });
 
 self.addEventListener('install', event => {
