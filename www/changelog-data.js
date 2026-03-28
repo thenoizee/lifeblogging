@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v14.23.0-alpha",
+    date: "2026-03-28",
+    changes: [
+                "In Core (shared-nav.js): Added support for priority notifications that cannot be manually dismissed or removed via 'Clear All' or 'Clear App' buttons.",
+                "In Core (shared-nav.js): Added the ability to pass and render specific app theme colors directly inside the notification tray.",
+                "In HealthManagr: Integrated priority notifications with custom app coloring for Low Medication Stock and Expiring Medications.",
+                "In HealthManagr: Added priority notifications for Missed Scheduled Doses.",
+                "In HealthManagr: Added a daily priority reminder that triggers if Contact Lenses haven't been logged by 8:00 PM."
+    ]
+    },
+    {
     version: "v14.22.0-alpha",
     date: "2026-03-27",
     changes: [

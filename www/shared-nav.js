@@ -284,7 +284,9 @@ export class AppNavigation {
             read: false,
             actionUrl: notification.actionUrl || null,
             actionEvent: notification.actionEvent || null,
-            actionText: notification.actionText || 'Resolve'
+            actionText: notification.actionText || 'Resolve',
+            priority: notification.priority || false,
+            color: notification.color || this.themeColor || 'gray'
         });
     }
 
@@ -377,23 +379,26 @@ export class AppNavigation {
         }
 
         listEl.innerHTML = this.notifications.map(notif => `
-            <div class="p-2 rounded-lg relative ${notif.read ? 'opacity-70' : `bg-${this.themeColor}-50 dark:bg-${this.themeColor}-900/20`} hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors border border-transparent ${!notif.read ? `dark:border-${this.themeColor}-900/50 border-${this.themeColor}-100` : ''}">
-                <button class="delete-single-notif absolute top-1 right-2 text-gray-400 hover:text-red-500" data-id="${notif.id}"><i class="fa-solid fa-xmark text-[11px]"></i></button>
+            <div class="p-2 rounded-lg relative ${notif.read ? 'opacity-70' : `bg-${notif.color || this.themeColor}-50 dark:bg-${notif.color || this.themeColor}-900/20`} hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors border ${notif.priority ? 'border-red-300 dark:border-red-900/50' : (!notif.read ? `dark:border-${notif.color || this.themeColor}-900/50 border-${notif.color || this.themeColor}-100` : 'border-transparent')}">
+                ${!notif.priority ? `<button class="delete-single-notif absolute top-1 right-2 text-gray-400 hover:text-red-500" data-id="${notif.id}"><i class="fa-solid fa-xmark text-[11px]"></i></button>` : ''}
                 
                 <div class="flex justify-between items-start mb-0.5 pr-5">
-                    <span class="text-xs font-bold text-gray-800 dark:text-gray-200">${notif.title}</span>
+                    <span class="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1">
+                        ${notif.priority ? '<i class="fa-solid fa-circle-exclamation text-red-500" title="Priority Task - Must be completed to dismiss"></i>' : ''}
+                        ${notif.title}
+                    </span>
                     <span class="text-[9px] text-gray-400">${notif.time.toLocaleDateString([], {month: 'short', day: 'numeric'})} ${notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
                 
-                ${notif.appName ? `<div class="flex justify-between items-center mb-1"><span class="text-[9px] text-${this.themeColor}-500 font-semibold">${notif.appName}</span> <button class="clear-app-notifs text-[9px] text-gray-400 hover:text-red-500 hover:underline" data-app="${notif.appName}">Clear App</button></div>` : ''}
+                ${notif.appName ? `<div class="flex justify-between items-center mb-1"><span class="text-[9px] text-${notif.color || this.themeColor}-500 font-semibold">${notif.appName}</span> <button class="clear-app-notifs text-[9px] text-gray-400 hover:text-red-500 hover:underline" data-app="${notif.appName}">Clear App</button></div>` : ''}
                 
                 <div class="notif-body-container text-[10px] text-gray-600 dark:text-gray-400 leading-tight mb-1">
                     <div class="line-clamp-2 transition-all duration-200">${notif.body}</div>
                     ${notif.body && notif.body.length > 65 ? `<button class="text-[9px] text-blue-500 hover:underline expand-notif-btn mt-0.5">Show more</button>` : ''}
                 </div>
                 
-                ${notif.actionUrl ? `<a href="${notif.actionUrl}" class="inline-block text-[10px] font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline mt-1">${notif.actionText}</a>` : ''}
-                ${notif.actionEvent && !notif.actionUrl ? `<button onclick="window.dispatchEvent(new Event('${notif.actionEvent}'))" class="text-[10px] font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline mt-1">${notif.actionText}</button>` : ''}
+                ${notif.actionUrl ? `<a href="${notif.actionUrl}" class="inline-block text-[10px] font-bold text-${notif.color || this.themeColor}-600 dark:text-${notif.color || this.themeColor}-400 hover:underline mt-1">${notif.actionText}</a>` : ''}
+                ${notif.actionEvent && !notif.actionUrl ? `<button onclick="window.dispatchEvent(new Event('${notif.actionEvent}'))" class="text-[10px] font-bold text-${notif.color || this.themeColor}-600 dark:text-${notif.color || this.themeColor}-400 hover:underline mt-1">${notif.actionText}</button>` : ''}
             </div>
         `).join('');
     }
@@ -462,7 +467,9 @@ export class AppNavigation {
                 try {
                     const snapshot = await getDocs(notifRef);
                     snapshot.docs.forEach(docSnap => {
-                        batch.delete(docSnap.ref);
+                        if (docSnap.data().priority !== true) {
+                            batch.delete(docSnap.ref);
+                        }
                     });
                     await batch.commit();
                 } catch (err) {
@@ -536,7 +543,7 @@ export class AppNavigation {
                     e.stopPropagation();
                     const appName = clearAppBtn.dataset.app;
                     const batch = writeBatch(db);
-                    this.notifications.filter(n => n.appName === appName).forEach(n => {
+                    this.notifications.filter(n => n.appName === appName && n.priority !== true).forEach(n => {
                         batch.delete(doc(db, 'users', user.uid, 'notifications', n.id));
                     });
                     await batch.commit();
