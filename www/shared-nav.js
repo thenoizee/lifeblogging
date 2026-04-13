@@ -65,6 +65,26 @@ export class AppNavigation {
 
         // Start listening to the cloud database
         this.listenToNotifications();
+        
+        // Fetch and display Service Worker version
+        this.displayServiceWorkerVersion();
+    }
+
+    async displayServiceWorkerVersion() {
+        const swDisplay = document.getElementById('nav-sw-version');
+        if (!swDisplay) return;
+        
+        try {
+            const res = await fetch('/sw-version');
+            if (res.ok) {
+                const version = await res.text();
+                swDisplay.textContent = `SW: v${version}`;
+            } else {
+                swDisplay.textContent = 'SW: Updating...';
+            }
+        } catch (e) {
+            swDisplay.textContent = 'SW: Offline';
+        }
     }
 
     updateUser(email) {
@@ -207,11 +227,14 @@ export class AppNavigation {
                 </div>
             </div>
             
-            ${this.version ? `
-                <a href="/changelog" class="fixed top-1 right-1 text-[10px] font-mono text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 z-[100] transition-colors" title="v${this.version}">
-                    ${this.version}
-                </a>
-            ` : ''}
+            <div class="fixed top-1 right-2 flex flex-col items-end z-[100]">
+                ${this.version ? `
+                    <a href="/changelog" class="text-[10px] font-mono text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors" title="App Version v${this.version}">
+                        App: ${this.version}
+                    </a>
+                ` : ''}
+                <span id="nav-sw-version" class="text-[9px] font-mono text-gray-300 dark:text-gray-700" title="Service Worker Version">SW: ---</span>
+            </div>
         </header>
         `;
 

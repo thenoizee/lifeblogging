@@ -2,6 +2,31 @@
 
 export const changelogData = [
     {
+    version: "v14.28.0-alpha",
+    date: "2026-04-13",
+    changes: [
+                "In Loggr: Added an instant CSS loading overlay to significantly improve perceived speed during initial background data fetches.",
+                "In Loggr: Enabled native Firestore IndexedDbPersistence, allowing full access to history and calendar features even when completely offline.",
+                "In Loggr: Implemented lazy-loading for the Triage pane and restricted attribute fetching to the last 30 days to heavily optimize bandwidth.",
+                "In AppNavigation: The active Service Worker version is now exposed alongside the app version in the top-right header for easier ecosystem debugging.",
+                "In Service Worker: Fixed fatal offline crashes by gracefully intercepting unhandled Promise rejections and ignoring opaque Firebase API calls.",
+                "In Service Worker: Split the caching system to separate permanent external assets (Tailwind, Fonts) from versioned app files, preventing offline style loss during updates.",
+                "In Service Worker: Implemented automated cache-busting by tying the Service Worker installation URL directly to the active version in the Changelog."
+    ]
+    },
+    {
+    version: "v14.27.0-alpha",
+    date: "2026-04-13",
+    changes: [
+                "In Loggr: Optimized data fetching by restricting initial loads to the last 7 days of logs and last 30 days of attributes.",
+                "In Loggr: Implemented lazy-loading for the Triage pane to prevent unnecessary background processing when closed.",
+                "In Loggr: Calendar navigation now dynamically fetches historical log data when browsing backwards in time.",
+                "In Loggr: Changed 'Frequent Activity Combos' in the Quick Log to display the last 5 unique recent combos instead of the top 5 all-time.",
+                "In Service Worker: Fixed an offline crashing issue by instructing the cache to ignore API requests and non-GET methods.",
+                "In Service Worker: Prevented cache-misses by ignoring query parameters when checking for cached app files.",
+    ]
+    },
+    {
     version: "v14.26.0-alpha",
     date: "2026-04-13",
     changes: [

@@ -6,7 +6,7 @@
     <link rel="icon" href="/favicons/pen-to-square.svg" type="image/svg+xml">
     <link rel="manifest" href="../manifest.json" />
     <meta name="theme-color" content="#2a2a2a" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?v=3.4.3"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -560,6 +560,18 @@
     </style>
   </head>
   <body class="dark-mode">
+    <div id="initial-loading-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: var(--bg-color, #1a202c); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.3s ease;">
+        <style>
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            .loader-circle { width: 40px; height: 40px; border: 4px solid rgba(0, 0, 0, 0.1); border-left-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px;}
+            @media (prefers-color-scheme: dark) { .loader-circle { border-color: rgba(255,255,255,0.1); border-left-color: #3b82f6; } }
+        </style>
+        <div class="loader-circle"></div>
+        <p style="font-family: system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 500; color: #888;">Booting Loggr...</p>
+    </div>
+
+    <div id="app" style="opacity: 0;">
+
     <script>
       // Prevent theme flash by applying saved preference before DOM paints
       const savedTheme = localStorage.getItem('theme');
@@ -737,7 +749,7 @@
                 </div>
                 <hr class="border-[var(--border-color)] my-5">
                 <div class="log-group">
-                    <p>Frequent Activity Combos</p>
+                    <p>Recent Activity Combos</p>
                     <div id="frequent-combos-container" class="flex flex-wrap gap-2"></div>
                 </div>
             </div>
@@ -1033,7 +1045,8 @@
           if (uiStateUnsubscribe) uiStateUnsubscribe();
           uiStateUnsubscribe = onSnapshot(uiStateDocRef, (doc) => {
               const data = doc.data();
-              const openPanes = data?.openPanes || ['pane-manual-log']; 
+              // Changed default fallback to Quick Log for offline loads
+              const openPanes = data?.openPanes || ['pane-quick-log']; 
 
               document.querySelectorAll('details').forEach(detail => {
                   if (detail.id) {
@@ -2089,15 +2102,25 @@
             }
         };
 
-        const fetchLogsForDateRange = async () => {
+        const fetchLogsForDateRange = async (startDateStr = null) => {
             if (!appState.user) return;
-            appState.logs.clear();
+            
+            // Limit initial load to last 7 days if no date is specified
+            if (!startDateStr) {
+                const d = new Date();
+                d.setDate(d.getDate() - 7);
+                startDateStr = toYYYYMMDD(d);
+            }
+
             try {
                 const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
                 const sourcesSnapshot = await getDocs(sourcesRef);
                 for (const sourceDoc of sourcesSnapshot.docs) {
                     const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
-                    const dataSnapshot = await getDocs(dataRef);
+                    // Fast query: Only fetch recent records
+                    const q = query(dataRef, where("date", ">=", startDateStr));
+                    const dataSnapshot = await getDocs(q);
+                    
                     dataSnapshot.forEach(doc => {
                         const log = {id: doc.id, ...doc.data()};
                         if (log.date) {
@@ -2106,7 +2129,11 @@
                                 if (!isNaN(logDate)) { 
                                     const logDateStr = toYYYYMMDD(logDate);
                                     if (!appState.logs.has(logDateStr)) appState.logs.set(logDateStr, []);
-                                    appState.logs.get(logDateStr).push(log);
+                                    // Cache check: prevent duplicates if we navigate and fetch again
+                                    const existing = appState.logs.get(logDateStr);
+                                    if (!existing.some(l => l.id === log.id)) {
+                                        existing.push(log);
+                                    }
                                 } 
                             } catch (e) {
                                 console.warn("Error parsing date for log:", log.id, log.date, e);
@@ -2118,7 +2145,8 @@
                 console.error("Error fetching logs:", error);
             } finally {
                 renderCalendar();
-                renderDailyDataReview();
+                // Lazy Load: Only render triage data if the pane is open
+                if (document.getElementById('pane-triage').open) renderDailyDataReview();
                 updateFrequentCombos();
             }
         };
@@ -2143,7 +2171,7 @@
                     appState.dailyAssignments.get(assignedDateStr).push(assignment);
                 });
                 renderCalendar();
-                renderDailyDataReview();
+                if (document.getElementById('pane-triage').open) renderDailyDataReview();
             }, (error) => console.error("Error listening to assignments:", error));
         };
 
@@ -2155,7 +2183,7 @@
             appState.reviewedDaysUnsubscribe = onSnapshot(reviewedDaysRef, (snapshot) => {
                 appState.reviewedDays.clear();
                 snapshot.forEach(doc => appState.reviewedDays.add(doc.id));
-                renderDailyDataReview();
+                if (document.getElementById('pane-triage').open) renderDailyDataReview();
                 renderCalendar(); 
             }, (error) => console.error("Error listening to reviewed days:", error));
         };
@@ -2164,13 +2192,21 @@
             if (!appState.user) return;
             appState.attributeNames.clear();
             appState.firstEntryDates.clear();
+            
+            // Limit attribute fetching to last 30 days for massive speed improvements
+            const d = new Date();
+            d.setDate(d.getDate() - 30);
+            const startDateStr = toYYYYMMDD(d);
+
             try {
                 const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
                 const sourcesSnapshot = await getDocs(sourcesRef);
 
                 for (const sourceDoc of sourcesSnapshot.docs) {
                     const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
-                    const dataSnapshot = await getDocs(dataRef);
+                    const q = query(dataRef, where("date", ">=", startDateStr));
+                    const dataSnapshot = await getDocs(q);
+                    
                     dataSnapshot.forEach(doc => {
                         const log = doc.data();
                         const name = log.attributeName;
@@ -2212,34 +2248,47 @@
             const comboContainer = document.getElementById('frequent-combos-container');
             if (!comboContainer) return;
 
-            const comboCounts = new Map();
+            const allCombos = [];
 
+            // Gather all logs from state
             appState.logs.forEach(logsOnDate => {
                 logsOnDate.forEach(log => {
                     if (log.attributeName === 'MainActivity' && log.attributeValue && log.attributeValue.includes(' @ ')) {
-                        const comboValue = log.attributeValue;
-                        comboCounts.set(comboValue, (comboCounts.get(comboValue) || 0) + 1);
+                        allCombos.push(log);
                     }
                 });
             });
 
+            // Gather all session logs
             sessionLogs.forEach(log => {
                  if (log.attributeName === 'MainActivity' && log.attributeValue && log.attributeValue.includes(' @ ')) {
-                    const comboValue = log.attributeValue;
-                    comboCounts.set(comboValue, (comboCounts.get(comboValue) || 0) + 1);
+                    allCombos.push(log);
                  }
             });
 
-            const sortedCombos = [...comboCounts.entries()].sort((a, b) => b[1] - a[1]);
+            // Sort chronologically, newest first
+            allCombos.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const uniqueCombos = new Set();
+            const lastCombos = [];
+
+            // Grab the last 5 unique ones
+            for (const log of allCombos) {
+                if (!uniqueCombos.has(log.attributeValue)) {
+                    uniqueCombos.add(log.attributeValue);
+                    lastCombos.push(log.attributeValue);
+                    if (lastCombos.length >= 5) break;
+                }
+            }
+
             comboContainer.innerHTML = '';
 
-            const topCombos = sortedCombos.slice(0, 5);
-            if (topCombos.length === 0) {
+            if (lastCombos.length === 0) {
                 comboContainer.innerHTML = `<p class="text-sm text-[var(--text-color-secondary)]">No 'Activity @ Location' combos logged yet. Log some to see them here.</p>`;
                 return;
             }
 
-            topCombos.forEach(([comboValue, count]) => {
+            lastCombos.forEach((comboValue) => {
                 const parts = comboValue.split(' @ ');
                 if (parts.length >= 2) {
                     const activity = parts[0];
@@ -2250,7 +2299,7 @@
                     button.dataset.activity = activity;
                     button.dataset.location = location;
                     button.textContent = `${activity} @ ${location}`;
-                    button.title = `Logged ${count} times`; 
+                    button.title = `Recent combo`; 
                     comboContainer.appendChild(button);
                 }
             });
@@ -2374,12 +2423,23 @@
                 uiDailies.taskModal.classList.add('hidden');
             });
 
+            // Lazy load triage data only when pane is opened
+            document.getElementById('pane-triage').addEventListener('toggle', (e) => {
+                if (e.target.open) {
+                    renderDailyDataReview();
+                }
+            });
+
             uiDailies.prevBtn.addEventListener('click', () => {
                 switch(appState.currentView) {
                     case 'year': appState.currentDate.setFullYear(appState.currentDate.getFullYear() - 1); break;
                     case 'month': appState.currentDate.setMonth(appState.currentDate.getMonth() - 1); break;
                     case 'week': appState.currentDate.setDate(appState.currentDate.getDate() - 7); break;
                 }
+                // Fetch older logs dynamically as user navigates
+                const fetchStart = new Date(appState.currentDate);
+                fetchStart.setDate(1); // Fetch from start of active month
+                fetchLogsForDateRange(toYYYYMMDD(fetchStart));
                 renderCalendar();
             });
 
@@ -2389,6 +2449,9 @@
                     case 'month': appState.currentDate.setMonth(appState.currentDate.getMonth() + 1); break;
                     case 'week': appState.currentDate.setDate(appState.currentDate.getDate() + 7); break;
                 }
+                const fetchStart = new Date(appState.currentDate);
+                fetchStart.setDate(1); 
+                fetchLogsForDateRange(toYYYYMMDD(fetchStart));
                 renderCalendar();
             });
 
@@ -2427,12 +2490,13 @@
             });
         };
 
-        onAuthStateChanged(auth, async (user) => {
-        if (user) {
-          setInputsDisabled(true); 
-          userId = user.uid;
-          userEmail = user.email;
-          document.getElementById("user-email-display").textContent = user.email;
+        const initApp = () => {
+          onAuthStateChanged(auth, async (user) => {
+          if (user) {
+            setInputsDisabled(true); 
+            userId = user.uid;
+            userEmail = user.email;
+            document.getElementById("user-email-display").textContent = user.email;
           document.getElementById("auth-container").style.display = "none";
           document.getElementById("main-app-container").style.display = "block";
           appState.user = user;
@@ -2507,7 +2571,20 @@
             renderDailyDataReview();
             updateFrequentCombos();
         }
+
+        // FADE OUT LOADING SCREEN
+        const overlay = document.getElementById('initial-loading-overlay');
+        const appDiv = document.getElementById('app');
+        if (overlay) {
+            overlay.style.opacity = '0';
+            appDiv.style.opacity = '1';
+            appDiv.style.transition = 'opacity 0.3s ease';
+            setTimeout(() => overlay.remove(), 300);
+        }
       });
+      };
+
+      initApp();
 
       document
         .getElementById("sign-in-btn")
@@ -2691,12 +2768,13 @@
             addEventListeners();
         });
         
-        // FIX: Corrected path for Service Worker to one level up
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('../sw.js')
+                // Automatically append the changelog version to force SW updates
+                const swUrl = `../sw.js?v=${changelogData[0].version}`;
+                navigator.serviceWorker.register(swUrl)
                     .then(registration => {
-                        console.log('Service Worker registered successfully:', registration);
+                        console.log(`Service Worker registered successfully (v${changelogData[0].version}):`, registration);
                     })
                     .catch(err => {
                         console.log('Service Worker registration failed:', err);
@@ -2704,5 +2782,5 @@
             });
         }
     </script>
-  </body>
+    </div> </body>
 </html>
