@@ -44,6 +44,8 @@ const urlsToCache = [
   // --- ASSETS ---
   '/recipemanagr/style.css',
   '/changelog-data.js',
+  '/shared-nav.js',
+  '/manifest.json',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
 
@@ -63,7 +65,6 @@ const urlsToCache = [
 
 // --- FORCE CACHE THESE IMMEDIATELY ON INSTALL ---
 const externalUrlsToCache = [
-  'https://cdn.tailwindcss.com/?v=3.4.3',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/webfonts/fa-solid-900.woff2',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/webfonts/fa-solid-900.ttf',
