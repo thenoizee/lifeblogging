@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v14.29.0-alpha",
+    date: "2026-04-13",
+    changes: [
+                "In Lifeblogging Hub: Replaced Tailwind CSS CDN script with compiled static output.css for improved mobile performance.",
+                "In Lifeblogging Hub: Updated Service Worker (sw.js) to cache output.css, shared-nav.js, and manifest.json for offline reliability.",
+                "In Lifeblogging Hub: Removed Tailwind CDN script from external cache in sw.js.",
+    ]
+},
+    {
     version: "v14.28.1-alpha",
     date: "2026-04-13",
     changes: [

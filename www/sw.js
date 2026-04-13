@@ -42,6 +42,7 @@ const urlsToCache = [
   '/moneymanagr/index.html',
   
   // --- ASSETS ---
+  '/output.css',
   '/recipemanagr/style.css',
   '/changelog-data.js',
   '/shared-nav.js',
