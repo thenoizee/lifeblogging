@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v14.26.0-alpha",
+    date: "2026-04-13",
+    changes: [
+                "In VidTrackr: Added a prominent 'Log / Rate in Past' button under movie posters to allow easier manual backlogging.",
+                "In VidTrackr: Introduced quick-rate editing stars to both the global History tab and the item-specific Watch History display to quickly modify ratings.",
+    ]
+    },
+    {
     version: "v14.25.0-alpha",
     date: "2026-04-13",
     changes: [
