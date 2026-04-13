@@ -2,6 +2,25 @@
 
 export const changelogData = [
     {
+    version: "v14.25.0-alpha",
+    date: "2026-04-13",
+    changes: [
+                "In TaskTrackr: Added a new 'Agenda' view to organize scheduled tasks sequentially by date, rolling up overdue tasks into a collapsible banner.",
+                "In TaskTrackr: Added URL hash routing for tabs so the selected view is preserved on reload.",
+                "In TaskTrackr: Fixed layout constraints in Agenda view to remove empty horizontal space.",
+                "In TaskTrackr: Added a Tag dropdown filter to the top bar allowing filtering by custom labels.",
+                "In TaskTrackr: Upgraded Google Calendar integration to fetch all available calendars with granular toggles.",
+                "In TaskTrackr: Allowed Google Calendar events to be checked off locally without affecting the upstream event.",
+                "In TaskTrackr: Fixed overdue tasks missing date text in compact mode.",
+                "In TaskTrackr: Upgraded Lists & Calendars filter to support multiple selections.",
+                "In TaskTrackr: Synced filter preferences and visible sources across devices via Firebase.",
+                "In TaskTrackr: Added a 'Hide/Unhide' feature to manually tuck away tasks, with a dedicated 'Hidden' sidebar filter.",
+                "In TaskTrackr: Reorganized the Settings modal into columns to clearly distinguish Task Syncing from Calendar Integrations.",
+                "In TaskTrackr: Added visual warning icons to tasks that are displaying cached/offline data due to expired connection tokens.",
+                "In TaskTrackr: Added descriptive explanations within the Settings modal to clarify how local caching and read-only calendars work."
+    ]
+    },
+    {
     version: "v14.24.0-alpha",
     date: "2026-03-28",
     changes: [
