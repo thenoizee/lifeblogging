@@ -463,7 +463,7 @@
         import { changelogData } from '/changelog-data.js';
         import { AppNavigation } from '/shared-nav.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
+        import { getMessaging, getToken, onMessage, isSupported } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
         import { getAuth, onAuthStateChanged, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -490,7 +490,22 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const messaging = getMessaging(app);
+        let messaging = null;
+
+        isSupported().then((supported) => {
+            if (supported) {
+                messaging = getMessaging(app);
+                onMessage(messaging, (payload) => {
+                    showMessage(`New Notification: ${payload.notification.title}`, 'success');
+                    window.dispatchEvent(new CustomEvent('app-new-notification', { 
+                        detail: {
+                            title: payload.notification.title,
+                            body: payload.notification.body
+                        } 
+                    }));
+                });
+            }
+        });
 
         const el = (id) => document.getElementById(id);
         const els = {
@@ -536,29 +551,23 @@
         
 
 // Listen for messages when the app is actively focused
-onMessage(messaging, (payload) => {
-    showMessage(`New Notification: ${payload.notification.title}`, 'success');
-    window.dispatchEvent(new CustomEvent('app-new-notification', { 
-        detail: {
-            title: payload.notification.title,
-            body: payload.notification.body
-        } 
-    }));
-});
+// (Moved inside isSupported check above to prevent Android WebView crashes)
 
 // ADD THIS NEW BLOCK: Listen for messages forwarded from the background Service Worker
-const channel = new BroadcastChannel('app-notifications');
-channel.addEventListener('message', (event) => {
-    const payload = event.data;
-    // We don't show the toast message here because sw.js already showed a system popup, 
-    // but we DO want to update the bell with the new data!
-    window.dispatchEvent(new CustomEvent('app-new-notification', { 
-        detail: {
-            title: payload.notification.title,
-            body: payload.notification.body
-        } 
-    }));
-});
+if ('BroadcastChannel' in window) {
+    const channel = new BroadcastChannel('app-notifications');
+    channel.addEventListener('message', (event) => {
+        const payload = event.data;
+        // We don't show the toast message here because sw.js already showed a system popup, 
+        // but we DO want to update the bell with the new data!
+        window.dispatchEvent(new CustomEvent('app-new-notification', { 
+            detail: {
+                title: payload.notification.title,
+                body: payload.notification.body
+            } 
+        }));
+    });
+}
 
 
 
