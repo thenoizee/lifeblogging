@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v14.30.-alpha",
+    date: "2026-04-14",
+    changes: [
+        "In Loggr: Bug fix on mobile devices.",
+    ]
+    },
+    {
     version: "v14.30.2-alpha",
     date: "2026-04-14",
     changes: [
