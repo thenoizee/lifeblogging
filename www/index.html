@@ -644,6 +644,26 @@ if ('BroadcastChannel' in window) {
             }, 3000);
         };
 
+        const setLoading = (isLoading) => {
+            const btns = [el('sign-in-btn'), el('sign-up-btn'), el('google-sign-in-btn'), el('anonymous-sign-in-btn')];
+            const inputs = [el('email'), el('password')];
+
+            btns.forEach(b => {
+                if(b) {
+                    b.disabled = isLoading;
+                    if(isLoading) {
+                        if(!b.dataset.originalText) b.dataset.originalText = b.innerHTML;
+                        b.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+                        b.classList.add('opacity-70', 'cursor-not-allowed');
+                    } else {
+                        if(b.dataset.originalText) b.innerHTML = b.dataset.originalText;
+                        b.classList.remove('opacity-70', 'cursor-not-allowed');
+                    }
+                }
+            });
+            inputs.forEach(i => { if(i) i.disabled = isLoading; });
+        };
+
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 els.auth.style.display = 'none';
@@ -657,11 +677,13 @@ if ('BroadcastChannel' in window) {
 
                 const lastSeen = localStorage.getItem('lastSeenVersion');
                 if(lastSeen !== changelogData[0].version) els.badge.style.display = 'block';
+                setLoading(false);
 
             } else {
                 els.auth.style.display = 'flex';
                 els.main.style.display = 'none';
                 nav.updateUser('Guest');
+                setLoading(false);
             }
         });
 
@@ -670,10 +692,30 @@ if ('BroadcastChannel' in window) {
             if(btn) btn.addEventListener('click', fn);
         }
 
-        safeClick('sign-in-btn', () => signInWithEmailAndPassword(auth, el('email').value, el('password').value).catch(e => showMessage(e.message, 'error')));
-        safeClick('sign-up-btn', () => createUserWithEmailAndPassword(auth, el('email').value, el('password').value).catch(e => showMessage(e.message, 'error')));
-        safeClick('google-sign-in-btn', () => signInWithPopup(auth, new GoogleAuthProvider()).catch(e => showMessage(e.message, 'error')));
-        safeClick('anonymous-sign-in-btn', () => signInAnonymously(auth).catch(e => showMessage(e.message, 'error')));
+        const handleAuthAction = async (actionFn) => {
+            setLoading(true);
+            try {
+                await actionFn();
+            } catch (e) {
+                showMessage(e.message, 'error');
+                setLoading(false);
+            }
+        };
+
+        safeClick('sign-in-btn', () => handleAuthAction(() => signInWithEmailAndPassword(auth, el('email').value, el('password').value)));
+        safeClick('sign-up-btn', () => handleAuthAction(() => createUserWithEmailAndPassword(auth, el('email').value, el('password').value)));
+        safeClick('google-sign-in-btn', () => handleAuthAction(() => signInWithPopup(auth, new GoogleAuthProvider())));
+        safeClick('anonymous-sign-in-btn', () => handleAuthAction(() => signInAnonymously(auth)));
+
+        const handleEnterPress = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                el('sign-in-btn').click();
+            }
+        };
+        
+        el('email').addEventListener('keypress', handleEnterPress);
+        el('password').addEventListener('keypress', handleEnterPress);
 
         window.addEventListener('app-logout-request', () => {
             auth.signOut().then(() => showMessage("Logged out successfully"));

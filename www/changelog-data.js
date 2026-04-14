@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v14.30.0-alpha",
+    date: "2026-04-14",
+    changes: [
+        "In Hub: Improved the login screen by adding a progress spinner to authentication buttons, locking input fields during login attempts, and enabling the 'Enter' key to submit credentials.",
+    ]
+    },
+    {
     version: "v14.29.1-alpha",
     date: "2026-04-14",
     changes: [
