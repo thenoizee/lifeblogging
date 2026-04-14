@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v14.30.2-alpha",
+    date: "2026-04-14",
+    changes: [
+        "In Service Worker: Bug fix.",
+    ]
+    },
+    {
     version: "v14.30.1-alpha",
     date: "2026-04-14",
     changes: [

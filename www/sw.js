@@ -1,6 +1,6 @@
 // Automatically grab the version from the registration URL (e.g., sw.js?v=1.2.0)
 const urlParams = new URL(self.location).searchParams;
-const LATEST_VERSION = urlParams.get('v') || "2.0.0"; 
+const LATEST_VERSION = urlParams.get('v') || "2.0.1";
 
 console.log(`[sw.js] 🟢 Booting up Service Worker v${LATEST_VERSION}`);
 
@@ -203,10 +203,13 @@ self.addEventListener('fetch', event => {
   }
 
   // 1. BYPASS SERVICE WORKER FOR API CALLS
-  // Firestore and Cloud Functions must be ignored so they don't break offline syncing
+  // Firebase Auth, Firestore, and Cloud Functions must be ignored so they don't break offline syncing
   if (event.request.method !== 'GET' || 
       url.hostname.includes('firestore.googleapis.com') ||
       url.hostname.includes('identitytoolkit.googleapis.com') ||
+      url.hostname.includes('securetoken.googleapis.com') ||
+      url.hostname.includes('firebaseapp.com') ||
+      url.pathname.includes('/__/auth/') ||
       url.hostname.includes('cloudfunctions.net')) {
     return; 
   }
