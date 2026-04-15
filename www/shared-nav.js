@@ -229,7 +229,7 @@ export class AppNavigation {
             
             <div class="fixed top-1 right-2 flex flex-col items-end z-[100]">
                 ${this.version ? `
-                    <a href="/changelog" class="text-[10px] font-mono text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors" title="App Version v${this.version}">
+                    <a href="/changelog" class="text-[10px] font-mono text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors" title="App Version ${this.version}">
                         App: ${this.version}
                     </a>
                 ` : ''}

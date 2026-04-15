@@ -204,11 +204,9 @@ self.addEventListener('fetch', event => {
   }
 
   // 1. BYPASS SERVICE WORKER FOR API CALLS
-  // Firebase Auth, Firestore, and Cloud Functions must be ignored so they don't break offline syncing
+  // Firebase APIs (Firestore, Auth, FCM, Functions) must be ignored so they don't break offline syncing
   if (event.request.method !== 'GET' || 
-      url.hostname.includes('firestore.googleapis.com') ||
-      url.hostname.includes('identitytoolkit.googleapis.com') ||
-      url.hostname.includes('securetoken.googleapis.com') ||
+      url.hostname.includes('googleapis.com') ||
       url.hostname.includes('firebaseapp.com') ||
       url.pathname.includes('/__/auth/') ||
       url.hostname.includes('cloudfunctions.net')) {

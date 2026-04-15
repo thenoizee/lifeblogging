@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.3.0-alpha",
+    date: "2026-04-15",
+    changes: [
+                "In Loggr: Switched Firebase offline persistence from single-tab to multi-tab (`enableMultiTabIndexedDbPersistence`) to prevent database locking across the app and Service Worker.",
+                "In Service Worker: Broadened the network bypass rules to explicitly ignore all `googleapis.com` and `firebaseapp.com` requests, ensuring push notifications and real-time database syncs are not intercepted or broken.",
+    ]
+},
+    {
     version: "v15.2.0-alpha",
     date: "2026-04-15",
     changes: [
