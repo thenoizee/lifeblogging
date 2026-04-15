@@ -66,6 +66,7 @@ const urlsToCache = [
 
 // --- FORCE CACHE THESE IMMEDIATELY ON INSTALL ---
 const externalUrlsToCache = [
+  'https://cdn.tailwindcss.com?v=3.4.3',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/webfonts/fa-solid-900.woff2',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/webfonts/fa-solid-900.ttf',
@@ -219,18 +220,24 @@ self.addEventListener('fetch', event => {
       // 2. NETWORK FIRST: For your own local HTML/JS files
       if (url.origin === self.location.origin) {
         try {
-          const networkResponse = await fetch(event.request);
-          // Only cache valid 200 responses
-          if (networkResponse && networkResponse.status === 200) {
-            const cache = await caches.open(CACHE_NAME);
-            cache.put(event.request, networkResponse.clone());
-          }
-          return networkResponse;
-        } catch (error) {
-          // If completely offline, fall back to our cached app files
-          const cachedResponse = await caches.match(event.request, { ignoreSearch: true });
-          return cachedResponse || new Response("Offline", { status: 408, statusText: "Offline" });
-        }
+                const networkResponse = await fetch(event.request);
+                // Only cache valid 200 responses
+                if (networkResponse && networkResponse.status === 200) {
+                  const cache = await caches.open(CACHE_NAME);
+                  cache.put(event.request, networkResponse.clone());
+                }
+                return networkResponse;
+              } catch (error) {
+                // If completely offline, fall back to our cached app files
+                let cachedResponse = await caches.match(event.request, { ignoreSearch: true });
+                
+                // If the directory was requested (e.g., /log/), try matching /log/index.html
+                if (!cachedResponse && event.request.url.endsWith('/')) {
+                    cachedResponse = await caches.match(event.request.url + 'index.html', { ignoreSearch: true });
+                }
+                
+                return cachedResponse || new Response("Offline", { status: 408, statusText: "Offline" });
+              }
       }
 
       // 3. CACHE FIRST: For external assets (Tailwind, FontAwesome, Google Fonts)

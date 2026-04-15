@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.2.0-alpha",
+    date: "2026-04-15",
+    changes: [
+                "In Loggr: Re-enabled the Service Worker to restore offline functionality.",
+                "In Loggr: Re-enabled Firebase IndexedDB offline persistence to allow reading historical data without a network connection.",
+                "In Service Worker: Fixed offline route matching to correctly map directory requests (e.g., '/log/') to their corresponding 'index.html'.",
+                "In Service Worker: Added explicit pre-caching for Tailwind CSS to ensure the app layout and styling render correctly when offline."
+    ]
+},
+    {
     version: "v15.1.0-alpha",
     date: "2026-04-15",
     changes: [
