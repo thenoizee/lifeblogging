@@ -217,7 +217,7 @@ export class AppNavigation {
 
                         <button id="nav-theme-toggle" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all duration-500 ease-in-out">
                             <i id="theme-icon-moon" class="fas fa-moon"></i>
-                            <i id="theme-icon-sun" class="fas fa-sun hidden"></i>
+                            <i id="theme-icon-sun" class="fas fa-sun" style="display: none;"></i>
                         </button>
                         
                         <button id="nav-logout-btn" class="bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 text-xs font-bold py-1.5 px-3 rounded-lg transition-colors">
@@ -282,11 +282,11 @@ export class AppNavigation {
         const sun = document.getElementById('theme-icon-sun');
         if (moon && sun) {
             if(isDark) {
-                moon.classList.add('hidden');
-                sun.classList.remove('hidden');
+                moon.style.display = 'none';
+                sun.style.display = 'inline-block';
             } else {
-                moon.classList.remove('hidden');
-                sun.classList.add('hidden');
+                moon.style.display = 'inline-block';
+                sun.style.display = 'none';
             }
         }
     }

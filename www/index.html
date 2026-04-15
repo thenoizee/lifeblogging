@@ -476,7 +476,7 @@
         import { AppNavigation } from '/shared-nav.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getMessaging, getToken, onMessage, isSupported } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
-        import { initializeAuth, browserLocalPersistence, onAuthStateChanged, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { initializeAuth, browserLocalPersistence, browserPopupRedirectResolver, onAuthStateChanged, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const nav = new AppNavigation({
@@ -500,12 +500,24 @@
         };
 
         const app = initializeApp(firebaseConfig);
-        // Force the Hub to use the same Local Storage bucket to prevent mobile lockups
-        const auth = initializeAuth(app, {
-            persistence: browserLocalPersistence
-        });
+        // Force the Hub to use the same Local Storage bucket to prevent mobile lockups
+        const auth = initializeAuth(app, {
+            persistence: browserLocalPersistence,
+            popupRedirectResolver: browserPopupRedirectResolver
+        });
         const db = getFirestore(app);
         let messaging = null;
+
+        // Explicitly catch Google Redirect on page load
+        getRedirectResult(auth, browserPopupRedirectResolver).then((result) => {
+            if (result) {
+                console.log("Redirect caught successfully!", result.user.email);
+                showMessage("Logged in with Google successfully!", "success");
+            }
+        }).catch((error) => {
+            console.error("Google Redirect Error:", error);
+            showMessage("Google Login Failed: " + error.message, "error");
+        });
 
         isSupported().then((supported) => {
             if (supported) {
@@ -719,7 +731,8 @@ if ('BroadcastChannel' in window) {
 
         safeClick('sign-in-btn', () => handleAuthAction(() => signInWithEmailAndPassword(auth, el('email').value, el('password').value)));
         safeClick('sign-up-btn', () => handleAuthAction(() => createUserWithEmailAndPassword(auth, el('email').value, el('password').value)));
-        safeClick('google-sign-in-btn', () => handleAuthAction(() => signInWithPopup(auth, new GoogleAuthProvider())));
+        // Pass the resolver directly into the redirect function to guarantee it works
+        safeClick('google-sign-in-btn', () => handleAuthAction(() => signInWithRedirect(auth, new GoogleAuthProvider(), browserPopupRedirectResolver)));
         safeClick('anonymous-sign-in-btn', () => handleAuthAction(() => signInAnonymously(auth)));
 
         const handleEnterPress = (e) => {
