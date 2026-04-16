@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.4.0-alpha",
+    date: "2026-04-16",
+    changes: [
+        "In TaskTrackr: Converted the quick-add input field to use a native form submit handler rather than keyup events, restoring reliable 'Enter' key functionality on mobile virtual keyboards.",
+        "In TaskTrackr: Removed the duplicate toggleSourceVisibility function to ensure calendar and source visibility settings are permanently saved and persist across sessions.",
+        "In TaskTrackr: Updated the Agenda view to use window.sectionStates.agendaOverdue, preventing overdue tasks from unhiding or resetting whenever a change is made.",
+    ]
+    },
+    {
     version: "v15.3.0-alpha",
     date: "2026-04-15",
     changes: [

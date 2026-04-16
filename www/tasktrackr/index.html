@@ -288,16 +288,15 @@ body {
     <div id="main-content-wrapper" class="flex-grow flex flex-col h-full min-w-0 transition-all duration-300">
 
        <div class="flex items-center gap-2 mb-2 shrink-0">
-    <div id="quick-add-container" class="relative group flex-grow z-0">
+    <form id="quick-add-container" class="relative group flex-grow z-0" onsubmit="window.handleQuickAddSubmit(event)">
         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <i class="fa-solid fa-plus text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
         </div>
         <input type="text" 
             id="quick-add-input"
             class="w-full bg-[var(--card)] border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-200 text-sm rounded-xl pl-9 pr-3 py-2.5 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder-gray-400 dark:placeholder-gray-600" 
-            placeholder="Add a new task..."
-    onkeyup="window.handleQuickAdd(event)">
-    </div>
+            placeholder="Add a new task...">
+    </form>
 
     <div class="flex items-center gap-1 p-1 bg-[var(--card)] border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm h-[42px]">
     <div class="relative border-r border-gray-200 dark:border-gray-700 pr-1 mr-1 flex items-center group">
@@ -1754,45 +1753,43 @@ const fetchAllData = async () => {
             const tasksData = JSON.stringify(Array.from(selectedTasks)); 
             e.dataTransfer.setData('text/plain', tasksData); 
         };
-        window.handleQuickAdd = async (e) => {
-    // FIX: Added e.keyCode === 13 for better mobile support
-    if (e.key === 'Enter' || e.keyCode === 13) {
-        const input = document.getElementById('quick-add-input');
-        const title = input.value.trim();
-        if (!title) return;
+        window.handleQuickAddSubmit = async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('quick-add-input');
+    const title = input.value.trim();
+    if (!title) return;
+    
+    input.disabled = true;
+    // ... (existing project ID logic) ...
+    let pid = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; 
+    if (currentState.projectId !== 'all') { pid = currentState.projectId; } 
+    
+    // ... (existing date logic) ...
+    let newDateISO = null; 
+    const now = new Date(); 
+    if (currentState.filter === 'today' || currentState.filter === 'focus') { newDateISO = now.toISOString(); } 
+    else if (currentState.filter === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
+    
+    const payload = { title: title, projectId: pid, priority: 0 }; 
+    if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } 
+    
+    try {
+        // 1. Create in TickTick
+        const newTask = await api('/task', 'POST', payload);
         
-        input.disabled = true;
-        // ... (existing project ID logic) ...
-        let pid = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; 
-        if (currentState.projectId !== 'all') { pid = currentState.projectId; } 
-        
-        // ... (existing date logic) ...
-        let newDateISO = null; 
-        const now = new Date(); 
-        if (currentState.filter === 'today' || currentState.filter === 'focus') { newDateISO = now.toISOString(); } 
-        else if (currentState.filter === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
-        
-        const payload = { title: title, projectId: pid, priority: 0 }; 
-        if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } 
-        
-        try {
-            // 1. Create in TickTick
-            const newTask = await api('/task', 'POST', payload);
-            
-            // 2. Save Origin to Firebase (if successful)
-            if (newTask && newTask.id) {
-                await saveTaskOrigin(newTask.id, 'tasktrackr');
-            }
-
-            input.value = '';
-            showToast('Task added');
-            fetchAllData();
-        } catch (err) {
-            showToast('Failed to add task', 'error');
-        } finally {
-            input.disabled = false;
-            input.focus();
+        // 2. Save Origin to Firebase (if successful)
+        if (newTask && newTask.id) {
+            await saveTaskOrigin(newTask.id, 'tasktrackr');
         }
+
+        input.value = '';
+        showToast('Task added');
+        fetchAllData();
+    } catch (err) {
+        showToast('Failed to add task', 'error');
+    } finally {
+        input.disabled = false;
+        input.focus();
     }
 };
         const initDropZones = () => { /*...*/ const filters = document.querySelectorAll('.filter-chip'); filters.forEach(btn => { let action = btn.getAttribute('data-drop-action'); if(!action) { const text = btn.innerText.toLowerCase(); if (text.includes('today') || text.includes('focus')) action = 'today'; else if (text.includes('tomorrow')) action = 'tomorrow'; else if (text.includes('inbox')) action = 'inbox'; } if (!action) return; btn.setAttribute('data-drop-action', action); btn.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; btn.classList.add('drag-over'); }); btn.addEventListener('dragleave', (e) => { btn.classList.remove('drag-over'); }); btn.addEventListener('drop', (e) => { e.preventDefault(); btn.classList.remove('drag-over'); const actionType = btn.getAttribute('data-drop-action'); document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging')); if (actionType) { window.bulkAction(actionType); } }); }); };
@@ -1800,10 +1797,6 @@ const fetchAllData = async () => {
 
         window.toggleCompactMode = () => { isCompactMode = !isCompactMode; localStorage.setItem('compactMode', isCompactMode); const icon = document.getElementById('compact-icon'); if(isCompactMode) { els.content.classList.add('compact-mode'); icon.className = "fa-solid fa-expand"; } else { els.content.classList.remove('compact-mode'); icon.className = "fa-solid fa-compress"; } renderApp(); };
 
-window.toggleSourceVisibility = (sourceKey) => {
-            currentState.visibleSources[sourceKey] = !currentState.visibleSources[sourceKey];
-            renderApp(); // Re-render sidebar and content
-        };
 
         window.setView = (view) => { 
             currentState.view = view; 
@@ -2452,11 +2445,14 @@ const renderTaskCard = (task) => {
             let html = '<div class="space-y-6 w-full pb-8">';
             
             if (overdue.length > 0) {
-                const isCollapsed = overdue.length > 3 ? 'hidden' : '';
-                const icon = isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down';
+                if (window.sectionStates.agendaOverdue === undefined) {
+                    window.sectionStates.agendaOverdue = overdue.length <= 3;
+                }
+                const isCollapsed = window.sectionStates.agendaOverdue ? '' : 'hidden';
+                const icon = window.sectionStates.agendaOverdue ? 'fa-chevron-down' : 'fa-chevron-right';
                 html += `
                 <div class="bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-200 dark:border-red-900/30 overflow-hidden mb-6">
-                    <div class="px-4 py-3 cursor-pointer flex justify-between items-center bg-red-100/50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 transition" onclick="const b = document.getElementById('agenda-overdue-body'); const i = this.querySelector('i'); if(b.classList.contains('hidden')){ b.classList.remove('hidden'); i.classList.replace('fa-chevron-right', 'fa-chevron-down'); } else { b.classList.add('hidden'); i.classList.replace('fa-chevron-down', 'fa-chevron-right'); }">
+                    <div class="px-4 py-3 cursor-pointer flex justify-between items-center bg-red-100/50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 transition" onclick="window.toggleSection('agendaOverdue')">
                         <div class="font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
                             <i class="fa-solid fa-triangle-exclamation"></i> Overdue Tasks
                         </div>
