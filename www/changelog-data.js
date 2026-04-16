@@ -3,6 +3,14 @@
 export const changelogData = [
     {
     version: "v15.4.0-alpha",
+    date: "2026-04-17",
+    changes: [
+                "In FoodTrackr: Added openfoodfacts.org to the Service Worker bypass list in sw.js to prevent offline/CORS fetch crashes.",
+                "In FoodTrackr: Improved error handling in the searchFood function to gracefully inform the user when the Open Food Facts API is unavailable.",
+    ]
+},
+    {
+    version: "v15.4.0-alpha",
     date: "2026-04-16",
     changes: [
         "In TaskTrackr: Converted the quick-add input field to use a native form submit handler rather than keyup events, restoring reliable 'Enter' key functionality on mobile virtual keyboards.",
