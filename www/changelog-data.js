@@ -2,7 +2,16 @@
 
 export const changelogData = [
     {
-    version: "v15.4.0-alpha",
+    version: "v15.6.0-alpha",
+    date: "2026-04-17",
+    changes: [
+                "In WarrantyTrackr: Updated Firebase Auth initialization to explicitly use browserLocalPersistence to prevent login tokens from dropping.",
+                "In Time: Updated Firebase Auth initialization to explicitly use browserLocalPersistence to prevent login tokens from dropping.",
+                "In RouteTrackr: Updated Firebase Auth initialization to explicitly use browserLocalPersistence to prevent login tokens from dropping.",
+    ]
+},
+    {
+    version: "v15.5.0-alpha",
     date: "2026-04-17",
     changes: [
                 "In FoodTrackr: Added openfoodfacts.org to the Service Worker bypass list in sw.js to prevent offline/CORS fetch crashes.",
