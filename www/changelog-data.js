@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.7.0-alpha",
+    date: "2026-04-18",
+    changes: [
+        "In TaskTrackr: Removed the glass frosting effect from the new task popup and settings page overlays, while keeping the modal backgrounds solid.",
+        "In VidTrackr: Added director, studio, and expanded cast information (up to 20 items) to movie and show pages.",
+        "In VidTrackr: Added cast, guest stars, and director information to episode pages, positioned below the action buttons.",
+        "In VehicleManagr: Fixed Firebase login token session persistence to match the other apps."
+    ]
+},
+    {
     version: "v15.6.0-alpha",
     date: "2026-04-17",
     changes: [

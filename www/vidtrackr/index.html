@@ -1663,11 +1663,12 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                     const commentUrl = `/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}/comments/newest?limit=10`;
                     
                     // Fetch all data in parallel (Including Local Watchlist Check)
-                    [history, comments, notes, localWlSnap] = await Promise.all([
+                    [history, comments, notes, localWlSnap, people] = await Promise.all([
                         fetchDirect(`/users/me/history/episodes/${id}?limit=20`),
                         fetchCommentsSafe(commentUrl),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
-                        (currentUser ? getDoc(doc(db, `users/${currentUser.uid}/watchlist`, localWlKey)) : null)
+                        (currentUser ? getDoc(doc(db, `users/${currentUser.uid}/watchlist`, localWlKey)) : null),
+                        fetchDirect(`/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}/people?extended=images`).catch(() => null)
                     ]);
                 } else {
                     const commentUrl = `/${type}s/${id}/comments/newest?limit=10`;
@@ -1826,26 +1827,32 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                       historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Watch History</h3><div class="space-y-2">${history.map(h => `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}</span><span class="text-gray-500 font-mono text-xs">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex gap-2"><button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition" onclick="window.openQuickRate('${id}', '${type}', '${fullTitle.replace(/'/g, "\\'")}', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${h.id}', '${id}', '${type}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`).join('')}</div></div>`;
                 }
 
-                // Cast HTML
+                // Cast & Guest HTML
                 let castHtml = '';
-                if (people && people.cast && people.cast.length > 0) {
-                    castHtml = `
-                    <h3 class="text-xs font-bold text-[var(--primary)] mb-4 uppercase tracking-widest mt-8">Top Cast</h3>
-                    <div class="flex gap-4 overflow-x-auto pb-6 hide-scroll">
-                        ${people.cast.slice(0, 10).map(person => {
-                             const pImg = getImage(person.person, 'person'); 
-                             return `
-                             <div class="flex-shrink-0 w-28 group relative cursor-pointer" onclick="location.hash='#detail/person/${person.person.ids.trakt}'" title="View Filmography">
-                                <div class="w-24 h-24 mx-auto rounded-full bg-gray-800 border-2 border-gray-700 overflow-hidden mb-3 shadow-lg group-hover:border-[var(--primary)] transition transform group-hover:scale-105">
-                                     <img src="${pImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">
-                                </div>
-                                <div class="text-center">
-                                    <p class="font-bold text-xs truncate text-white group-hover:text-[var(--primary)] transition">${person.person.name}</p>
-                                    <p class="text-xs text-gray-500 truncate">${person.characters[0]}</p>
-                                </div>
-                             </div>`
-                        }).join('')}
-                    </div>`;
+                if (people) {
+                    let castMembers = people.cast || [];
+                    if (isEpisode && people.guest_stars) {
+                        castMembers = [...people.guest_stars, ...castMembers];
+                    }
+                    if (castMembers.length > 0) {
+                        castHtml = `
+                        <h3 class="text-xs font-bold text-[var(--primary)] mb-4 uppercase tracking-widest mt-8">Top Cast & Guests</h3>
+                        <div class="flex gap-4 overflow-x-auto pb-6 hide-scroll">
+                            ${castMembers.slice(0, 20).map(person => {
+                                 const pImg = getImage(person.person, 'person'); 
+                                 return `
+                                 <div class="flex-shrink-0 w-28 group relative cursor-pointer" onclick="location.hash='#detail/person/${person.person.ids.trakt}'" title="View Filmography">
+                                    <div class="w-24 h-24 mx-auto rounded-full bg-gray-800 border-2 border-gray-700 overflow-hidden mb-3 shadow-lg group-hover:border-[var(--primary)] transition transform group-hover:scale-105">
+                                         <img src="${pImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                    </div>
+                                    <div class="text-center">
+                                        <p class="font-bold text-xs truncate text-white group-hover:text-[var(--primary)] transition">${person.person.name}</p>
+                                        <p class="text-xs text-gray-500 truncate">${person.characters ? person.characters[0] : 'Guest'}</p>
+                                    </div>
+                                 </div>`
+                            }).join('')}
+                        </div>`;
+                    }
                 }
 
                 // --- BUILD HTML ---
@@ -1932,6 +1939,11 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                                 
                                 ${item.ids.tvdb ? `<a href="https://thetvdb.com/dereferrer/episode/${item.ids.tvdb}" target="_blank" class="bg-[#3da35a] hover:bg-[#2c7a42] text-white py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-lg"><i class="fa-solid fa-tv"></i> TVDB</a>` : ''}
                             </div>
+                            
+                            <div class="mb-6 space-y-1 text-sm text-gray-400">
+                                ${director !== 'N/A' ? `<p><strong class="text-gray-300">Director:</strong> ${director}</p>` : ''}
+                            </div>
+                            ${castHtml}
 
                             <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8">
                                 <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
@@ -1995,6 +2007,10 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                                 <span class="border border-gray-600 px-2 py-0.5 rounded text-xs uppercase text-gray-400">${cert}</span>
                                 ${statusBadge} ${myRatingHtml}
                                 ${item.status ? `<span class="uppercase tracking-wider font-bold ${getTypeColor(type)} px-2 py-1 bg-gray-800 rounded text-xs">${item.status}</span>` : ''}
+                            </div>
+                            <div class="mb-6 space-y-1 text-sm text-gray-400">
+                                ${director !== 'N/A' ? `<p><strong class="text-gray-300">Director:</strong> ${director}</p>` : ''}
+                                ${studios !== 'N/A' ? `<p><strong class="text-gray-300">Studio:</strong> ${studios}</p>` : ''}
                             </div>
                             <p class="text-gray-300 text-lg leading-relaxed mb-6 max-w-3xl">${item.overview || 'No overview available.'}</p>
                             ${castHtml}
