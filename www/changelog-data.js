@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.8.0-alpha",
+    date: "2026-04-19",
+    changes: [
+                "In SharedNav: Fixed dark mode toggling and default system preference checking across devices.",
+                "In SharedNav: Added global redirect for unauthenticated users, routing back to the Hub index.",
+                "In TaskTrackr: Removed forced dark mode class and implemented dynamic inline script for theme resolution.",    ]
+    },
+    {
     version: "v15.7.0-alpha",
     date: "2026-04-18",
     changes: [

@@ -58,7 +58,10 @@ export class AppNavigation {
         this.renderMobileNav();
         this.attachEvents();
         
-        const storedTheme = localStorage.getItem('theme') || 'dark';
+        let storedTheme = localStorage.getItem('theme');
+        if (!storedTheme) {
+            storedTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
         this.applyTheme(storedTheme === 'dark');
         
         this.updateActiveTab(this.activeTab);
@@ -272,9 +275,11 @@ export class AppNavigation {
         if(isDark) {
             document.documentElement.classList.add('dark');
             document.documentElement.classList.remove('light');
+            document.documentElement.style.colorScheme = 'dark';
         } else {
             document.documentElement.classList.remove('dark');
             document.documentElement.classList.add('light');
+            document.documentElement.style.colorScheme = 'light';
         }
         localStorage.setItem('theme', isDark ? 'dark' : 'light');
 
@@ -358,6 +363,14 @@ export class AppNavigation {
 
         const auth = getAuth();
         onAuthStateChanged(auth, user => {
+            if (!user) {
+                const path = window.location.pathname;
+                if (path !== '/' && path !== '/index.html' && path !== '/public/index.html' && !path.includes('callback')) {
+                    window.location.href = '/';
+                    return;
+                }
+            }
+            
             if (user) {
                 const db = getFirestore();
                 const notifRef = collection(db, 'users', user.uid, 'notifications');
