@@ -134,7 +134,7 @@ export class AppNavigation {
         const userInitial = this.userEmail.charAt(0).toUpperCase();
 
         const headerHtml = `
-<header class="sticky top-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md shadow-sm z-50 shrink-0 border-b border-gray-200 dark:border-gray-700 transition-colors duration-300 md:mb-8">
+<header class="sticky top-0 bg-${this.themeColor}-50/95 dark:bg-gray-800/90 backdrop-blur-md shadow-md z-50 shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-700 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8">
             <div class="container mx-auto px-4 py-2">
                 <div class="flex items-center justify-between h-12">
                     
@@ -188,7 +188,7 @@ export class AppNavigation {
                         </a>
                     </div>
 
-                    <nav class="hidden md:flex items-center gap-1 bg-gray-100/80 dark:bg-gray-900/50 p-1 rounded-lg">
+                    <nav class="hidden md:flex items-center gap-1 bg-white/80 shadow-inner dark:bg-gray-900/50 p-1 rounded-lg border border-${this.themeColor}-100 dark:border-transparent">
                         ${this.tabs.map(tab => `
                             <button class="nav-tab-btn px-4 py-1.5 rounded-md text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all" data-tab="${tab.id}">
                                 <i class="fa-solid ${tab.icon} mr-1.5"></i>${tab.label}
@@ -257,7 +257,7 @@ export class AppNavigation {
     renderMobileNav() {
         if (!this.tabs.length) return;
         const mobileHtml = `
-        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-700 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-${this.themeColor}-50/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-700 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
             <div class="flex justify-around items-center h-16">
                 <a href="/" class="flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-${this.themeColor}-500 transition-colors gap-1">
                     <i class="fa-solid fa-arrow-left text-lg"></i>
@@ -639,7 +639,7 @@ export class AppNavigation {
 
     switchTab(tabId) {
         this.activeTab = tabId;
-        const activeClassDesktop = `text-${this.themeColor}-600 dark:text-${this.themeColor}-400 bg-white dark:bg-gray-900 shadow-sm ring-1 ring-gray-200 dark:ring-gray-700`;
+        const activeClassDesktop = `text-${this.themeColor}-700 dark:text-${this.themeColor}-400 bg-${this.themeColor}-100 dark:bg-gray-900 shadow-sm ring-1 ring-${this.themeColor}-300 dark:ring-gray-700`;
         const inactiveClassDesktop = `text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100`;
 
         document.querySelectorAll('.nav-tab-btn').forEach(btn => {

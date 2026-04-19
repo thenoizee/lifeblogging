@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.11.0-alpha",
+    date: "2026-04-19",
+    changes: [
+        "In SharedNav: Updated light mode styles to dynamically inject the app's themeColor into backgrounds, borders, and active tabs instead of defaulting to plain white.",
+        "In Service Worker: Bumped version number to force a global cache refresh for PWAs so UI updates apply to all apps immediately.",
+        "In Hub/Changelog/Analyser/Account/TaskTrackr/VidTrackr: Added specific Tailwind config safelists to index.html files to prevent dynamic themeColor light-mode classes from being purged during compilation.",
+        "In MoneyManagr: Swapped Firebase 'getAuth' for 'initializeAuth' with 'browserLocalPersistence' to match the authentication logic used in other newer apps.",
+        "In Analyser: Fixed a race condition crashing the app by ensuring Firebase configuration and initialization fires before the AppNavigation module is instantiated.",
+        "In Analyser: Fixed an 'auth/already-initialized' error by removing redundant Firebase auth initializations.",
+        "In Analyser: Reworked the Global Loader script to prevent it from dismissing prematurely. It now accurately waits until all Firestore collection data has finished downloading in the background before revealing the app UI."
+    ]
+    },
+    {
     version: "v15.10.0-alpha",
     date: "2026-04-19",
     changes: [
