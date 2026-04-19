@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.13.0-alpha",
+    date: "2026-04-19",
+    changes: [
+        "In VidTrackr: Added the ability to locally hide specific episodes or movies directly from the 'Up Next' queue.",
+        "In VidTrackr: Added a 'Reset Hidden Items' option in the Settings page to clear the hidden 'Up Next' queue.",
+        "In VidTrackr: Improved the user interface to dynamically display 'Log Rewatch' instead of 'Log Watch' on buttons for content you've already seen.",
+        "In VidTrackr: Enhanced the Watch History section on detail pages to pull show-specific history and display the rating given to previous watches.",
+        "In VidTrackr: Improved the History tab UI by adding dynamic Date Dividers to group viewing history by day (e.g., 'Today', 'Yesterday', or full dates).",
+        "In VidTrackr: Enhanced history items with cleaner badges, specific check-in/scrobble indicators, and better rating displays.",
+        "In VidTrackr: Upgraded the history filter buttons to be more visually distinct and organized.",
+    ]
+    },
+    {
     version: "v15.12.0-alpha",
     date: "2026-04-19",
     changes: [

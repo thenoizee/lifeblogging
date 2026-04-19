@@ -826,6 +826,15 @@ window.toggleSpecials = () => {
         };
 
 // Add/Update this global function
+window.hideUpNext = (id, type) => {
+    if(!confirm("Hide this item from Up Next?")) return;
+    let hidden = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
+    hidden.push({id: parseInt(id), type: type});
+    localStorage.setItem('vidtrackr_hidden_upnext', JSON.stringify(hidden));
+    showToast("Hidden from Up Next");
+    loadUpNext();
+};
+
 window.removeProgress = async (playbackId) => {
     if(!confirm('Drop this item from your "Continue Watching" list?')) return;
     
@@ -1403,6 +1412,14 @@ async function loadUpNext() {
             const container = document.getElementById('up-next-container');
             if (!container) return;
 
+            const hiddenItems = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
+            items = items.filter(item => {
+                const isMovie = item.type === 'movie';
+                const data = isMovie ? (item.movie || item) : (item.episode || item.episode);
+                if (!data || !data.ids) return true;
+                return !hiddenItems.some(h => h.id === parseInt(data.ids.trakt) && h.type === item.type);
+            });
+
             if (items.length === 0) {
                 container.classList.add('hidden');
                 return;
@@ -1451,6 +1468,7 @@ async function loadUpNext() {
                     <div class="flex gap-2 w-full relative z-20 h-10">
                          <button onclick='event.stopPropagation(); window.openScrobbleModal(${jsonStr})' class="flex-grow h-10 bg-[var(--primary)] hover:bg-red-700 text-white text-xs font-bold rounded-lg transition shadow-md flex items-center justify-center"><i class="fa-solid fa-play mr-1"></i> Log Watch</button>
                          <button onclick="event.stopPropagation(); window.openQuickRate(${data.ids.trakt}, '${item.type}', '${(isMovie ? title : `${showTitle}: ${title}`).replace(/'/g, "\\'")}')" class="h-10 w-12 bg-gray-700 hover:bg-yellow-500 hover:text-black text-white rounded-lg font-bold transition shadow-md flex items-center justify-center border border-gray-600"><i class="fa-solid fa-star"></i></button>
+                         <button onclick="event.stopPropagation(); window.hideUpNext(${data.ids.trakt}, '${item.type}')" class="h-10 w-12 bg-gray-800 hover:bg-gray-600 text-gray-400 hover:text-white rounded-lg font-bold transition shadow-md flex items-center justify-center border border-gray-700" title="Hide from Up Next"><i class="fa-solid fa-eye-slash"></i></button>
                     </div>`;
                 }
 
@@ -1685,7 +1703,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                     [item, notes, history, related, people, comments, localWlSnap] = await Promise.all([
                         fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
-                        (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=20`) : []),
+                        (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=20`) : (type === 'show' ? fetchDirect(`/users/me/history/shows/${id}?limit=20`) : [])),
                         fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`),
                         fetchDirect(`/${type}s/${id}/people?extended=images`),
                         fetchCommentsSafe(commentUrl),
@@ -1834,7 +1852,14 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 // History List HTML
                 let historyHtml = '';
                 if (history.length > 0) {
-                      historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Watch History</h3><div class="space-y-2">${history.map(h => `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}</span><span class="text-gray-500 font-mono text-xs">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex gap-2"><button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition" onclick="window.openQuickRate('${id}', '${type}', '${fullTitle.replace(/'/g, "\\'")}', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${h.id}', '${id}', '${type}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`).join('')}</div></div>`;
+                      historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Watch History</h3><div class="space-y-2">${history.map(h => {
+                          const epInfo = h.episode ? ` <span class="text-[var(--primary)] text-xs ml-2">S${h.episode.season}E${h.episode.number}</span>` : '';
+                          const rId = h.episode ? h.episode.ids.trakt : id;
+                          const rType = h.episode ? 'episode' : type;
+                          const hRating = userRatings.get(parseInt(rId));
+                          const hRatingHtml = hRating ? `<span class="text-yellow-500 text-xs font-bold mr-3"><i class="fa-solid fa-star"></i> ${hRating}</span>` : '';
+                          return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition" onclick="window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                      }).join('')}</div></div>`;
                 }
 
                 // Cast & Guest HTML
@@ -1921,7 +1946,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                             ${historyHtml}
                             
                             <div class="flex flex-col sm:flex-row gap-4 mb-8">
-                                <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode', runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-check"></i> Log / Rate Again</button>
+                                <button class="scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-8 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 flex-1 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: 'episode', runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="show"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'}"></i> ${isWatched ? 'Log Rewatch' : 'Log Watch'}</button>
                                 
                                 <button onclick="window.toggleTraktWatchlist('${item.ids.trakt}', 'episode', this)" class="w-full sm:w-auto px-4 py-3 rounded-lg font-bold border transition flex items-center justify-center gap-2 ${isTraktWl ? 'bg-red-900/40 text-red-300 border-red-800' : 'bg-blue-900/40 text-blue-300 border-blue-800'}" title="Trakt Watchlist">
                                     ${isTraktWl ? '<i class="fa-solid fa-trash-can"></i>' : '<i class="fa-solid fa-bookmark"></i>'}
@@ -1972,13 +1997,13 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                         <div class="w-full md:w-1/3 lg:w-1/4 flex-shrink-0 mx-auto max-w-[220px] sm:max-w-[260px] md:max-w-none md:mx-0">
                             <div class="rounded-2xl overflow-hidden shadow-2xl relative group border border-gray-800">
                                 <img src="${img}" class="w-full object-cover aspect-[2/3]">
-                                ${type === 'movie' ? `<div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm"><button class="scrobble-btn ${getBgColor(type)} text-white px-8 py-3 rounded-full font-bold transform scale-90 group-hover:scale-100 transition shadow-xl" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-check mr-2"></i> Log Movie</button></div>` : ''}
+                                ${type === 'movie' ? `<div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm"><button class="scrobble-btn ${getBgColor(type)} text-white px-8 py-3 rounded-full font-bold transform scale-90 group-hover:scale-100 transition shadow-xl" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'} mr-2"></i> ${isWatched ? 'Log Rewatch' : 'Log Movie'}</button></div>` : ''}
                                 ${navPrev ? `<div class="nav-btn nav-prev" onclick="location.hash='#detail/movie/${navPrev.ids.trakt}'" title="Previous: ${navPrev.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-left"></i></div>` : ''}
                                 ${navNext ? `<div class="nav-btn nav-next" onclick="location.hash='#detail/movie/${navNext.ids.trakt}'" title="Next: ${navNext.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-right"></i></div>` : ''}
                             </div>
                             
                             <div class="mt-6 flex flex-col gap-3">
-                                ${type === 'movie' ? `<button class="scrobble-btn w-full text-center bg-[var(--primary)] hover:bg-red-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-calendar-plus"></i> Log / Rate in Past</button>` : ''}
+                                ${type === 'movie' ? `<button class="scrobble-btn w-full text-center bg-[var(--primary)] hover:bg-red-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-calendar-plus"></i> ${isWatched ? 'Log Rewatch in Past' : 'Log / Rate in Past'}</button>` : ''}
                                 <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2"><i class="fa-solid fa-play"></i> Stream Now</a>
                                 
                                 <div id="stremio-placeholder" class="hidden w-full sm:w-auto"></div>
@@ -2227,12 +2252,12 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
             if (page === 1) { 
     els.content.innerHTML = `
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 mt-4 gap-4">
-        <h2 class="text-2xl font-bold">History</h2>
-        <div class="flex bg-gray-900 p-1 rounded-lg border border-gray-700 flex-wrap justify-center">
-            <button onclick="window.setHistoryFilter('all')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'all' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">All</button>
-            <button onclick="window.setHistoryFilter('movies')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'movies' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Movies</button>
-            <button onclick="window.setHistoryFilter('episodes')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'episodes' ? 'bg-[var(--primary)] text-white' : 'text-gray-400 hover:text-white'}">Episodes</button>
-            <button onclick="window.setHistoryFilter('unrated')" class="px-4 py-2 rounded-md text-xs font-bold transition ${currentHistoryFilter === 'unrated' ? 'bg-yellow-600 text-white' : 'text-gray-400 hover:text-yellow-500'}"><i class="fa-solid fa-star-half-stroke mr-1"></i> Unrated</button>
+        <h2 class="text-2xl font-bold flex items-center gap-3"><i class="fa-solid fa-clock-rotate-left text-[var(--primary)] opacity-80"></i> Watch History</h2>
+        <div class="flex bg-gray-900 p-1 rounded-xl border border-gray-700 shadow-inner overflow-x-auto w-full md:w-auto hide-scroll">
+            <button onclick="window.setHistoryFilter('all')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'all' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}">All History</button>
+            <button onclick="window.setHistoryFilter('movies')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'movies' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"><i class="fa-solid fa-film mr-1"></i> Movies</button>
+            <button onclick="window.setHistoryFilter('episodes')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'episodes' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"><i class="fa-solid fa-tv mr-1"></i> Episodes</button>
+            <button onclick="window.setHistoryFilter('unrated')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'unrated' ? 'bg-yellow-600 text-white shadow-md' : 'text-gray-400 hover:text-yellow-500 hover:bg-gray-800'}"><i class="fa-solid fa-star-half-stroke mr-1"></i> Unrated</button>
         </div>
     </div>
     
@@ -2315,45 +2340,83 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                      hideLoader(); return;
                  }
                 
+                // Pre-calculate daily runtime totals
+                const dailyTotals = {};
+                data.forEach(item => {
+                    const dStr = new Date(item.watched_at).toLocaleDateString();
+                    // Fallback to 0 if runtime is missing
+                    const runtime = item.type === 'episode' ? (item.episode.runtime || 0) : (item.movie.runtime || 0);
+                    dailyTotals[dStr] = (dailyTotals[dStr] || 0) + runtime;
+                });
+
                 let lastDate = null;
-                // Basic date header logic logic reused...
-                // (Using existing logic just simpler here)
                 const listHtml = data.map(item => {
                     const type = item.type;
                     const navType = type === 'episode' ? 'episode' : 'movie';
                     const navId = type === 'episode' ? item.episode.ids.trakt : item.movie.ids.trakt;
-                    const titleText = (type === 'episode') ? `<span class="text-gray-400 text-sm font-normal">${item.show.title}</span> <br> ${item.episode.season}x${item.episode.number}: <span class="text-gray-200">${item.episode.title}</span>` : item.movie.title;
+                    const titleText = (type === 'episode') ? `<span class="text-gray-400 text-xs md:text-sm font-bold uppercase tracking-wider">${item.show.title}</span> <br> <span class="text-gray-500 font-mono text-xs bg-gray-800 px-1 rounded mr-1 shadow-sm">S${item.episode.season}E${item.episode.number}</span> <span class="text-gray-200">${item.episode.title}</span>` : item.movie.title;
                     const displayImageObj = type === 'episode' ? item.episode : item.movie;
                     const img = getImage(displayImageObj, type, true); 
                     const myRating = userRatings.get(parseInt(navId));
-                    const rateDisplay = myRating ? `<span class="text-green-400 font-bold ml-auto text-xs"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
+                    const rateDisplay = myRating ? `<span class="text-green-400 font-bold ml-auto text-xs bg-green-900/20 px-2 py-1 rounded-md border border-green-800/50 shadow-sm whitespace-nowrap"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
                     
                     const wDate = new Date(item.watched_at);
                     const dateStr = wDate.toLocaleDateString();
-                    const prettyDate = wDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+                    
+                    // Date Parsing for "Today" and "Yesterday"
+                    const today = new Date();
+                    const yesterday = new Date(today);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    
+                    let prettyDate = wDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+                    if (dateStr === today.toLocaleDateString()) prettyDate = "Today";
+                    else if (dateStr === yesterday.toLocaleDateString()) prettyDate = "Yesterday";
+
                     const timeStr = wDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                     let headerHtml = '';
-                    // Only show header if it's the first page OR date changed significantly
-                    // Note: In append mode, this logic is imperfect but sufficient for lists
+                    if (dateStr !== lastDate) {
+                        // Print the Date Divider if it's a new day
+                        if (page === 1 || lastDate !== null) {
+                            // Calculate Hours/Mins for the badge
+                            const totalMins = dailyTotals[dateStr] || 0;
+                            const hrs = Math.floor(totalMins / 60);
+                            const mins = totalMins % 60;
+                            const timeString = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                            const timeBadge = totalMins > 0 ? `<span class="bg-gray-900 text-[10px] text-gray-400 px-2.5 py-1 rounded-md border border-gray-700 ml-3 shadow-inner tracking-normal normal-case"><i class="fa-solid fa-stopwatch mr-1 text-[var(--primary)]"></i> ${timeString}</span>` : '';
+
+                            headerHtml = `<div class="col-span-full mt-8 mb-4 border-b border-gray-800/50 pb-2 flex justify-between items-end"><h3 class="text-sm font-bold text-[var(--primary)] uppercase tracking-widest flex items-center shadow-black drop-shadow-md"><i class="fa-solid fa-calendar-day mr-2 opacity-80"></i>${prettyDate} ${timeBadge}</h3><span class="text-xs text-gray-500 font-mono">${wDate.toLocaleDateString()}</span></div>`;
+                        }
+                        lastDate = dateStr;
+                    } else if (lastDate === null) {
+                        lastDate = dateStr; // Edge case catch
+                    }
+
+                    // Log actions
+                    let actionBadge = `<span class="text-green-500 bg-green-900/20 border border-green-900/50 px-2 py-0.5 rounded shadow-sm"><i class="fa-solid fa-check mr-1"></i> Logged</span>`;
+                    if (item.action === 'scrobble') actionBadge = `<span class="text-blue-400 bg-blue-900/20 border border-blue-900/50 px-2 py-0.5 rounded shadow-sm"><i class="fa-solid fa-eye mr-1"></i> Scrobble</span>`;
+                    else if (item.action === 'checkin') actionBadge = `<span class="text-purple-400 bg-purple-900/20 border border-purple-900/50 px-2 py-0.5 rounded shadow-sm"><i class="fa-solid fa-map-pin mr-1"></i> Check-in</span>`;
+
                     return `
-                    <div class="card p-3 rounded-xl flex items-center gap-4 hover:bg-[var(--card)] border border-transparent hover:border-gray-600 transition group relative animate-fade bg-[var(--card)]/40 mb-1" onclick="location.hash='#detail/${navType}/${navId}'">
-                        <div class="relative w-24 h-14 md:w-32 md:h-20 flex-shrink-0 overflow-hidden rounded-lg shadow-md bg-gray-800">
+                    ${headerHtml}
+                    <div class="card p-3 rounded-xl flex items-center gap-3 md:gap-5 hover:bg-[var(--card)] border border-gray-800 hover:border-gray-500 transition group relative animate-fade bg-[var(--card)]/60 mb-2 shadow-md hover:shadow-xl" onclick="location.hash='#detail/${navType}/${navId}'">
+                        <div class="relative w-24 h-14 md:w-36 md:h-20 flex-shrink-0 overflow-hidden rounded-lg shadow-lg bg-gray-900 border border-gray-800">
                             <img src="${img}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" onerror="this.src='${PLACEHOLDER_IMG}'">
-                            <div class="absolute bottom-0 right-0 bg-black/80 text-white text-[8px] px-1.5 py-0.5 rounded-tl font-bold uppercase tracking-wider">${type}</div>
+                            <div class="absolute bottom-0 left-0 bg-black/80 text-white text-[9px] px-2 py-1 rounded-tr-lg font-bold uppercase tracking-widest shadow-sm">${type}</div>
                         </div>
                         <div class="flex-grow min-w-0 flex flex-col justify-center">
-                            <div class="flex items-start">
-                                <h3 class="font-bold text-sm md:text-base leading-tight cursor-pointer hover:text-[var(--primary)] transition mr-2 line-clamp-2">${titleText}</h3>
+                            <div class="flex justify-between items-start gap-2">
+                                <h3 class="font-bold text-sm md:text-base leading-tight cursor-pointer group-hover:text-[var(--primary)] transition line-clamp-2">${titleText}</h3>
                                 ${rateDisplay}
                             </div>
-                            <div class="flex items-center gap-3 text-xs text-gray-500 mt-1">
-                                <span><i class="fa-solid fa-clock opacity-50 mr-1"></i> ${prettyDate} ${timeStr}</span>
+                            <div class="flex items-center gap-3 text-[10px] md:text-xs text-gray-500 mt-2">
+                                <span class="bg-gray-800 text-gray-300 px-2 py-0.5 rounded shadow-sm border border-gray-700"><i class="fa-solid fa-clock opacity-50 mr-1 text-[var(--primary)]"></i> ${timeStr}</span>
+                                ${actionBadge}
                             </div>
                         </div>
-                        <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition px-2">
-                             <button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition" onclick="event.stopPropagation(); window.openQuickRate('${navId}', '${type}', '${(type === 'episode' ? item.show.title + ': ' + item.episode.title : item.movie.title).replace(/'/g, "\\'").replace(/"/g, '&quot;')}', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button>
-                             <button class="text-xs bg-red-900/20 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="event.stopPropagation(); window.deleteHistoryItem('${item.id}', '${navId}', '${type}', this)" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                        <div class="flex flex-col md:flex-row gap-2 opacity-0 group-hover:opacity-100 transition px-1 md:px-2 absolute right-2 md:static bg-[var(--card)]/80 md:bg-transparent backdrop-blur-sm p-2 md:p-0 rounded-lg">
+                             <button class="text-xs bg-gray-800 text-yellow-400 p-2.5 md:px-3 md:py-2 rounded-lg hover:bg-yellow-500 hover:text-black transition shadow-lg border border-gray-700 hover:border-yellow-500 flex items-center justify-center" onclick="event.stopPropagation(); window.openQuickRate('${navId}', '${type}', '${(type === 'episode' ? item.show.title + ': ' + item.episode.title : item.movie.title).replace(/'/g, "\\'").replace(/"/g, '&quot;')}', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button>
+                             <button class="text-xs bg-red-900/20 text-red-400 p-2.5 md:px-3 md:py-2 rounded-lg hover:bg-red-600 hover:text-white transition shadow-lg border border-red-900/30 hover:border-red-600 flex items-center justify-center" onclick="event.stopPropagation(); window.deleteHistoryItem('${item.id}', '${navId}', '${type}', this)" title="Delete"><i class="fa-solid fa-trash"></i></button>
                         </div>
                     </div>`;
                 }).join('');
@@ -2369,7 +2432,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
             });
         }
 
-        function renderSettings() { els.content.innerHTML = `<h1 class="text-3xl font-bold mb-6">Settings</h1><div class="grid gap-6 animate-fade"><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-file-export mr-3 text-[var(--primary)]"></i> Data Export</h2><p class="text-gray-400 mb-6">Download your entire listening/watching history as a CSV file for backup or analysis.</p><button id="export-btn" class="btn-primary px-6 py-3 rounded-lg font-bold shadow-lg hover:shadow-[var(--primary)]/30 transition">Export History to CSV</button></div><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-database mr-3 text-blue-500"></i> Storage</h2><p class="text-gray-400 mb-6">If images look broken or data is stale, try clearing the local cache.</p><button id="clear-cache-btn" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-bold shadow-lg transition">Clear Local Cache</button></div></div>`; setTimeout(() => { const exportBtn = document.getElementById('export-btn'); const clearBtn = document.getElementById('clear-cache-btn'); if(exportBtn) exportBtn.onclick = async () => { showLoader(); try { const data = await fetchDirect('/sync/history?limit=10000'); if(!data.length) return showToast('No history', 'error'); const csv = "Title,Type,Year,TraktID,WatchedAt\n" + data.map(i => `${(i.type==='episode'?`${i.show.title}: ${i.episode.title}`:i.movie.title).replace(/,/g,'')},${i.type},${i.type==='episode'?i.show.year:i.movie.year},${i.type==='episode'?i.episode.ids.trakt:i.movie.ids.trakt},${i.watched_at}`).join("\n"); const link = document.createElement("a"); link.href = encodeURI("data:text/csv;charset=utf-8,"+csv); link.download = "history.csv"; document.body.appendChild(link); link.click(); link.remove(); showToast('Exported'); } catch(e) { showToast('Export failed', 'error'); } hideLoader(); }; if(clearBtn) clearBtn.onclick = () => { localStorage.clear(); showToast('Cache Cleared! Refreshing...'); setTimeout(() => location.reload(), 1500); }; }, 100); }
+        function renderSettings() { els.content.innerHTML = `<h1 class="text-3xl font-bold mb-6">Settings</h1><div class="grid gap-6 animate-fade"><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-file-export mr-3 text-[var(--primary)]"></i> Data Export</h2><p class="text-gray-400 mb-6">Download your entire listening/watching history as a CSV file for backup or analysis.</p><button id="export-btn" class="btn-primary px-6 py-3 rounded-lg font-bold shadow-lg hover:shadow-[var(--primary)]/30 transition">Export History to CSV</button></div><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-database mr-3 text-blue-500"></i> Storage</h2><p class="text-gray-400 mb-6">If images look broken or data is stale, try clearing the local cache.</p><button id="clear-cache-btn" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-bold shadow-lg transition">Clear Local Cache</button></div><div class="card p-8 rounded-2xl max-w-2xl border border-gray-800"><h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-eye-slash mr-3 text-purple-500"></i> Hidden Items</h2><p class="text-gray-400 mb-6">Clear the list of shows and movies you have hidden from your 'Up Next' queue.</p><button id="clear-hidden-btn" class="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-bold shadow-lg transition">Reset Hidden Items</button></div></div>`; setTimeout(() => { const exportBtn = document.getElementById('export-btn'); const clearBtn = document.getElementById('clear-cache-btn'); const clearHiddenBtn = document.getElementById('clear-hidden-btn'); if(exportBtn) exportBtn.onclick = async () => { showLoader(); try { const data = await fetchDirect('/sync/history?limit=10000'); if(!data.length) return showToast('No history', 'error'); const csv = "Title,Type,Year,TraktID,WatchedAt\n" + data.map(i => `${(i.type==='episode'?`${i.show.title}: ${i.episode.title}`:i.movie.title).replace(/,/g,'')},${i.type},${i.type==='episode'?i.show.year:i.movie.year},${i.type==='episode'?i.episode.ids.trakt:i.movie.ids.trakt},${i.watched_at}`).join("\n"); const link = document.createElement("a"); link.href = encodeURI("data:text/csv;charset=utf-8,"+csv); link.download = "history.csv"; document.body.appendChild(link); link.click(); link.remove(); showToast('Exported'); } catch(e) { showToast('Export failed', 'error'); } hideLoader(); }; if(clearBtn) clearBtn.onclick = () => { localStorage.clear(); showToast('Cache Cleared! Refreshing...'); setTimeout(() => location.reload(), 1500); }; if(clearHiddenBtn) clearHiddenBtn.onclick = () => { localStorage.removeItem('vidtrackr_hidden_upnext'); showToast('Hidden items reset!'); loadUpNext(); }; }, 100); }
         
         function renderLibrary(activeTab = 'watchlist') {
             els.content.innerHTML = `
