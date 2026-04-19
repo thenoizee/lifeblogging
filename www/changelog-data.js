@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.9.0-alpha",
+    date: "2026-04-19",
+    changes: [
+        "In Shared Navigation (shared-nav.js): Restored Firebase database syncing for the theme toggle so Dark Mode preferences persist across multiple devices.",
+        "In Shared Navigation (shared-nav.js): Added a window storage event listener to instantly sync Dark Mode state across all currently open live tabs.",
+    ]
+    },
+    {
     version: "v15.8.0-alpha",
     date: "2026-04-19",
     changes: [

@@ -1,6 +1,6 @@
 import { getApps } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs, deleteDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { changelogData } from './changelog-data.js';
 
 export class AppNavigation {
@@ -66,8 +66,16 @@ export class AppNavigation {
         
         this.updateActiveTab(this.activeTab);
 
+        // Listen for localStorage changes from other live tabs
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'theme') {
+                this.applyTheme(e.newValue === 'dark');
+            }
+        });
+
         // Start listening to the cloud database
         this.listenToNotifications();
+        this.listenToThemeSync();
         
         // Fetch and display Service Worker version
         this.displayServiceWorkerVersion();
@@ -354,6 +362,24 @@ export class AppNavigation {
         batch.commit().catch(err => console.error("Error marking notifications read:", err));
     }
 
+    listenToThemeSync() {
+        const auth = getAuth();
+        onAuthStateChanged(auth, user => {
+            if (user) {
+                const db = getFirestore();
+                const themeRef = doc(db, 'users', user.uid, 'settings', 'theme');
+                onSnapshot(themeRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const cloudTheme = docSnap.data().theme;
+                        if (cloudTheme && localStorage.getItem('theme') !== cloudTheme) {
+                            this.applyTheme(cloudTheme === 'dark');
+                        }
+                    }
+                });
+            }
+        });
+    }
+
     listenToNotifications() {
         // Wait for Firebase to be fully initialized by the host page
         if (getApps().length === 0) {
@@ -532,7 +558,7 @@ export class AppNavigation {
 
         const themeBtn = document.getElementById('nav-theme-toggle');
         if(themeBtn) {
-            themeBtn.addEventListener('click', () => {
+            themeBtn.addEventListener('click', async () => {
                 const isDark = !document.documentElement.classList.contains('dark');
                 this.applyTheme(isDark);
                 if (this.onThemeChange) {
@@ -540,6 +566,17 @@ export class AppNavigation {
                 }
                 themeBtn.classList.add('rotate-360');
                 setTimeout(() => themeBtn.classList.remove('rotate-360'), 500);
+
+                // Push to Firebase
+                const auth = getAuth();
+                if (auth.currentUser) {
+                    try {
+                        const db = getFirestore();
+                        await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'theme'), { theme: isDark ? 'dark' : 'light' }, { merge: true });
+                    } catch (err) {
+                        console.error("Error saving theme to cloud:", err);
+                    }
+                }
             });
         }
         
