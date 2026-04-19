@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.12.0-alpha",
+    date: "2026-04-19",
+    changes: [
+                "In Dashboard: Added custom light mode banner configuration via Tailwind safelist to match the Analyser app's UI styling.",
+                "In VehicleManagr: Resolved an app crash by removing a duplicate 'auth' constant declaration.",
+                "In VehicleManagr: Fixed a 404 error by correcting the root path to manifest.json.",
+                "In VehicleManagr: Added custom light mode banner configuration via Tailwind safelist to match the Analyser app's UI styling."
+    ]
+    },
+    {
     version: "v15.11.0-alpha",
     date: "2026-04-19",
     changes: [
