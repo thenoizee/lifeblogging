@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.10.0-alpha",
+    date: "2026-04-19",
+    changes: [
+        "In Hub: Fixed a sequence bug causing 'auth/already-initialized' and 'no-app' Firebase crash errors on startup.",
+        "In Hub: Updated the login page to display friendly, human-readable error messages for incorrect passwords, invalid emails, and unrecognized accounts.",
+        "In Hub: Fixed a bug on the login screen where pressing the 'Enter' key failed to submit the form.",
+        "In Changelog: Completely redesigned the interface to match the ecosystem, including the shared AppNavigation bar, a card-based UI, and standardized dark mode syncing."
+    ]
+    },
+    {
     version: "v15.9.0-alpha",
     date: "2026-04-19",
     changes: [
