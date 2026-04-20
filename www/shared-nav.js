@@ -363,6 +363,12 @@ export class AppNavigation {
     }
 
     listenToThemeSync() {
+        // Wait for Firebase to be fully initialized by the host page
+        if (getApps().length === 0) {
+            setTimeout(() => this.listenToThemeSync(), 50);
+            return;
+        }
+
         const auth = getAuth();
         onAuthStateChanged(auth, user => {
             if (user) {

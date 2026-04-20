@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.14.0-alpha",
+    date: "2026-04-21",
+    changes: [
+                "In Text Generator (Work): Updated Firebase Authentication to use `initializeAuth` with `browserLocalPersistence` to prevent IndexedDB database locks on mobile WebViews.",
+    ]
+    },
+    {
     version: "v15.13.0-alpha",
     date: "2026-04-19",
     changes: [
