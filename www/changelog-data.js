@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.15.0-alpha",
+    date: "2026-04-21",
+    changes: [
+        "In PlantTrackr: Enhanced logic for 'In Ground' plants to disable irrelevant fields (Pot Size, Has Saucer, Repot Frequency) in the UI.",
+        "In PlantTrackr: Completely excluded 'In Ground' plants from receiving Repotting tasks in the dashboard and forecasts.",
+        "In PlantTrackr: Added 'Ceramic' pot material to watering calculations (+1 day moisture retention).",
+        "In PlantTrackr: Increased the base water retention bonus for 'In Ground' plants (+4 days) and disabled saucer calculations for them."
+    ]
+    },
+    {
     version: "v15.14.0-alpha",
     date: "2026-04-21",
     changes: [

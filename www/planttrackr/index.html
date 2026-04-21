@@ -959,7 +959,15 @@
                         <div class="flex items-center gap-3">
                             <img id="log-plant-preview" src="" class="w-10 h-10 rounded-full object-cover hidden border border-[var(--border)]">
                             <div class="w-10 h-10 rounded-full bg-[var(--input-bg)] flex items-center justify-center text-[var(--primary)] hidden" id="log-plant-icon-preview"><i class="fa-solid fa-leaf"></i></div>
-                            <select id="log-plant-select" class="input-std text-sm flex-grow"></select>
+                            <div class="relative flex-grow">
+                                <input type="hidden" id="log-plant-select">
+                                <button type="button" id="custom-plant-select-btn" class="input-std text-sm w-full flex items-center justify-between" onclick="document.getElementById('custom-plant-select-dropdown').classList.toggle('hidden')">
+                                    <span id="custom-plant-select-text">-- Select Plant --</span>
+                                    <i class="fa-solid fa-chevron-down opacity-50"></i>
+                                </button>
+                                <div id="custom-plant-select-dropdown" class="absolute z-50 w-full bg-[var(--card)] border border-[var(--border)] mt-1 rounded shadow-lg max-h-48 overflow-y-auto hidden">
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1088,15 +1096,26 @@
         };
 
         // 1. Add this globally accessible function anywhere before onAuthStateChanged
+        window.selectCustomPlant = (id, name) => {
+            getEl("log-plant-select").value = id;
+            getEl("custom-plant-select-dropdown").classList.add("hidden");
+            window.updateQuickLogPreview();
+        };
+
         window.updateQuickLogPreview = () => {
             const val = getEl("log-plant-select").value;
             const previewImg = getEl("log-plant-preview");
             const previewIcon = getEl("log-plant-icon-preview");
+            const textSpan = getEl("custom-plant-select-text");
             if (!val) {
-                previewImg.classList.add("hidden"); previewIcon.classList.add("hidden"); return;
+                previewImg.classList.add("hidden"); previewIcon.classList.add("hidden"); 
+                if (textSpan) textSpan.textContent = "-- Select Plant --";
+                return;
             }
             const plant = state.plants.find(p => p.id === val);
             if (!plant) return;
+            
+            if (textSpan) textSpan.textContent = plant.name;
             const photoUrl = getLatestPlantPhoto(plant);
             if (photoUrl) {
                 previewImg.src = photoUrl;
@@ -1306,6 +1325,11 @@
                         ${loc.tempWinter ? `<div title="Winter Temp"><i class="fa-solid fa-temperature-empty w-4 text-blue-300"></i> ${loc.tempWinter}°C (W)</div>` : ''}
                         <div title="Draft" class="col-span-2"><i class="fa-solid fa-wind w-4 text-gray-400"></i> Draft: ${loc.draft}</div>
                     </div>
+                    <div class="mt-3 pt-3 border-t border-[var(--border)] flex justify-end">
+                        <button onclick="document.getElementById('bulk-water-location').value='${loc.id}'; window.bulkWaterByLocation();" class="btn-secondary text-xs text-blue-500 border-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/30">
+                            <i class="fa-solid fa-hand-holding-droplet mr-1"></i> Water All Here
+                        </button>
+                    </div>
                 `;
                 list.appendChild(card);
             });
@@ -1317,6 +1341,10 @@
             const filterLoc = getEl("plant-filter-location");
             
             select.innerHTML = "<option value=''>-- Select Plant --</option>";
+            const customDropdown = getEl("custom-plant-select-dropdown");
+            if(customDropdown) {
+                customDropdown.innerHTML = `<div class="p-2 hover:bg-[var(--input-bg)] cursor-pointer text-sm font-bold" onclick="selectCustomPlant('', '-- Select Plant --')">-- Select Plant --</div>`;
+            }
             
             const histPlantSelect = getEl("history-filter-plant");
             let histCurVal = "all";
@@ -1330,6 +1358,12 @@
                 opt.value = p.id; opt.textContent = p.name;
                 select.appendChild(opt);
                 
+                if (customDropdown) {
+                    const photo = getLatestPlantPhoto(p);
+                    const imgHtml = photo ? `<img src="${photo}" class="w-6 h-6 rounded-full object-cover mr-2 inline-block">` : `<i class="fa-solid ${p.icon || 'fa-leaf'} mr-2 text-[var(--primary)] w-6 text-center inline-block"></i>`;
+                    customDropdown.innerHTML += `<div class="p-2 hover:bg-[var(--input-bg)] cursor-pointer text-sm flex items-center border-b border-[var(--border)] last:border-0" onclick="selectCustomPlant('${p.id}', \`${p.name.replace(/`/g, "'")}\`)">${imgHtml} ${p.name}</div>`;
+                }
+
                 if (histPlantSelect) {
                     histPlantSelect.innerHTML += `<option value="${p.id}">${p.name}</option>`;
                 }
@@ -1683,8 +1717,10 @@ if (state.winterMode) freq = Math.ceil(freq * 1.5);
 // 2. Pot Modifiers
 if (plant.potType === 'terracotta') {
     freq = Math.ceil(freq * 0.8); // Terracotta breathes
+} else if (plant.potType === 'ceramic') {
+    freq += 1; // Glazed ceramic retains moisture well
 } else if (plant.potType === 'ground') {
-    freq += 3; // Ground retains moisture much longer
+    freq += 4; // Ground retains moisture much longer and roots are deeper
 }
 
 // Only apply pot size math if it's actually in a pot
@@ -1723,7 +1759,7 @@ if (plant.soilType === 'moisture-retaining') freq += 2;
 if (plant.windowDist === 'windowsill') freq -= 1; 
 if (plant.windowDist === 'far' || plant.windowDist === 'very-far') freq += 1;
 
-if (plant.hasSaucer) freq += 1; 
+if (plant.hasSaucer && plant.potType !== 'ground') freq += 1;
 
 // Make sure it doesn't drop below 1 day after the new math
 freq = Math.max(1, freq);
@@ -1841,11 +1877,13 @@ freq = Math.max(1, freq);
 
                 checkFreq(plant.mistFreq, 'Mist', 'fa-spray-can', 'text-cyan-500', 'bg-cyan-100 dark:bg-cyan-900');
                 checkFreq(plant.pruneFreq, 'Prune', 'fa-scissors', 'text-green-700', 'bg-green-100 dark:bg-green-900');
-                let repotDays = plant.repotFreq;
-if (repotDays && plant.potSize && plant.potSize <= 12) {
-    repotDays = Math.max(30, repotDays - 60); // Small pots get rootbound faster, reduce time by 2 months
-}
-checkFreq(repotDays, 'Repot', 'fa-bucket', 'text-amber-700', 'bg-amber-100 dark:bg-amber-900');
+                if (plant.potType !== 'ground') {
+                    let repotDays = plant.repotFreq;
+                    if (repotDays && plant.potSize && plant.potSize <= 12) {
+                        repotDays = Math.max(30, repotDays - 60); // Small pots get rootbound faster
+                    }
+                    checkFreq(repotDays, 'Repot', 'fa-bucket', 'text-amber-700', 'bg-amber-100 dark:bg-amber-900');
+                }
 
                 if (plant.overwinter && (now.getMonth() === 9 || now.getMonth() === 10)) {
                     upcomingTasks.push({ plant, type: 'Needs Overwinter Prep ❄️', daysUntil: 0, date: now, icon: 'fa-snowflake', color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900' });
@@ -1897,12 +1935,21 @@ checkFreq(repotDays, 'Repot', 'fa-bucket', 'text-amber-700', 'bg-amber-100 dark:
                 }
             });
 
-            // Process Lawn into Action Required
+            // Process Lawn into Action Required & Upcoming
             if (state.lawn) {
                 const lastCut = state.lawn.lastCut ? new Date(state.lawn.lastCut) : null;
                 if (lastCut) {
-                    const daysSince = Math.floor((new Date() - lastCut) / (1000 * 60 * 60 * 24));
+                    const diffDays = (now - lastCut) / (1000 * 60 * 60 * 24);
                     const freq = state.lawn.cutFreq || 7;
+                    const daysOverdue = Math.floor(diffDays - freq);
+                    
+                    if (daysOverdue >= -7 && daysOverdue < 0) {
+                        const daysUntil = Math.abs(daysOverdue);
+                        const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + daysUntil);
+                        upcomingTasks.push({ plant: { name: 'Lawn Care' }, type: 'Cut Grass ✂️', daysUntil, date: dueDate, icon: 'fa-scissors', color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900' });
+                    }
+
+                    const daysSince = Math.floor(diffDays);
                     if (daysSince >= freq) {
                         careItemsCount++;
                         const div = document.createElement("div");
@@ -1922,12 +1969,21 @@ checkFreq(repotDays, 'Repot', 'fa-bucket', 'text-amber-700', 'bg-amber-100 dark:
                 }
             }
 
-            // Process Compost into Action Required
+            // Process Compost into Action Required & Upcoming
 if (state.compost) {
     const lastTurn = state.compost.lastTurn ? new Date(state.compost.lastTurn) : null;
     if (lastTurn) {
-        const daysSince = Math.floor((new Date() - lastTurn) / (1000 * 60 * 60 * 24));
+        const diffDays = (now - lastTurn) / (1000 * 60 * 60 * 24);
         const freq = state.compost.turnFreq || 14;
+        const daysOverdue = Math.floor(diffDays - freq);
+        
+        if (daysOverdue >= -7 && daysOverdue < 0) {
+            const daysUntil = Math.abs(daysOverdue);
+            const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + daysUntil);
+            upcomingTasks.push({ plant: { name: 'Compost' }, type: 'Turn Barrel ♻️', daysUntil, date: dueDate, icon: 'fa-recycle', color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-900' });
+        }
+
+        const daysSince = Math.floor(diffDays);
         if (daysSince >= freq) {
             careItemsCount++;
             const div = document.createElement("div");
@@ -2039,8 +2095,15 @@ if (state.compost) {
             let count = 0;
 
             state.logs.forEach(log => {
+                const isLawn = log.plantId === 'sys_lawn';
+                const isCompost = log.plantId === 'sys_compost';
                 const plant = state.plants.find(p => p.id === log.plantId);
-                const plantName = plant ? plant.name : "Deleted Plant";
+                
+                let plantName = "Deleted Plant";
+                if (plant) plantName = plant.name;
+                else if (isLawn) plantName = "Lawn Care";
+                else if (isCompost) plantName = "Compost Barrel";
+
                 const plantLoc = plant ? plant.location : null;
 
                 if (locFilter !== 'all' && plantLoc !== locFilter) return;
@@ -2057,7 +2120,11 @@ if (state.compost) {
                     if (log.health) detailsHtml += `<span class="inline-block text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold capitalize">❤️ ${log.health.replace('-', ' ')}</span>`;
                     if (log.noticing && log.noticing.length > 0) detailsHtml += `<span class="inline-block text-[10px] bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold">✨ ${log.noticing.join(', ')}</span>`;
                     
-                    const photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" onclick="openPhotoModal(this.src, '${plant.id}')" class="w-12 h-12 md:w-10 md:h-10 object-cover rounded shadow-sm cursor-zoom-in hover:opacity-80 shrink-0 border border-[var(--border)]">` : '';
+                    let photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" onclick="openPhotoModal(this.src, '${plant?.id || ''}')" class="w-12 h-12 md:w-10 md:h-10 object-cover rounded shadow-sm cursor-zoom-in hover:opacity-80 shrink-0 border border-[var(--border)]">` : '';
+                    if (!log.photoUrl) {
+                        if (isLawn) photoHtml = `<div class="w-12 h-12 md:w-10 md:h-10 rounded bg-green-100 flex items-center justify-center text-green-600 shrink-0"><i class="fa-solid fa-scissors"></i></div>`;
+                        if (isCompost) photoHtml = `<div class="w-12 h-12 md:w-10 md:h-10 rounded bg-orange-100 flex items-center justify-center text-orange-600 shrink-0"><i class="fa-solid fa-recycle"></i></div>`;
+                    }
 
                     row.innerHTML = `
                         <div class="col-span-2 text-xs opacity-70 flex items-center gap-2">
@@ -2145,6 +2212,18 @@ if (state.compost) {
             }
         });
 
+        getEl("plant-pot-type").addEventListener("change", (e) => {
+            const isGround = e.target.value === 'ground';
+            getEl("plant-pot-size").disabled = isGround;
+            getEl("plant-has-saucer").disabled = isGround;
+            getEl("plant-repot-freq").disabled = isGround;
+            if (isGround) {
+                getEl("plant-pot-size").value = "";
+                getEl("plant-has-saucer").checked = false;
+                getEl("plant-repot-freq").value = "";
+            }
+        });
+
         const openPlantModal = (plantId = null) => {
             if (plantId && typeof plantId !== 'string') plantId = null; // Fix event object bug
             plantPhotoRemoved = false;
@@ -2193,9 +2272,14 @@ getEl("plant-has-saucer").checked = false;
                     getEl("plant-species").value = plant.species || "";
                     getEl("plant-location").value = plant.location || "";
                     getEl("plant-light").value = plant.light || "";
-getEl("plant-pot-type").value = plant.potType || "plastic"; // ADD THIS
-getEl("plant-pot-size").value = plant.potSize || "";        // ADD THIS
-getEl("plant-position").value = plant.position || "";
+getEl("plant-pot-type").value = plant.potType || "plastic";
+                    getEl("plant-pot-size").value = plant.potSize || "";
+                    getEl("plant-position").value = plant.position || "";
+                    
+                    const isGround = (plant.potType === 'ground');
+                    getEl("plant-pot-size").disabled = isGround;
+                    getEl("plant-has-saucer").disabled = isGround;
+                    getEl("plant-repot-freq").disabled = isGround;
                     getEl("plant-health").value = plant.health || "healthy";
                     getEl("plant-water-freq").value = plant.waterFreq || "";
                     getEl("plant-fert-freq").value = plant.fertFreq || "";
@@ -2830,9 +2914,12 @@ getEl("plant-parent").value = plant.parentId || "";
         if (plant.potType === 'terracotta') {
             wFreq = Math.ceil(wFreq * 0.8);
             mathLog += `<li>🏺 Terracotta (x0.8): <b>${wFreq} days</b></li>`;
+        } else if (plant.potType === 'ceramic') {
+            wFreq += 1;
+            mathLog += `<li>🪴 Ceramic (+1): <b>${wFreq} days</b></li>`;
         } else if (plant.potType === 'ground') {
-            wFreq += 3;
-            mathLog += `<li>🌍 In Ground (+3): <b>${wFreq} days</b></li>`;
+            wFreq += 4;
+            mathLog += `<li>🌍 In Ground (+4): <b>${wFreq} days</b></li>`;
         }
         
         if (plant.potType !== 'ground' && plant.potSize) {
@@ -2867,7 +2954,7 @@ if (plant.soilType === 'moisture-retaining') { wFreq += 2; mathLog += `<li>🧽 
 if (plant.windowDist === 'windowsill') { wFreq -= 1; mathLog += `<li>🪟 Windowsill (-1): <b>${wFreq} days</b></li>`; }
 if (plant.windowDist === 'far' || plant.windowDist === 'very-far') { wFreq += 1; mathLog += `<li>🛋️ Away from Window (+1): <b>${wFreq} days</b></li>`; }
 
-if (plant.hasSaucer) { wFreq += 1; mathLog += `<li>🍽️ Has Saucer (+1): <b>${wFreq} days</b></li>`; }
+if (plant.hasSaucer && plant.potType !== 'ground') { wFreq += 1; mathLog += `<li>🍽️ Has Saucer (+1): <b>${wFreq} days</b></li>`; }
 
 wFreq = Math.max(1, wFreq); // Re-apply floor limit
         
@@ -2927,12 +3014,12 @@ wFreq = Math.max(1, wFreq); // Re-apply floor limit
     renderSimpleTask(plant.mistFreq, 'Mist', 'fa-spray-can', 'text-cyan-600 dark:text-cyan-400', 'border-cyan-500', 'bg-cyan-50 dark:bg-cyan-900/10');
     renderSimpleTask(plant.pruneFreq, 'Prune', 'fa-scissors', 'text-green-700 dark:text-green-400', 'border-green-500', 'bg-green-50 dark:bg-green-900/10');
     
-    let repotDays = plant.repotFreq;
-    if (repotDays && plant.potSize && plant.potSize <= 12 && plant.potType !== 'ground') {
-        repotDays = Math.max(30, repotDays - 60); 
-    }
-    
-    if (plant.repotFreq) {
+    if (plant.potType !== 'ground' && plant.repotFreq) {
+        let repotDays = plant.repotFreq;
+        if (plant.potSize && plant.potSize <= 12) {
+            repotDays = Math.max(30, repotDays - 60); 
+        }
+        
          const diff = getDiff('Repot', repotDays);
          let repotNote = (plant.repotFreq !== repotDays) ? `<p class="text-[10px] text-amber-600 font-bold mt-1 bg-amber-100 dark:bg-amber-900 p-1 rounded inline-block">*Reduced by 60 days due to small pot size.</p>` : '';
          html += `
@@ -3175,10 +3262,14 @@ window.openFamilyTreeModal = (plantId) => {
 
         window.logLawnCut = async () => {
             try {
+                const nowStr = new Date().toISOString();
                 await setDoc(doc(db, `users/${state.user.uid}/settings/lawn`), {
-                    lastCut: new Date().toISOString(),
+                    lastCut: nowStr,
                     cutFreq: parseInt(getEl('lawn-freq').value) || 7
                 }, { merge: true });
+                await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                    plantId: "sys_lawn", type: "Lawn", date: nowStr, notes: "Cut the grass", createdAt: Timestamp.now()
+                });
                 showMsg("Grass cutting logged successfully!");
                 toggleDisplay(getEl('lawn-modal'), false);
             } catch(e) { showMsg(e.message, 'error'); }
@@ -3202,10 +3293,14 @@ window.openCompostModal = () => {
 
 window.logCompostTurn = async () => {
     try {
+        const nowStr = new Date().toISOString();
         await setDoc(doc(db, `users/${state.user.uid}/settings/compost`), {
-            lastTurn: new Date().toISOString(),
+            lastTurn: nowStr,
             turnFreq: parseInt(getEl('compost-freq').value) || 14
         }, { merge: true });
+        await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+            plantId: "sys_compost", type: "Compost", date: nowStr, notes: "Turned compost barrel", createdAt: Timestamp.now()
+        });
         showMsg("Compost barrel turned!");
         toggleDisplay(getEl('compost-modal'), false);
     } catch(e) { showMsg(e.message, 'error'); }
