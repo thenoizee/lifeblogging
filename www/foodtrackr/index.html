@@ -1734,6 +1734,24 @@ body.bulk-active {
                     <input type="text" id="sd-notes" placeholder="Notes (e.g. Smell, bubbles)..." class="text-xs">
                 </div>
 
+                <div class="mb-3">
+                    <label class="text-xs font-bold text-gray-500 mb-1 block">Photo (Optional)</label>
+                    <div class="grid grid-cols-2 gap-2 mb-1">
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="radio" name="sd-photo-timing" value="before" checked class="accent-orange-500"> Before Feeding
+                        </label>
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="radio" name="sd-photo-timing" value="after" class="accent-orange-500"> After Feeding
+                        </label>
+                    </div>
+                    <div class="flex gap-2 mb-1">
+                        <button type="button" class="secondary-button flex-1 py-1.5 text-xs bg-white dark:bg-gray-700" onclick="document.getElementById('sd-photo').removeAttribute('capture'); document.getElementById('sd-photo').click();"><i class="fa-solid fa-image mr-1"></i> Gallery</button>
+                        <button type="button" class="secondary-button flex-1 py-1.5 text-xs bg-white dark:bg-gray-700" onclick="document.getElementById('sd-photo').setAttribute('capture', 'environment'); document.getElementById('sd-photo').click();"><i class="fa-solid fa-camera mr-1"></i> Camera</button>
+                    </div>
+                    <input type="file" id="sd-photo" accept="image/*" class="hidden" onchange="document.getElementById('sd-photo-name').innerHTML = this.files[0] ? '<i class=\'fa-solid fa-check mr-1\'></i> ' + this.files[0].name : ''">
+                    <p id="sd-photo-name" class="text-xs font-bold text-orange-600 mt-1 truncate"></p>
+                </div>
+
                 <div class="flex gap-2">
                     <button id="log-sourdough-btn" class="main-button flex-grow text-sm py-2">Log Feeding</button>
                     <button id="cancel-sd-edit-btn" class="secondary-button hidden text-sm py-2 px-3">Cancel</button>
@@ -1840,6 +1858,7 @@ import { AppNavigation } from '../shared-nav.js';
       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
       import { initializeAuth, browserLocalPersistence, signInWithEmailAndPassword, onAuthStateChanged, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
       import { getFirestore, collection, addDoc, Timestamp, doc, deleteDoc, updateDoc, getDocs, onSnapshot, query, setDoc, writeBatch, orderBy, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+      import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
       let leftovers = [];
       const initialTheme = localStorage.getItem('theme') || 'light';
@@ -1850,7 +1869,7 @@ if (initialTheme === 'dark') document.documentElement.classList.add('dark');
             apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
             authDomain: "sammy-7298f.firebaseapp.com",
             projectId: "sammy-7298f",
-            storageBucket: "sammy-7298f.appspot.com",
+            storageBucket: "sammy-7298f.firebasestorage.app",
             messagingSenderId: "963185683535",
             appId: "1:963185683535:web:807df8941feba46c208e3a",
             measurementId: "G-JT1YF2ELN3",
@@ -1861,6 +1880,7 @@ if (initialTheme === 'dark') document.documentElement.classList.add('dark');
           persistence: browserLocalPersistence
       });
       const db = getFirestore(app);
+      const storage = getStorage(app);
 
       // --- State Variables ---
       let user = null;
@@ -2078,7 +2098,33 @@ const extractNutrients = (product) => {
     return base;
 };
 
-// --- SOURDOUGH TRACKER LOGIC ---
+const compressImage = (file, maxWidth = 800) => {
+          return new Promise((resolve) => {
+              if (!file || !file.type.match(/image.*/)) return resolve(file);
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                  const img = new Image();
+                  img.onload = () => {
+                      const ratio = Math.min(maxWidth / img.width, maxWidth / img.height, 1);
+                      if (ratio >= 1 && file.size < 500000) return resolve(file);
+                      const canvas = document.createElement('canvas');
+                      canvas.width = img.width * ratio;
+                      canvas.height = img.height * ratio;
+                      const ctx = canvas.getContext('2d');
+                      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                      canvas.toBlob((blob) => {
+                          img.src = ''; 
+                          canvas.width = 0; canvas.height = 0;
+                          resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+                      }, 'image/jpeg', 0.7);
+                  };
+                  img.src = e.target.result;
+              };
+              reader.readAsDataURL(file);
+          });
+      };
+
+      // --- SOURDOUGH TRACKER LOGIC ---
       let sourdoughUnsub = null;
       let editingSourdoughId = null; // Track ID for editing
 
@@ -2093,6 +2139,11 @@ const extractNutrients = (product) => {
           document.getElementById('sd-water').value = '';
           document.getElementById('sd-notes').value = '';
           document.getElementById('health-3').checked = true; // Default
+          
+          document.getElementById('sd-photo').value = '';
+          document.getElementById('sd-photo-name').innerHTML = '';
+          const radioBefore = document.querySelector('input[name="sd-photo-timing"][value="before"]');
+          if (radioBefore) radioBefore.checked = true;
           
           setSourdoughDate(new Date()); // Reset to Now
           
@@ -2198,18 +2249,42 @@ const extractNutrients = (product) => {
           const notes = document.getElementById('sd-notes').value.trim();
           const health = parseInt(document.querySelector('input[name="sd-health"]:checked')?.value || "3");
           const dateVal = document.getElementById('sd-datetime').value;
+          
+          const fileInput = document.getElementById('sd-photo');
+          const file = fileInput.files[0];
+          const photoTiming = document.querySelector('input[name="sd-photo-timing"]:checked')?.value || 'before';
 
           if (flour === 0 || water === 0) return showToast("Flour and Water are required.", "error");
           if (!dateVal) return showToast("Date is required.", "error");
 
           const logDate = new Date(dateVal);
+          
+          const btn = document.getElementById('log-sourdough-btn');
+          const origBtnText = btn.textContent;
 
           try {
+              btn.disabled = true;
+              btn.textContent = "Saving...";
+              
+              let photoUrl = null;
+              if (file) {
+                  const compressedFile = await compressImage(file);
+                  const storageRef = ref(storage, `users/${user.uid}/sourdoughLogs/${Date.now()}_${compressedFile.name}`);
+                  const snapshot = await uploadBytes(storageRef, compressedFile);
+                  photoUrl = await getDownloadURL(snapshot.ref);
+              }
+
               const logData = {
                   starter, flour, water, measurementType: sdMeasurementMode, notes, health,
                   createdAt: Timestamp.fromDate(logDate) // Use custom date
-                  
               };
+              
+              if (photoUrl) {
+                  logData.photoUrl = photoUrl;
+                  logData.photoTiming = photoTiming;
+              } else if (editingSourdoughId) {
+                  logData.photoTiming = photoTiming;
+              }
 
               if (editingSourdoughId) {
                   await updateDoc(doc(db, `users/${user.uid}/sourdoughLogs`, editingSourdoughId), logData);
@@ -2222,6 +2297,9 @@ const extractNutrients = (product) => {
           } catch (e) {
               console.error(e);
               showToast("Error saving log.", "error");
+          } finally {
+              btn.disabled = false;
+              btn.textContent = origBtnText;
           }
       });
 
@@ -2261,6 +2339,8 @@ const extractNutrients = (product) => {
                       }
                       return stars;
                   };
+                  
+                  const photoHtml = d.photoUrl ? `<div class="mt-2 flex items-center gap-2"><img src="${d.photoUrl}" class="h-16 w-16 object-cover rounded border border-gray-200 dark:border-gray-600"><span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500">${d.photoTiming || 'before'}</span></div>` : '';
 
                   const row = document.createElement('div');
                   row.className = "bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-100 dark:border-gray-700 flex justify-between items-start";
@@ -2276,6 +2356,7 @@ const extractNutrients = (product) => {
                             ${d.starter ? `<span class="text-gray-400 text-xs self-center">(${d.starter}g start)</span>` : ''}
                         </div>
                         ${d.notes ? `<div class="text-xs text-gray-500 mt-1 italic">"${d.notes}"</div>` : ''}
+                        ${photoHtml}
                     </div>
                     <div class="text-right flex flex-col items-end gap-1">
                         <span class="inline-block bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">
@@ -2300,6 +2381,14 @@ const extractNutrients = (product) => {
                       document.getElementById('sd-flour').value = d.flour || 0;
                       document.getElementById('sd-water').value = d.water || 0;
                       document.getElementById('sd-notes').value = d.notes || '';
+                      
+                      document.getElementById('sd-photo').value = '';
+                      document.getElementById('sd-photo-name').innerHTML = d.photoUrl ? '<i class=\'fa-solid fa-image mr-1\'></i> Has existing photo (uploading new replaces it)' : '';
+                      if(d.photoTiming) {
+                          const r = document.querySelector(`input[name="sd-photo-timing"][value="${d.photoTiming}"]`);
+                          if(r) r.checked = true;
+                      }
+
                       setSourdoughDate(date);
                       
                       const healthVal = d.health || 3;
