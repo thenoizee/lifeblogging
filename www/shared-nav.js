@@ -134,7 +134,7 @@ export class AppNavigation {
         const userInitial = this.userEmail.charAt(0).toUpperCase();
 
         const headerHtml = `
-<header class="sticky top-0 bg-${this.themeColor}-50/95 dark:bg-gray-800/90 backdrop-blur-md shadow-md z-50 shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-700 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8">
+<header class="sticky top-0 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/30 dark:to-gray-800/90 backdrop-blur-md shadow-md z-50 shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-700 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8">
             <div class="container mx-auto px-4 py-2">
                 <div class="flex items-center justify-between h-12">
                     
@@ -257,7 +257,7 @@ export class AppNavigation {
     renderMobileNav() {
         if (!this.tabs.length) return;
         const mobileHtml = `
-        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-${this.themeColor}-50/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-700 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/30 dark:to-gray-800/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-700 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
             <div class="flex justify-around items-center h-16">
                 <a href="/" class="flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-${this.themeColor}-500 transition-colors gap-1">
                     <i class="fa-solid fa-arrow-left text-lg"></i>

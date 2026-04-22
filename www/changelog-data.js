@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+version: "v15.18.0-alpha",
+date: "2026-04-23",
+changes: [
+            "In VidTrackr: Added watch count and last watched dates to movie and episode detail pages.",
+            "In shared-nav: Updated header and mobile navigation bars to feature a subtle bottom-to-top gradient tint for dark modes.",
+]
+    },
+    {
     version: "v15.17.0-alpha", // Replace with your next version number
     date: "2026-04-22",
     changes: [
