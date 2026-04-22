@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.17.0-alpha", // Replace with your next version number
+    date: "2026-04-22",
+    changes: [
+                "In Text Generator: Upgraded 'Copy Body' functionality to support and retain rich-text HTML formatting (bold, italics, hyperlinks) alongside plain text.",
+                "In Text Generator: Converted the generated text area to render HTML instead of raw text strings.",
+                "In Text Generator: Improved the UI for adding custom fields in the Manage Templates tab by replacing the small text button with a large, full-width dashed button.",
+                "In Text Generator: Added a rich-text formatting toolbar to the Manage Templates tab allowing users to quickly insert HTML tags for bold, italic, underline, and hyperlinks.",
+                "In Text Generator: Added specific CSS styling to ensure hyperlinks are distinctively colored and underlined in both the Use tab generated output and the Manage tab Live Preview.",
+    ]
+    },
+    {
     version: "v15.16.0-alpha",
     date: "2026-04-22",
     changes: [
