@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.19.0-alpha",
+    date: "2026-04-23",
+    changes: [
+                "In FoodTrackr: Added the ability to log pictures of foods when manually logging generic items.",
+                "In FoodTrackr: OpenFoodFacts original product names are now retained and displayed alongside custom names.",
+                "In FoodTrackr: Implemented a network retry mechanism for OpenFoodFacts searches to eliminate 'failed to connect' errors."
+    ]
+    },
+    {
 version: "v15.18.0-alpha",
 date: "2026-04-23",
 changes: [

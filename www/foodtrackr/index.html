@@ -1044,6 +1044,16 @@ body.bulk-active {
         </div>
 
         <div class="input-group mt-4">
+            <label class="text-xs font-bold text-gray-500 mb-1 block">Photo (Optional)</label>
+            <div class="flex gap-2 mb-1">
+                <button type="button" class="secondary-button flex-1 py-1.5 text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600" onclick="document.getElementById('manual-photo').removeAttribute('capture'); document.getElementById('manual-photo').click();"><i class="fa-solid fa-image mr-1"></i> Gallery</button>
+                <button type="button" class="secondary-button flex-1 py-1.5 text-xs bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600" onclick="document.getElementById('manual-photo').setAttribute('capture', 'environment'); document.getElementById('manual-photo').click();"><i class="fa-solid fa-camera mr-1"></i> Camera</button>
+            </div>
+            <input type="file" id="manual-photo" accept="image/*" class="hidden" onchange="document.getElementById('manual-photo-name').innerHTML = this.files[0] ? '<i class=\'fa-solid fa-check mr-1\'></i> ' + this.files[0].name : ''">
+            <p id="manual-photo-name" class="text-xs font-bold text-orange-600 mt-1 truncate"></p>
+        </div>
+
+        <div class="input-group mt-4">
             <label>Source / Type</label>
             <div class="flex flex-wrap gap-2 mb-3">
                 <input type="radio" name="source-type" id="src-brand" value="Brand" class="hidden peer/brand" checked>
@@ -2625,6 +2635,10 @@ const renderQuickButtons = (product, packageSize, servingSize, servingSizeStr) =
       // MODIFIED: clearLogForm
       const clearLogForm = () => {
           document.getElementById('food-name').value = '';
+          const photoInput = document.getElementById('manual-photo');
+          if (photoInput) photoInput.value = '';
+          const photoName = document.getElementById('manual-photo-name');
+          if (photoName) photoName.innerHTML = '';
           document.getElementById('calories').value = '';
           document.getElementById('protein').value = '';
           document.getElementById('carbs').value = '';
@@ -3220,8 +3234,9 @@ const renderDailyLog = () => {
                     <div class="flex items-start overflow-hidden flex-grow cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded p-1 transition-colors" onclick="openProductModalFromLog('${item.id}')" title="View Details">
                         <img src="${imageUrl}" alt="${item.name}" class="log-item-image mt-1 w-12 h-12">
                         <div class="flex-grow min-w-0 flex flex-col justify-center gap-1 pl-3">
-                            <span class="font-semibold text-base leading-snug break-words text-gray-900 dark:text-gray-100">${item.name} ${groupedBadge}</span>
-                            <div class="mt-1 flex flex-wrap gap-1">
+                                <span class="font-semibold text-base leading-snug break-words text-gray-900 dark:text-gray-100">${item.name} ${groupedBadge}</span>
+                                ${item.originalName && item.originalName !== item.name ? `<span class="block text-[10px] text-gray-400 mt-0.5 -mb-0.5 truncate opacity-75" title="${item.originalName}">Original: ${item.originalName}</span>` : ''}
+                                <div class="mt-1 flex flex-wrap gap-1">
                  <span class="${badgeColors} px-2 py-0.5 rounded-md font-bold text-[10px] flex items-center gap-1 uppercase tracking-wide border shadow-sm">
                       ${sourceIcon} ${subText}
                  </span>
@@ -3421,10 +3436,11 @@ const renderHistoryTable = () => {
                 <td class="p-2 sm:p-3 whitespace-nowrap text-xs sm:text-sm align-middle">${dateString}</td>
                 
                 <td class="p-2 sm:p-3 align-middle">
-                    <button class="text-left font-semibold text-[var(--text-color-primary)] hover:text-orange-600 hover:underline transition-colors leading-tight text-xs sm:text-sm" onclick="openProductModalFromHistory('${item.id}')">
-                        ${item.name || 'Unknown Item'}
-                    </button>
-                    <div class="text-[10px] sm:text-xs mt-1 flex flex-wrap items-center gap-2">
+                                <button class="text-left font-semibold text-[var(--text-color-primary)] hover:text-orange-600 hover:underline transition-colors leading-tight text-xs sm:text-sm" onclick="openProductModalFromHistory('${item.id}')">
+                                    ${item.name || 'Unknown Item'}
+                                </button>
+                                ${item.originalName && item.originalName !== item.name ? `<div class="text-[10px] text-gray-400 mt-0.5 w-48 sm:w-64 truncate opacity-75" title="${item.originalName}">Original: ${item.originalName}</div>` : ''}
+                                <div class="text-[10px] sm:text-xs mt-1 flex flex-wrap items-center gap-2">
                         <span class="${badgeColors} px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1">${sourceIcon} ${subText}</span>
                         
                         <span class="sm:hidden text-gray-300 mx-1">|</span>
@@ -4329,10 +4345,20 @@ const searchFood = async (isNewSearch = true) => {
     }
 
     try {
-        statusEl.textContent = isBarcode ? "Looking up product by barcode..." : "Searching OpenFoodFacts database...";
-        const response = await fetch(url);
-        
-        statusEl.textContent = "Processing results...";
+                statusEl.textContent = isBarcode ? "Looking up product by barcode..." : "Searching OpenFoodFacts database...";
+                
+                let response;
+                for (let i = 0; i < 3; i++) {
+                    try {
+                        response = await fetch(url);
+                        if (response.ok) break;
+                    } catch (err) {
+                        if (i === 2) throw err;
+                        await new Promise(res => setTimeout(res, 500));
+                    }
+                }
+                
+                statusEl.textContent = "Processing results...";
         const data = await response.json();
         
         searchCache.set(cacheKey, data);
@@ -4821,15 +4847,16 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     unitSelect.value = defaultUnit;
     
     currentFoodItem = { 
-        baseNutrients, 
-        source: 'Open Food Facts', 
-        brands, 
-        stores: product.stores || '',
-        imageUrl, 
-        servingUnits: servingUnits,
-        ingredients: product.ingredients_text_en || product.ingredients_text || '',
-        allergens: product.allergens_from_ingredients || ''
-    };
+          baseNutrients, 
+          originalName: product.product_name || '',
+          source: 'Open Food Facts', 
+          brands, 
+          stores: product.stores || '',
+          imageUrl, 
+          servingUnits: servingUnits,
+          ingredients: product.ingredients_text_en || product.ingredients_text || '',
+          allergens: product.allergens_from_ingredients || ''
+      };
     
     updateQuantityInGrams(); 
     setNutrientFieldsReadOnly(true);
@@ -6110,8 +6137,27 @@ const switchTab = (tabId) => {
           const now = new Date();
           const logTime = document.getElementById('log-datetime').value ? new Date(document.getElementById('log-datetime').value) : now;
           
+          const logBtn = document.getElementById('log-food-btn');
+          const originalBtnText = logBtn.innerHTML;
+          logBtn.disabled = true;
+          logBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Logging...';
+
+          let finalImageUrl = currentFoodItem.imageUrl;
+          const photoInput = document.getElementById('manual-photo');
+          if (photoInput && photoInput.files.length > 0) {
+              try {
+                  const file = await compressImage(photoInput.files[0]);
+                  const storageRef = ref(storage, `users/${user.uid}/food_photos/${Date.now()}_${file.name}`);
+                  const snapshot = await uploadBytes(storageRef, file);
+                  finalImageUrl = await getDownloadURL(snapshot.ref);
+              } catch (e) {
+                  console.error("Image upload failed", e);
+              }
+          }
+
           const foodData = {
                  name: document.getElementById('food-name').value,
+                 originalName: currentFoodItem.originalName || document.getElementById('food-name').value,
                  calories: parseFloat(document.getElementById('calories').value) || 0,
                  protein: parseFloat(document.getElementById('protein').value) || 0,
                  carbs: parseFloat(document.getElementById('carbs').value) || 0,
@@ -6153,6 +6199,8 @@ const switchTab = (tabId) => {
           }
 
           try {
+              foodData.imageUrl = finalImageUrl; // Inject the custom image URL
+
               if (editingItemId && editingItemType === 'log') {
                 const docRef = doc(db, `users/${user.uid}/foodLog`, editingItemId);
                 await updateDoc(docRef, foodData);
@@ -6170,10 +6218,13 @@ const switchTab = (tabId) => {
               clearLogForm();
               document.getElementById('entry-form-section').classList.add('hidden'); 
           } catch (error) {
-              console.error("Error saving log:", error);
-              showToast('Failed to save log entry.');
-          }
-      });
+                  console.error("Error saving log:", error);
+                  showToast('Failed to save log entry.');
+              } finally {
+                  logBtn.disabled = false;
+                  logBtn.innerHTML = originalBtnText;
+              }
+          });
 
 document.getElementById('save-favorite-btn').addEventListener('click', async () => {
     const quantityInput = document.getElementById('quantity');
@@ -6235,7 +6286,7 @@ document.getElementById('save-favorite-btn').addEventListener('click', async () 
 
         const favData = {
             name: customName,
-            originalName: currentFoodItem.name || customName,
+            originalName: currentFoodItem.originalName || customName,
             calories: parseFloat(document.getElementById('calories').value) || 0,
             protein: parseFloat(document.getElementById('protein').value) || 0,
             carbs: parseFloat(document.getElementById('carbs').value) || 0,
