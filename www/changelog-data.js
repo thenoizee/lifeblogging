@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.20.0-alpha",
+    date: "2026-04-23",
+    changes: [
+        "In Loggr: Removed the Daily Plan, Calendar, and Data Triage features to streamline the logging interface.",
+        "In Loggr: Converted the 'Data Added This Session' section from a collapsible panel to a permanently open view.",
+        "In Analyser: Migrated and fully integrated the Daily Plan, Calendar, and Data Triage features.",
+        "In Analyser: Made the Data Triage list fully interactive, allowing users to click entries to open them directly in the Data Editor modal.",
+    ]
+},
+    {
     version: "v15.19.0-alpha",
     date: "2026-04-23",
     changes: [
