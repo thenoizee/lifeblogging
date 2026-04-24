@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.21.0-alpha",
+    date: "2026-04-25",
+    changes: [
+        "In Loggr: Transitioned the UI to match the standard Dashboard style and layout, utilizing standard Tailwind classes.",
+        "In Loggr: Replaced the legacy top navigation bar with the unified shared-nav architecture.",
+        "In Loggr: Resolved flexbox layout bugs that were preventing the shared navigation sidebar from properly aligning to the edge of the viewport.",
+    ]
+},
+    {
     version: "v15.20.0-alpha",
     date: "2026-04-23",
     changes: [
