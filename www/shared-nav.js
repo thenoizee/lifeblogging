@@ -134,7 +134,25 @@ export class AppNavigation {
         const userInitial = this.userEmail.charAt(0).toUpperCase();
 
         const headerHtml = `
-<header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/80 dark:to-gray-800/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-700 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 2147483647; isolation: isolate;">
+<div id="nav-notifications-modal" class="hidden fixed inset-0 z-[2147483647] bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-lg flex-col transition-opacity duration-300 opacity-0">
+    <div class="container mx-auto max-w-3xl h-full flex flex-col bg-white dark:bg-gray-800 shadow-2xl">
+        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+            <h2 class="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                <i class="fa-regular fa-bell"></i> Notifications
+            </h2>
+            <div class="flex items-center gap-4">
+                <button id="nav-modal-clear-notifications" class="text-xs font-semibold text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline">Clear All</button>
+                <button id="nav-close-notifications-modal" class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 flex items-center justify-center hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        </div>
+        <div id="nav-notifications-modal-list" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+            </div>
+    </div>
+</div>
+
+<header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 2147483646; isolation: isolate;">
             <div class="container mx-auto px-4 py-2">
                 <div class="flex items-center justify-between h-12">
                     
@@ -214,7 +232,10 @@ export class AppNavigation {
                             <div id="nav-notifications-menu" class="hidden absolute top-full right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden transform origin-top-right transition-all duration-200" style="position: absolute; z-index: 2147483647;">
                                 <div class="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/80">
                                     <h3 class="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Notifications</h3>
-                                    <button id="nav-clear-notifications" class="text-[10px] text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline">Clear All</button>
+                                    <div class="flex items-center gap-3">
+                                        <button id="nav-expand-notifications" class="text-[10px] text-gray-500 hover:text-${this.themeColor}-500 dark:hover:text-${this.themeColor}-400 transition-colors" title="Open Full Screen"><i class="fa-solid fa-expand"></i></button>
+                                        <button id="nav-clear-notifications" class="text-[10px] text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline">Clear All</button>
+                                    </div>
                                 </div>
                                 <div id="nav-notifications-list" class="max-h-64 overflow-y-auto p-2 flex flex-col gap-1">
                                     <div class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">No new notifications</div>
@@ -257,7 +278,7 @@ export class AppNavigation {
     renderMobileNav() {
         if (!this.tabs.length) return;
         const mobileHtml = `
-        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/30 dark:to-gray-800/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-700 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-800 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
             <div class="flex justify-around items-center h-16">
                 <a href="/" class="flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-${this.themeColor}-500 transition-colors gap-1">
                     <i class="fa-solid fa-arrow-left text-lg"></i>
@@ -439,36 +460,45 @@ export class AppNavigation {
 
     renderNotificationsList() {
         const listEl = document.getElementById('nav-notifications-list');
-        if (!listEl) return;
+        const modalListEl = document.getElementById('nav-notifications-modal-list');
+
+        const emptyState = `<div class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">No new notifications</div>`;
+        const modalEmptyState = `<div class="p-8 text-center text-sm text-gray-400 dark:text-gray-500 flex flex-col items-center gap-2"><i class="fa-regular fa-bell-slash text-2xl"></i> No new notifications</div>`;
 
         if (this.notifications.length === 0) {
-            listEl.innerHTML = `<div class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">No new notifications</div>`;
+            if (listEl) listEl.innerHTML = emptyState;
+            if (modalListEl) modalListEl.innerHTML = modalEmptyState;
             return;
         }
 
-        listEl.innerHTML = this.notifications.map(notif => `
-            <div class="p-2 rounded-lg relative ${notif.read ? 'opacity-70' : `bg-${notif.color || this.themeColor}-50 dark:bg-${notif.color || this.themeColor}-900/20`} hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors border ${notif.priority ? 'border-red-300 dark:border-red-900/50' : (!notif.read ? `dark:border-${notif.color || this.themeColor}-900/50 border-${notif.color || this.themeColor}-100` : 'border-transparent')}">
-                ${!notif.priority ? `<button class="delete-single-notif absolute top-1 right-2 text-gray-400 hover:text-red-500" data-id="${notif.id}"><i class="fa-solid fa-xmark text-[11px]"></i></button>` : ''}
+        const renderItems = (isModal = false) => this.notifications.map(notif => `
+            <div class="p-${isModal ? '4' : '2'} rounded-lg relative ${notif.read ? 'opacity-70' : `bg-${notif.color || this.themeColor}-50 dark:bg-${notif.color || this.themeColor}-900/20`} hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors border ${notif.priority ? 'border-red-300 dark:border-red-900/50' : (!notif.read ? `dark:border-${notif.color || this.themeColor}-900/50 border-${notif.color || this.themeColor}-100` : 'border-transparent')} shadow-sm">
+                ${!notif.priority ? `<button class="delete-single-notif absolute top-${isModal ? '2' : '1'} right-${isModal ? '3' : '2'} text-gray-400 hover:text-red-500 transition-colors p-1" data-id="${notif.id}"><i class="fa-solid fa-xmark text-[${isModal ? '14px' : '11px'}]"></i></button>` : ''}
                 
-                <div class="flex justify-between items-start mb-0.5 pr-5">
-                    <span class="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1">
+                <div class="flex justify-between items-start mb-1 pr-6">
+                    <span class="text-${isModal ? 'sm' : 'xs'} font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
                         ${notif.priority ? '<i class="fa-solid fa-circle-exclamation text-red-500" title="Priority Task - Must be completed to dismiss"></i>' : ''}
                         ${notif.title}
                     </span>
-                    <span class="text-[9px] text-gray-400">${notif.time.toLocaleDateString([], {month: 'short', day: 'numeric'})} ${notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    <span class="text-[10px] text-gray-400 shrink-0 whitespace-nowrap ml-2">${notif.time.toLocaleDateString([], {month: 'short', day: 'numeric'})} ${notif.time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
                 
-                ${notif.appName ? `<div class="flex justify-between items-center mb-1"><span class="text-[9px] text-${notif.color || this.themeColor}-500 font-semibold">${notif.appName}</span> <button class="clear-app-notifs text-[9px] text-gray-400 hover:text-red-500 hover:underline" data-app="${notif.appName}">Clear App</button></div>` : ''}
+                ${notif.appName ? `<div class="flex justify-between items-center mb-1.5"><span class="text-[10px] text-${notif.color || this.themeColor}-500 font-bold uppercase tracking-wider">${notif.appName}</span> <button class="clear-app-notifs text-[10px] text-gray-400 hover:text-red-500 hover:underline" data-app="${notif.appName}">Clear App</button></div>` : ''}
                 
-                <div class="notif-body-container text-[10px] text-gray-600 dark:text-gray-400 leading-tight mb-1">
-                    <div class="line-clamp-2 transition-all duration-200">${notif.body}</div>
-                    ${notif.body && notif.body.length > 65 ? `<button class="text-[9px] text-blue-500 hover:underline expand-notif-btn mt-0.5">Show more</button>` : ''}
+                <div class="notif-body-container text-${isModal ? 'xs' : '[10px]'} text-gray-600 dark:text-gray-300 leading-relaxed mb-1.5">
+                    <div class="${isModal ? '' : 'line-clamp-2'} transition-all duration-200">${notif.body}</div>
+                    ${!isModal && notif.body && notif.body.length > 65 ? `<button class="text-[9px] text-blue-500 hover:underline expand-notif-btn mt-1">Show more</button>` : ''}
                 </div>
                 
-                ${notif.actionUrl ? `<a href="${notif.actionUrl}" class="inline-block text-[10px] font-bold text-${notif.color || this.themeColor}-600 dark:text-${notif.color || this.themeColor}-400 hover:underline mt-1">${notif.actionText}</a>` : ''}
-                ${notif.actionEvent && !notif.actionUrl ? `<button onclick="window.dispatchEvent(new Event('${notif.actionEvent}'))" class="text-[10px] font-bold text-${notif.color || this.themeColor}-600 dark:text-${notif.color || this.themeColor}-400 hover:underline mt-1">${notif.actionText}</button>` : ''}
+                <div class="flex gap-3 mt-2">
+                    ${notif.actionUrl ? `<a href="${notif.actionUrl}" class="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-${notif.color || this.themeColor}-600 hover:bg-${notif.color || this.themeColor}-700 px-3 py-1.5 rounded transition-colors">${notif.actionText} <i class="fa-solid fa-arrow-right text-[9px]"></i></a>` : ''}
+                    ${notif.actionEvent && !notif.actionUrl ? `<button onclick="window.dispatchEvent(new Event('${notif.actionEvent}'))" class="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-${notif.color || this.themeColor}-600 hover:bg-${notif.color || this.themeColor}-700 px-3 py-1.5 rounded transition-colors">${notif.actionText} <i class="fa-solid fa-bolt text-[9px]"></i></button>` : ''}
+                </div>
             </div>
         `).join('');
+
+        if (listEl) listEl.innerHTML = renderItems(false);
+        if (modalListEl) modalListEl.innerHTML = renderItems(true);
     }
 
     attachEvents() {
@@ -521,8 +551,47 @@ export class AppNavigation {
                 }
             });
             
-            // Inside attachEvents():
-            clearNotifsBtn.addEventListener('click', async (e) => {
+            const expandNotifsBtn = document.getElementById('nav-expand-notifications');
+            const notifsModal = document.getElementById('nav-notifications-modal');
+            const closeNotifsModalBtn = document.getElementById('nav-close-notifications-modal');
+            const modalClearNotifsBtn = document.getElementById('nav-modal-clear-notifications');
+
+            const openNotificationsModal = () => {
+                if (notifsModal) {
+                    notifMenu.classList.add('hidden');
+                    notifsModal.classList.remove('hidden');
+                    setTimeout(() => {
+                        notifsModal.classList.remove('opacity-0');
+                        notifsModal.classList.add('opacity-100');
+                    }, 10);
+                    document.body.style.overflow = 'hidden'; 
+                    this.markNotificationsAsRead();
+                }
+            };
+
+            const closeNotificationsModal = () => {
+                if (notifsModal) {
+                    notifsModal.classList.remove('opacity-100');
+                    notifsModal.classList.add('opacity-0');
+                    setTimeout(() => {
+                        notifsModal.classList.add('hidden');
+                        document.body.style.overflow = ''; 
+                    }, 300);
+                }
+            };
+
+            if (expandNotifsBtn) {
+                expandNotifsBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openNotificationsModal();
+                });
+            }
+
+            if (closeNotifsModalBtn) {
+                closeNotifsModalBtn.addEventListener('click', closeNotificationsModal);
+            }
+
+            const handleClearAll = async (e) => {
                 e.stopPropagation();
                 const auth = getAuth();
                 const user = auth.currentUser;
@@ -543,7 +612,10 @@ export class AppNavigation {
                 } catch (err) {
                     console.error("Error clearing notifications:", err);
                 }
-            });
+            };
+
+            if (clearNotifsBtn) clearNotifsBtn.addEventListener('click', handleClearAll);
+            if (modalClearNotifsBtn) modalClearNotifsBtn.addEventListener('click', handleClearAll);
         }
 
         // Connect to the Service Worker BroadcastChannel for FCM messages
@@ -601,46 +673,49 @@ export class AppNavigation {
             });
         }
         // Add this inside attachEvents() at the very end
+        const handleNotifListClick = async (e) => {
+            const deleteBtn = e.target.closest('.delete-single-notif');
+            const clearAppBtn = e.target.closest('.clear-app-notifs');
+            const expandBtn = e.target.closest('.expand-notif-btn');
+            
+            const auth = getAuth();
+            const user = auth?.currentUser;
+            const db = getFirestore();
+
+            if (deleteBtn && user) {
+                e.stopPropagation();
+                const id = deleteBtn.dataset.id;
+                await deleteDoc(doc(db, 'users', user.uid, 'notifications', id));
+            }
+            
+            if (clearAppBtn && user) {
+                e.stopPropagation();
+                const appName = clearAppBtn.dataset.app;
+                const batch = writeBatch(db);
+                this.notifications.filter(n => n.appName === appName && n.priority !== true).forEach(n => {
+                    batch.delete(doc(db, 'users', user.uid, 'notifications', n.id));
+                });
+                await batch.commit();
+            }
+
+            if (expandBtn) {
+                e.stopPropagation();
+                const bodyDiv = expandBtn.previousElementSibling;
+                if (bodyDiv.classList.contains('line-clamp-2')) {
+                    bodyDiv.classList.remove('line-clamp-2');
+                    expandBtn.textContent = 'Show less';
+                } else {
+                    bodyDiv.classList.add('line-clamp-2');
+                    expandBtn.textContent = 'Show more';
+                }
+            }
+        };
+
         const listEl = document.getElementById('nav-notifications-list');
-        if (listEl) {
-            listEl.addEventListener('click', async (e) => {
-                const deleteBtn = e.target.closest('.delete-single-notif');
-                const clearAppBtn = e.target.closest('.clear-app-notifs');
-                const expandBtn = e.target.closest('.expand-notif-btn');
-                
-                const auth = getAuth();
-                const user = auth?.currentUser;
-                const db = getFirestore();
-
-                if (deleteBtn && user) {
-                    e.stopPropagation();
-                    const id = deleteBtn.dataset.id;
-                    await deleteDoc(doc(db, 'users', user.uid, 'notifications', id));
-                }
-                
-                if (clearAppBtn && user) {
-                    e.stopPropagation();
-                    const appName = clearAppBtn.dataset.app;
-                    const batch = writeBatch(db);
-                    this.notifications.filter(n => n.appName === appName && n.priority !== true).forEach(n => {
-                        batch.delete(doc(db, 'users', user.uid, 'notifications', n.id));
-                    });
-                    await batch.commit();
-                }
-
-                if (expandBtn) {
-                    e.stopPropagation();
-                    const bodyDiv = expandBtn.previousElementSibling;
-                    if (bodyDiv.classList.contains('line-clamp-2')) {
-                        bodyDiv.classList.remove('line-clamp-2');
-                        expandBtn.textContent = 'Show less';
-                    } else {
-                        bodyDiv.classList.add('line-clamp-2');
-                        expandBtn.textContent = 'Show more';
-                    }
-                }
-            });
-        }
+        const modalListEl = document.getElementById('nav-notifications-modal-list');
+        
+        if (listEl) listEl.addEventListener('click', handleNotifListClick);
+        if (modalListEl) modalListEl.addEventListener('click', handleNotifListClick);
     }
 
     switchTab(tabId) {

@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.24.0-alpha",
+    date: "2026-04-26",
+    changes: [
+        "In SharedNav: Added a dedicated full-screen Notifications modal for a broader view of active alerts, accessible via a new expansion button in the notifications dropdown.",
+        "In SharedNav: Upgraded the notifications layout design within the modal, featuring larger text scaling, padded interaction areas, and refined styling for action buttons.",
+        "In SharedNav: Toned down the dark mode header gradient to a subtler opacity, maintaining visual consistency with the lighter gradients used in light mode.",
+        "In Loggr: Restructured the main interface layout to auto-fit the viewport dynamically (using 100dvh).",
+        "In Loggr: Trapped vertical scrolling internally within the panes container so the main header stays permanently locked at the top."
+    ]
+    },
+    {
     version: "v15.23.0-alpha",
     date: "2026-04-25",
     changes: [
