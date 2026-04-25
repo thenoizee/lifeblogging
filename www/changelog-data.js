@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.22.0-alpha",
+    date: "2026-04-25",
+    changes: [
+        "In PlantTrackr: Added a 'Bulk Select' mode to the Garden view, allowing users to select multiple specific plants and log a batch watering action at once."
+    ]
+},
+    {
     version: "v15.21.0-alpha",
     date: "2026-04-25",
     changes: [

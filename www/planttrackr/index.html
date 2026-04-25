@@ -293,6 +293,14 @@
             <button onclick="window.openDataCheckModal()" class="btn-secondary whitespace-nowrap" title="Check Missing Data">
                 <i class="fa-solid fa-stethoscope text-yellow-500"></i> <span class="hidden md:inline ml-1">Data Check</span>
             </button>
+            <button id="toggle-select-mode-btn" onclick="window.toggleSelectMode()" class="btn-secondary whitespace-nowrap" title="Bulk Select">
+                <i class="fa-solid fa-check-double"></i>
+            </button>
+            <div id="select-mode-actions" class="hidden items-center gap-2 bg-blue-50 dark:bg-blue-900/30 p-1 rounded-lg border border-blue-200 dark:border-blue-800 ml-auto">
+                <span class="text-sm font-bold mx-2 text-blue-700 dark:text-blue-300"><span id="selected-count">0</span> selected</span>
+                <button onclick="window.waterSelectedPlants()" class="btn-primary py-1 px-3 text-xs bg-blue-600 hover:bg-blue-700"><i class="fa-solid fa-droplet mr-1"></i> Water</button>
+                <button onclick="window.toggleSelectMode()" class="btn-secondary py-1 px-3 text-xs"><i class="fa-solid fa-xmark"></i></button>
+            </div>
         </div>
     </div>
 
@@ -1263,6 +1271,61 @@
         const lightIcons = { low: 'fa-cloud', medium: 'fa-cloud-sun', high: 'fa-sun' };
         const lightColors = { low: 'text-gray-400', medium: 'text-yellow-400', high: 'text-orange-500' };
 
+        window.isSelectMode = false;
+        window.selectedPlants = new Set();
+
+        window.toggleSelectMode = () => {
+            window.isSelectMode = !window.isSelectMode;
+            window.selectedPlants.clear();
+            
+            const actions = getEl('select-mode-actions');
+            const toggleBtn = getEl('toggle-select-mode-btn');
+            const addBtn = getEl('open-add-plant-modal');
+            
+            if (window.isSelectMode) {
+                actions.classList.remove('hidden');
+                actions.classList.add('flex');
+                toggleBtn.classList.add('hidden');
+                addBtn.classList.add('hidden');
+            } else {
+                actions.classList.add('hidden');
+                actions.classList.remove('flex');
+                toggleBtn.classList.remove('hidden');
+                addBtn.classList.remove('hidden');
+            }
+            
+            getEl('selected-count').textContent = "0";
+            renderPlants();
+        };
+        
+        window.togglePlantSelection = (plantId) => {
+            if (!window.isSelectMode) return;
+            if (window.selectedPlants.has(plantId)) {
+                window.selectedPlants.delete(plantId);
+            } else {
+                window.selectedPlants.add(plantId);
+            }
+            getEl('selected-count').textContent = window.selectedPlants.size;
+            renderPlants();
+        };
+
+        window.waterSelectedPlants = async () => {
+            if (window.selectedPlants.size === 0) return showMsg("No plants selected", "error");
+            if (!confirm(`Water ${window.selectedPlants.size} selected plants?`)) return;
+            
+            try {
+                showMsg("Watering selected plants...", "success", 0);
+                const batchPromises = Array.from(window.selectedPlants).map(plantId => 
+                    addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                        plantId: plantId, type: "Water", date: new Date().toISOString(), notes: "Bulk Water (Selected)", createdAt: Timestamp.now()
+                    }).then(() => updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { snoozeUntil: null }))
+                );
+                await Promise.all(batchPromises);
+                showMsg(`Successfully watered ${window.selectedPlants.size} plants!`);
+                window.toggleSelectMode();
+            } catch(e) { showMsg(e.message, "error"); }
+        };
+
         const updateLocationDropdowns = () => {
             const locs = state.locations;
             const legacyLocs = [...new Set(state.plants.map(p => p.location).filter(Boolean))]
@@ -1430,7 +1493,16 @@
             displayPlants.forEach(plant => {
                 const card = document.createElement("div");
                 const isSick = plant.health && (plant.health.startsWith('sick') || plant.health === 'bad');
-                card.className = `card card-interactive p-4 flex flex-col justify-between h-full hover:shadow-lg transition ${isSick ? 'border-red-300 dark:border-red-800 bg-red-50/30 dark:bg-red-900/10' : ''}`;
+                const isSelected = window.isSelectMode && window.selectedPlants.has(plant.id);
+                
+                card.className = `card card-interactive p-4 flex flex-col justify-between h-full hover:shadow-lg transition ${isSick ? 'border-red-300 dark:border-red-800 bg-red-50/30 dark:bg-red-900/10' : ''} ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''} ${window.isSelectMode ? 'cursor-pointer select-none' : ''}`;
+                
+                if (window.isSelectMode) {
+                    card.onclick = (e) => {
+                        if (e.target.closest('button')) return; // Allow action buttons to function normally
+                        window.togglePlantSelection(plant.id);
+                    };
+                }
                 
                 const locObj = state.locations.find(l => l.id === plant.location);
                 const displayLocation = locObj ? locObj.name : (plant.location || 'No location');
@@ -1468,9 +1540,16 @@ if (plant.potType || plant.potSize) {
 }
 
 card.innerHTML = `
-    <div class="flex items-start justify-between mb-4">
-        <div class="flex items-center gap-3 cursor-pointer hover:opacity-70 transition" onclick="window.openQuickLogModal('${plant.id}')" title="Quick Log">
-            ${getLatestPlantPhoto(plant) 
+    <div class="flex items-start justify-between mb-4 relative">
+        ${window.isSelectMode ? `
+            <div class="absolute -top-2 -left-2 z-10 pointer-events-none">
+                <div class="w-6 h-6 rounded-full border-2 border-blue-500 bg-white dark:bg-gray-800 flex items-center justify-center ${isSelected ? 'bg-blue-500 text-white dark:text-white dark:bg-blue-500' : 'text-transparent'} transition-colors">
+                    <i class="fa-solid fa-check text-xs"></i>
+                </div>
+            </div>
+        ` : ''}
+        <div class="flex items-center gap-3 ${window.isSelectMode ? '' : 'cursor-pointer hover:opacity-70 transition'}" ${window.isSelectMode ? '' : `onclick="window.openQuickLogModal('${plant.id}')"`} title="${window.isSelectMode ? '' : 'Quick Log'}">
+            ${getLatestPlantPhoto(plant)
             ? `<img src="${getLatestPlantPhoto(plant)}" class="w-12 h-12 rounded-full object-cover border border-[var(--border)]">` 
             : `<div class="plant-icon-circle"><i class="fa-solid ${plant.icon || 'fa-leaf'}"></i></div>`
             }
@@ -1582,9 +1661,13 @@ window.toggleGardenView = (view) => {
     toggleDisplay(getEl("propagations-wrapper"), view === 'propagations');
     
     // Toggle primary action buttons
-    toggleDisplay(getEl("open-add-plant-modal"), view !== 'wishlist');
+    toggleDisplay(getEl("open-add-plant-modal"), view !== 'wishlist' && !window.isSelectMode);
     toggleDisplay(getEl("open-add-wish-modal"), view === 'wishlist');
     toggleDisplay(getEl("plant-filter-location"), view === 'active');
+
+    if (window.isSelectMode && view !== 'active') {
+        window.toggleSelectMode();
+    }
 };
 
         const renderDashboard = () => {
