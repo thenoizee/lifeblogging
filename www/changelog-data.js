@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.23.0-alpha",
+    date: "2026-04-25",
+    changes: [
+                "In Loggr: Implemented a robust `fetchWithTimeout` wrapper for Firestore queries using `getDocsFromCache()` to prevent the app from hanging on flaky connections and safely fall back to local data.",
+                "In Loggr: Added a mock snapshot fallback to prevent hard crashes when loading entirely offline with an empty local cache.",
+                "In sw.js: Rewrote offline routing to use a cache key iterator, ensuring the correct HTML files are successfully matched and served offline regardless of absolute paths or trailing slashes."
+    ]
+},
+    {
     version: "v15.22.0-alpha",
     date: "2026-04-25",
     changes: [

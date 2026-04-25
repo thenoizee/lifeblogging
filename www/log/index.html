@@ -66,18 +66,6 @@
         margin: 0;
         transition: background-color 0.3s ease, color 0.3s ease;
       }
-      .container {
-        background-color: var(--card-bg-color);
-        padding: 40px;
-        border-radius: 12px;
-        box-shadow: 0 4px 20px var(--shadow-color);
-        width: 100%;
-        max-width: 450px;
-        text-align: center;
-        transition: background-color 0.3s ease, box-shadow 0.3s ease;
-        max-height: 90vh;
-        overflow-y: auto;
-      }
 
       h1 {
         margin-top: 0;
@@ -370,7 +358,7 @@
         padding: 16px 30px;
         border-radius: 8px;
         box-shadow: 0 5px 25px rgba(0, 0, 0, 0.3);
-        z-index: 1000;
+        z-index: 2147483647;
         opacity: 0;
         transition: opacity 0.5s ease-in-out, top 0.5s ease-in-out;
         display: none;
@@ -499,11 +487,21 @@
           margin: 4px;
         }
         .combo-button:hover {
-          background-color: #3b82f6;
+          background-color: #3b82f6;
+        }
+
+        /* FORCE HEADER TO TOP LAYER */
+        header {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 2147483647 !important;
+        }
+        #hub-dropdown-menu, #nav-notifications-menu, nav.md\:hidden {
+            z-index: 2147483647 !important;
         }
 
-    </style>
-  </head>
+    </style>
+  </head>
   <body class="dark-mode">
     <div id="initial-loading-overlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: var(--bg-color, #1a202c); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.3s ease;">
         <style>
@@ -803,22 +801,23 @@
     signOut,
   } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
   import {
-    getFirestore,
-    collection,
-    addDoc,
-    Timestamp,
-    doc,
-    deleteDoc,
-    updateDoc,
-    getDocs,
-    getDoc,
-    setDoc,
-    onSnapshot,
-    query,
-    where,
-    writeBatch,
-    enableMultiTabIndexedDbPersistence
-  } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    getFirestore,
+    collection,
+    addDoc,
+    Timestamp,
+    doc,
+    deleteDoc,
+    updateDoc,
+    getDocs,
+    getDocsFromCache,
+    getDoc,
+    setDoc,
+    onSnapshot,
+    query,
+    where,
+    writeBatch,
+    enableMultiTabIndexedDbPersistence
+  } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -838,6 +837,27 @@
   });
   
   const db = getFirestore(app);
+
+  const fetchWithTimeout = async (queryRef, ms = 8000) => {
+      try {
+          if (!navigator.onLine) {
+              return await getDocsFromCache(queryRef);
+          }
+          return await Promise.race([
+              getDocs(queryRef),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("NetworkTimeout")), ms))
+          ]);
+      } catch (err) {
+          console.warn("Network timeout/error, attempting cache fallback...", err);
+          try {
+              return await getDocsFromCache(queryRef);
+          } catch (cacheErr) {
+              console.warn("Cache also failed. Returning empty snapshot.", cacheErr);
+              // Mock an empty snapshot to prevent the app from hard-crashing offline
+              return { docs: [], forEach: () => {} }; 
+          }
+      }
+  };
 
   // --- ENABLE OFFLINE PERSISTENCE ---
   enableMultiTabIndexedDbPersistence(db)
@@ -988,9 +1008,9 @@
         selectElement.innerHTML = "";
 
         try {
-          const collectionsRef = collection(db, `users/${uid}/sources`);
-          // This will work OFFLINE now thanks to persistence!
-          const querySnapshot = await getDocs(collectionsRef);
+            const collectionsRef = collection(db, `users/${uid}/sources`);
+            // Wrap in timeout to prevent hanging on flaky connections
+            const querySnapshot = await fetchWithTimeout(collectionsRef, 3000);
 
           let collectionNames = [];
           querySnapshot.forEach((doc) => {
@@ -1034,11 +1054,11 @@
         try {
           // This also works offline with persistence
           const sourcesRef = collection(db, `users/${uid}/sources`);
-          const sourcesSnapshot = await getDocs(sourcesRef);
+          const sourcesSnapshot = await fetchWithTimeout(sourcesRef, 3000);
 
-          for (const sourceDoc of sourcesSnapshot.docs) {
-            const dataRef = collection(db, `users/${uid}/sources/${sourceDoc.id}/data`);
-            const dataSnapshot = await getDocs(dataRef);
+          for (const sourceDoc of sourcesSnapshot.docs) {
+            const dataRef = collection(db, `users/${uid}/sources/${sourceDoc.id}/data`);
+            const dataSnapshot = await fetchWithTimeout(dataRef, 3000);
             dataSnapshot.forEach(doc => {
               const tags = doc.data().tags || [];
               tags.forEach(tag => allTags.add(tag));
@@ -1440,11 +1460,11 @@
             }
             try {
                 const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
-                const sourcesSnapshot = await getDocs(sourcesRef);
+                const sourcesSnapshot = await fetchWithTimeout(getDocs(sourcesRef), 8000);
                 for (const sourceDoc of sourcesSnapshot.docs) {
                     const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
                     const q = query(dataRef, where("date", ">=", startDateStr));
-                    const dataSnapshot = await getDocs(q);
+                    const dataSnapshot = await fetchWithTimeout(getDocs(q), 8000);
                     dataSnapshot.forEach(doc => {
                         const log = {id: doc.id, ...doc.data()};
                         if (log.date) {
@@ -1476,11 +1496,11 @@
             const startDateStr = toYYYYMMDD(d);
             try {
                 const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
-                const sourcesSnapshot = await getDocs(sourcesRef);
+                const sourcesSnapshot = await fetchWithTimeout(getDocs(sourcesRef), 3000);
                 for (const sourceDoc of sourcesSnapshot.docs) {
                     const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
                     const q = query(dataRef, where("date", ">=", startDateStr));
-                    const dataSnapshot = await getDocs(q);
+                    const dataSnapshot = await fetchWithTimeout(getDocs(q), 3000);
                     dataSnapshot.forEach(doc => {
                         const log = doc.data();
                         if (log.attributeName) appState.attributeNames.add(log.attributeName);

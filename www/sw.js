@@ -1,6 +1,6 @@
 // Automatically grab the version from the registration URL (e.g., sw.js?v=1.2.0)
 const urlParams = new URL(self.location).searchParams;
-const LATEST_VERSION = urlParams.get('v') || "2.0.4";
+const LATEST_VERSION = urlParams.get('v') || "2.0.8";
 
 console.log(`[sw.js] 🟢 Booting up Service Worker v${LATEST_VERSION}`);
 
@@ -230,9 +230,20 @@ self.addEventListener('fetch', event => {
                 // If completely offline, fall back to our cached app files
                 let cachedResponse = await caches.match(event.request, { ignoreSearch: true });
                 
-                // If the directory was requested (e.g., /log/), try matching /log/index.html
-                if (!cachedResponse && event.request.url.endsWith('/')) {
-                    cachedResponse = await caches.match(event.request.url + 'index.html', { ignoreSearch: true });
+                // Aggressive routing fix to ALWAYS find the right HTML file offline
+                if (!cachedResponse) {
+                    const cache = await caches.open(CACHE_NAME);
+                    const keys = await cache.keys();
+                    const reqUrl = new URL(event.request.url);
+                    const basePath = reqUrl.pathname.replace(/\/$/, "");
+                    
+                    for (const req of keys) {
+                        const cachedPath = new URL(req.url).pathname;
+                        if (cachedPath === basePath || cachedPath === basePath + '/' || cachedPath === basePath + '/index.html') {
+                            cachedResponse = await cache.match(req);
+                            break;
+                        }
+                    }
                 }
                 
                 return cachedResponse || new Response("Offline", { status: 408, statusText: "Offline" });

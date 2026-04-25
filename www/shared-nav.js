@@ -134,12 +134,12 @@ export class AppNavigation {
         const userInitial = this.userEmail.charAt(0).toUpperCase();
 
         const headerHtml = `
-<header class="sticky top-0 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/30 dark:to-gray-800/90 backdrop-blur-md shadow-md z-50 shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-700 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8">
+<header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/80 dark:to-gray-800/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-700 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 2147483647; isolation: isolate;">
             <div class="container mx-auto px-4 py-2">
                 <div class="flex items-center justify-between h-12">
                     
                     <div class="flex items-center gap-3">
-                        <div id="hub-container" class="relative group">
+                        <div id="hub-container" class="relative group" style="position: relative;">
                             <div class="flex rounded-lg shadow-sm overflow-hidden">
                                 <a href="/" class="bg-${this.themeColor}-600 hover:bg-${this.themeColor}-700 text-white text-xs font-bold py-2 px-3 flex items-center gap-1 transition-colors">
                                     <i class="fa-solid fa-arrow-left"></i> Hub
@@ -149,7 +149,7 @@ export class AppNavigation {
                                 </button>
                             </div>
 
-                            <div id="hub-dropdown-menu" class="hidden absolute top-full left-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 p-3 z-[100] transform origin-top-left transition-all duration-200 flex flex-col gap-3">
+                            <div id="hub-dropdown-menu" class="hidden absolute top-full left-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 p-3 transform origin-top-left transition-all duration-200 flex flex-col gap-3" style="position: absolute; z-index: 2147483647;">
                                 
                                 <div class="grid grid-cols-3 gap-2">
                                     ${this.hubApps.map(app => {
@@ -205,13 +205,13 @@ export class AppNavigation {
                         </div>
                         ` : ''}
 
-                        <div class="relative group" id="nav-notifications-container">
+                        <div class="relative group" id="nav-notifications-container" style="position: relative;">
                             <button id="nav-bell-btn" class="relative w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all">
                                 <i class="fa-regular fa-bell"></i>
                                 <span id="nav-bell-badge" class="hidden absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></span>
                             </button>
                             
-                            <div id="nav-notifications-menu" class="hidden absolute top-full right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-[100] transform origin-top-right transition-all duration-200">
+                            <div id="nav-notifications-menu" class="hidden absolute top-full right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden transform origin-top-right transition-all duration-200" style="position: absolute; z-index: 2147483647;">
                                 <div class="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/80">
                                     <h3 class="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Notifications</h3>
                                     <button id="nav-clear-notifications" class="text-[10px] text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline">Clear All</button>
@@ -257,7 +257,7 @@ export class AppNavigation {
     renderMobileNav() {
         if (!this.tabs.length) return;
         const mobileHtml = `
-        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/30 dark:to-gray-800/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-700 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/30 dark:to-gray-800/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-700 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
             <div class="flex justify-around items-center h-16">
                 <a href="/" class="flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-${this.themeColor}-500 transition-colors gap-1">
                     <i class="fa-solid fa-arrow-left text-lg"></i>
