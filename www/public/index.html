@@ -107,6 +107,32 @@
         </div>
     </div>
 
+    <div id="public-recipe-modal" class="fixed inset-0 bg-black bg-opacity-75 z-[60] hidden items-center justify-center p-4">
+        <div class="bg-[var(--card-bg)] rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-[var(--border-color)] flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
+                <h3 id="modal-recipe-title" class="text-2xl font-bold truncate pr-4">Recipe Title</h3>
+                <button onclick="closePublicRecipe()" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="flex-grow overflow-y-auto p-4 md:p-6 custom-scrollbar">
+                <img id="modal-recipe-image" src="" class="w-full h-48 md:h-64 object-cover rounded-xl mb-4 hidden border border-[var(--border-color)] shadow-sm">
+                <p id="modal-recipe-desc" class="italic text-[var(--text-secondary)] mb-6 hidden bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-[var(--border-color)]"></p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="md:col-span-1">
+                        <h4 class="font-bold text-lg mb-3 border-b border-[var(--border-color)] pb-1"><i class="fas fa-carrot text-orange-500 mr-2"></i>Ingredients</h4>
+                        <div id="modal-recipe-ingredients" class="text-sm space-y-1"></div>
+                    </div>
+                    <div class="md:col-span-2">
+                        <h4 class="font-bold text-lg mb-3 border-b border-[var(--border-color)] pb-1"><i class="fas fa-list-ol text-indigo-500 mr-2"></i>Instructions</h4>
+                        <div id="modal-recipe-instructions" class="text-sm space-y-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getFirestore, doc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -198,6 +224,88 @@
             }
         }
 
+        window.publicRecipesCache = {};
+
+        window.closePublicRecipe = () => {
+            const modal = document.getElementById('public-recipe-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            
+            // Remove recipe ID from URL cleanly so they don't get trapped on reload
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.delete('recipe');
+            const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+            window.history.replaceState({}, '', newUrl);
+        };
+
+        window.openPublicRecipe = (recipeId) => {
+            const recipe = window.publicRecipesCache[recipeId];
+            if (!recipe) return;
+
+            // Set URL for easy sharing
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('recipe', recipeId);
+            window.history.replaceState({}, '', window.location.pathname + '?' + urlParams.toString());
+
+            document.getElementById('modal-recipe-title').textContent = recipe.name;
+            
+            const imgEl = document.getElementById('modal-recipe-image');
+            if (recipe.imageUrl) {
+                imgEl.src = recipe.imageUrl;
+                imgEl.classList.remove('hidden');
+            } else {
+                imgEl.classList.add('hidden');
+            }
+
+            const descEl = document.getElementById('modal-recipe-desc');
+            if (recipe.description) {
+                descEl.textContent = recipe.description;
+                descEl.classList.remove('hidden');
+            } else {
+                descEl.classList.add('hidden');
+            }
+
+            // Simple renderer for structured data
+            const renderSection = (dataArray) => {
+                if (!dataArray) return '';
+                if (Array.isArray(dataArray) && dataArray.length > 0 && typeof dataArray[0] === 'object' && 'items' in dataArray[0]) {
+                    return dataArray.map(sec => `
+                        <h5 class="font-bold mt-4 text-xs uppercase text-[var(--text-secondary)] tracking-wider">${sec.section}</h5>
+                        <ul class="list-none space-y-1 mt-1 pl-1">
+                            ${(sec.items || []).map(item => `<li class="flex gap-2"><span class="text-[var(--text-secondary)]">•</span><span>${typeof item === 'string' ? item : item.text}</span></li>`).join('')}
+                        </ul>
+                    `).join('');
+                }
+                if (typeof dataArray === 'string') {
+                    return `<ul class="list-disc list-inside space-y-1">` + dataArray.split('\n').filter(l => l.trim()).map(l => `<li>${l}</li>`).join('') + `</ul>`;
+                }
+                return '';
+            };
+
+            const renderOrderedSection = (dataArray) => {
+                 if (!dataArray) return '';
+                 if (Array.isArray(dataArray) && dataArray.length > 0 && typeof dataArray[0] === 'object' && 'items' in dataArray[0]) {
+                    return dataArray.map(sec => `
+                        <h5 class="font-bold mt-4 text-xs uppercase text-[var(--text-secondary)] tracking-wider">${sec.section}</h5>
+                        <ol class="list-decimal list-inside space-y-3 mt-2">
+                            ${(sec.items || []).map(item => `<li>${typeof item === 'string' ? item : item.text}</li>`).join('')}
+                        </ol>
+                    `).join('');
+                 }
+                 if (typeof dataArray === 'string') {
+                    return `<ol class="list-decimal list-inside space-y-3">` + dataArray.split('\n').filter(l => l.trim()).map(l => `<li>${l}</li>`).join('') + `</ol>`;
+                 }
+                 return '';
+            };
+
+            document.getElementById('modal-recipe-ingredients').innerHTML = renderSection(recipe.ingredients);
+            document.getElementById('modal-recipe-instructions').innerHTML = renderOrderedSection(recipe.instructions);
+
+            const modal = document.getElementById('public-recipe-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        };
+
         async function loadCollections(uid, profileData) {
             let hasData = false;
             
@@ -242,23 +350,44 @@
             // 3. Load Recipes (Default to true if undefined)
             if (profileData.showRecipes !== false) {
                 const recipesSnap = await getDocs(collection(db, 'users', uid, 'recipes'));
-                if (!recipesSnap.empty) {
+                const publicRecipes = [];
+                
+                recipesSnap.forEach(doc => {
+                    const r = doc.data();
+                    // Only display recipes explicitly marked as public
+                    if (r.isPublic) {
+                        r.id = doc.id;
+                        publicRecipes.push(r);
+                        window.publicRecipesCache[r.id] = r;
+                    }
+                });
+
+                if (publicRecipes.length > 0) {
                     hasData = true;
                     document.getElementById('section-recipes').classList.remove('hidden');
                     const grid = document.getElementById('recipes-grid');
-                    recipesSnap.forEach(doc => {
-                        const r = doc.data();
+                    
+                    publicRecipes.forEach(r => {
                         const imgHtml = r.imageUrl 
-                            ? `<img src="${r.imageUrl}" class="w-12 h-12 rounded-full object-cover mb-2 border-2 border-orange-100 dark:border-orange-900 flex-shrink-0">`
-                            : `<i class="fas fa-utensils text-3xl text-orange-500 mb-2"></i>`;
+                            ? `<img src="${r.imageUrl}" class="w-16 h-16 rounded-full object-cover mb-3 border-2 border-orange-100 dark:border-orange-900 shadow-sm flex-shrink-0">`
+                            : `<div class="w-16 h-16 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-500 flex items-center justify-center mb-3 shadow-sm border-2 border-transparent"><i class="fas fa-utensils text-2xl"></i></div>`;
                         
                         grid.innerHTML += `
-                            <div class="dashboard-card p-4 flex flex-col items-center text-center">
+                            <div class="dashboard-card p-4 flex flex-col items-center text-center cursor-pointer hover:shadow-lg transition-all hover:-translate-y-1" onclick="openPublicRecipe('${r.id}')">
                                 ${imgHtml}
                                 <p class="font-bold text-sm w-full truncate" title="${r.name}">${r.name}</p>
-                                <p class="text-[10px] text-[var(--text-secondary)] w-full truncate">${r.prepTime ? r.prepTime + ' mins' : 'No time set'}</p>
+                                <p class="text-[10px] text-[var(--text-secondary)] w-full truncate mt-1">
+                                    <i class="fas fa-clock mr-1"></i>${r.totalTime ? r.totalTime + ' mins' : (r.prepTime ? r.prepTime + ' mins' : 'No time set')}
+                                </p>
                             </div>`;
                     });
+
+                    // Auto-open recipe if URL contains a ?recipe=ID parameter
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const targetRecipe = urlParams.get('recipe');
+                    if (targetRecipe && window.publicRecipesCache[targetRecipe]) {
+                        setTimeout(() => openPublicRecipe(targetRecipe), 500);
+                    }
                 }
             }
 

@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.27.0-alpha",
+    date: "2026-04-26",
+    changes: [
+                "In RecipeManagr: Added a 'Make Public' toggle to the recipe creation/edit form to allow sharing recipes to the Public Profile.",
+                "In RecipeManagr: Updated the 'Share' button logic to generate a direct link to the public profile if the recipe is marked as public.",
+                "In RecipeManagr: Added a 'Public Only' checkbox toggle to the main filter bar to quickly isolate recipes visible on the public profile.",
+                "In Public Profile: Added a dedicated 'Recipes' section that fetches and displays user recipes specifically marked as public.",
+                "In Public Profile: Implemented a recipe details modal to view public ingredients, instructions, and metadata directly from the hub.",
+    ]
+    },
+    {
     version: "v15.26.0-alpha",
     date: "2026-04-26",
     changes: [

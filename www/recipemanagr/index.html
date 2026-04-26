@@ -241,6 +241,7 @@ select, button, input {
                         </div>
                         <label class="flex items-center gap-2 cursor-pointer text-gray-700 dark:text-gray-300"><input type="checkbox" id="show-images-toggle" class="accent-teal-600 w-4 h-4" checked/> Show Images</label>
                         <label class="flex items-center gap-2 cursor-pointer text-gray-700 dark:text-gray-300"><input type="checkbox" id="show-labels-toggle" class="accent-teal-600 w-4 h-4" checked/> Show Labels</label>
+                        <label class="flex items-center gap-2 cursor-pointer text-indigo-600 dark:text-indigo-400 font-bold ml-2"><input type="checkbox" id="filter-public-toggle" class="accent-indigo-600 w-4 h-4"/> Public Only</label>
                     </div>
 
                     <div class="flex items-center gap-2 lg:ml-auto w-full md:w-auto">
@@ -501,6 +502,12 @@ select, button, input {
                         <div>
                             <label class="block text-sm font-medium mb-1">Initial Rating</label>
                             <div id="add-recipe-rating" class="flex items-center gap-1"></div>
+                        </div>
+                        <div class="lg:col-span-3">
+                            <label class="flex items-center space-x-2 cursor-pointer mt-2 bg-teal-50 dark:bg-teal-900/30 p-3 rounded-lg border border-teal-100 dark:border-teal-800 w-fit pr-6">
+                                <input type="checkbox" id="recipe-is-public" class="rounded text-teal-600 focus:ring-teal-500 w-5 h-5 dark:bg-gray-700 dark:border-gray-600">
+                                <span class="text-sm font-bold text-teal-900 dark:text-teal-200">Make this recipe visible on my Public Profile</span>
+                            </label>
                         </div>
                         <div id="form-buttons" class="lg:col-span-3 flex gap-4">
                             <button id="add-recipe-btn" type="button" class="flex-grow bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Add Recipe</button>
@@ -1627,6 +1634,7 @@ function filterRecipes() {
     const selectedMeals = [...document.querySelectorAll('input[name="filter-meal"]:checked')].map(cb => cb.value);
     const selectedCuisines = [...document.querySelectorAll('input[name="filter-cuisine"]:checked')].map(cb => cb.value);
     const selectedLabels = [...document.querySelectorAll('input[name="filter-label"]:checked')].map(cb => cb.value);
+    const publicOnly = document.getElementById('filter-public-toggle') ? document.getElementById('filter-public-toggle').checked : false;
 
     let filtered = recipesCache.filter(recipe => {
         // 1. Text Search
@@ -1654,7 +1662,10 @@ function filterRecipes() {
         const matchesLabel = selectedLabels.length === 0 || 
             (recipe.labels && recipe.labels.some(l => selectedLabels.includes(l)));
 
-        return matchesSearch && matchesRating && matchesFlavor && matchesMeal && matchesCuisine && matchesLabel;
+        // 7. Public Visibility Filter
+        const matchesPublic = !publicOnly || recipe.isPublic;
+
+        return matchesSearch && matchesRating && matchesFlavor && matchesMeal && matchesCuisine && matchesLabel && matchesPublic;
     });
 
     const sorted = sortRecipes(filtered);
@@ -1824,6 +1835,7 @@ const adaptedFromId = document.getElementById('adapted-from-select').value;
             labels: document.getElementById('recipe-labels').value.split(',').map(l => l.trim()).filter(Boolean),
             rating: currentRating,
             imageUrl,
+            isPublic: document.getElementById('recipe-is-public').checked,
             linkedRecipeIds,
             type: recipeType, // Replaces isFoodItem logic (though you can keep isFoodItem for legacy compat if needed)
     isFoodItem: recipeType === 'food_item', // Keep for backward compatibility
@@ -1888,6 +1900,7 @@ const adaptedFromId = document.getElementById('adapted-from-select').value;
                 form.reset();
                 document.getElementById('recipe-discovered-date').valueAsDate = new Date();
                 currentRating = 0;
+                document.getElementById('recipe-is-public').checked = false;
                 renderAddRatingStars();
                 
                 // FIX: Clear the dynamic builders
@@ -1963,6 +1976,7 @@ document.getElementById('flavor-savoury').checked = flavors.includes('Savoury');
                 document.getElementById('recipe-category').value = recipe.category || '';
                 document.getElementById('recipe-notes').value = recipe.notes || '';
                 document.getElementById('recipe-labels').value = (recipe.labels || []).join(', ');
+                document.getElementById('recipe-is-public').checked = !!recipe.isPublic;
                 renderIngredientBuilder(ingredientsForForm);
                 // Use the raw object data, not the formatted text string
     renderInstructionBuilder(recipe.instructions || []);
@@ -2562,16 +2576,24 @@ async function showRecipeDetailsModal(recipeId) {
 
     // Helper for Native Sharing
     const shareRecipe = async () => {
+        let shareUrl = window.location.href;
+        
+        // If public, share the public profile link directly to the recipe
+        if (recipe.isPublic) {
+            shareUrl = `${window.location.origin}/public/index.html?id=${userId}&recipe=${recipe.id}`;
+        }
+        
         const shareData = {
             title: recipe.name,
             text: `Check out this recipe for ${recipe.name}!`,
-            url: window.location.href
+            url: shareUrl
         };
+        
         if (navigator.share) {
             try { await navigator.share(shareData); } catch (err) { console.log('Share canceled'); }
         } else {
-            navigator.clipboard.writeText(`${recipe.name}\n\n${recipe.description || ''}`);
-            showNotification("Recipe info copied to clipboard.");
+            navigator.clipboard.writeText(`Check out my recipe for ${recipe.name}!\n\n${shareUrl}`);
+            showNotification("Recipe link copied to clipboard.");
         }
     };
 
@@ -2783,6 +2805,7 @@ async function showRecipeDetailsModal(recipeId) {
                                 ${bookName ? `<p class="flex justify-between"><strong>Collection:</strong> <span class="text-orange-600 dark:text-orange-400 font-semibold"><i class="fas fa-book mr-1"></i>${bookName}</span></p>` : ''}
                                 ${parentRecipe ? `<p class="flex justify-between"><strong>Adapted from:</strong> <span class="cursor-pointer text-blue-500 hover:underline" onclick="document.querySelector('.modal-close-btn').click(); setTimeout(() => document.querySelector('[data-recipe-id=\\'${parentRecipe.id}\\']').click(), 100);">${parentRecipe.name}</span></p>` : ''}
                                 <p class="flex justify-between"><strong>Discovered:</strong> <span>${recipe.discoveredDate || '-'}</span></p>
+                                <p class="flex justify-between"><strong>Visibility:</strong> <span>${recipe.isPublic ? '<span class="text-green-600 dark:text-green-400 font-bold"><i class="fas fa-globe mr-1"></i> Public</span>' : '<span class="text-gray-500"><i class="fas fa-lock mr-1"></i> Private</span>'}</span></p>
                                 ${recipe.sourceName ? `
                                     <p class="flex justify-between">
                                         <strong>Source:</strong> 
@@ -4650,6 +4673,8 @@ document.getElementById('close-planner-btn').addEventListener('click', () => {
             if (addRecipeBtn) addRecipeBtn.addEventListener('click', handleAddOrUpdateRecipe);
             if (searchBar) searchBar.addEventListener('input', filterRecipes);
             if (filterRating) filterRating.addEventListener('change', filterRecipes);
+            const filterPublicToggle = document.getElementById('filter-public-toggle');
+            if (filterPublicToggle) filterPublicToggle.addEventListener('change', filterRecipes);
             
             const clearFilters = document.getElementById('clear-filters-btn');
             if (clearFilters) {
