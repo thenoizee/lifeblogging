@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.25.0-alpha",
+    date: "2026-04-26",
+    changes: [
+        "In Shared Navigation: Redesigned the notifications modal to display as a centered, floating dialog with rounded corners and a max height, rather than a full-screen takeover.",
+        "In Shared Navigation: Added a click-outside event listener allowing users to dismiss the notifications modal by clicking the background backdrop.",
+        "In Loggr: Adjusted the top padding of the main container to sit perfectly flush with the shared navigation bar."
+    ]
+},
+    {
     version: "v15.24.0-alpha",
     date: "2026-04-26",
     changes: [

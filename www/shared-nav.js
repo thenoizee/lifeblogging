@@ -134,8 +134,8 @@ export class AppNavigation {
         const userInitial = this.userEmail.charAt(0).toUpperCase();
 
         const headerHtml = `
-<div id="nav-notifications-modal" class="hidden fixed inset-0 z-[2147483647] bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-lg flex-col transition-opacity duration-300 opacity-0">
-    <div class="container mx-auto max-w-3xl h-full flex flex-col bg-white dark:bg-gray-800 shadow-2xl">
+<div id="nav-notifications-modal" class="hidden fixed inset-0 z-[2147483647] bg-gray-800/40 dark:bg-gray-900/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 sm:p-6 transition-opacity duration-300 opacity-0">
+    <div class="w-full max-w-3xl max-h-[85vh] flex flex-col bg-white dark:bg-gray-800 shadow-2xl rounded-2xl overflow-hidden">
         <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
             <h2 class="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
                 <i class="fa-regular fa-bell"></i> Notifications
@@ -588,10 +588,18 @@ export class AppNavigation {
             }
 
             if (closeNotifsModalBtn) {
-                closeNotifsModalBtn.addEventListener('click', closeNotificationsModal);
-            }
+                closeNotifsModalBtn.addEventListener('click', closeNotificationsModal);
+            }
+            
+            if (notifsModal) {
+                notifsModal.addEventListener('click', (e) => {
+                    if (e.target === notifsModal) {
+                        closeNotificationsModal();
+                    }
+                });
+            }
 
-            const handleClearAll = async (e) => {
+            const handleClearAll = async (e) => {
                 e.stopPropagation();
                 const auth = getAuth();
                 const user = auth.currentUser;
