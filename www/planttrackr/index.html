@@ -26,20 +26,20 @@
 
     <style>
         :root {
-            --bg: #f0fdf4;       
+            --bg: #f3f4f6;       
             --card: #ffffff;
-            --text: #14532d;     
-            --border: #bbf7d0;   
-            --input-bg: #dcfce7; 
+            --text: #1f2937;     
+            --border: #e5e7eb;   
+            --input-bg: #f9fafb; 
             --primary: #16a34a;  
         }
 
         .dark {
-            --bg: #064e3b;       
-            --card: #022c22;     
-            --text: #ecfdf5;     
-            --border: #14532d;
-            --input-bg: #14532d; 
+            --bg: #111827;       
+            --card: #1f2937;     
+            --text: #f9fafb;     
+            --border: #374151;
+            --input-bg: #374151; 
             --primary: #22c55e;  
         }
         
@@ -251,14 +251,21 @@
                 </section>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-q gap-4 mb-8">
-                <div class="mb-8">
-                <section class="card p-4 flex flex-col h-fit">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+                <section class="card p-4 lg:col-span-2 flex flex-col" id="dashboard-planting-guide-section">
+                    <h2 class="text-lg font-bold mb-3 flex items-center gap-2 text-green-600 dark:text-green-400">
+                        <i class="fa-solid fa-seedling"></i> Seasonal Planting Guide
+                    </h2>
+                    <div id="dashboard-planting-guide" class="space-y-2 flex-grow text-sm">
+                        <p class="opacity-60"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Analyzing climate data...</p>
+                    </div>
+                </section>
+
+                <section class="card p-4 flex flex-col h-fit lg:col-span-1">
                     <h2 class="text-lg font-bold mb-3 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left opacity-50"></i> Recent Activity</h2>
-                    <div id="dashboard-recent-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+                    <div id="dashboard-recent-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3"></div>
                 </section>
             </div>
-        </div>
         </div> 
         <div id="tab-content-plants" class="tab-content hidden animate-fade">
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
@@ -363,7 +370,7 @@
             <select id="layout-location-select" class="input-std !w-auto"><option value="">-- Select Room --</option></select>
         </div>
         <div id="layout-toolbar" class="card p-2 mb-4 flex gap-2 overflow-x-auto"></div>
-        <div class="card relative bg-[#f0fdf4] dark:bg-[#022c22] border-2 border-dashed border-[var(--border)] overflow-hidden" style="height: 60vh;" id="layout-container">
+        <div class="card relative bg-[var(--input-bg)] border-2 border-dashed border-[var(--border)] overflow-hidden" style="height: 60vh;" id="layout-container">
             <div id="layout-placeholder" class="absolute inset-0 flex items-center justify-center opacity-50 pointer-events-none"><p>Select a location to start</p></div>
         </div>
     </div>
@@ -1085,19 +1092,45 @@
         
         // Fetch weather data for the dashboard using Open-Meteo
         const fetchWeather = async () => {
-            if (!state.location || !state.location.latitude || !state.location.longitude) return;
+            console.log("[DEBUG] fetchWeather triggered. Target location:", state.location?.name || "Unnamed Location");
+            const lat = state.location?.latitude ?? state.location?.lat;
+            const lng = state.location?.longitude ?? state.location?.lng ?? state.location?.long;
+
+            console.log("[DEBUG] Extracted coordinates successfully.");
+
+            if (lat === undefined || lng === undefined) {
+                console.warn("[DEBUG] Weather API aborted: Missing latitude or longitude.");
+                state.weather = { error: true, message: "Missing coordinates in location settings." };
+                renderDashboard(); // Force UI update even if aborted
+                return;
+            }
             try {
-                // Added hourly metrics to the API URL
-                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${state.location.latitude}&longitude=${state.location.longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,uv_index_max,wind_speed_10m_max,precipitation_probability_max&hourly=temperature_2m,precipitation_probability&timezone=auto`);
-                if (!res.ok) throw new Error("API request failed");
+                console.log(`[DEBUG] Fetching from Open-Meteo for saved coordinates...`);
+                
+                // Added a cache-busting timestamp & no-store policy to prevent the Service Worker 
+                // from returning a cached response meant for a different app widget.
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,uv_index_max,wind_speed_10m_max&hourly=temperature_2m,precipitation_probability&timezone=auto&cb=${Date.now()}`, {
+                    cache: "no-store"
+                });
+                
+                console.log("[DEBUG] Open-Meteo response status:", res.status);
+                if (!res.ok) throw new Error(`API request failed with status ${res.status}`);
+                
                 const data = await res.json();
+                console.log("[DEBUG] Open-Meteo data parsed:", data);
+
                 if (data.error) throw new Error(data.reason);
+                if (!data.daily) {
+                    console.error("[DEBUG] Missing daily data in response! Keys returned:", Object.keys(data));
+                    throw new Error("Weather API returned incomplete data (daily forecast missing).");
+                }
                 
                 state.weather = data.daily;
-                state.weatherHourly = data.hourly; // Save the hourly array
+                state.weatherHourly = data.hourly || {};
+                console.log("[DEBUG] Calling renderDashboard after successful fetch");
                 renderDashboard();
             } catch (e) {
-                console.error("Failed to fetch weather", e);
+                console.error("[DEBUG] Failed to fetch weather", e);
                 state.weather = { error: true, message: e.message }; 
                 renderDashboard();
             }
@@ -1670,6 +1703,77 @@ window.toggleGardenView = (view) => {
     }
 };
 
+        const renderPlantingGuide = () => {
+            const guideContainer = getEl("dashboard-planting-guide");
+            if (!guideContainer) return;
+
+            const lat = state.location?.latitude ?? state.location?.lat;
+            if (!state.location || lat === undefined) {
+                guideContainer.innerHTML = `<p class="opacity-70 italic mt-2"><i class="fa-solid fa-location-dot text-yellow-500 mr-1"></i> Set your location in Settings to get climate-based planting advice.</p>`;
+                return;
+            }
+            const month = new Date().getMonth(); // 0 = Jan, 11 = Dec
+            const isNorth = lat >= 0;
+
+            let season = "";
+            let advice = [];
+
+            if (month >= 2 && month <= 4) season = isNorth ? "Spring" : "Autumn";
+            else if (month >= 5 && month <= 7) season = isNorth ? "Summer" : "Winter";
+            else if (month >= 8 && month <= 10) season = isNorth ? "Autumn" : "Spring";
+            else season = isNorth ? "Winter" : "Summer";
+
+            let frostRisk = false;
+            let minTempForecast = 100;
+            if (state.weather && state.weather.temperature_2m_min) {
+                minTempForecast = Math.min(...state.weather.temperature_2m_min);
+                if (minTempForecast <= 2) frostRisk = true;
+            }
+
+            if (season === "Spring") {
+                advice.push("<strong>Early Spring:</strong> Time to start seeds indoors (tomatoes, peppers, eggplants).");
+                if (month === 2 || month === 8) advice.push("<strong>Chitted Potatoes:</strong> Ideal time to plant out early seed potatoes if the ground isn't frozen.");
+                if (month === 4 || month === 10) advice.push("<strong>Hardening Off:</strong> Begin hardening off indoor-grown seedlings by placing them outside during the day for a few hours.");
+                advice.push("<strong>Direct Sowing:</strong> Cool-weather crops like carrots, peas, and radishes can be sown directly outdoors.");
+            } else if (season === "Summer") {
+                advice.push("<strong>Planting Out:</strong> Safe to plant tender crops outside (tomatoes, beans, courgettes) as frost risk has passed.");
+                advice.push("<strong>Maintenance:</strong> Keep crops well-watered. Mulch around plants to retain moisture.");
+                advice.push("<strong>Succession:</strong> Sow quick-growing salads and radishes every 2 weeks for a continuous harvest.");
+            } else if (season === "Autumn") {
+                advice.push("<strong>Overwintering:</strong> Plant garlic cloves, autumn onion sets, and broad beans now.");
+                advice.push("<strong>Harvest:</strong> Lift maincrop potatoes and root vegetables before heavy frosts.");
+                advice.push("<strong>Cleanup:</strong> Move tender perennials indoors or into a greenhouse. Clear finished crops to the compost bin.");
+            } else if (season === "Winter") {
+                advice.push("<strong>Dormancy:</strong> Perfect time to prune dormant fruit trees, bushes, and grapevines.");
+                advice.push("<strong>Preparation:</strong> Plan your crop rotation. Order seeds for the upcoming year.");
+                if (month === 1 || month === 7) advice.push("<strong>Early Starts:</strong> Sow slow-growing seeds like chillies and geraniums indoors in a heated propagator.");
+            }
+
+            let alertHtml = "";
+            if (frostRisk) {
+                alertHtml = `<div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 p-2.5 rounded-lg text-xs mb-3 flex items-start gap-2 shadow-sm">
+                    <i class="fa-solid fa-snowflake mt-0.5 text-blue-500"></i>
+                    <div><strong class="text-sm">Frost Risk Warning!</strong><br>Temperatures are forecasted to drop to ${minTempForecast}°C in the next 7 days. Do not plant out tender seedlings and hold off on hardening them outside. Cover emerging sensitive outdoor plants.</div>
+                </div>`;
+            } else if (minTempForecast > 10 && (season === 'Spring' || season === 'Summer')) {
+                alertHtml = `<div class="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 p-2.5 rounded-lg text-xs mb-3 flex items-start gap-2 shadow-sm">
+                    <i class="fa-solid fa-temperature-arrow-up mt-0.5 text-green-500"></i>
+                    <div><strong class="text-sm">Favorable Conditions:</strong><br>No frost forecasted (Lowest: ${minTempForecast}°C). Good conditions for hardening off and planting out warm-weather crops.</div>
+                </div>`;
+            }
+
+            guideContainer.innerHTML = `
+                ${alertHtml}
+                <div class="flex items-center gap-2 mb-3 mt-1">
+                    <span class="bg-[var(--primary)] text-white px-2 py-0.5 rounded shadow-sm text-xs font-bold uppercase tracking-wide">${season}</span>
+                    <span class="text-xs opacity-70"><i class="fa-solid fa-earth-americas mr-1"></i> ${isNorth ? 'Northern' : 'Southern'} Hemisphere Routine</span>
+                </div>
+                <ul class="space-y-2 opacity-90 text-sm">
+                    ${advice.map(a => `<li class="flex items-start gap-2"><i class="fa-solid fa-check text-[var(--primary)] mt-1 text-[10px]"></i> <div>${a}</div></li>`).join('')}
+                </ul>
+            `;
+        };
+
         const renderDashboard = () => {
             const weatherBanner = getEl("dashboard-weather-banner");
             const combinedCareList = getEl("dashboard-care-combined-list");
@@ -1679,79 +1783,87 @@ window.toggleGardenView = (view) => {
             const recentList = getEl("dashboard-recent-list");
 
             // Build Weather Banner
-            if (state.location && state.location.latitude) {
+            const lat = state.location?.latitude ?? state.location?.lat;
+            if (state.location && lat !== undefined) {
+                console.log("[DEBUG] renderDashboard: Evaluating weather state", state.weather);
                 if (state.weather && state.weather.temperature_2m_min) {
-                    const minTemp = state.weather.temperature_2m_min[0];
-                    const maxTemp = state.weather.temperature_2m_max[0];
-                    const rain = state.weather.precipitation_sum[0];
-                    
-                    const uv = state.weather.uv_index_max ? state.weather.uv_index_max[0] : 0;
-                    const wind = state.weather.wind_speed_10m_max ? state.weather.wind_speed_10m_max[0] : 0;
-                    
-                    const uvText = uv <= 2 ? `Low UV (${uv})` : uv <= 5 ? `Mod UV (${uv})` : uv <= 7 ? `High UV ⚠️ (${uv})` : `Extreme UV 🛑 (${uv})`;
-                    const uvColor = uv <= 5 ? 'text-green-600 dark:text-green-400' : uv <= 7 ? 'text-orange-500' : 'text-red-500';
-
-                    const windText = wind < 15 ? `Calm 🍃 (${wind} km/h)` : wind < 30 ? `Breezy 💨 (${wind} km/h)` : `Strong Winds ⚠️ (${wind} km/h)`;
-                    const windColor = wind < 30 ? 'text-gray-600 dark:text-gray-400' : 'text-orange-500';
-
-                    const tempText = maxTemp < 10 ? `Cold ❄️ (${maxTemp}°C)` : maxTemp < 20 ? `Mild 🌤️ (${maxTemp}°C)` : maxTemp < 30 ? `Warm ☀️ (${maxTemp}°C)` : `Hot 🔥 (${maxTemp}°C)`;
-                    const tempColor = maxTemp < 10 ? 'text-blue-500' : maxTemp < 30 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500';
-
-                    let hourlyHtml = '';
-                    if (state.weatherHourly && state.weatherHourly.time) {
-                        const now = new Date();
-                        let startIndex = state.weatherHourly.time.findIndex(t => new Date(t).getTime() > now.getTime()) - 1;
-                        if (startIndex < 0) startIndex = 0;
+                    try {
+                        const minTemp = state.weather.temperature_2m_min[0] ?? 0;
+                        const maxTemp = state.weather.temperature_2m_max[0] ?? 0;
+                        const rain = (state.weather.precipitation_sum && state.weather.precipitation_sum[0]) ? state.weather.precipitation_sum[0] : 0;
                         
-                        const nextHours = state.weatherHourly.time.slice(startIndex, startIndex + 5).map((t, i) => {
-                            const idx = startIndex + i;
-                            const timeDate = new Date(t);
-                            const timeLabel = i === 0 ? 'Now' : timeDate.toLocaleTimeString('en-US', {hour: 'numeric', hour12: true}); 
-                            const temp = state.weatherHourly.temperature_2m[idx];
-                            const precip = state.weatherHourly.precipitation_probability[idx];
+                        const uv = (state.weather.uv_index_max && state.weather.uv_index_max[0]) ? state.weather.uv_index_max[0] : 0;
+                        const wind = (state.weather.wind_speed_10m_max && state.weather.wind_speed_10m_max[0]) ? state.weather.wind_speed_10m_max[0] : 0;
+                        
+                        const uvText = uv <= 2 ? `Low UV (${uv})` : uv <= 5 ? `Mod UV (${uv})` : uv <= 7 ? `High UV ⚠️ (${uv})` : `Extreme UV 🛑 (${uv})`;
+                        const uvColor = uv <= 5 ? 'text-green-600 dark:text-green-400' : uv <= 7 ? 'text-orange-500' : 'text-red-500';
+
+                        const windText = wind < 15 ? `Calm 🍃 (${wind} km/h)` : wind < 30 ? `Breezy 💨 (${wind} km/h)` : `Strong Winds ⚠️ (${wind} km/h)`;
+                        const windColor = wind < 30 ? 'text-gray-600 dark:text-gray-400' : 'text-orange-500';
+
+                        const tempText = maxTemp < 10 ? `Cold ❄️ (${maxTemp}°C)` : maxTemp < 20 ? `Mild 🌤️ (${maxTemp}°C)` : maxTemp < 30 ? `Warm ☀️ (${maxTemp}°C)` : `Hot 🔥 (${maxTemp}°C)`;
+                        const tempColor = maxTemp < 10 ? 'text-blue-500' : maxTemp < 30 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500';
+
+                        let hourlyHtml = '';
+                        if (state.weatherHourly && state.weatherHourly.time) {
+                            const now = new Date();
+                            let startIndex = state.weatherHourly.time.findIndex(t => new Date(t).getTime() > now.getTime()) - 1;
+                            if (startIndex < 0) startIndex = 0;
                             
-                            return `
-                                <div class="flex flex-col items-center justify-center p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-blue-100 dark:border-blue-800/50 min-w-[65px] flex-1">
-                                    <span class="text-[10px] uppercase font-bold opacity-70 mb-1 whitespace-nowrap">${timeLabel}</span>
-                                    <span class="text-sm font-bold">${Math.round(temp)}°</span>
-                                    <span class="text-[10px] text-cyan-500 mt-1 font-bold flex items-center gap-1"><i class="fa-solid fa-droplet"></i> ${precip}%</span>
-                                </div>
-                            `;
-                        }).join('');
-                        hourlyHtml = `<div class="flex gap-2 mt-4 md:mt-0 overflow-x-auto pb-1 w-full hide-scrollbar">${nextHours}</div>`;
-                    }
-                    
-                    weatherBanner.innerHTML = `
-                        <div class="bg-blue-50 border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 rounded-lg p-3 shadow-sm">
-                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-6">
-                                <div class="flex-1 flex flex-col justify-center">
-                                    <div class="flex items-center gap-3">
-                                        <i class="fa-solid ${rain > 0 ? 'fa-cloud-rain' : 'fa-cloud-sun'} text-3xl md:text-4xl text-blue-500"></i>
-                                        <div class="flex-1">
-                                            <div class="flex justify-between items-start">
-                                                <h3 class="font-bold text-sm md:text-lg text-blue-800 dark:text-blue-300 leading-tight">
-                                                    ${state.location.name || 'Saved Location'}
-                                                </h3>
-                                                <a href="/account" class="text-[10px] text-blue-500 dark:text-blue-400 hover:underline bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap"><i class="fa-solid fa-gear"></i> Edit</a>
-                                            </div>
-                                            <div class="flex items-center gap-2 text-xs md:text-sm font-semibold text-blue-900 dark:text-blue-200 mt-0.5">
-                                                <span title="High Temp"><i class="fa-solid fa-arrow-up text-red-400"></i> ${maxTemp}°</span>
-                                                <span title="Low Temp"><i class="fa-solid fa-arrow-down text-blue-400"></i> ${minTemp}°</span>
-                                                <span title="Total Rain"><i class="fa-solid fa-droplet text-cyan-500"></i> ${rain}mm</span>
+                            const nextHours = state.weatherHourly.time.slice(startIndex, startIndex + 5).map((t, i) => {
+                                const idx = startIndex + i;
+                                const timeDate = new Date(t);
+                                const timeLabel = i === 0 ? 'Now' : timeDate.toLocaleTimeString('en-US', {hour: 'numeric', hour12: true}); 
+                                const temp = (state.weatherHourly.temperature_2m && state.weatherHourly.temperature_2m[idx]) ? state.weatherHourly.temperature_2m[idx] : 0;
+                                const precip = (state.weatherHourly.precipitation_probability && state.weatherHourly.precipitation_probability[idx]) ? state.weatherHourly.precipitation_probability[idx] : 0;
+                                
+                                return `
+                                    <div class="flex flex-col items-center justify-center p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-blue-100 dark:border-blue-800/50 min-w-[65px] flex-1">
+                                        <span class="text-[10px] uppercase font-bold opacity-70 mb-1 whitespace-nowrap">${timeLabel}</span>
+                                        <span class="text-sm font-bold">${Math.round(temp)}°</span>
+                                        <span class="text-[10px] text-cyan-500 mt-1 font-bold flex items-center gap-1"><i class="fa-solid fa-droplet"></i> ${precip}%</span>
+                                    </div>
+                                `;
+                            }).join('');
+                            hourlyHtml = `<div class="flex gap-2 mt-4 md:mt-0 overflow-x-auto pb-1 w-full hide-scrollbar">${nextHours}</div>`;
+                        }
+                        
+                        weatherBanner.innerHTML = `
+                            <div class="bg-blue-50 border border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 rounded-lg p-3 shadow-sm">
+                                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-6">
+                                    <div class="flex-1 flex flex-col justify-center">
+                                        <div class="flex items-center gap-3">
+                                            <i class="fa-solid ${rain > 0 ? 'fa-cloud-rain' : 'fa-cloud-sun'} text-3xl md:text-4xl text-blue-500"></i>
+                                            <div class="flex-1">
+                                                <div class="flex justify-between items-start">
+                                                    <h3 class="font-bold text-sm md:text-lg text-blue-800 dark:text-blue-300 leading-tight">
+                                                        ${state.location.name || 'Saved Location'}
+                                                    </h3>
+                                                    <a href="/account" class="text-[10px] text-blue-500 dark:text-blue-400 hover:underline bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap"><i class="fa-solid fa-gear"></i> Edit</a>
+                                                </div>
+                                                <div class="flex items-center gap-2 text-xs md:text-sm font-semibold text-blue-900 dark:text-blue-200 mt-0.5">
+                                                    <span title="High Temp"><i class="fa-solid fa-arrow-up text-red-400"></i> ${maxTemp}°</span>
+                                                    <span title="Low Temp"><i class="fa-solid fa-arrow-down text-blue-400"></i> ${minTemp}°</span>
+                                                    <span title="Total Rain"><i class="fa-solid fa-droplet text-cyan-500"></i> ${rain}mm</span>
+                                                </div>
                                             </div>
                                         </div>
+                                        <div class="flex flex-wrap gap-1.5 mt-2 hidden sm:flex">
+                                            <span class="px-2 py-0.5 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-800/50 rounded-full text-[9px] md:text-[10px] font-bold shadow-sm ${tempColor}">${tempText}</span>
+                                            <span class="px-2 py-0.5 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-800/50 rounded-full text-[9px] md:text-[10px] font-bold shadow-sm ${uvColor}">${uvText}</span>
+                                            <span class="px-2 py-0.5 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-800/50 rounded-full text-[9px] md:text-[10px] font-bold shadow-sm ${windColor}">${windText}</span>
+                                        </div>
                                     </div>
-                                    <div class="flex flex-wrap gap-1.5 mt-2 hidden sm:flex">
-                                        <span class="px-2 py-0.5 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-800/50 rounded-full text-[9px] md:text-[10px] font-bold shadow-sm ${tempColor}">${tempText}</span>
-                                        <span class="px-2 py-0.5 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-800/50 rounded-full text-[9px] md:text-[10px] font-bold shadow-sm ${uvColor}">${uvText}</span>
-                                        <span class="px-2 py-0.5 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-800/50 rounded-full text-[9px] md:text-[10px] font-bold shadow-sm ${windColor}">${windText}</span>
-                                    </div>
+                                    <div class="w-full md:w-auto md:max-w-[55%] mt-1 md:mt-0">${hourlyHtml}</div>
                                 </div>
-                                <div class="w-full md:w-auto md:max-w-[55%] mt-1 md:mt-0">${hourlyHtml}</div>
                             </div>
-                        </div>
-                    `;
-                    toggleDisplay(weatherBanner, true);
+                        `;
+                        toggleDisplay(weatherBanner, true);
+                    } catch (renderError) {
+                        console.error("[DEBUG] Error while building weather HTML:", renderError);
+                        weatherBanner.innerHTML = `<div class="p-4 text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center gap-2 border border-red-200 dark:border-red-800"><i class="fa-solid fa-triangle-exclamation"></i> Error parsing weather data. Check console.</div>`;
+                        toggleDisplay(weatherBanner, true);
+                    }
                 } else if (state.weather && state.weather.error) {
                     weatherBanner.innerHTML = `<div class="p-4 text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center gap-2 border border-red-200 dark:border-red-800"><i class="fa-solid fa-triangle-exclamation"></i> Error loading weather: ${state.weather.message}</div>`;
                     toggleDisplay(weatherBanner, true);
@@ -2166,6 +2278,8 @@ if (state.compost) {
 
             document.querySelectorAll(".quick-water-btn").forEach(b => b.onclick = (e) => quickWater(e.currentTarget.dataset.id));
             document.querySelectorAll(".edit-plant-btn").forEach(b => b.onclick = (e) => openPlantModal(e.currentTarget.dataset.id));
+            
+            renderPlantingGuide();
         };
         
         const renderHistory = () => {
@@ -3781,16 +3895,21 @@ window.saveCompostSettings = async () => {
         });
 
         onSnapshot(doc(db, 'users', state.user.uid, 'settings', 'location'), async (snap) => {
+            console.log("[DEBUG] Location snapshot received. Exists:", snap.exists());
             const data = snap.exists() ? snap.data() : null;
-            const locEl = document.getElementById("settings-current-location"); // Added UI ref
+            console.log("[DEBUG] Location data received for:", data?.name || "Unnamed Location");
             
-            if (data && data.latitude) {
+            const locEl = document.getElementById("settings-current-location"); // Added UI ref
+            const lat = data?.latitude ?? data?.lat;
+            
+            if (data && lat !== undefined) {
                 state.location = data;
                 if (locEl) locEl.innerHTML = `<i class="fa-solid fa-map-pin text-[var(--primary)] mr-2"></i> ${data.name || 'Set to coordinates'}`;
                 await fetchWeather();
             } else {
+                console.log("[DEBUG] No valid location data found, clearing state.");
                 state.location = null;
-                state.weather = null;
+                state.weather = null; // Clear weather if location drops
                 if (locEl) locEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-yellow-500 mr-2"></i> Location Not Set`;
                 renderDashboard(); 
             }

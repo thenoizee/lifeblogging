@@ -1,6 +1,6 @@
 // Automatically grab the version from the registration URL (e.g., sw.js?v=1.2.0)
 const urlParams = new URL(self.location).searchParams;
-const LATEST_VERSION = urlParams.get('v') || "2.0.8";
+const LATEST_VERSION = urlParams.get('v') || "2.0.9";
 
 console.log(`[sw.js] 🟢 Booting up Service Worker v${LATEST_VERSION}`);
 
@@ -12,8 +12,8 @@ try {
 }
 
 const CACHE_NAME = `lifeblogging-hub-${LATEST_VERSION}`;
-// UN-VERSIONED: This cache will now survive updates! It won't wipe Tailwind or Fonts anymore.
-const EXTERNAL_CACHE_NAME = `lifeblogging-external-assets`;
+// Bumped to v2 to flush the corrupted Open-Meteo cache responses
+const EXTERNAL_CACHE_NAME = `lifeblogging-external-assets-v2`;
 
 // Add all the files you want to cache for offline use
 const urlsToCache = [
@@ -204,12 +204,13 @@ self.addEventListener('fetch', event => {
   }
 
   // 1. BYPASS SERVICE WORKER FOR API CALLS
-  // Firebase APIs (Firestore, Auth, FCM, Functions) must be ignored so they don't break offline syncing
+  // Firebase APIs and dynamic external APIs must be ignored so they don't break offline syncing
   if (event.request.method !== 'GET' || 
       url.hostname.includes('googleapis.com') ||
       url.hostname.includes('firebaseapp.com') ||
       url.pathname.includes('/__/auth/') ||
       url.hostname.includes('cloudfunctions.net') ||
+      url.hostname.includes('api.open-meteo.com') ||
       url.hostname.includes('openfoodfacts.org')) {
     return; 
   }

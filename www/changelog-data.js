@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.26.0-alpha",
+    date: "2026-04-26",
+    changes: [
+                "In PlantTrackr: Added a new Seasonal Planting Guide to the dashboard that provides tailored advice and frost warnings based on hemisphere, calendar month, and local weather forecasts.",
+                "In PlantTrackr: Fixed a bug where the dashboard weather banner and planting guide would get stuck 'Fetching daily overview' if saved coordinates evaluated to 0 or used differing key names (lat/lng).",
+                "In PlantTrackr: Added robust console debugging, fail-safes, and try-catch error boundaries directly into the Dashboard HTML generator to prevent incomplete Open-Meteo API responses from halting dashboard generation.",
+                "In PlantTrackr: Fixed a Service Worker caching collision where the app was being served corrupted/incorrect weather data meant for a different widget. Added cache-busting parameters to the fetch call.",
+                "In PlantTrackr: Updated the UI theme CSS to use neutral background colors, aligning it with the rest of the LifeBlogging ecosystem instead of the previous heavy green tint."
+    ]
+},
+    {
     version: "v15.25.0-alpha",
     date: "2026-04-26",
     changes: [
