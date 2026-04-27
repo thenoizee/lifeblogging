@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.29.0-alpha",
+    date: "2026-04-28",
+    changes: [
+        "In TaskTrackr: Fixed the mobile view scaling by updating the meta viewport tag (`viewport-fit=cover`).",
+        "In TaskTrackr: Added a distinct light box outline style specifically to the task title field inside the Side Pane.",
+        "In PlantTrackr: Clarified text on the 'Spaces & Locations' tab.",
+        "In PlantTrackr: Reorganized the Edit Plant form to group Space, Light, and Position under a cleaner 'Placement & Space' block.",
+        "In PlantTrackr: Introduced a brand new 'View Plant Details' modal that displays plant info cleanly instead of jumping straight into Edit/Log modes.",
+        "In PlantTrackr: Updated Garden view plant cards to open the new View Modal on click."
+    ]
+},
+    {
     version: "v15.28.0-alpha",
     date: "2026-04-27",
     changes: [
