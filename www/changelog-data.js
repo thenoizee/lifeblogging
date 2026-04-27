@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.28.0-alpha",
+    date: "2026-04-27",
+    changes: [
+        "In PlantTrackr: Added an Action Type filter to the Journal tab to easily sort between Watering, Fertilizing, Progress, Repotting, and Notes.",
+        "In PlantTrackr: Added dynamic plant counters to the Garden sub-tabs (Active, Props, Graveyard).",
+        "In PlantTrackr: Fixed a bug where legacy plants without a defined status property were hidden from the Garden tabs but visible elsewhere.",
+        "In PlantTrackr: Removed the hardcoded height limit on the 'Next 7 Days' dashboard widget so it utilizes the full vertical space of its container."
+    ]
+    },
+    {
     version: "v15.27.0-alpha",
     date: "2026-04-26",
     changes: [
