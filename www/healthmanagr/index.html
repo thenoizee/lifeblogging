@@ -2694,19 +2694,40 @@ const isHistoryTab = document.getElementById('tab-content-record-doses').classLi
         };
 
         if (!isImported || isHistoryTab) {
-            const newDate = new Date(document.getElementById('modal-dose-datetime').value);
-            if (newDate > new Date() && !isImported) { // Allow editing future dates for imported data correction
-                return showMessage("Cannot edit a dose in the future.", "error");
-            }
-            updateData.date = document.getElementById('modal-dose-datetime').value;
-            updateData.status = document.getElementById('modal-dose-status').value;
-            updateData.doseNotes = document.getElementById('modal-dose-notes').value;
-
-            const batchSelect = document.getElementById('modal-edit-batch-select');
-            if (batchSelect) {
-                updateData.stockId = batchSelect.value;
-            }
-        }
+              const newDate = new Date(document.getElementById('modal-dose-datetime').value);
+              if (newDate > new Date() && !isImported) { // Allow editing future dates for imported data correction
+                  return showMessage("Cannot edit a dose in the future.", "error");
+              }
+              updateData.date = document.getElementById('modal-dose-datetime').value;
+              updateData.status = document.getElementById('modal-dose-status').value;
+              updateData.doseNotes = document.getElementById('modal-dose-notes').value;
+  
+              const batchSelect = document.getElementById('modal-edit-batch-select');
+              if (updateData.status === 'taken') {
+                  if (batchSelect) {
+                      updateData.stockId = batchSelect.value;
+                  } else if (dose.status !== 'taken') {
+                      const med = appState.medicines.find(m => m.id === dose.medId);
+                      if (med && med.stock) {
+                          const stockWithRemaining = med.stock.map((batch, index) => {
+                              const currentStockId = `${med.id}-${index}`;
+                              const takenFromBatch = appState.doses.filter(d => d.stockId === currentStockId && d.status === 'taken').length;
+                              return { ...batch, index, remaining: batch.amount - takenFromBatch };
+                          });
+                          const validBatches = stockWithRemaining
+                              .filter(b => !b.disposed && b.remaining > 0 && new Date(b.expiryDate) >= new Date())
+                              .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+                          if (validBatches.length > 0) {
+                              updateData.stockId = `${med.id}-${validBatches[0].index}`;
+                          } else {
+                              return showMessage(`No valid, unexpired stock for ${med.name}. Please restock.`, "error");
+                          }
+                      }
+                  }
+              } else {
+                  updateData.stockId = null; // Clear stockId if status is missed/unknown
+              }
+          }
         
         try {
             await updateDoc(docRef, updateData);

@@ -81,6 +81,12 @@
         .cut-line { background: rgba(0, 100, 255, 0.7); }
         .cut-line:hover { background: blue; }
         #stitch-full-preview-container { max-height: 70vh; overflow-y: auto; border: 1px solid var(--border-color); padding: 1rem; background: var(--input-bg-color); }
+        .preview-container.fit-mode { overflow: hidden !important; display: flex; justify-content: center; align-items: center; }
+        .preview-container.fit-mode canvas { max-height: 55vh !important; width: auto !important; object-fit: contain; }
+        #organise-pages-grid.enlarged-grid, #splitmultiple-pages-grid.enlarged-grid { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
+        @media (min-width: 640px) { #organise-pages-grid.enlarged-grid, #splitmultiple-pages-grid.enlarged-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
+        #splitmultiple-pages-grid.enlarged-grid { display: grid; gap: 1rem; }
+        #splitmultiple-pages-grid.enlarged-grid .split-marker { transform: rotate(90deg); margin: 1rem auto; height: auto; }
     </style>
 </head>
 
@@ -140,7 +146,11 @@
                     <p class="text-[var(--text-color-secondary)] mb-4">Visually reorder, rotate, and delete pages from your PDF.</p>
                     <div id="organise-tool" class="tool-container">
                         <div class="drop-zone" data-tool="organise"><i class="fas fa-sitemap text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
-                        <div id="organise-pages-grid" class="hidden mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+                        <div class="flex justify-between items-center mt-4 mb-2 hidden" id="organise-controls">
+                            <p class="text-sm text-[var(--text-color-secondary)]">Drag to reorder. Click icons to rotate/delete.</p>
+                            <button id="organise-fit-btn" class="px-3 py-1 border rounded-md text-sm hover:bg-[var(--bg-color)] border-[var(--border-color)] bg-[var(--input-bg-color)]"><i class="fas fa-expand"></i> Fit All Pages</button>
+                        </div>
+                        <div id="organise-pages-grid" class="hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
                         <button class="action-btn hidden w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg"><span class="btn-text">Save Changes</span><div class="loader hidden"></div></button>
                         <div class="status-text mt-4 text-center"></div>
                         <a class="download-link">Download organised PDF</a>
@@ -287,14 +297,19 @@
                 </div>
                 <div id="panel-redact" class="tab-panel hidden">
                       <h2 class="text-xl font-bold mb-2">Redact PDF</h2>
-                      <p class="text-[var(--text-color-secondary)] mb-4">Draw black boxes to permanently hide sensitive information.</p>
+                      <p class="text-[var(--text-color-secondary)] mb-4">Select a color and draw rectangles on the page to permanently hide sensitive information.</p>
                       <div id="redact-tool" class="tool-container">
                          <div class="drop-zone" data-tool="redact"><i class="fas fa-user-secret text-4xl text-[var(--text-color-secondary)] mb-4"></i><p class="font-bold">Drag & drop PDF here</p><input type="file" class="file-input hidden" accept=".pdf"></div>
                          <div class="editor-view hidden mt-4">
                              <div class="preview-container"><canvas id="redact-canvas-preview"></canvas></div>
                              <div class="mt-4 flex flex-wrap justify-between items-center gap-4">
                                  <div class="flex items-center gap-2"><button id="redact-prev-page" class="px-3 py-1 border rounded-md">&lt;</button><span id="redact-page-indicator">Page 1 / 1</span><button id="redact-next-page" class="px-3 py-1 border rounded-md">&gt;</button></div>
-                                 <button id="add-redaction-btn" class="bg-black text-white font-bold py-2 px-4 rounded-lg">Add Redaction Box</button>
+                                 <div class="flex items-center gap-2">
+                                     <label for="redact-color-picker" class="font-bold text-sm">Redact Color:</label>
+                                     <input type="color" id="redact-color-picker" value="#000000" class="h-8 w-8 border-0 p-0 rounded cursor-pointer">
+                                     <button id="redact-eyedropper-btn" class="bg-[var(--input-bg-color)] border border-[var(--border-color)] px-3 py-1 rounded hover:bg-[var(--bg-color)]" title="Pick color from screen"><i class="fas fa-eye-dropper"></i></button>
+                                     <button id="redact-clear-btn" class="bg-yellow-500 text-white font-bold py-1 px-3 rounded hover:bg-yellow-600">Clear Page</button>
+                                 </div>
                              </div>
                          </div>
                          <button class="action-btn w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg" disabled><span class="btn-text">Apply Redactions & Save</span><div class="loader hidden"></div></button>
@@ -381,6 +396,9 @@
                         </div>
                         
                         <div class="editor-view hidden mt-4 bg-[var(--input-bg-color)] p-4 rounded-lg border border-[var(--border-color)]">
+                            <div class="flex justify-end mb-4">
+                                 <button id="splitmultiple-toggle-size" class="px-3 py-1 border rounded-md text-sm hover:bg-[var(--bg-color)] border-[var(--border-color)] bg-white dark:bg-gray-800"><i class="fas fa-search-plus"></i> Toggle Size</button>
+                            </div>
                             <div class="flex flex-wrap items-center justify-center gap-y-6 gap-x-2 pb-4" id="splitmultiple-pages-grid">
                                 </div>
                         </div>
@@ -553,7 +571,7 @@
 
     <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { initializeAuth, browserLocalPersistence, browserPopupRedirectResolver, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import { changelogData } from '/changelog-data.js';
     const { PDFDocument, rgb, degrees, StandardFonts, PageSizes } = PDFLib;
@@ -571,7 +589,10 @@
 
     // --- FIREBASE INIT ---
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
+    const auth = initializeAuth(app, {
+        persistence: browserLocalPersistence,
+        popupRedirectResolver: browserPopupRedirectResolver
+    });
     const db = getFirestore(app);
 
     const LATEST_VERSION = changelogData[0].version;
@@ -871,6 +892,7 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
         if (state.hasOwnProperty('currentPage')) state.currentPage = 1;
         
         if (toolId === 'organise') {
+            document.getElementById('organise-controls')?.classList.add('hidden');
             const grid = tool.querySelector('#organise-pages-grid');
             grid.innerHTML = '';
             grid.classList.add('hidden');
@@ -1024,6 +1046,102 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             await page.render({ canvasContext: ctx, viewport }).promise;
             
             // Tool-specific rendering on top of the page
+            if (toolId === 'redact') {
+                previewContainer.querySelectorAll('.redact-box-saved').forEach(el => el.remove());
+                const boxes = toolState.redact.boxes[pageNum] || [];
+                boxes.forEach((boxData, index) => {
+                    const boxDiv = document.createElement('div');
+                    const isSelected = toolState.redact.selectedBoxIndex === index;
+                    boxDiv.className = `redact-box-saved absolute border border-black group cursor-move ${isSelected ? 'ring-2 ring-blue-500' : ''}`;
+                    boxDiv.style.backgroundColor = boxData.color;
+                    
+                    const updateGeometry = () => {
+                        const canvasRect = canvas.getBoundingClientRect();
+                        const containerRect = previewContainer.getBoundingClientRect();
+                        const scale = canvasRect.width / canvas.width;
+                        boxDiv.style.left = `${(boxData.x * scale) + (canvasRect.left - containerRect.left)}px`;
+                        boxDiv.style.top = `${(boxData.y * scale) + (canvasRect.top - containerRect.top)}px`;
+                        boxDiv.style.width = `${boxData.width * scale}px`;
+                        boxDiv.style.height = `${boxData.height * scale}px`;
+                    };
+                    updateGeometry();
+
+                    // Drag & Select Interaction
+                    boxDiv.addEventListener('mousedown', (e) => {
+                        if (e.target !== boxDiv) return;
+                        e.stopPropagation();
+                        
+                        previewContainer.querySelectorAll('.redact-box-saved').forEach(b => b.classList.remove('ring-2', 'ring-blue-500'));
+                        boxDiv.classList.add('ring-2', 'ring-blue-500');
+                        toolState.redact.selectedBoxIndex = index;
+                        document.getElementById('redact-color-picker').value = boxData.color;
+
+                        let startX = e.clientX;
+                        let startY = e.clientY;
+                        const onMouseMove = (moveEvent) => {
+                            const scale = canvas.getBoundingClientRect().width / canvas.width;
+                            const dx = (moveEvent.clientX - startX) / scale;
+                            const dy = (moveEvent.clientY - startY) / scale;
+                            boxData.x += dx;
+                            boxData.y += dy;
+                            startX = moveEvent.clientX;
+                            startY = moveEvent.clientY;
+                            updateGeometry();
+                        };
+                        const onMouseUp = () => {
+                            document.removeEventListener('mousemove', onMouseMove);
+                            document.removeEventListener('mouseup', onMouseUp);
+                        };
+                        document.addEventListener('mousemove', onMouseMove);
+                        document.addEventListener('mouseup', onMouseUp);
+                    });
+
+                    // Resize Interaction
+                    const resizeHandle = document.createElement('div');
+                    resizeHandle.className = 'absolute bottom-0 right-0 w-3 h-3 bg-blue-500 cursor-se-resize opacity-0 group-hover:opacity-100';
+                    resizeHandle.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        previewContainer.querySelectorAll('.redact-box-saved').forEach(b => b.classList.remove('ring-2', 'ring-blue-500'));
+                        boxDiv.classList.add('ring-2', 'ring-blue-500');
+                        toolState.redact.selectedBoxIndex = index;
+                        document.getElementById('redact-color-picker').value = boxData.color;
+
+                        let startX = e.clientX;
+                        let startY = e.clientY;
+                        const onMouseMove = (moveEvent) => {
+                            const scale = canvas.getBoundingClientRect().width / canvas.width;
+                            const dx = (moveEvent.clientX - startX) / scale;
+                            const dy = (moveEvent.clientY - startY) / scale;
+                            boxData.width = Math.max(5, boxData.width + dx);
+                            boxData.height = Math.max(5, boxData.height + dy);
+                            startX = moveEvent.clientX;
+                            startY = moveEvent.clientY;
+                            updateGeometry();
+                        };
+                        const onMouseUp = () => {
+                            document.removeEventListener('mousemove', onMouseMove);
+                            document.removeEventListener('mouseup', onMouseUp);
+                        };
+                        document.addEventListener('mousemove', onMouseMove);
+                        document.addEventListener('mouseup', onMouseUp);
+                    });
+                    boxDiv.appendChild(resizeHandle);
+
+                    // Delete Button
+                    const delBtn = document.createElement('button');
+                    delBtn.innerHTML = '&times;';
+                    delBtn.className = 'absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs translate-x-1/2 -translate-y-1/2 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity';
+                    delBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        toolState.redact.boxes[pageNum].splice(index, 1);
+                        if (toolState.redact.selectedBoxIndex === index) toolState.redact.selectedBoxIndex = undefined;
+                        renderPage(pageNum);
+                    };
+                    boxDiv.appendChild(delBtn);
+                    previewContainer.appendChild(boxDiv);
+                });
+            }
+
             if (toolId === 'stitch') {
                 const cuts = toolState.stitch.cuts[pageNum] || [];
                 const splits = toolState.stitch.splits[pageNum] || [];
@@ -1044,22 +1162,24 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
                 markEndBtn.classList.toggle('bg-green-600', toolState.stitch.ends.has(pageNum));
             }
             if (toolId === 'crop') {
-                previewContainer.querySelector('.crop-box')?.remove();
-                if (toolState.crop.boxes[pageNum]) {
-                    const boxData = toolState.crop.boxes[pageNum];
-                    const cropBoxDiv = document.createElement('div');
-                    cropBoxDiv.className = 'crop-box';
-                    const canvasRect = canvas.getBoundingClientRect();
-                    const containerRect = previewContainer.getBoundingClientRect();
-                    const scale = canvasRect.width / canvas.width;
-                    cropBoxDiv.style.left = `${(boxData.x * scale) + (canvasRect.left - containerRect.left)}px`;
-                    cropBoxDiv.style.top = `${(boxData.y * scale) + (canvasRect.top - containerRect.top)}px`;
-                    cropBoxDiv.style.width = `${boxData.width * scale}px`;
-                    cropBoxDiv.style.height = `${boxData.height * scale}px`;
-                    previewContainer.appendChild(cropBoxDiv);
+                    previewContainer.querySelector('.crop-box')?.remove();
+                    if (toolState.crop.boxes[pageNum]) {
+                        const boxData = toolState.crop.boxes[pageNum];
+                        const cropBoxDiv = document.createElement('div');
+                        cropBoxDiv.className = 'crop-box';
+                        const canvasRect = canvas.getBoundingClientRect();
+                        const containerRect = previewContainer.getBoundingClientRect();
+                        const scale = canvasRect.width / canvas.width;
+                        cropBoxDiv.style.left = `${(boxData.x * scale) + (canvasRect.left - containerRect.left)}px`;
+                        cropBoxDiv.style.top = `${(boxData.y * scale) + (canvasRect.top - containerRect.top)}px`;
+                        cropBoxDiv.style.width = `${boxData.width * scale}px`;
+                        cropBoxDiv.style.height = `${boxData.height * scale}px`;
+                        previewContainer.appendChild(cropBoxDiv);
+                    }
                 }
-            }
-        };
+            };
+            
+            toolState[toolId].renderPage = renderPage; // Expose renderPage
 
         const handleFile = async (file) => {
             if (!file) return;
@@ -1095,6 +1215,27 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
         const nextPageBtn = tool.querySelector(`#${toolId}-next-page`);
         if (prevPageBtn) prevPageBtn.addEventListener('click', () => renderPage(toolState[toolId].currentPage - 1));
         if (nextPageBtn) nextPageBtn.addEventListener('click', () => renderPage(toolState[toolId].currentPage + 1));
+        
+        // Add Fit Screen toggle automatically
+        const leftGroup = tool.querySelector('.flex.items-center.gap-2');
+        if (leftGroup && !tool.querySelector('.toggle-view-btn')) {
+            const toggleBtn = document.createElement('button');
+            toggleBtn.className = 'toggle-view-btn px-3 py-1 border rounded-md hover:bg-[var(--bg-color)] border-[var(--border-color)] ml-2 text-sm';
+            toggleBtn.innerHTML = '<i class="fas fa-expand"></i> Fit';
+            toggleBtn.onclick = () => {
+                previewContainer.classList.toggle('fit-mode');
+                toggleBtn.innerHTML = previewContainer.classList.contains('fit-mode') ? '<i class="fas fa-compress"></i> Scroll' : '<i class="fas fa-expand"></i> Fit';
+                if (toolState[toolId].renderPage) toolState[toolId].renderPage(toolState[toolId].currentPage); // re-render geometries correctly
+            };
+            leftGroup.appendChild(toggleBtn);
+            
+            // Set Fit mode as default for Redact
+            if (toolId === 'redact') {
+                previewContainer.classList.add('fit-mode');
+                toggleBtn.innerHTML = '<i class="fas fa-compress"></i> Scroll';
+            }
+        }
+
         if (onAddElement) {
             const addButton = tool.querySelector(`#add-${toolId.replace('add', '')}-btn`) || tool.querySelector(`#add-signature-btn`) || tool.querySelector(`#add-textbox-btn`) || tool.querySelector(`#add-redaction-btn`);
             if(addButton) addButton.addEventListener('click', () => onAddElement(tool, previewContainer));
@@ -1222,6 +1363,78 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
                 delete toolState.crop.boxes[toolState.crop.currentPage];
                 renderPage(toolState.crop.currentPage);
             });
+        }
+
+        if (toolId === 'redact') {
+            previewContainer.classList.add('crop-active');
+            let boxDiv = null, startCoords = null;
+            toolState.redact.boxes = {};
+            const getCanvasCoords = (e) => {
+                const canvasRect = canvas.getBoundingClientRect();
+                const scale = canvas.width / canvasRect.width;
+                return {
+                    x: (e.clientX - canvasRect.left) * scale,
+                    y: (e.clientY - canvasRect.top) * scale
+                };
+            };
+            previewContainer.addEventListener('mousedown', e => {
+                if (e.target !== canvas) return;
+                startCoords = getCanvasCoords(e);
+                boxDiv = document.createElement('div');
+                boxDiv.className = 'redact-box-drawing absolute border border-black opacity-80';
+                boxDiv.style.backgroundColor = document.getElementById('redact-color-picker').value;
+                previewContainer.appendChild(boxDiv);
+                
+                const canvasRect = canvas.getBoundingClientRect();
+                const containerRect = previewContainer.getBoundingClientRect();
+                boxDiv.style.left = `${e.clientX - containerRect.left}px`;
+                boxDiv.style.top = `${e.clientY - containerRect.top}px`;
+                boxDiv.style.width = '0px';
+                boxDiv.style.height = '0px';
+            });
+            previewContainer.addEventListener('mousemove', e => {
+                if (!startCoords || !boxDiv) return;
+                const currentCoords = getCanvasCoords(e);
+                const canvasRect = canvas.getBoundingClientRect();
+                const containerRect = previewContainer.getBoundingClientRect();
+                const scale = canvasRect.width / canvas.width;
+                
+                const x = Math.min(startCoords.x, currentCoords.x);
+                const y = Math.min(startCoords.y, currentCoords.y);
+                const width = Math.abs(currentCoords.x - startCoords.x);
+                const height = Math.abs(currentCoords.y - startCoords.y);
+                
+                boxDiv.style.left = `${(x * scale) + (canvasRect.left - containerRect.left)}px`;
+                boxDiv.style.top = `${(y * scale) + (canvasRect.top - containerRect.top)}px`;
+                boxDiv.style.width = `${width * scale}px`;
+                boxDiv.style.height = `${height * scale}px`;
+            });
+            const endRedact = (e) => {
+                if (!startCoords || !boxDiv) return;
+                const currentCoords = getCanvasCoords(e);
+                const x = Math.min(startCoords.x, currentCoords.x);
+                const y = Math.min(startCoords.y, currentCoords.y);
+                const width = Math.abs(currentCoords.x - startCoords.x);
+                const height = Math.abs(currentCoords.y - startCoords.y);
+
+                if (width > 5 && height > 5) {
+                    const pageNum = toolState.redact.currentPage;
+                    if (!toolState.redact.boxes[pageNum]) toolState.redact.boxes[pageNum] = [];
+                    toolState.redact.boxes[pageNum].push({
+                        x, y, width, height, 
+                        color: document.getElementById('redact-color-picker').value
+                    });
+                    toolState.redact.selectedBoxIndex = toolState.redact.boxes[pageNum].length - 1;
+                }
+                boxDiv.remove();
+                startCoords = null;
+                boxDiv = null;
+                if (toolState.redact.renderPage) {
+                    toolState.redact.renderPage(toolState.redact.currentPage);
+                }
+            };
+            previewContainer.addEventListener('mouseup', endRedact);
+            previewContainer.addEventListener('mouseleave', endRedact);
         }
         
         dropZone.addEventListener('click', () => fileInput.click());
@@ -1387,6 +1600,7 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             pagesGrid.classList.remove('hidden');
             showStatus(tool, 'Loading PDF pages...');
             try {
+                document.getElementById('organise-controls').classList.remove('hidden');
                 const arrayBuffer = await file.arrayBuffer();
                 const pdfjsDoc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
                 toolState.organise.pdfJSDoc = pdfjsDoc;
@@ -2223,13 +2437,147 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
     const onAddSignature = () => { alert('This feature is not yet implemented.'); };
     window.handleAddtext = async () => { alert('This feature is not yet implemented.'); };
     const onAddTextBox = () => { alert('This feature is not yet implemented.'); };
-    window.handleRedact = async () => { alert('This feature is not yet implemented.'); };
-    const onAddRedactionBox = () => { alert('This feature is not yet implemented.'); };
+    window.handleRedact = async () => {
+        const tool = document.getElementById('redact-tool');
+        toggleButtonLoading(tool, true);
+        showStatus(tool, 'Rasterizing pages for true redaction security...');
+        try {
+            const { pdfBytes, boxes, pdfJSDoc } = toolState.redact;
+            if (!pdfBytes) throw new Error("No PDF file loaded.");
+            if (!boxes || Object.keys(boxes).length === 0) throw new Error("No redactions have been drawn.");
 
-    // --- INITIALIZATION ---
+            const pdfDoc = await PDFDocument.load(pdfBytes);
+            const pages = pdfDoc.getPages();
+            
+            // Render at a high scale to preserve quality when flattening to image
+            const RASTER_SCALE = 2.5; 
+            const PREVIEW_SCALE = 1.5; // Scale used when drawing the boxes
+            const scaleRatio = RASTER_SCALE / PREVIEW_SCALE;
+
+            for (let i = 0; i < pages.length; i++) {
+                const pageNum = i + 1;
+                const pageBoxes = boxes[pageNum] || [];
+                if (pageBoxes.length === 0) continue;
+
+                // 1. Render original page to canvas
+                const pdfjsPage = await pdfJSDoc.getPage(pageNum);
+                const viewport = pdfjsPage.getViewport({ scale: RASTER_SCALE });
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                const ctx = canvas.getContext('2d');
+                
+                await pdfjsPage.render({ canvasContext: ctx, viewport }).promise;
+
+                // 2. Draw the solid redaction boxes on the canvas
+                for (const box of pageBoxes) {
+                    ctx.fillStyle = box.color;
+                    ctx.fillRect(box.x * scaleRatio, box.y * scaleRatio, box.width * scaleRatio, box.height * scaleRatio);
+                }
+
+                // 3. Convert canvas to image and embed it into the PDF
+                const imgDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+                const imgBytes = await fetch(imgDataUrl).then(res => res.arrayBuffer());
+                const embeddedImage = await pdfDoc.embedJpg(imgBytes);
+
+                // 4. Create a new blank page and draw the image, replacing the old page
+                const { width, height } = pages[i].getSize();
+                const newPage = pdfDoc.insertPage(i, [width, height]);
+                newPage.drawImage(embeddedImage, {
+                    x: 0,
+                    y: 0,
+                    width: width,
+                    height: height
+                });
+                
+                // Remove the original page (which shifted to i + 1)
+                pdfDoc.removePage(i + 1);
+            }
+            
+            const newPdfBytes = await pdfDoc.save();
+            createDownloadLink(tool, newPdfBytes, `redacted_${toolState.redact.files[0].name}`);
+            showStatus(tool, 'PDF permanently redacted successfully!');
+        } catch (e) {
+            showStatus(tool, e.message, true);
+            console.error("Redact PDF Error:", e);
+        } finally {
+            toggleButtonLoading(tool, false);
+        }
+    };
+    const onAddRedactionBox = null; // No longer used as a generic click handler
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('redact-eyedropper-btn')?.addEventListener('click', async () => {
+            if (!window.EyeDropper) {
+                alert('Your browser does not support the EyeDropper API.');
+                return;
+            }
+            const eyeDropper = new EyeDropper();
+            try {
+                const result = await eyeDropper.open();
+                document.getElementById('redact-color-picker').value = result.sRGBHex;
+            } catch (e) {
+                // user canceled
+            }
+        });
+        document.getElementById('redact-clear-btn')?.addEventListener('click', () => {
+            if (toolState.redact && toolState.redact.boxes) {
+                toolState.redact.boxes[toolState.redact.currentPage] = [];
+                if (toolState.redact.renderPage) toolState.redact.renderPage(toolState.redact.currentPage);
+            }
+        });
+    });
+
+   // --- INITIALIZATION ---
     document.addEventListener('DOMContentLoaded', () => {
         setupAllTools();
         setActivePanel('organise');
+        
+        // Organise "Fit All Pages" logic
+        document.getElementById('organise-fit-btn')?.addEventListener('click', () => {
+            const grid = document.getElementById('organise-pages-grid');
+            const totalPages = grid.children.length;
+            if (totalPages === 0) return;
+            
+            const isFitMode = grid.classList.toggle('fit-all-mode');
+            const btn = document.getElementById('organise-fit-btn');
+            
+            if (isFitMode) {
+                btn.innerHTML = '<i class="fas fa-compress"></i> Standard Size';
+                const containerHeight = Math.min(window.innerHeight * 0.6, 600);
+                const containerWidth = grid.getBoundingClientRect().width;
+                const ratio = 0.7; // Page aspect ratio assumption
+                let cols = Math.ceil(Math.sqrt(totalPages * containerWidth / (containerHeight * ratio)));
+                cols = Math.max(2, Math.min(cols, totalPages));
+                
+                grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+                grid.style.maxHeight = '65vh';
+                grid.style.overflowY = 'auto';
+            } else {
+                btn.innerHTML = '<i class="fas fa-expand"></i> Fit All Pages';
+                grid.style.gridTemplateColumns = '';
+                grid.style.maxHeight = '';
+                grid.style.overflowY = '';
+            }
+        });
+
+        // Split Multiple Toggle logic
+        document.getElementById('splitmultiple-toggle-size')?.addEventListener('click', () => {
+            document.getElementById('splitmultiple-pages-grid').classList.toggle('enlarged-grid');
+        });
+        
+        // Live Colour Picker updates for selected redaction box
+        document.getElementById('redact-color-picker')?.addEventListener('input', (e) => {
+            if (toolState.redact && toolState.redact.boxes) {
+                const pageNum = toolState.redact.currentPage;
+                const selectedIdx = toolState.redact.selectedBoxIndex;
+                if (selectedIdx !== undefined && toolState.redact.boxes[pageNum] && toolState.redact.boxes[pageNum][selectedIdx]) {
+                    toolState.redact.boxes[pageNum][selectedIdx].color = e.target.value;
+                    const boxDivs = document.querySelectorAll('#redact-tool .redact-box-saved');
+                    if(boxDivs[selectedIdx]) boxDivs[selectedIdx].style.backgroundColor = e.target.value;
+                }
+            }
+        });
     });
 </script>
 </body>

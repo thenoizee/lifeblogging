@@ -3,6 +3,18 @@
 export const changelogData = [
     {
     version: "v15.29.0-alpha",
+    date: "2026-04-29",
+    changes: [
+                "In PDF Tools: Fully fleshed out the Redact feature, allowing customizable block colours and colour matching using the EyeDropper API.",
+                "In PDF Tools: Upgraded the Redact feature to perform 'True Redaction' by rasterizing the selected pages, permanently removing text and making it uncopyable.",
+                "In PDF Tools: Added a 'Fit Screen' toggle to all Canvas-based editor modes so the whole PDF page can be visible without scrolling.",
+                "In PDF Tools: Added an 'Enlarged Grid / Toggle Size' option to the Organise and Split Multiple tools for a clearer view of documents.",
+                "In PDF Tools: Updated Firebase authentication to use the new initializeAuth logic with local persistence.",
+                "In HealthManagr: Fixed dose status logic so moving a dose out of the 'taken' status correctly un-links it from stock batches."
+    ]
+    },
+    {
+    version: "v15.29.0-alpha",
     date: "2026-04-28",
     changes: [
         "In TaskTrackr: Fixed the mobile view scaling by updating the meta viewport tag (`viewport-fit=cover`).",
