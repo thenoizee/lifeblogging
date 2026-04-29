@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.32.0-alpha",
+    date: "2026-04-29",
+    changes: [
+                "In Loggr: Changed the default behavior for Screen Time and Activity @ Location quick entries to inherently use the current time, separating them from the manual entry time field.",
+                "In Loggr: Fixed an issue causing Recent Activity Combos for 'MainActivity' to fail by making the tag check case-insensitive.",
+    ]
+},
+    {
     version: "v15.31.0-alpha",
     date: "2026-04-29",
     changes: [
