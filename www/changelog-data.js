@@ -2,7 +2,18 @@
 
 export const changelogData = [
     {
-    version: "v15.29.0-alpha",
+    version: "v15.31.0-alpha",
+    date: "2026-04-29",
+    changes: [
+        "In PlantTrackr: Added a new Seed Storage feature to the Garden tab to track seed brand, variety, name, color, size, spacing, sowing/harvesting months, and expiration dates.",
+        "In PlantTrackr: Added Quantity and Purchase Date tracking to Seed Storage.",
+        "In PlantTrackr: Added a 'Sow Seed' button to easily deduct from seed quantities and generate a new tracking entry in the Propagations tab.",
+        "In PlantTrackr: Fixed the 'Fix' button in Data Validation so it correctly navigates directly to the plant's edit modal.",
+        "In PlantTrackr: Linked Seed Storage to the Family Tree. Sown seeds now automatically set the seed as the origin, and you can manually link plants to origin seeds in the Edit Plant modal."
+    ]
+},
+    {
+    version: "v15.30.0-alpha",
     date: "2026-04-29",
     changes: [
                 "In PDF Tools: Fully fleshed out the Redact feature, allowing customizable block colours and colour matching using the EyeDropper API.",
