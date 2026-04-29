@@ -519,6 +519,22 @@
                         <div class="w-full h-80 flex items-center justify-center"><canvas id="med-distribution-bar-chart"></canvas></div>
                     </div>
                 </fieldset>
+
+                <fieldset class="bg-[var(--card-bg-color)] border-2 border-[var(--border-color)] p-4 rounded-lg mt-4 shadow-sm">
+                    <legend class="text-2xl font-semibold px-2 mb-4 text-[var(--text-color-primary)]">All Logs Overview</legend>
+                    <div class="text-center">
+                        <button id="load-full-calendar-btn" class="main-button w-full md:w-auto"><i class="fa-solid fa-calendar-days"></i> Load Full Calendar Overview</button>
+                    </div>
+                    <div id="full-calendar-wrapper" class="hidden mt-4">
+                        <div class="flex justify-between items-center mb-4">
+                            <button id="prev-full-month-btn" class="secondary-button"><i class="fa-solid fa-arrow-left"></i></button>
+                            <h3 id="full-month-display" class="text-xl font-bold"></h3>
+                            <button id="next-full-month-btn" class="secondary-button"><i class="fa-solid fa-arrow-right"></i></button>
+                        </div>
+                        <div id="full-calendar-header" class="grid grid-cols-7 gap-2 text-center font-bold mb-2"></div>
+                        <div id="full-calendar" class="calendar-container"></div>
+                    </div>
+                </fieldset>
             </div>
             
             <div id="tab-content-record-doses" class="tab-content">
@@ -576,10 +592,8 @@
                     </div>
                     </div>
                 </details>
-            </div>
 
-            <div id="tab-content-meds" class="tab-content">
-                <details class="bg-[var(--card-bg-color)] border-2 border-[var(--border-color)] p-4 rounded-lg shadow-sm">
+                <details class="bg-[var(--card-bg-color)] border-2 border-[var(--border-color)] p-4 rounded-lg mt-4 shadow-sm">
                     <summary class="text-2xl font-semibold px-2 mb-4 cursor-pointer select-none outline-none">Manage Medications</summary>
                     <div class="mt-2">
                     <p class="text-sm text-[var(--text-color-secondary)] mb-4">Add and restock your medications here.</p>
@@ -1202,6 +1216,8 @@ import { AppNavigation } from '/shared-nav.js'; // Add this line
           currentEditingLensEyeType: null,
           lensCalendarMonth: new Date(),
           lensCalendarWeek: new Date(),
+          fullCalendarMonth: new Date(),
+          fullCalendarLoaded: false,
           adherenceChart: null,
           medsPieChart: null,
           medsBarChart: null,
@@ -1312,6 +1328,7 @@ import { AppNavigation } from '/shared-nav.js'; // Add this line
           renderLensHistory(); 
           renderGrooming();
           renderEyeHealth();
+          renderFullCalendar();
           
           hideLoader();
       };
@@ -1894,6 +1911,89 @@ window.addEventListener('app-logout-request', () => {
             },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: 'Total Doses per Medication' } }, scales: { y: { beginAtZero: true } } }
         });
+      };
+
+      const renderFullCalendar = () => {
+        if (!appState.fullCalendarLoaded) return;
+        const container = document.getElementById('full-calendar');
+        const header = document.getElementById('full-calendar-header');
+        const monthDisplay = document.getElementById('full-month-display');
+        container.innerHTML = '';
+        header.innerHTML = '';
+
+        const date = appState.fullCalendarMonth;
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        monthDisplay.textContent = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+        DAYS_OF_WEEK.forEach(day => {
+            const dayName = document.createElement('div');
+            dayName.textContent = day.substring(0, 3);
+            header.appendChild(dayName);
+        });
+
+        const firstDayOfMonth = new Date(year, month, 1);
+        const lastDayOfMonth = new Date(year, month + 1, 0);
+        let firstDayOfWeek = firstDayOfMonth.getDay() - 1;
+        if (firstDayOfWeek === -1) firstDayOfWeek = 6;
+
+        for (let i = 0; i < firstDayOfWeek; i++) {
+            container.appendChild(document.createElement('div'));
+        }
+
+        for (let day = 1; day <= lastDayOfMonth.getDate(); day++) {
+            const dayDiv = document.createElement('div');
+            dayDiv.className = 'history-calendar-day';
+            dayDiv.innerHTML = `<div class="history-calendar-day-header">${day}</div>`;
+            
+            const currentDateStr = new Date(Date.UTC(year, month, day)).toISOString().split('T')[0];
+
+            // Safely parse Doses
+            const dosesForDay = appState.doses.filter(d => {
+                const pDate = parseLocalDate(d.date);
+                if (!pDate) return false;
+                const dStr = new Date(Date.UTC(pDate.getFullYear(), pDate.getMonth(), pDate.getDate())).toISOString().split('T')[0];
+                return dStr === currentDateStr && d.status === 'taken';
+            });
+            
+            // Safely parse Lenses
+            const lensesForDay = appState.lensLogs.filter(l => {
+                const d = l.date?.seconds ? new Date(l.date.seconds * 1000) : new Date(l.date);
+                const dStr = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().split('T')[0];
+                return dStr === currentDateStr;
+            });
+            
+            // Safely parse Grooming
+            const groomingForDay = appState.groomingLogs.filter(g => {
+                const d = g.date?.seconds ? new Date(g.date.seconds * 1000) : new Date(g.date);
+                const dStr = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().split('T')[0];
+                return dStr === currentDateStr;
+            });
+
+            dosesForDay.forEach(dose => {
+                const entry = document.createElement('div');
+                entry.className = 'history-dose-entry calendar-dose taken';
+                entry.textContent = `💊 ${dose.medicineName}`;
+                dayDiv.appendChild(entry);
+            });
+
+            lensesForDay.forEach(lens => {
+                const entry = document.createElement('div');
+                const eyeColor = lens.eye === 'left' ? 'text-blue-500' : 'text-green-500';
+                entry.className = 'history-dose-entry bg-[var(--card-bg-color)] border border-[var(--border-color)]';
+                entry.innerHTML = `<i class="fa-solid fa-eye ${eyeColor}"></i> ${lens.eye.charAt(0).toUpperCase()}`;
+                dayDiv.appendChild(entry);
+            });
+
+            groomingForDay.forEach(groom => {
+                const entry = document.createElement('div');
+                entry.className = 'history-dose-entry bg-teal-100 text-teal-900 border border-teal-300';
+                entry.textContent = `✂️ ${groom.type}`;
+                dayDiv.appendChild(entry);
+            });
+
+            container.appendChild(dayDiv);
+        }
       };
 
       const renderHistoryCalendar = () => {
@@ -3353,9 +3453,8 @@ document.getElementById('modal-save-grooming-btn').addEventListener('click', han
             activeTab: 'dashboard',
             tabs: [
                 { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-line' },
-                { id: 'record-doses', label: 'Record', icon: 'fa-calendar-check' },
-                { id: 'meds', label: 'Meds', icon: 'fa-prescription-bottle-medical' },
-                { id: 'lenses', label: 'Lenses', icon: 'fa-eye' },
+                { id: 'record-doses', label: 'Record Meds', icon: 'fa-calendar-check' },
+                { id: 'lenses', label: 'Record Lenses', icon: 'fa-eye' },
                 { id: 'grooming', label: 'Grooming', icon: 'fa-scissors' },
                 { id: 'settings', label: 'Settings', icon: 'fa-gear' }
             ]
@@ -3475,6 +3574,21 @@ document.getElementById("main-app-container").classList.add("hidden");
       document.getElementById("next-month-btn").addEventListener("click", () => {
           appState.historyCalendarMonth.setMonth(appState.historyCalendarMonth.getMonth() + 1);
           renderHistoryCalendar();
+      });
+
+      document.getElementById("load-full-calendar-btn").addEventListener("click", () => {
+          appState.fullCalendarLoaded = true;
+          document.getElementById("load-full-calendar-btn").classList.add("hidden");
+          document.getElementById("full-calendar-wrapper").classList.remove("hidden");
+          renderFullCalendar();
+      });
+      document.getElementById("prev-full-month-btn").addEventListener("click", () => {
+          appState.fullCalendarMonth.setMonth(appState.fullCalendarMonth.getMonth() - 1);
+          renderFullCalendar();
+      });
+      document.getElementById("next-full-month-btn").addEventListener("click", () => {
+          appState.fullCalendarMonth.setMonth(appState.fullCalendarMonth.getMonth() + 1);
+          renderFullCalendar();
       });
 
       document.getElementById("prev-lens-week-btn")?.addEventListener("click", () => {

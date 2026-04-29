@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.33.0-alpha",
+    date: "2026-04-29",
+    changes: [
+                "In HealthManagr: Merged the 'Meds' tab management sections into the 'Record' page.",
+                "In HealthManagr: Renamed the 'Record' tab to 'Record Meds' and the 'Lenses' tab to 'Record Lenses' in the navigation.",
+                "In HealthManagr: Added an on-demand 'All Logs Overview' calendar to the Dashboard to view all logged items (medications, lenses, and grooming) in one place.",
+    ]
+},
+    {
     version: "v15.32.0-alpha",
     date: "2026-04-29",
     changes: [
