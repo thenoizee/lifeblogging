@@ -628,7 +628,7 @@
             </div>
         </details>
 
-        <details id="pane-quick-log" class="group bg-[var(--card-bg-color)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-sm">
+        <details id="pane-quick-log" class="group bg-[var(--card-bg-color)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-sm" open>
             <summary class="flex justify-between items-center p-4 cursor-pointer select-none bg-[var(--input-bg-color)] hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                 <h2 class="text-xl font-bold flex items-center text-[var(--text-color-primary)] m-0">
                     <i class="fa-solid fa-bolt mr-3"></i>Quick Log
@@ -896,56 +896,9 @@
   let selectedScreenTimeType = null;
   let themeDocRef = null;
   let themeUnsubscribe = null;
-  let uiStateDocRef = null;
-  let uiStateUnsubscribe = null;
 
-  // ... [Keep all your UI helper functions: savePaneState, initializePaneState, appState, themeToggle, applyTheme, toggleTheme, showMessage] ...
-  const savePaneState = async () => {
-          if (!userId) return;
-          const openPanes = [];
-          document.querySelectorAll('details').forEach(detail => {
-              if (detail.id && detail.open) {
-                  openPanes.push(detail.id);
-              }
-          });
-          
-          try {
-              await setDoc(doc(db, 'users', userId, 'settings', 'uiState'), { openPanes }, { merge: true });
-          } catch (e) {
-              console.error("Error saving UI state", e);
-          }
-      };
+  // UI state saving removed
 
-      const initializePaneState = () => {
-          if (!userId) return;
-          
-          uiStateDocRef = doc(db, 'users', userId, 'settings', 'uiState');
-          
-          if (uiStateUnsubscribe) uiStateUnsubscribe();
-          uiStateUnsubscribe = onSnapshot(uiStateDocRef, (doc) => {
-              const data = doc.data();
-              // Changed default fallback to Quick Log for offline loads
-              const openPanes = data?.openPanes || ['pane-quick-log']; 
-
-              document.querySelectorAll('details').forEach(detail => {
-                  if (detail.id) {
-                      const shouldBeOpen = openPanes.includes(detail.id);
-                      if (detail.open !== shouldBeOpen) {
-                          detail.open = shouldBeOpen;
-                      }
-                  }
-              });
-          });
-
-          document.querySelectorAll('details').forEach(detail => {
-              if (detail.id) {
-                  detail.addEventListener('toggle', () => {
-                      savePaneState();
-                  });
-              }
-          });
-      };
-      
       const appState = {
         isReady: false,
         user: null,
@@ -1477,11 +1430,11 @@
             }
             try {
                 const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
-                const sourcesSnapshot = await fetchWithTimeout(getDocs(sourcesRef), 8000);
+                const sourcesSnapshot = await fetchWithTimeout(sourcesRef, 8000);
                 for (const sourceDoc of sourcesSnapshot.docs) {
                     const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
                     const q = query(dataRef, where("date", ">=", startDateStr));
-                    const dataSnapshot = await fetchWithTimeout(getDocs(q), 8000);
+                    const dataSnapshot = await fetchWithTimeout(q, 8000);
                     dataSnapshot.forEach(doc => {
                         const log = {id: doc.id, ...doc.data()};
                         if (log.date) {
@@ -1513,11 +1466,11 @@
             const startDateStr = toYYYYMMDD(d);
             try {
                 const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
-                const sourcesSnapshot = await fetchWithTimeout(getDocs(sourcesRef), 3000);
+                const sourcesSnapshot = await fetchWithTimeout(sourcesRef, 3000);
                 for (const sourceDoc of sourcesSnapshot.docs) {
                     const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
                     const q = query(dataRef, where("date", ">=", startDateStr));
-                    const dataSnapshot = await fetchWithTimeout(getDocs(q), 3000);
+                    const dataSnapshot = await fetchWithTimeout(q, 3000);
                     dataSnapshot.forEach(doc => {
                         const log = doc.data();
                         if (log.attributeName) appState.attributeNames.add(log.attributeName);
@@ -1566,16 +1519,13 @@
             });
         };
 
-        const addEventListeners = () => {
-            document.getElementById('frequent-combos-container').addEventListener('click', (e) => {
-                const button = e.target.closest('.combo-button');
-                if (button) {
-                    addLogData('dailies', 'MainActivity', `${button.dataset.activity} @ ${button.dataset.location}`, ["quick_log", "location_activity", "combo"], getNowLogString(), "Entered via Quick Log Combo.");
-                }
-            });
-        };
-
-
+        // Direct event attachment (avoids DOMContentLoaded race condition in modules)
+        document.getElementById('frequent-combos-container').addEventListener('click', (e) => {
+            const button = e.target.closest('.combo-button');
+            if (button) {
+                addLogData('dailies', 'MainActivity', `${button.dataset.activity} @ ${button.dataset.location}`, ["quick_log", "location_activity", "combo"], getNowLogString(), "Entered via Quick Log Combo.");
+            }
+        });
 
         const initApp = () => {
           onAuthStateChanged(auth, async (user) => {
@@ -1611,9 +1561,6 @@
           fetchAllAttributeNames();
                 fetchLogsForDateRange();
           
-          // --- CALL NEW FUNCTION CORRECTLY HERE ---
-          initializePaneState(); 
-
           setInputsDisabled(false); 
           appState.isReady = true;
 
@@ -1628,10 +1575,6 @@
             appState.logs.clear();
             appState.attributeNames.clear();
             appState.firstEntryDates.clear();
-            
-            // --- CLEANUP ---
-            if (uiStateUnsubscribe) uiStateUnsubscribe();
-            uiStateDocRef = null;
 
             updateFrequentCombos();
         }
@@ -1819,10 +1762,6 @@
         document.getElementById("total-tasks-remaining-value").value = ""; 
       });
 
-        document.addEventListener('DOMContentLoaded', () => {
-            addEventListeners();
-        });
-        
         // Re-enabled Service Worker for offline support
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

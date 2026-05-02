@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.36.0-alpha",
+    date: "2026-05-03",
+    changes: [
+        "In Loggr: Removed Firebase read/write logic for saving open/closed UI pane states.",
+        "In Loggr: Hardcoded 'Quick Log' and 'Data Added This Session' to be open by default, and 'Manual Entry' to be closed.",
+        "In Loggr: Fixed an issue where the activity/location combo buttons wouldn't register clicks due to a DOMContentLoaded race condition in the module scope.",
+        "In Loggr: Fixed a Firebase query error ('Expected type Query') where a Promise was incorrectly passed to fetchWithTimeout instead of a Query reference, restoring the Recent Activity Combos functionality."
+    ]
+},
+    {
     version: "v15.35.0-alpha",
     date: "2026-05-03",
     changes: [
