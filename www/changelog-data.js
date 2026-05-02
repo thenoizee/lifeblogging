@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.35.0-alpha",
+    date: "2026-05-03",
+    changes: [
+                "In VehicleManagr: Implemented high-visibility MOT expiry alerts on the Dashboard with one-click redirection to log cards.",
+                "In VehicleManagr: Added 'Smart Sync' logic that automatically updates legal expiry dates (MOT, Road Tax, and Car Insurance) in the Virtual Glovebox when their corresponding events are logged.",
+                "In VehicleManagr: Enhanced MOT entry visibility in the History table with a unique red 'file-shield' icon and dedicated 'Legal' badge.",
+                "In VehicleManagr: Fixed notification overlap issues by repositioning the message box to 100px from the top to clear the SharedNav bar.",
+                "In VehicleManagr: Hardened the History table renderer with data fallbacks to prevent UI crashes caused by malformed or missing historical records.",
+                "In VehicleManagr: Improved input validation and date-time fallbacks, ensuring consistent data structures and requiring Provider/Station names for legal logs.",
+    ]
+},
+    {
 version: "v15.34.0-alpha",
 date: "2026-05-03",
 changes: [

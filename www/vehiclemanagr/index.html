@@ -886,11 +886,17 @@ body {
         const ui = { body: document.body, vehicleContainer: document.getElementById('vehicle-list-container'), msgBox: document.getElementById('message-box') };
 
         const showMessage = (msg, type = "success") => {
-            ui.msgBox.textContent = msg;
-            ui.msgBox.className = `fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-xl text-white font-semibold transition-all duration-300 z-[100] ${type === 'error' ? 'bg-red-500' : 'bg-green-500'}`;
-            ui.msgBox.style.opacity = '1'; ui.msgBox.style.top = '30px';
-            setTimeout(() => { ui.msgBox.style.opacity = '0'; ui.msgBox.style.top = '5px'; }, 3000);
-        };
+    ui.msgBox.textContent = msg;
+    // Position it at 100px from top to clear the SharedNav
+    const bgColor = type === 'error' ? 'bg-red-600' : 'bg-green-600';
+    ui.msgBox.className = `fixed left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-xl shadow-2xl text-white font-bold transition-all duration-300 z-[9999] ${bgColor}`;
+    ui.msgBox.style.opacity = '1'; 
+    ui.msgBox.style.top = '100px';
+    setTimeout(() => { 
+        ui.msgBox.style.opacity = '0'; 
+        ui.msgBox.style.top = '20px'; 
+    }, 4000);
+};
 
         const setLoading = (btnId, isLoading) => {
             const btn = document.getElementById(btnId); if(!btn) return;
@@ -955,6 +961,35 @@ document.getElementById('meta-ins-cost').value = v.insuranceCost || '';
                 if(el) el.value = v[key] || '';
             }
             lockGlovebox();
+        };
+
+        // NEW: Scan history and ensure Glovebox matches the latest logs
+        const syncGloveboxFromHistory = async (uid, vid) => {
+            const histRef = collection(db, `users/${uid}/vehicles/${vid}/history`);
+            const snap = await getDocs(histRef);
+            const logs = snap.docs.map(d => d.data());
+
+            const getLatestDate = (type, key, val) => {
+                const matches = logs.filter(l => l.type === type && l[key] === val && l.date);
+                if (!matches.length) return null;
+                const latest = matches.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                const d = new Date(latest.date);
+                d.setFullYear(d.getFullYear() + 1);
+                return d.toISOString().split('T')[0];
+            };
+
+            const updates = {};
+            const newMOT = getLatestDate('service', 'serviceType', 'MOT');
+            const newTax = getLatestDate('expense', 'expenseItem', 'Road Tax');
+            const newIns = getLatestDate('expense', 'expenseItem', 'Car Insurance');
+
+            if (newMOT) updates.motExpiry = newMOT;
+            if (newTax) updates.taxExpiry = newTax;
+            if (newIns) updates.insuranceExpiry = newIns;
+
+            if (Object.keys(updates).length > 0) {
+                await updateDoc(doc(db, `users/${uid}/vehicles`, vid), updates);
+            }
         };
 
         const lockGlovebox = () => {
@@ -1453,13 +1488,43 @@ if(v && v.tankSize && avgMpl > 0) document.getElementById('stat-range').textCont
     }
 });
 
-            // 8. Alerts (Unchanged)
-            const lastSvc = history.filter(d=>d.type==='service').sort((a,b) => new Date(b.date)-new Date(a.date))[0];
-            if(lastSvc) {
-                const diff = currentOdo - getNum(lastSvc.odometer);
-                if(diff > 10000) { document.getElementById('reminders-container').classList.remove('hidden'); document.getElementById('reminder-text').textContent = `Service overdue by ${diff - 10000} miles.`; }
-                else document.getElementById('reminders-container').classList.add('hidden');
-            }
+            // 8. Alerts & Compliance Prompts
+const remindersContainer = document.getElementById('reminders-container');
+const reminderText = document.getElementById('reminder-text');
+let alerts = [];
+
+// Mileage Check
+const lastSvc = history.filter(d=>d.type==='service').sort((a,b) => new Date(b.date)-new Date(a.date))[0];
+if(lastSvc) {
+    const diff = currentOdo - getNum(lastSvc.odometer);
+    if(diff > 10000) alerts.push(`Service overdue by ${diff - 10000} miles.`);
+}
+
+// MOT Expiry Check
+if (v.motExpiry) {
+    const today = new Date();
+    const expiry = new Date(v.motExpiry);
+    const diffDays = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) {
+        alerts.push(`<strong>MOT EXPIRED!</strong> Log a new MOT to clear this alert.`);
+    } else if (diffDays <= 14) {
+        alerts.push(`MOT due in ${diffDays} days.`);
+    }
+}
+
+if (alerts.length > 0) {
+    remindersContainer.classList.remove('hidden');
+    reminderText.innerHTML = alerts.join('<br>');
+    // Make the alert clickable to take user to the log
+    remindersContainer.style.cursor = 'pointer';
+    remindersContainer.onclick = () => {
+        document.querySelector('[data-tab="log"]').click();
+        setTimeout(() => document.getElementById('card-service').scrollIntoView({behavior: 'smooth'}), 100);
+    };
+} else {
+    remindersContainer.classList.add('hidden');
+}
 
             // 9. Ownership
             const milesDriven = Math.max(0, currentOdo - getNum(v.startOdometer));
@@ -1486,7 +1551,8 @@ if(v && v.tankSize && avgMpl > 0) document.getElementById('stat-range').textCont
     const thead = document.getElementById('history-table-header');
     tbody.innerHTML = ''; thead.innerHTML = '';
     
-    ['Date', 'Type', 'Details', 'Cost', 'Edit'].forEach(h => { 
+    const headers = ['Date', 'Type', 'Details', 'Cost', 'Edit'];
+    headers.forEach(h => {
         const th = document.createElement('th'); 
         th.className = "px-6 py-3"; 
         th.textContent = h; 
@@ -1495,9 +1561,10 @@ if(v && v.tankSize && avgMpl > 0) document.getElementById('stat-range').textCont
     
     const term = document.getElementById('history-search').value.toLowerCase();
     const getNumDisplay = (val) => {
-        if(val === 'DD_AUTO') return '<span class="text-xs font-bold text-blue-500 uppercase">Auto</span>'; // Handle virtual cost
-        if(val === undefined || val === null || isNaN(parseFloat(val))) return '<span class="text-red-500 font-bold" title="Invalid Data">!--</span>';
-        return `£${parseFloat(val).toFixed(2)}`;
+        if(val === 'DD_AUTO') return '<span class="text-xs font-bold text-blue-500 uppercase">Auto</span>';
+        const num = parseFloat(val);
+        if(isNaN(num)) return '<span class="text-gray-400 italic" title="No cost entered">£0.00</span>';
+        return `£${num.toFixed(2)}`;
     };
     
     let displayList = [...appState.history];
@@ -1570,7 +1637,10 @@ if(v.insuranceIsAuto && v.insuranceExpiry) addVirtual(v.insuranceExpiry, 'Car In
         if(d.isVirtual) tr.className += " border-l-4 border-blue-400 bg-blue-50/50 dark:bg-blue-900/10 border-dashed italic";
 
         let icon = '', details = '', cost = '-';
-        let companyInfo = d.company ? `<div class="text-xs font-bold text-gray-500 uppercase">${d.company}${d.location ? ' (' + d.location + ')' : ''}</div>` : '';
+        // Fallback for missing company/provider name
+        const companyName = (d.company && d.company.trim()) ? d.company : '<span class="text-red-400 italic">[No Provider]</span>';
+        const locationName = (d.location && d.location.trim()) ? ` (${d.location})` : '';
+        let companyInfo = `<div class="text-xs font-bold text-gray-500 uppercase">${companyName}${locationName}</div>`;
         
         // Date Formatting
         let dateDisplay = d.date;
@@ -1590,7 +1660,13 @@ if(v.insuranceIsAuto && v.insuranceExpiry) addVirtual(v.insuranceExpiry, 'Car In
             if(d.hasLoyaltySaving) details += ` <span class="text-[10px] text-green-600 bg-green-100 px-1 rounded ml-1">Loyalty</span>`;
             cost = getNumDisplay(d.fuelCost); 
         }
-        else if(d.type === 'service') { icon = "fa-screwdriver-wrench text-orange-500"; details = `${companyInfo}${d.serviceType}`; cost = getNumDisplay(d.cost); }
+        else if(d.type === 'service') { 
+            const isMOT = d.serviceType === 'MOT' || d.serviceType === 'MOT / Inspection';
+            icon = isMOT ? "fa-file-shield text-red-500" : "fa-screwdriver-wrench text-orange-500"; 
+            details = `${companyInfo}<span class="${isMOT ? 'font-bold text-red-600' : ''}">${d.serviceType}</span>`; 
+            if(isMOT) details += ` <span class="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full ml-1 font-bold uppercase border border-red-200">Legal</span>`;
+            cost = getNumDisplay(d.cost); 
+        }
         else if(d.type === 'trip') { 
             const miles = isNaN(d.miles) ? 0 : d.miles;
             icon = "fa-route text-cyan-500"; 
@@ -1648,12 +1724,16 @@ if(v.insuranceIsAuto && v.insuranceExpiry) addVirtual(v.insuranceExpiry, 'Car In
 };
 
         const saveEntry = async (btnId, data, fileInputId) => {
-            if(!appState.currentVehicleId) return showMessage("No vehicle selected", "error");
-            if(!data.date) return showMessage("Date is required", "error");
+            if(!appState.currentVehicleId) { showMessage("No vehicle selected", "error"); return false; }
+            if(!data.date) { showMessage("Date is required", "error"); return false; }
             
-            // Validation for Company field
-            if((data.type === 'fuel-up' || data.type === 'service' || data.type === 'expense') && !data.company) {
-                return showMessage("Company/Provider is required", "error");
+            // Strict Validation: Trim whitespace and check for Provider/Company
+            const isLegalType = ['fuel-up', 'service', 'expense'].includes(data.type);
+            const hasCompany = data.company && data.company.toString().trim().length > 0;
+
+            if(isLegalType && !hasCompany) {
+                showMessage("Missing required field: Provider / Station Name", "error"); 
+                return false;
             }
 
             setLoading(btnId, true);
@@ -1666,7 +1746,6 @@ if(v.insuranceIsAuto && v.insuranceExpiry) addVirtual(v.insuranceExpiry, 'Car In
                     }
                 }
                 
-                // Add Standard Metadata
                 data.createdAt = serverTimestamp();
                 data.uploadedBy = auth.currentUser.email;
                 data.uploadedApp = 'VehicleManagr';
@@ -1674,10 +1753,17 @@ if(v.insuranceIsAuto && v.insuranceExpiry) addVirtual(v.insuranceExpiry, 'Car In
                 data.datapointUpdatedTime = serverTimestamp();
 
                 await addDoc(collection(db, `users/${appState.user.uid}/vehicles/${appState.currentVehicleId}/history`), data);
-                showMessage("Entry Saved");
-                document.querySelectorAll(`#tab-content-log input:not([type=date])`).forEach(i => i.value = '');
-            } catch(e) { showMessage(e.message, "error"); }
-            setLoading(btnId, false);
+                
+                // Success actions
+                showMessage("History Logged Successfully");
+                document.querySelectorAll(`#tab-content-log input:not([type=date]):not([type=time])`).forEach(i => i.value = '');
+                setLoading(btnId, false);
+                return true; 
+            } catch(e) { 
+                showMessage("Database Error: " + e.message, "error"); 
+                setLoading(btnId, false);
+                return false; 
+            }
         };
 
         document.getElementById('import-csv').addEventListener('change', (e) => {
@@ -1919,18 +2005,32 @@ const calculateFuelLoyalty = () => {
     if(el) el.addEventListener('input', calculateFuelLoyalty);
 });
 
-// Update log-service-btn handler
-document.getElementById("log-service-btn").onclick = () => saveEntry("log-service-btn", {
-    type: 'service', 
-    date: getTimestamp('service'), // UPDATED
-    odometer: parseFloat(document.getElementById('service-odometer').value),
-    serviceType: document.getElementById('service-type').value,
-    company: document.getElementById('service-company').value,
-    location: document.getElementById('service-location').value,
-    cost: parseFloat(document.getElementById('service-cost').value),
-    paymentMethod: document.getElementById('service-payment').value,
-    notes: document.getElementById('service-notes').value
-}, 'service-receipt');
+// Update log-service-btn handler with MOT Sync
+        document.getElementById("log-service-btn").onclick = async () => {
+            const sType = document.getElementById('service-type').value;
+            const sDate = document.getElementById('service-date').value;
+            
+            const success = await saveEntry("log-service-btn", {
+                type: 'service', 
+                date: getTimestamp('service'),
+                odometer: parseFloat(document.getElementById('service-odometer').value) || 0,
+                serviceType: sType,
+                company: document.getElementById('service-company').value,
+                location: document.getElementById('service-location').value,
+                cost: parseFloat(document.getElementById('service-cost').value) || 0,
+                paymentMethod: document.getElementById('service-payment').value,
+                notes: document.getElementById('service-notes').value
+            }, 'service-receipt');
+
+            if (success && sType === 'MOT' && sDate) {
+                const nextExp = new Date(sDate);
+                nextExp.setFullYear(nextExp.getFullYear() + 1);
+                await setDoc(doc(db, `users/${appState.user.uid}/vehicles`, appState.currentVehicleId), {
+                    motExpiry: nextExp.toISOString().split('T')[0]
+                }, { merge: true });
+                showMessage("Glovebox: MOT Expiry Updated");
+            }
+        };
 
 // Update log-consumable-btn handler
 document.getElementById("log-consumable-btn").onclick = () => {
@@ -1978,16 +2078,31 @@ document.getElementById("log-health-btn").onclick = () => saveEntry("log-health-
     notes: document.getElementById('health-notes').value
 });
 
-// Update log-expense-btn handler
-document.getElementById("log-expense-btn").onclick = () => saveEntry("log-expense-btn", {
-    type: 'expense', 
-    date: getTimestamp('expense'), // UPDATED
-    expenseItem: document.getElementById('expense-category').value, 
-    company: document.getElementById('expense-company').value,
-    location: document.getElementById('expense-location').value,
-    expenseCost: parseFloat(document.getElementById('expense-cost').value),
-    paymentMethod: document.getElementById('expense-payment').value
-}, 'expense-receipt');
+// Update log-expense-btn handler with Tax/Insurance Sync
+        document.getElementById("log-expense-btn").onclick = async () => {
+            const cat = document.getElementById('expense-category').value;
+            const eDate = document.getElementById('expense-date').value;
+
+            const success = await saveEntry("log-expense-btn", {
+                type: 'expense', 
+                date: getTimestamp('expense'),
+                expenseItem: cat, 
+                company: document.getElementById('expense-company').value,
+                location: document.getElementById('expense-location').value,
+                expenseCost: parseFloat(document.getElementById('expense-cost').value) || 0,
+                paymentMethod: document.getElementById('expense-payment').value
+            }, 'expense-receipt');
+
+            if (success && eDate && (cat === 'Road Tax' || cat === 'Car Insurance')) {
+                const nextExp = new Date(eDate);
+                nextExp.setFullYear(nextExp.getFullYear() + 1);
+                const field = (cat === 'Road Tax') ? 'taxExpiry' : 'insuranceExpiry';
+                await setDoc(doc(db, `users/${appState.user.uid}/vehicles`, appState.currentVehicleId), { 
+                    [field]: nextExp.toISOString().split('T')[0] 
+                }, { merge: true });
+                showMessage(`Glovebox: ${cat} Expiry Updated`);
+            }
+        };
 
         document.getElementById('save-metadata-btn').onclick = saveMetadata;
 
@@ -2206,8 +2321,14 @@ if(dVal) {
                 setLoading("modal-save-btn", true);
                 try { 
                     await setDoc(doc(db, `users/${appState.user.uid}/vehicles/${appState.currentVehicleId}/history`, id), data, { merge: true }); 
-                    showMessage("Updated"); 
-                    document.getElementById('edit-modal').classList.add('hidden'); 
+                    
+                    // Re-sync Glovebox in case a legal date was changed
+                    if (item.type === 'service' || item.type === 'expense') {
+                        await syncGloveboxFromHistory(appState.user.uid, appState.currentVehicleId);
+                    }
+
+                    showMessage("Entry Updated & Sync Complete"); 
+                    document.getElementById('edit-modal').classList.add('hidden');
                 } catch(e) { showMessage(e.message, "error"); }
                 setLoading("modal-save-btn", false);
             };
@@ -2220,8 +2341,14 @@ if(dVal) {
                 setLoading("modal-delete-btn", true);
                 try { 
                     await deleteDoc(doc(db, `users/${appState.user.uid}/vehicles/${appState.currentVehicleId}/history`, id)); 
+                    
+                    // Rollback Glovebox if the deleted item was a legal record
+                    if (item.type === 'service' || item.type === 'expense') {
+                        await syncGloveboxFromHistory(appState.user.uid, appState.currentVehicleId);
+                    }
+
                     document.getElementById('edit-modal').classList.add('hidden'); 
-                    showMessage("Deleted"); 
+                    showMessage("Deleted & Glovebox Re-synced"); 
                 } catch(e) { showMessage(e.message, "error"); }
                 setLoading("modal-delete-btn", false);
             };
