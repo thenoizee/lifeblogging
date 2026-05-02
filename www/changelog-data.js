@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+version: "v15.34.0-alpha",
+date: "2026-05-03",
+changes: [
+            "In PlantTrackr: Added a 'variety' feature to the plant details and view modals alongside the species entry.",
+            "In PlantTrackr: Restructured the 'Add/Edit Plant' modal by grouping fields logically into specific sections (Placement & Space, Potting & Environment, Status & Alerts, and Routines & Care) for a cleaner UI.",
+            "In PlantTrackr: Renamed 'Health Status' to 'Plant Health' in the Add/Edit modal.",
+            "In PlantTrackr: Removed duplicate 'Light Condition' and 'Position Details' input fields from the Edit modal."
+]
+},
+    {
     version: "v15.33.0-alpha",
     date: "2026-04-29",
     changes: [
