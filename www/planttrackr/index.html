@@ -548,11 +548,15 @@
             <input type="hidden" id="modal-plant-id">
             
             <div class="space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div><label class="text-sm font-bold">Name</label><input type="text" id="plant-name" class="input-std" placeholder="e.g. Monstera"></div>
-                    <div><label class="text-sm font-bold">Species</label><input type="text" id="plant-species" class="input-std"></div>
-                    <div><label class="text-sm font-bold">Variety</label><input type="text" id="plant-variety" class="input-std" placeholder="e.g. Thai Constellation"></div>
-                </div>
+                <div class="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-[var(--border)] mb-4">
+                    <h3 class="text-sm font-bold mb-3 uppercase text-gray-500">Basic Info</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="sm:col-span-2"><label class="text-xs font-bold">Name</label><input type="text" id="plant-name" class="input-std py-1.5" placeholder="e.g. Monstera"></div>
+                        <div class="sm:col-span-2"><label class="text-xs font-bold">Species</label><input type="text" id="plant-species" class="input-std py-1.5"></div>
+                        <div><label class="text-xs font-bold">Variety</label><input type="text" id="plant-variety" class="input-std py-1.5" placeholder="e.g. Thai Constellation"></div>
+                        <div><label class="text-xs font-bold">Brand / Source</label><input type="text" id="plant-brand" class="input-std py-1.5" placeholder="e.g. Costa Farms"></div>
+                    </div>
+                </div>
 
                 <div class="flex gap-2 mt-2 mb-4">
                     <button type="button" onclick="window.magicAutoFill()" class="btn-primary text-xs flex-1 bg-purple-600 hover:bg-purple-700 shadow-md transition-transform hover:scale-[1.02]">
@@ -876,9 +880,10 @@
             <div class="flex flex-col md:flex-row gap-6 mb-6">
                 <div id="view-plant-photo" class="w-32 h-32 rounded-xl object-cover border border-[var(--border)] bg-gray-100 flex items-center justify-center overflow-hidden shrink-0 mx-auto md:mx-0"></div>
                 <div class="flex-grow space-y-2 text-sm">
-                    <p><strong class="opacity-70">Species:</strong> <span id="view-plant-species"></span></p>
-                    <p><strong class="opacity-70">Variety:</strong> <span id="view-plant-variety"></span></p>
-                    <p><strong class="opacity-70">Space:</strong> <span id="view-plant-location"></span></p>
+                    <p><strong class="opacity-70">Species:</strong> <span id="view-plant-species"></span></p>
+                    <p><strong class="opacity-70">Variety:</strong> <span id="view-plant-variety"></span></p>
+                    <p><strong class="opacity-70">Brand/Source:</strong> <span id="view-plant-brand"></span></p>
+                    <p><strong class="opacity-70">Space:</strong> <span id="view-plant-location"></span></p>
                     <p><strong class="opacity-70">Pot / Soil:</strong> <span id="view-plant-pot"></span></p>
                     <p><strong class="opacity-70">Health:</strong> <span id="view-plant-health"></span></p>
                 </div>
@@ -1482,7 +1487,28 @@
             renderPlants();
         };
 
-        window.waterSelectedPlants = async () => {
+        window.potUpPropagation = async (plantId) => {
+            if (!confirm("Is this propagation ready for its own pot? This will change its status to Active.")) return;
+            try {
+                await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), {
+                    status: 'alive',
+                    updatedAt: Timestamp.now()
+                });
+                await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                    plantId: plantId,
+                    type: "Repot",
+                    date: new Date().toISOString(),
+                    notes: "Potted up from propagation! 🌱",
+                    createdAt: Timestamp.now()
+                });
+                showMsg("Plant successfully potted up! Moved to Active Garden.");
+                window.toggleGardenView('active');
+            } catch (e) {
+                showMsg(e.message, "error");
+            }
+        };
+
+        window.waterSelectedPlants = async () => {
             if (window.selectedPlants.size === 0) return showMsg("No plants selected", "error");
             if (!confirm(`Water ${window.selectedPlants.size} selected plants?`)) return;
             
@@ -1622,25 +1648,36 @@
                     propsList.innerHTML = `<p class="opacity-50 text-center col-span-3 py-8">No active propagations. Cut some nodes! ✂️</p>`;
                 } else {
                     props.forEach(plant => {
-                        const card = document.createElement("div");
-                        card.className = "card p-4 flex flex-col justify-between hover:shadow-lg transition";
-                        card.innerHTML = `
-                            <div class="flex justify-between items-start mb-2">
-                                <div class="flex items-center gap-3">
-                                    <div class="plant-icon-circle bg-green-100 text-green-600"><i class="fa-solid fa-leaf"></i></div>
-                                    <div>
-                                        <h3 class="font-bold text-lg">${plant.name}</h3>
-                                        <p class="text-xs opacity-70 capitalize">${(plant.status || 'propagating').replace('-', ' ')}</p>
-                                    </div>
-                                </div>
-                                <button class="text-gray-400 hover:text-[var(--primary)] edit-plant-btn" data-id="${plant.id}"><i class="fa-solid fa-pen"></i></button>
+                        const card = document.createElement("div");
+                        card.className = "card p-4 flex flex-col justify-between hover:shadow-lg transition";
+                        
+                        const propDays = Math.floor((new Date() - new Date(plant.acquired || 0)) / (1000 * 60 * 60 * 24));
+                        const statusSafe = plant.status || 'propagating';
+                        const propIcon = statusSafe.includes('water') ? 'fa-glass-water' : statusSafe.includes('soil') ? 'fa-mound' : statusSafe.includes('air') ? 'fa-wind' : 'fa-leaf';
+                        const propColor = statusSafe.includes('water') ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400' : statusSafe.includes('soil') ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400' : 'bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400';
+
+                        card.innerHTML = `
+                            <div class="flex items-start justify-between mb-4 relative">
+                                <div class="flex items-center gap-3 cursor-pointer hover:opacity-70 transition" onclick="window.openViewPlantModal('${plant.id}')">
+                                    <div class="plant-icon-circle shrink-0 ${propColor}"><i class="fa-solid ${propIcon}"></i></div>
+                                    <div>
+                                        <h3 class="font-bold text-lg leading-tight">${plant.name}</h3>
+                                        <p class="text-xs opacity-70 capitalize">${statusSafe.replace('-', ' ')}</p>
+                                    </div>
+                                </div>
+                                <button class="text-gray-400 hover:text-[var(--primary)] edit-plant-btn shrink-0" data-id="${plant.id}"><i class="fa-solid fa-pen"></i></button>
+                            </div>
+                            <div class="space-y-2 mb-4 flex-grow text-sm opacity-80">
+                                <p class="flex items-center gap-2"><i class="fa-solid fa-calendar-day w-4 text-gray-400"></i> Propagating for ${propDays} days</p>
+                                ${plant.parentId ? `<p class="flex items-center gap-2"><i class="fa-solid fa-diagram-project w-4 text-gray-400"></i> Has parent plant</p>` : ''}
                             </div>
-                            <div class="mt-4 flex gap-2">
-                                <button class="flex-1 btn-secondary text-xs py-1" onclick="window.openQuickLogModal('${plant.id}')">Log Check</button>
-                            </div>
-                        `;
-                        propsList.appendChild(card);
-                    });
+                            <div class="grid grid-cols-2 gap-2 mt-auto">
+                                <button class="btn-secondary text-xs py-1.5" onclick="window.openQuickLogModal('${plant.id}')"><i class="fa-solid fa-magnifying-glass text-blue-500"></i> Check Roots</button>
+                                <button class="btn-primary text-xs py-1.5 bg-green-600 hover:bg-green-700" onclick="window.potUpPropagation('${plant.id}')"><i class="fa-solid fa-seedling"></i> Pot Up</button>
+                            </div>
+                        `;
+                        propsList.appendChild(card);
+                    });
                 }
             }
 
@@ -2580,8 +2617,9 @@ if (state.compost) {
             if (!plant) return;
 
             getEl("view-plant-name").textContent = plant.name;
-            getEl("view-plant-species").textContent = plant.species || "Unknown";
-            getEl("view-plant-variety").textContent = plant.variety || "N/A";
+            getEl("view-plant-species").textContent = plant.species || "Unknown";
+            getEl("view-plant-variety").textContent = plant.variety || "N/A";
+            getEl("view-plant-brand").textContent = plant.brand || "N/A";
             
             const locObj = state.locations.find(l => l.id === plant.location);
             getEl("view-plant-location").textContent = locObj ? locObj.name : (plant.location || "Unassigned");
@@ -2632,7 +2670,7 @@ if (state.compost) {
             const delBtn = getEl("delete-plant-btn");
             const idInput = getEl("modal-plant-id");
             
-            ['plant-name', 'plant-species', 'plant-variety', 'plant-location', 'plant-fert-freq'].forEach(id => getEl(id).value = '');
+            ['plant-name', 'plant-species', 'plant-variety', 'plant-brand', 'plant-location', 'plant-fert-freq'].forEach(id => getEl(id).value = '');
             ['plant-mist-freq', 'plant-prune-freq', 'plant-repot-freq'].forEach(id => getEl(id).value = '');
             getEl("plant-water-freq").value = 7;
             getEl("plant-prog-freq").value = 30;
@@ -2677,8 +2715,9 @@ getEl("plant-has-saucer").checked = false;
                     idInput.value = plant.id;
                     getEl("plant-name").value = plant.name;
                     getEl("plant-species").value = plant.species || "";
-                    getEl("plant-variety").value = plant.variety || "";
-                    getEl("plant-location").value = plant.location || "";
+                    getEl("plant-variety").value = plant.variety || "";
+                    getEl("plant-brand").value = plant.brand || "";
+                    getEl("plant-location").value = plant.location || "";
                     getEl("plant-light").value = plant.light || "";
 getEl("plant-pot-type").value = plant.potType || "plastic";
                     getEl("plant-pot-size").value = plant.potSize || "";
@@ -2770,9 +2809,10 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
 
             let data = {
                 name: rawName,
-                species: getEl("plant-species").value,
-                variety: getEl("plant-variety").value,
-                location: getEl("plant-location").value,
+                species: getEl("plant-species").value,
+                variety: getEl("plant-variety").value,
+                brand: getEl("plant-brand").value,
+                location: getEl("plant-location").value,
                 light: getEl("plant-light").value,
                 potType: getEl("plant-pot-type").value,
                 potSize: parseInt(getEl("plant-pot-size").value) || null,

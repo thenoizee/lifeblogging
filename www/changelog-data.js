@@ -2,10 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.37.0-alpha",
+    date: "2026-05-03",
+    changes: [
+        "In PlantTrackr: Added a new 'Brand/Source' input field to the Add/Edit and View Plant modals.",
+        "In PlantTrackr: Fleshed out the Propagations view and added a 'Pot Up' button to easily move cuttings to the Active garden.",
+        "In PlantTrackr: Redesigned the Basic Info section in the Add/Edit Plant modal for a more compact, responsive grid layout.",
+    ]
+},
+    {
     version: "v15.36.1-alpha",
     date: "2026-05-03",
     changes: [
-        "In Loggr: Mobile bug fix.",
+        "In Hub: Mobile bug fix.",
     ]
     },
     {
