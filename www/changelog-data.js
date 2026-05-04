@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.39.0-alpha",
+    date: "2026-05-04",
+    changes: [
+                "In Dashboard: Added cache-busting timestamp and 'no-store' fetch parameter to the Last.fm widget to prevent stale now-playing data on desktop browsers.",
+    ]
+},
+    {
     version: "v15.38.0-alpha",
     date: "2026-05-04",
     changes: [
