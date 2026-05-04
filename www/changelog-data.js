@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.41.0-alpha",
+    date: "2026-05-04",
+    changes: [
+        "In RecipeManagr: Added nutritional macro inputs (Calories, Protein, Carbs, Fat per serving) to the recipe builder, saving to the baseNutrients object in Firestore.",
+        "In FoodTrackr: Introduced a new 'RecipeManagr' sub-tab within the 'Log Food' view to fetch and display custom recipes.",
+        "In FoodTrackr: Implemented one-way sync allowing users to log custom recipes as food items, automatically carrying over recipe images and locking macro fields to prevent manual overrides."
+    ]
+},
+    {
     version: "v15.40.0-alpha",
     date: "2026-05-04",
     changes: [

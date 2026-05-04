@@ -891,9 +891,10 @@ body.bulk-active {
                 <option value="recent-view">🕒 Recent</option>
                 <option value="my-meals-view">🍽️ My Meals</option>
                 <option value="my-foods-view">⭐ Favourite Foods</option>
-                <option value="leftovers-view">🍪 Leftovers</option>
-                <option value="manual-view">✏️ Manual</option>
-            </select>
+                <option value="recipes-view">📖 RecipeManagr</option>
+                <option value="leftovers-view">🍪 Leftovers</option>
+                <option value="manual-view">✏️ Manual</option>
+            </select>
             <div class="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
                 <i class="fa-solid fa-chevron-down text-xs"></i>
             </div>
@@ -914,9 +915,12 @@ body.bulk-active {
             <i class="fa-solid fa-utensils"></i> My Meals
         </button>
         <button class="sub-tab-button" data-subtab="my-foods-view">
-            <i class="fa-solid fa-star"></i> Favourite Foods
-        </button>
-        <button class="sub-tab-button" data-subtab="leftovers-view">
+            <i class="fa-solid fa-star"></i> Favourite Foods
+        </button>
+        <button class="sub-tab-button" data-subtab="recipes-view">
+            <i class="fa-solid fa-book-open"></i> RecipeManagr
+        </button>
+        <button class="sub-tab-button" data-subtab="leftovers-view">
             <i class="fa-solid fa-cookie-bite"></i> Leftovers
         </button>
         <button class="sub-tab-button" data-subtab="manual-view">
@@ -1014,10 +1018,16 @@ body.bulk-active {
     </div>
 
     <div id="subtab-my-foods-view" class="subtab-content hidden">
-        <div id="my-foods-quick-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <p class="text-sm text-[var(--text-color-secondary)] col-span-full">Your favourite foods will appear here.</p>
-        </div>
-    </div>
+        <div id="my-foods-quick-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <p class="text-sm text-[var(--text-color-secondary)] col-span-full">Your favourite foods will appear here.</p>
+        </div>
+    </div>
+
+    <div id="subtab-recipes-view" class="subtab-content hidden">
+        <div id="recipes-quick-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <p class="text-sm text-[var(--text-color-secondary)] col-span-full">Recipes created in RecipeManagr will sync here automatically.</p>
+        </div>
+    </div>
 
 <div id="subtab-leftovers-view" class="subtab-content hidden">
     <div id="leftovers-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1896,9 +1906,10 @@ if (initialTheme === 'dark') document.documentElement.classList.add('dark');
       let user = null;
       const searchCache = new Map();
       let recentSearches = JSON.parse(localStorage.getItem('foodTrackr_recentSearches')) || [];
-      let foodLog = [];
-      let favoriteFoods = [];
-      let meals = [];
+      let foodLog = [];
+      let favoriteFoods = [];
+      let meals = [];
+      let recipesList = [];
       let macrosChart = null;
       let themeDocRef = null;
       let themeUnsubscribe = null;
@@ -4149,10 +4160,70 @@ const renderMyMealsQuickList = () => {
             }
         });
         listEl.appendChild(card);
-    });
+    });
 };
 
-        const renderMyFoods = () => {
+const renderRecipesQuickList = () => {
+    const listEl = document.getElementById('recipes-quick-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    
+    if (recipesList.length === 0) {
+        listEl.innerHTML = `
+            <div class="col-span-full text-center py-8 opacity-50 select-none border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                <i class="fa-solid fa-book-open text-4xl mb-2 text-teal-500/50"></i>
+                <p class="font-medium text-sm">No recipes found</p>
+                <p class="text-xs">Create recipes in RecipeManagr to log them here.</p>
+            </div>`;
+        return;
+    }
+    
+    recipesList.forEach(recipe => {
+        const card = document.createElement('div');
+        card.className = 'group p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md hover:border-teal-500 dark:hover:border-teal-500 cursor-pointer flex flex-row items-center gap-3 transition-all duration-200 relative overflow-hidden';
+        
+        const imageUrl = (recipe.imageUrl && recipe.imageUrl.startsWith('http')) ? recipe.imageUrl : 'https://placehold.co/150x150/e2e8f0/adb5bd?text=Recipe';
+        const calories = recipe.baseNutrients ? recipe.baseNutrients.calories : 0;
+        const yieldText = (recipe.yield && recipe.yield.quantity) ? `${recipe.yield.quantity} ${recipe.yield.unit || 'servings'}` : '1 serving';
+
+        card.innerHTML = `
+            <div class="w-12 h-12 flex-shrink-0 bg-white rounded-lg border border-gray-100 p-0.5 overflow-hidden">
+                <img src="${imageUrl}" alt="${recipe.name}" class="w-full h-full object-cover">
+            </div>
+            <div class="flex-grow min-w-0">
+                <p class="font-bold text-sm leading-tight truncate text-gray-800 dark:text-gray-100">${recipe.name}</p>
+                <p class="text-xs text-gray-500 truncate"><i class="fa-solid fa-book-open mr-1"></i>RecipeManagr | ${yieldText}</p>
+            </div>
+            <div class="text-xs font-mono font-medium text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 px-2 py-1 rounded">
+                ${calories.toFixed(0)} kcal
+            </div>
+        `;
+        
+        card.addEventListener('click', () => {
+            // Format to match FoodTrackr expected item structure
+            const formattedItem = {
+                name: recipe.name,
+                source: 'RecipeManagr',
+                brands: recipe.sourceName || 'Homemade',
+                imageUrl: imageUrl,
+                baseNutrients: recipe.baseNutrients || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+                servingUnits: [{ name: 'Serving', grams: 100 }], // Default behavior
+                uploadedApp: 'RecipeManagr'
+            };
+            selectFoodItem(formattedItem, 100);
+            document.getElementById('quantity-unit').value = 'Serving';
+            document.getElementById('quantity-amount').value = 1;
+            document.getElementById('quantity-amount').dispatchEvent(new Event('input'));
+            
+            // Auto-select Home Cooked radio
+            document.getElementById('src-homemade').checked = true;
+            document.querySelector('[data-tab="log-food"]').click();
+        });
+        listEl.appendChild(card);
+    });
+};
+
+        const renderMyFoods = () => {
             const myFoodsList = document.getElementById('my-foods-list');
             if (!myFoodsList) return;
             myFoodsList.innerHTML = '';
@@ -4708,8 +4779,9 @@ const activateSubTab = (subTabId) => {
             targetContent.classList.remove('hidden');
             if (subTabId === 'frequent-view') renderFrequentFoods();
             if (subTabId === 'my-meals-view') renderMyMealsQuickList();
-            if (subTabId === 'my-foods-view') renderMyFoodsQuickList();
-            if (subTabId === 'recent-view') renderRecentFoods();
+            if (subTabId === 'my-foods-view') renderMyFoodsQuickList();
+            if (subTabId === 'recent-view') renderRecentFoods();
+            if (subTabId === 'recipes-view') renderRecipesQuickList();
         }
     }
 };
@@ -6034,11 +6106,19 @@ const switchTab = (tabId) => {
               });
 
               const qMeals = query(collection(db, `users/${user.uid}/meals`));
-              onSnapshot(qMeals, (snapshot) => {
-                  meals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                  renderMyFoods();
-                  renderMyMealsQuickList();
-              });
+              onSnapshot(qMeals, (snapshot) => {
+                  meals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                  renderMyFoods();
+                  renderMyMealsQuickList();
+              });
+
+              const qRecipes = query(collection(db, `users/${user.uid}/recipes`), orderBy("createdAt", "desc"));
+              onSnapshot(qRecipes, (snapshot) => {
+                  recipesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                  if (!document.getElementById('subtab-recipes-view').classList.contains('hidden')) {
+                      renderRecipesQuickList();
+                  }
+              });
 
               const qLeftovers = query(collection(db, `users/${user.uid}/leftovers`), orderBy("createdAt", "desc"));
               onSnapshot(qLeftovers, (snapshot) => {
