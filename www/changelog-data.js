@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.38.0-alpha",
+    date: "2026-05-04",
+    changes: [
+                "In Loggr: Implemented Optimistic UI updates in the addLogData function so logs appear instantly on the screen without waiting for server confirmation.",
+                "In Loggr: Changed the ensureCollectionExists check to a background fire-and-forget task to stop blocking the network request.",
+                "In Loggr: Removed input disabling during the initial app load and converted tag and collection fetching to asynchronous background tasks, allowing Quick Log buttons to be clicked instantly upon loading."
+    ]
+},
+    {
     version: "v15.37.0-alpha",
     date: "2026-05-03",
     changes: [

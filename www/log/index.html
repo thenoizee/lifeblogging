@@ -1340,6 +1340,13 @@
 
         // 2. ONLINE WITH TIMEOUT (Flaky Connection Protection)
         try {
+            // --- OPTIMISTIC UI UPDATE ---
+            const tempDocId = "temp-" + Date.now();
+            sessionLogs.push({ ...logEntry, docId: tempDocId, collectionName: collectionName });
+            renderSessionLogs();
+            setDefaultDateTime();
+            showMessage(`Saving...`, "info");
+
             // Create a timeout promise that rejects after 3 seconds
             const timeout = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error("NetworkTimeout")), 3000)
@@ -1348,25 +1355,25 @@
             // Race the network request against the timeout
             const docRef = await Promise.race([
                 (async () => {
-                    await ensureCollectionExists(userId, collectionName);
+                    ensureCollectionExists(userId, collectionName); // Fire and forget! Do not await.
                     return await addDoc(collection(db, `users/${userId}/sources/${collectionName}/data`), logEntry);
                 })(),
                 timeout
             ]);
 
-            // Success!
+            // Success! Replace temp ID with the real Firestore ID
+            const updatedIndex = sessionLogs.findIndex(log => log.docId === tempDocId);
+            if (updatedIndex !== -1) sessionLogs[updatedIndex].docId = docRef.id;
+            
             showMessage(`Data logged successfully: ${attributeName} = ${attributeValue}`, "success");
-            const newLogEntry = { ...logEntry, docId: docRef.id, collectionName: collectionName };
-            sessionLogs.push(newLogEntry);
-            renderSessionLogs();
             fetchAndPopulateTags(userId);
-            setDefaultDateTime();
             fetchLogsForDateRange();
             fetchAllAttributeNames();
 
         } catch (err) {
-            // If it failed or Timed Out, save locally
             console.warn("Save failed or timed out:", err);
+            // Remove optimistic temp log because saveLocally generates its own offline version
+            sessionLogs = sessionLogs.filter(log => log.docId !== tempDocId);
             saveLocally();
         }
       }
@@ -1541,7 +1548,7 @@
           }
 
           if (user) {
-            setInputsDisabled(true); 
+            // Removed setInputsDisabled(true) so the app is instantly clickable!
             userId = user.uid;
             userEmail = user.email;
             if (document.getElementById("user-email-display")) { document.getElementById("user-email-display").textContent = user.email; }
@@ -1551,8 +1558,9 @@
           document.getElementById("main-app-container").style.display = "flex";
           appState.user = user;
 
-          await fetchAndPopulateCollections(userId);
-          await fetchAndPopulateTags(userId);       
+          // Removed the 'await' so these fetches no longer block the UI
+          fetchAndPopulateCollections(userId);
+          fetchAndPopulateTags(userId);        
 
           setDefaultDateTime();
           renderUnsyncedLogs();
@@ -1561,7 +1569,7 @@
           fetchAllAttributeNames();
                 fetchLogsForDateRange();
           
-          setInputsDisabled(false); 
+          // Removed setInputsDisabled(false) 
           appState.isReady = true;
 
         } else {
