@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.42.0-alpha",
+    date: "2026-05-05",
+    changes: [
+                "In VehicleManagr: Updated the lifetime MPL calculation to use the 'Full-to-Full' method, preventing artificial efficiency spikes on the chart caused by missing or partial fuel logs.",
+    ]
+},
+    {
     version: "v15.41.0-alpha",
     date: "2026-05-04",
     changes: [

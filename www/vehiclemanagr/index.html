@@ -1353,43 +1353,52 @@ document.getElementById('meta-ins-cost').value = v.insuranceCost || '';
 // 3. LIFETIME MPL CALCULATION (MILES PER LITRE)
 let avgMpl = 0;
 let chartPts = [];
-// const UK_GAL_CONVERSION = 4.54609; // REMOVED
 
 if (fuelLogs.length > 0) {
-    const firstLog = fuelLogs[0];
-    const lastLog = fuelLogs[fuelLogs.length - 1];
-    const startOdo = getNum(v.startOdometer);
+    let lastFullOdo = null;
+    let accumulatedLiters = 0;
+    let totalValidDist = 0;
+    let totalValidLiters = 0;
 
-    let effectiveStartOdo = (startOdo > 0 && startOdo < getNum(firstLog.odometer)) 
-                            ? startOdo 
-                            : getNum(firstLog.odometer);
-
-    const totalDist = getNum(lastLog.odometer) - effectiveStartOdo;
-    const startIndex = (effectiveStartOdo === startOdo) ? 0 : 1;
-    
-    // Sum Liters directly
-    const totalLiters = fuelLogs.slice(startIndex).reduce((acc, d) => acc + getNum(d.fuelQuantity), 0);
-    
-    // Calculate MPL (Dist / Liters)
-    if (totalDist > 0 && totalLiters > 0) {
-        avgMpl = totalDist / totalLiters;
-    }
-    
-    // Chart: Trend Line
-    let runOdo = effectiveStartOdo;
-    let runLiters = 0;
     fuelLogs.forEach(d => {
-        runLiters += getNum(d.fuelQuantity);
-        if(!d.isPartial) {
-                const dist = getNum(d.odometer) - runOdo;
-                // Calculate Segment MPL using Liters
-                if(dist > 0 && runLiters > 0) {
-                    chartPts.push({ x: new Date(d.date), y: (dist/runLiters) });
+        const currentOdo = getNum(d.odometer);
+        const currentLiters = getNum(d.fuelQuantity);
+
+        if (lastFullOdo !== null) {
+            // We are currently tracking a segment, add this fuel to the total
+            accumulatedLiters += currentLiters;
+
+            if (!d.isPartial) {
+                // Segment closed! (Full tank to Full tank)
+                const dist = currentOdo - lastFullOdo;
+                
+                // Safety check to ensure valid data
+                if (dist > 0 && accumulatedLiters > 0) {
+                    const segmentMpl = dist / accumulatedLiters;
+                    chartPts.push({ x: new Date(d.date), y: segmentMpl });
+                    
+                    totalValidDist += dist;
+                    totalValidLiters += accumulatedLiters;
                 }
-                runOdo = getNum(d.odometer);
-                runLiters = 0;
+                
+                // Reset baseline for the next segment
+                lastFullOdo = currentOdo;
+                accumulatedLiters = 0;
+            }
+        } else {
+            // Not tracking a segment yet. Start tracking IF this is a full tank.
+            // Note: We don't add the fuel from this fill-up because it's replacing fuel used BEFORE we started tracking.
+            if (!d.isPartial) {
+                lastFullOdo = currentOdo;
+                accumulatedLiters = 0;
+            }
         }
     });
+
+    // Calculate Lifetime MPL strictly from proven, valid full-tank segments
+    if (totalValidDist > 0 && totalValidLiters > 0) {
+        avgMpl = totalValidDist / totalValidLiters;
+    }
 }
 
 // Display Result
