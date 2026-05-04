@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.40.0-alpha",
+    date: "2026-05-04",
+    changes: [
+        "In PlantTrackr: Optimized modal padding to better fit mobile and smaller screens.",
+        "In PlantTrackr: Converted the Garden tab top controls into a responsive CSS grid layout for easier mobile navigation.",
+        "In PlantTrackr: Clarified and logically grouped the 'Status & Location' dropdown to explicitly link propagation statuses with the Props tab.",
+        "In PlantTrackr: Implemented sticky 'Save Plant' and 'Delete Plant' buttons at the bottom of the plant modal so they remain visible while scrolling.",
+        "In PlantTrackr: Refined the floating action button (Quick Log) to stand out more and avoid bottom navigation collisions.",
+        "In PlantTrackr: Overhauled the Propagations tab UI to match the clean, uniform look of the Active Garden tab, including text truncation and consistent photo logic.",
+        "In PlantTrackr: Built a granular Diff Checker into the plant save function to automatically track and log exact field edits (e.g., Name, Space, Light, Frequencies) directly into the plant's history.",
+        "In PlantTrackr: Added 'whitespace-pre-wrap' CSS classes to global and plant-specific history viewers to properly render line breaks in automated diff notes."
+    ]
+},
+    {
     version: "v15.39.0-alpha",
     date: "2026-05-04",
     changes: [
