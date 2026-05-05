@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.44.0-alpha",
+    date: "2026-05-05",
+    changes: [
+        "In PlantTrackr: Added an 'Automatically count rain as watered' setting in General Settings.",
+        "In PlantTrackr: Added 'The Potting Shed' as a new location space type.",
+        "In PlantTrackr: Improved the Seasonal Planting Guide section styling to make it more pronounced.",
+        "In PlantTrackr: Enhanced 'Repot' quick logs to capture new pot size, material, and soil type, automatically updating the plant's profile directly.",
+    ]
+},
+    {
     version: "v15.43.0-alpha",
     date: "2026-05-05",
     changes: [
