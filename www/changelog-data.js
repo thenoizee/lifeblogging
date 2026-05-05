@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.43.0-alpha",
+    date: "2026-05-05",
+    changes: [
+        "In FoodTrackr: Displayed custom logged quantities (e.g. '1 Serving') alongside raw grams in Daily Log, History, and Copy views.",
+        "In FoodTrackr: Renamed 'Dashboard' tab to 'Insights' and moved it to the end of the navigation bar.",
+        "In FoodTrackr: Fixed layout spacing issues in subtabs by applying auto-sizing and items-start to grid containers."
+    ]
+},
+    {
     version: "v15.42.0-alpha",
     date: "2026-05-05",
     changes: [
