@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+  version: "v15.47.0-alpha",
+  date: "2026-05-06",
+  changes: [
+    "In LightManagr: Added standard token login mechanism to callback and index pages, bringing it in line with other apps' Firestore-based token sync logic.",
+    "In LightManagr Callback: Implemented the robust `unsubscribe` auth timeout logic to prevent hanging loading screens."
+  ]
+},
+    {
     version: "v15.46.0-alpha",
     date: "2026-05-06",
     changes: [

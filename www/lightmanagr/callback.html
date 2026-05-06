@@ -1,65 +1,135 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" class="dark">
 <head>
-    <title>Connecting...</title>
-    <style> body { font-family: sans-serif; padding: 2rem; line-height: 1.5; } </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connecting... - LightManagr</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        .dark body { background-color: #111827; color: #f3f4f6; }
+        .loader { border-top-color: #f59e0b; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
 </head>
-<body>
-    <h1>Connecting to Hue...</h1>
-    <p id="status">Initializing...</p>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+
+    <div id="status-container" class="text-center p-8 rounded-2xl bg-gray-800 border border-gray-700 shadow-2xl max-w-sm w-full mx-4">
+        <div id="loading-icon" class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4 mx-auto"></div>
+        <div id="error-icon" class="hidden text-red-500 text-5xl mb-4"><i class="fa-solid fa-circle-exclamation"></i></div>
+        <div id="success-icon" class="hidden text-green-500 text-5xl mb-4"><i class="fa-solid fa-check-circle"></i></div>
+        
+        <h2 id="status-title" class="text-xl font-bold mb-2">Connecting to Hue</h2>
+        <p id="status-message" class="text-gray-400 text-sm">Verifying your account...</p>
+        <p id="error-detail" class="text-red-400 text-xs mt-2 hidden font-mono bg-black/20 p-2 rounded"></p>
+        
+        <a id="return-btn" href="/account/" class="hidden mt-6 inline-block w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold transition">Return to Settings</a>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const status = document.getElementById('status');
-        function log(msg) { status.innerHTML += "<br> -> " + msg; console.log(msg); }
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
-            authDomain: "sammy-7298f.firebaseapp.com",
-            projectId: "sammy-7298f",
-            storageBucket: "sammy-7298f.firebasestorage.app",
-            messagingSenderId: "963185683535",
-            appId: "1:963185683535:web:807df8941feba46c208e3a",
-            measurementId: "G-JT1YF2ELN3"
-        };
-
-        log("Starting Firebase...");
+        const firebaseConfig = { apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8", authDomain: "sammy-7298f.firebaseapp.com", projectId: "sammy-7298f", storageBucket: "sammy-7298f.firebasestorage.app", messagingSenderId: "963185683535", appId: "1:963185683535:web:807df8941feba46c208e3a", measurementId: "G-JT1YF2ELN3" };
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const functions = getFunctions(app);
+        const db = getFirestore(app);
 
-        log("Waiting for user login...");
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                log("User confirmed: " + user.email);
-                
-                const urlParams = new URLSearchParams(window.location.search);
-                const code = urlParams.get('code');
-                
-                if (code) {
-                    log("Authorization Code found. Exchanging with backend...");
-                    const exchange = httpsCallable(functions, 'hueTokenExchange');
-                    
-                    exchange({ code: code })
-                        .then((result) => {
-                            log("Success! Redirecting...");
-                            setTimeout(() => window.location.href = '/lightmanagr', 1000);
-                        })
-                        .catch(err => {
-                            log("❌ ERROR: " + err.message);
-                            log("Check the console (F12) for more details.");
-                        });
-                } else {
-                    log("❌ ERROR: No 'code' found in URL.");
-                }
+        const updateStatus = (title, msg, type = 'loading', detail = null) => {
+            document.getElementById('status-title').textContent = title;
+            document.getElementById('status-message').textContent = msg;
+            
+            document.getElementById('loading-icon').classList.add('hidden');
+            document.getElementById('error-icon').classList.add('hidden');
+            document.getElementById('success-icon').classList.add('hidden');
+            document.getElementById('return-btn').classList.remove('hidden');
+
+            const detailEl = document.getElementById('error-detail');
+            if (detail) {
+                detailEl.textContent = detail;
+                detailEl.classList.remove('hidden');
             } else {
-                log("⚠️ No user found. You are not logged in.");
-                log("<a href='/'>Click here to go to Login Page</a>");
+                detailEl.classList.add('hidden');
             }
-        });
+
+            if (type === 'loading') {
+                document.getElementById('loading-icon').classList.remove('hidden');
+                document.getElementById('return-btn').classList.add('hidden');
+            } else if (type === 'error') {
+                document.getElementById('error-icon').classList.remove('hidden');
+            } else if (type === 'success') {
+                document.getElementById('success-icon').classList.remove('hidden');
+            }
+        };
+
+        const exchangeCode = async (user) => {
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+            const state = params.get('state');
+            
+            const returnUrl = (state && state !== 'null') ? decodeURIComponent(state) : '/lightmanagr/';
+            document.getElementById('return-btn').href = returnUrl;
+
+            if (!code) {
+                updateStatus("Error", "No authentication code found.", "error");
+                return;
+            }
+
+            try {
+                updateStatus("Connecting...", "Exchanging code for token...", "loading");
+
+                const exchange = httpsCallable(functions, 'hueTokenExchange');
+                const result = await exchange({ code: code });
+                const data = result.data || {};
+
+                // Save to Firestore
+                updateStatus("Saving...", "Linking to your account...", "loading");
+                await setDoc(doc(db, 'users', user.uid, 'services', 'hue'), {
+                    token: data.access_token || data.token || "linked",
+                    updatedAt: new Date()
+                }, { merge: true });
+
+                // Save to LocalStorage
+                if (data.access_token || data.token) {
+                    localStorage.setItem('hue_token', data.access_token || data.token);
+                }
+                
+                updateStatus("Success!", "Redirecting you back...", "success");
+                
+                setTimeout(() => {
+                    window.location.href = returnUrl;
+                }, 1500);
+
+            } catch (error) {
+                console.error(error);
+                updateStatus("Connection Failed", "Could not connect to Hue.", "error", error.message);
+            }
+        };
+
+        const init = () => {
+            let authTimeout;
+            
+            // 1. Set a timeout in case Auth hangs forever
+            authTimeout = setTimeout(() => {
+                updateStatus("Authentication Error", "You do not appear to be logged in.", "error", "Session timeout. Please go back and log in again.");
+            }, 8000);
+
+            // 2. Listen for Auth State
+            const unsubscribe = onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    // User found! Clear timeout and proceed.
+                    clearTimeout(authTimeout);
+                    unsubscribe(); 
+                    exchangeCode(user);
+                } 
+                // If user is null, we wait for the next event or the timeout.
+            });
+        };
+
+        init();
     </script>
 </body>
 </html>
