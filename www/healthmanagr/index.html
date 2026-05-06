@@ -198,6 +198,12 @@
 /* Safety: Ensure tab content is hidden by default unless active */
 .tab-content { display: none; }
 .tab-content.active { display: block; }
+
+/* Beautified Accordions */
+details > summary { list-style: none; display: flex; justify-content: space-between; align-items: center; padding-right: 1rem; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::after { content: '\f078'; font-family: 'Font Awesome 6 Free'; font-weight: 900; font-size: 1.25rem; color: var(--text-color-secondary); transition: transform 0.3s ease; }
+details[open] > summary::after { transform: rotate(180deg); color: var(--primary); }
         .destructive-button { background-color: #e53e3e; }
         .destructive-button:hover:not(:disabled) { background-color: #c53030; }
         .secondary-button { background-color: #4a5568; }
@@ -849,6 +855,42 @@
                 <p class="text-[var(--text-color-secondary)] mb-2">Last Shower</p>
                 <h3 id="last-shower-display" class="text-3xl font-bold mb-4">--</h3>
                 <button id="log-shower-btn" class="main-button w-full">Log Shower Now</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="bg-[var(--card-bg-color)] border-2 border-[var(--border-color)] p-4 rounded-lg shadow-sm">
+            <legend class="text-2xl font-semibold px-2 mb-4"><i class="fa-solid fa-pump-soap text-purple-500"></i> Skincare</legend>
+            <div class="text-center p-6">
+                <p class="text-[var(--text-color-secondary)] mb-2">Last Routine</p>
+                <h3 id="last-skincare-display" class="text-3xl font-bold mb-4">--</h3>
+                <button id="log-skincare-btn" class="main-button w-full">Log Skincare Now</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="bg-[var(--card-bg-color)] border-2 border-[var(--border-color)] p-4 rounded-lg shadow-sm">
+            <legend class="text-2xl font-semibold px-2 mb-4"><i class="fa-solid fa-tooth text-blue-300"></i> Teeth / Floss</legend>
+            <div class="text-center p-6">
+                <p class="text-[var(--text-color-secondary)] mb-2">Last Deep Clean</p>
+                <h3 id="last-teeth-display" class="text-3xl font-bold mb-4">--</h3>
+                <button id="log-teeth-btn" class="main-button w-full">Log Teeth/Floss Now</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="bg-[var(--card-bg-color)] border-2 border-[var(--border-color)] p-4 rounded-lg shadow-sm">
+            <legend class="text-2xl font-semibold px-2 mb-4"><i class="fa-solid fa-razor text-gray-500"></i> Body Hair</legend>
+            <div class="text-center p-6">
+                <p class="text-[var(--text-color-secondary)] mb-2">Last Trim/Shave</p>
+                <h3 id="last-bodyhair-display" class="text-3xl font-bold mb-4">--</h3>
+                <button id="log-bodyhair-btn" class="main-button w-full">Log Body Hair Now</button>
+            </div>
+        </fieldset>
+
+        <fieldset class="bg-[var(--card-bg-color)] border-2 border-[var(--border-color)] p-4 rounded-lg shadow-sm">
+            <legend class="text-2xl font-semibold px-2 mb-4"><i class="fa-solid fa-eye text-indigo-500"></i> Eyebrows</legend>
+            <div class="text-center p-6">
+                <p class="text-[var(--text-color-secondary)] mb-2">Last Pluck/Thread</p>
+                <h3 id="last-eyebrows-display" class="text-3xl font-bold mb-4">--</h3>
+                <button id="log-eyebrows-btn" class="main-button w-full">Log Eyebrows Now</button>
             </div>
         </fieldset>
     </div>
@@ -1531,6 +1573,44 @@ window.addEventListener('app-logout-request', () => {
        container.innerHTML = `<p class="text-center text-[var(--text-color-secondary)] md:col-span-2">No active medicines. Add one from the Medications tab.</p>`;
     }
 
+    // Calculate adherence for last 7 days independently for the Dashboard
+    let dashTaken = 0, dashMissed = 0, dashUnknown = 0;
+    const dashEnd = new Date();
+    dashEnd.setHours(23, 59, 59, 999);
+    const dashStart = new Date();
+    dashStart.setDate(dashStart.getDate() - 6);
+    dashStart.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < 7; i++) {
+        const day = new Date(dashStart);
+        day.setDate(dashStart.getDate() + i);
+        const dayStr = toLocalISOString(day).split('T')[0];
+        const dayName = DAYS_OF_WEEK[day.getDay() === 0 ? 6 : day.getDay() - 1];
+
+        let todaysDoses = appState.doses.filter(d => {
+            const doseDate = parseLocalDate(d.date);
+            return doseDate.getFullYear() === day.getFullYear() && doseDate.getMonth() === day.getMonth() && doseDate.getDate() === day.getDate();
+        });
+
+        appState.medicines.forEach(med => {
+            if (med.isArchived) return;
+            if (med.schedule?.days?.includes(dayName)) {
+                med.schedule.times.split(',').map(t => t.trim()).filter(Boolean).forEach(time => {
+                    const scheduledDateTime = parseLocalDate(`${dayStr}T${time}`);
+                    const doseIndex = todaysDoses.findIndex(d => d.medId === med.id);
+                    if (doseIndex !== -1) {
+                        const loggedDose = todaysDoses[doseIndex];
+                        if (loggedDose.status === 'taken') dashTaken++; else dashMissed++;
+                        todaysDoses.splice(doseIndex, 1);
+                    } else if (scheduledDateTime < new Date()) {
+                        dashUnknown++;
+                    }
+                });
+            }
+        });
+    }
+    renderAdherenceChart(dashTaken, dashMissed, dashUnknown);
+
     // 1. Medicine Cards
     activeMedicines.forEach(med => {
         const currentStock = calculateCurrentStock(med.id);
@@ -1822,7 +1902,6 @@ window.addEventListener('app-logout-request', () => {
             });
             calendarContainer.appendChild(dayDiv);
         }
-        renderAdherenceChart(takenCount, missedCount, unknownCount);
         
         if (window.innerWidth < 768) {
             const todayScroll = new Date();
@@ -1878,7 +1957,8 @@ window.addEventListener('app-logout-request', () => {
         document.getElementById('med-distribution-bar-chart').style.display = 'block';
 
         const doseCounts = filteredDoses.reduce((acc, dose) => {
-            const medName = dose.medicineName;
+            const med = appState.medicines.find(m => m.id === dose.medId);
+            const medName = med ? med.name : dose.medicineName;
             acc[medName] = (acc[medName] || 0) + 1;
             return acc;
         }, {});
@@ -2099,7 +2179,7 @@ window.addEventListener('app-logout-request', () => {
             row.dataset.id = dose.id;
             row.innerHTML = `
                 <td>${dose.date ? new Date(dose.date).toLocaleString() : 'N/A'}</td>
-                <td>${dose.medicineName}</td>
+                <td>${appState.medicines.find(m => m.id === dose.medId)?.name || dose.medicineName}</td>
                 <td>${dose.dosage}</td>
                 <td class="${dose.status === 'taken' ? 'text-green-500' : dose.status === 'missed' ? 'text-red-500' : 'text-gray-500'}">${dose.status}</td>
                 <td>${dose.doseNotes || ''}</td>
@@ -2553,6 +2633,10 @@ const renderGrooming = () => {
     const lastBeard = logs.find(l => l.type === 'Beard');
     const lastEars = logs.find(l => l.type === 'Ears');
     const lastShower = logs.find(l => l.type === 'Shower');
+    const lastSkincare = logs.find(l => l.type === 'Skincare');
+    const lastTeeth = logs.find(l => l.type === 'Teeth/Floss');
+    const lastBodyHair = logs.find(l => l.type === 'Body Hair');
+    const lastEyebrows = logs.find(l => l.type === 'Eyebrows');
     
     // Update Display Cards
     const formatDate = (log) => log ? new Date(log.date.seconds * 1000).toLocaleDateString() : 'Never';
@@ -2562,6 +2646,10 @@ const renderGrooming = () => {
     document.getElementById("last-beard-display").textContent = formatDate(lastBeard);
     document.getElementById("last-ears-display").textContent = formatDate(lastEars);
     document.getElementById("last-shower-display").textContent = formatDate(lastShower);
+    document.getElementById("last-skincare-display").textContent = formatDate(lastSkincare);
+    document.getElementById("last-teeth-display").textContent = formatDate(lastTeeth);
+    document.getElementById("last-bodyhair-display").textContent = formatDate(lastBodyHair);
+    document.getElementById("last-eyebrows-display").textContent = formatDate(lastEyebrows);
 
     if (logs.length === 0) {
         list.innerHTML = `<li class="text-center text-[var(--text-color-secondary)]">No records yet.</li>`;
@@ -2575,6 +2663,10 @@ const renderGrooming = () => {
             case 'Beard': return 'fa-solid fa-user text-amber-700';
             case 'Ears': return 'fa-solid fa-ear-listen text-yellow-500';
             case 'Shower': return 'fa-solid fa-shower text-cyan-500';
+            case 'Skincare': return 'fa-solid fa-pump-soap text-purple-500';
+            case 'Teeth/Floss': return 'fa-solid fa-tooth text-blue-300';
+            case 'Body Hair': return 'fa-solid fa-razor text-gray-500';
+            case 'Eyebrows': return 'fa-solid fa-eye text-indigo-500';
             default: return 'fa-solid fa-check text-gray-500';
         }
     };
@@ -4123,6 +4215,10 @@ document.getElementById('log-nail-trim-btn').addEventListener('click', () => han
 document.getElementById('log-beard-btn').addEventListener('click', () => handleLogGrooming('Beard'));
 document.getElementById('log-ears-btn').addEventListener('click', () => handleLogGrooming('Ears'));
 document.getElementById('log-shower-btn').addEventListener('click', () => handleLogGrooming('Shower'));
+document.getElementById('log-skincare-btn').addEventListener('click', () => handleLogGrooming('Skincare'));
+document.getElementById('log-teeth-btn').addEventListener('click', () => handleLogGrooming('Teeth/Floss'));
+document.getElementById('log-bodyhair-btn').addEventListener('click', () => handleLogGrooming('Body Hair'));
+document.getElementById('log-eyebrows-btn').addEventListener('click', () => handleLogGrooming('Eyebrows'));
 document.getElementById('log-both-lenses-btn').addEventListener('click', logBothLensesUsage);
       document.getElementById('modal-save-lens-stock-btn').addEventListener('click', handleSaveLensStock);
 

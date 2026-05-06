@@ -2,10 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.46.0-alpha",
+    date: "2026-05-06",
+    changes: [
+                "In HealthManagr: Beautified accordion sections (details/summary elements) with custom CSS and animated FontAwesome chevron indicators.",
+                "In HealthManagr: Fixed a bug where the dashboard adherence chart was tethered to the 'Record Meds' tab's week view; it now automatically calculates and displays the last 7 days independently.",
+                "In HealthManagr: Resolved a desync issue where edited medication names wouldn't update in historical logs and charts, by dynamically fetching the current name via medId.",
+                "In HealthManagr: Added four new detailed personal grooming and hygiene tracking categories: Skincare, Teeth/Floss, Body Hair, and Eyebrows.",
+    ]
+},
+    {
     version: "v15.45.0-alpha",
     date: "2026-05-06",
     changes: [
-                "In VidTrackr: Updated the Cast & Guests display to explicitly label 'Regular' or 'Guest' roles under actor names, and updated missing character default text to 'Unknown'.",
+        "In VidTrackr: Updated the Cast & Guests display to explicitly label 'Regular' or 'Guest' roles under actor names, and updated missing character default text to 'Unknown'.",
     ]
 },
     {
