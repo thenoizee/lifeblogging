@@ -96,46 +96,47 @@ exports.hueLogin = onRequest({ secrets: [hueClientId] }, (req, res) => {
 
 // B. TOKEN EXCHANGE
 exports.hueTokenExchange = onCall({ secrets: [hueClientId, hueClientSecret] }, async (request) => {
-  const code = request.data.code;
-  
-  if (!code) {
-      throw new HttpsError("invalid-argument", "Missing auth code"); 
-  }
+  const code = request.data.code;
+  
+  if (!code) {
+      throw new HttpsError("invalid-argument", "Missing auth code"); 
+  }
 
-  if (!request.auth) throw new HttpsError("unauthenticated", "User must be logged in."); 
+  if (!request.auth) throw new HttpsError("unauthenticated", "User must be logged in."); 
 
-  try {
-    const authHeader = Buffer.from(`${hueClientId.value()}:${hueClientSecret.value()}`).toString('base64');
-    
-    // Hue requires form-urlencoded data in the body, not query parameters
-    const response = await axios.post('https://api.meethue.com/v2/oauth2/token', 
-      new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code
-      }).toString(),
-      {
-        headers: {
-          'Authorization': `Basic ${authHeader}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      }
-    );
+  try {
+    const authHeader = Buffer.from(`${hueClientId.value()}:${hueClientSecret.value()}`).toString('base64');
+    
+    // Reverted back to the V1 endpoint to match the hueLogin function
+    const response = await axios.post('https://api.meethue.com/oauth2/token', 
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code
+      }).toString(),
+      {
+        headers: {
+          'Authorization': `Basic ${authHeader}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
 
-    const { access_token, refresh_token } = response.data;
-    
-    await admin.firestore().collection('users').doc(request.auth.uid).collection('services').doc('hue').set({
-      accessToken: access_token,
-      refreshToken: refresh_token,
-      linkedAt: new Date()
-    }, { merge: true }); 
+    const { access_token, refresh_token } = response.data;
+    
+    await admin.firestore().collection('users').doc(request.auth.uid).collection('services').doc('hue').set({
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      linkedAt: new Date()
+    }, { merge: true }); 
 
-    // Return the access token so the frontend can save it to localStorage
-    return { success: true, access_token: access_token };
-    
-  } catch (error) {
-     logger.error("Hue Token Exchange Error", error.response?.data || error.message);
-     throw new HttpsError('internal', "Failed to exchange Hue token.");
-  }
+    return { success: true, access_token: access_token };
+    
+  } catch (error) {
+     const errorDetails = error.response?.data || error.message;
+     logger.error("Hue Token Exchange Error", errorDetails);
+     
+     throw new HttpsError('internal', `Failed to exchange Hue token: ${JSON.stringify(errorDetails)}`);
+  }
 });
 
 // C. PROXY

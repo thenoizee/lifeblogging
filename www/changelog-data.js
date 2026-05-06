@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.48.0-alpha",
+    date: "2026-05-07",
+    changes: [
+        "In PlantTrackr: Expanded bulk selection tools on the Garden tab to support multiple actions including Water, Fertilize, Mist, and Delete.",
+        "In PlantTrackr: Removed 'The Potting Shed' as a general environmental location type and transformed it into a dedicated 'Potting Shed' dashboard widget for actively tracking young plants, seeds, and propagations.",
+        "In PlantTrackr: Overhauled layout terminology across the app. 'Locations' are now called 'Rooms & Spaces'.",
+        "In PlantTrackr: Renamed 'Positions' to 'Specific Zones / Micro-Spots' to create a clearer, more obvious hierarchy for plant placement."
+    ]
+    },
+    {
   version: "v15.47.0-alpha",
   date: "2026-05-06",
   changes: [
