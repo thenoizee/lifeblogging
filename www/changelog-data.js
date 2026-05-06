@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.45.0-alpha",
+    date: "2026-05-06",
+    changes: [
+                "In VidTrackr: Updated the Cast & Guests display to explicitly label 'Regular' or 'Guest' roles under actor names, and updated missing character default text to 'Unknown'.",
+    ]
+},
+    {
     version: "v15.44.0-alpha",
     date: "2026-05-05",
     changes: [
