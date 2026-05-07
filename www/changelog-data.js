@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.49.0-alpha",
+    date: "2026-05-08",
+    changes: [
+        "In FoodTrackr: Fixed RecipeManagr subtab UI to improve image sizing and spacing.",
+        "In FoodTrackr: Intercepted Recipe card clicks to show the Product Details modal (with ingredients) before dumping into the log form.",
+        "In FoodTrackr: Reordered main navigation tabs to Log, Insights, Foods, History.",
+        "In FoodTrackr: Addressed UI spacing issues and hidden scrollbars in the log subtabs for a cleaner layout.",
+    ]
+    },
+    {
     version: "v15.48.1-alpha",
     date: "2026-05-07",
     changes: [
