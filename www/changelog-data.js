@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.48.1-alpha",
+    date: "2026-05-07",
+    changes: [
+        "In TaskTrackr: Auth flow bug fix.",
+    ]
+    },
+    {
     version: "v15.48.0-alpha",
     date: "2026-05-07",
     changes: [

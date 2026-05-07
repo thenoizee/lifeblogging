@@ -589,7 +589,7 @@ body {
         </div>
     </div>
 
-<<div id="connections-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[80] hidden px-4">
+<div id="connections-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[80] hidden px-4">
         <div class="card bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-2xl max-w-3xl w-full border border-gray-700 animate-fade max-h-[90vh] overflow-y-auto">
             <h3 class="text-xl font-bold mb-4 text-white">Data & Connections</h3>
             
@@ -610,7 +610,7 @@ body {
                          <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg border border-gray-700 mb-2">
                              <div class="flex items-center gap-3">
                                  <i class="fa-brands fa-google text-white text-xl"></i>
-                                 <span class="font-bold text-gray-300">Google Tasks</span>
+                                 <span class="font-bold text-gray-300">Google Tasks & GCal</span>
                              </div>
                              <button id="btn-conn-google" onclick="window.connectGoogle()" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded transition">Connect</button>
                          </div>
@@ -1179,37 +1179,22 @@ const api = async (endpoint, method = 'GET', body = null) => {
 // --- GOOGLE TASKS INTEGRATION ---
 
 // 1. Auth & Connection
-// Replace your existing connectGoogle function with this:
 window.connectGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/tasks');
-    provider.addScope('https://www.googleapis.com/auth/calendar.readonly'); // Add Calendar access
+    if (!auth.currentUser) return;
     
     try {
-        const result = await signInWithPopup(auth, provider);
-        // ... (existing success logic remains the same) ...
-        const credential = GoogleAuthProvider.credentialFromResult(result);
-        const token = credential.accessToken;
+        // Redirect to Google to get an offline authorization code
+        const clientId = "963185683535-mpnnlbgacn90m4ak55h6qllucsm9hn6m.apps.googleusercontent.com"; // Replace with your actual Google Client ID
+        const redirectUri = window.location.origin + "/tasktrackr/callback.html"; 
+        const scope = "https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.readonly";
+        const state = auth.currentUser.uid + "_google"; 
         
-        if (auth.currentUser && token) {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'services', 'google'), {
-                token: token,
-                updatedAt: new Date()
-            }, { merge: true });
-            
-            localStorage.setItem('google_token', token);
-            showToast('Google Connection Refreshed', 'success');
-            await fetchAllData();
-        }
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`;
+        
+        window.location.href = authUrl;
     } catch (error) {
-        // --- NEW: Filter out "Popup Closed" errors ---
-        if (error.code === 'auth/popup-closed-by-user' || error.message.includes('popup_closed_by_user')) {
-            console.log('User cancelled Google login.');
-            return; // Exit silently
-        }
-        
-        console.error(error);
-        showToast('Google Connection Failed', 'error');
+        console.error("Google Connection Error", error);
+        if (typeof showToast === 'function') showToast("Error connecting to Google", "error");
     }
 };
 
@@ -1233,8 +1218,40 @@ const googleApi = async (endpoint, method = 'GET', body = null, base = 'https://
         
         // Handle Token Expiry (401)
         if (res.status === 401) {
-            console.warn("Google Token Expired");
-            localStorage.removeItem('google_token');
+                    console.warn("Google Token Expired - Attempting Refresh");
+                    
+                    try {
+                        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid, 'services', 'google'));
+                        const refreshToken = userDoc.exists() ? userDoc.data().refreshToken : null;
+                        
+                        if (refreshToken) {
+                            const refreshRes = await fetch('https://us-central1-sammy-7298f.cloudfunctions.net/refreshGoogleToken', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ refresh_token: refreshToken })
+                            });
+                            
+                            const refreshData = await refreshRes.json();
+                            
+                            if (refreshData.access_token) {
+                                localStorage.setItem('google_token', refreshData.access_token);
+                                
+                                // Save the new access token to firestore
+                                await setDoc(doc(db, 'users', auth.currentUser.uid, 'services', 'google'), {
+                                    token: refreshData.access_token,
+                                    updatedAt: new Date()
+                                }, { merge: true });
+                                
+                                // Retry the original request
+                                return googleApi(endpoint, method, body, base);
+                            }
+                        }
+                    } catch (refreshErr) {
+                        console.error("Failed to refresh Google token", refreshErr);
+                    }
+                    
+                    // Fallback if refresh fails
+                    localStorage.removeItem('google_token');
             
             // NEW: Send notification to the bell
             window.dispatchEvent(new CustomEvent('app-new-notification', { 
@@ -3130,29 +3147,7 @@ const renderKanban = (tasks) => { const cols = { 5: { title: 'High Priority', ic
             }); 
         };
         window.jumpToToday = () => { currentCalendarDate = new Date(); renderApp(); }; 
-        window.openSidePane = (taskId, isFromHistory = false) => { currentSidePaneTaskId = taskId; 
-            const task = isFromHistory ? historyCache.find(t => t.id === taskId) : taskCache.find(t => t.id === taskId); 
-            if (!task) return; const titleEl = document.getElementById('sp-title-edit'); 
-            titleEl.value = task.title; 
-    
-    // FORCE RESET HEIGHT IMMEDIATELY to prevent the gap
-    titleEl.style.height = '36px'; // Set to a safe minimum (approx 1 line)
-            titleEl.style.height = titleEl.scrollHeight + 'px'; 
-            const descEl = document.getElementById('sp-desc'); 
-            descEl.textContent = task.content || ""; const pName = projectMap[task.projectId]?.name || 'Unknown'; 
-            const spProj = document.getElementById('sp-project'); 
-            spProj.textContent = pName; spProj.className = "text-[10px] font-bold uppercase tracking-widest mb-1 block"; 
-            spProj.style.color = getProjectColor(task.projectId); 
-            document.getElementById('sp-date').textContent = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date'; 
-        const pCont = document.getElementById('sp-priority-container'); 
-        // INSERT THIS CODE BELOW IT:
-const spSource = document.getElementById('sp-source');
-const src = getTaskSource(task);
-const srcCfg = getSourceConfig(src);
-spSource.innerHTML = `<i class="${srcCfg.icon}" style="color: ${srcCfg.color}"></i> ${srcCfg.label}`;
-        if(task.priority == 5) pCont.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-flag"></i> High</span>'; else if(task.priority == 3) pCont.innerHTML = '<span class="text-yellow-500 font-bold"><i class="fa-solid fa-flag"></i> Medium</span>'; else if(task.priority == 1) pCont.innerHTML = '<span class="text-blue-500 font-bold"><i class="fa-solid fa-flag"></i> Low</span>'; else pCont.textContent = "None"; const tCont = document.getElementById('sp-tags-container'); tCont.innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); const compBtn = document.getElementById('sp-complete-btn'); const stopBtn = document.getElementById('sp-stop-repeat-btn'); if(isRecurring) { document.getElementById('sp-recurring-container').classList.remove('hidden'); stopBtn.classList.remove('hidden'); stopBtn.onclick = () => window.stopRepeating(task.id); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; } else { compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } else { document.getElementById('sp-recurring-container').classList.add('hidden'); stopBtn.classList.add('hidden'); if (task.status === 2) { compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; compBtn.onclick = null; } else { compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; } } const spCheck = document.getElementById('sp-checkbox'); spCheck.checked = task.status === 2; spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); window.renderSidePaneChecklist(task); document.getElementById('sp-trash-btn').onclick = () => { if(confirm("Trash this task?")) window.deleteTask(task.projectId, task.id); }; document.getElementById('sp-edit-btn').onclick = () => window.openModal(true, taskId); const overlay = document.getElementById('side-pane-overlay'); const pane = document.getElementById('side-pane'); pane.classList.remove('hidden'); 
-        if (window.innerWidth >= 1024) { pane.classList.add('open'); } else { overlay.classList.remove('hidden'); void overlay.offsetWidth; overlay.classList.remove('opacity-0'); pane.classList.add('open'); } };
-
+        
 // --- UPDATED: Open Side Pane (Removed native confirm() on trash button) ---
         window.openSidePane = (taskId, isFromHistory = false) => { 
             currentSidePaneTaskId = taskId; 

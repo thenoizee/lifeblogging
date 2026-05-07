@@ -24,6 +24,10 @@ const hueClientId = defineSecret("HUE_CLIENT_ID");
 const hueClientSecret = defineSecret("HUE_CLIENT_SECRET");
 const HUE_APP_ID = "lifeblogging";
 
+// Google OAuth Secrets
+const googleClientId = defineSecret("GOOGLE_CLIENT_ID");
+const googleClientSecret = defineSecret("GOOGLE_CLIENT_SECRET");
+
 // ==========================================
 // 1. TICKTICK FUNCTION
 // ==========================================
@@ -67,6 +71,56 @@ exports.exchangeTickTickToken = onRequest(
 
     } catch (error) {
       logger.error("TickTick Auth Error", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// ==========================================
+// 1.5 GOOGLE TOKEN EXCHANGE & REFRESH
+// ==========================================
+exports.exchangeGoogleToken = onRequest(
+  { secrets: [googleClientId, googleClientSecret], cors: true },
+  async (req, res) => {
+    const { code, redirect_uri } = req.body;
+    if (!code) return res.status(400).json({ error: "Missing auth code" });
+
+    try {
+      const response = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
+        code: code,
+        client_id: googleClientId.value(),
+        client_secret: googleClientSecret.value(),
+        redirect_uri: redirect_uri,
+        grant_type: "authorization_code"
+      }).toString(), {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+      });
+      res.json(response.data); // Returns access_token AND refresh_token
+    } catch (error) {
+      logger.error("Google Auth Error", error.response?.data || error.message);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+exports.refreshGoogleToken = onRequest(
+  { secrets: [googleClientId, googleClientSecret], cors: true },
+  async (req, res) => {
+    const { refresh_token } = req.body;
+    if (!refresh_token) return res.status(400).json({ error: "Missing refresh token" });
+
+    try {
+      const response = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
+        client_id: googleClientId.value(),
+        client_secret: googleClientSecret.value(),
+        refresh_token: refresh_token,
+        grant_type: "refresh_token"
+      }).toString(), {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+      });
+      res.json(response.data); // Returns new access_token
+    } catch (error) {
+      logger.error("Google Refresh Error", error.response?.data || error.message);
       res.status(500).json({ error: error.message });
     }
   }
