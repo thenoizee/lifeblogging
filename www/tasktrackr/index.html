@@ -344,8 +344,12 @@ body {
         <i class="fa-solid fa-sort absolute right-2 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none text-gray-400"></i>
     </div>
 
-    <button onclick="window.toggleCompactMode()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition" title="View Mode">
+    <button onclick="window.toggleCompactMode()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition" title="Compact Mode">
         <i id="compact-icon" class="fa-solid fa-compress"></i>
+    </button>
+    <button onclick="window.toggleLayoutSpread()" class="h-8 px-2 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500 transition gap-2" title="Toggle Layout Spread">
+        <i id="layout-icon" class="fa-solid fa-arrows-left-right"></i>
+        <span id="layout-text" class="text-[10px] font-bold uppercase tracking-wider hidden md:inline">Standard</span>
     </button>
     
     <div class="border-l border-gray-200 dark:border-gray-700 pl-1 ml-1 flex items-center gap-1">
@@ -464,6 +468,14 @@ body {
     </div>
 
     <div id="side-pane-overlay" class="fixed inset-0 bg-black/60 z-40 hidden opacity-0 lg:hidden" onclick="window.closeSidePane()"></div>
+
+    <div id="quick-add-popup-overlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden items-start justify-center pt-[20vh] transition-opacity opacity-0" onclick="window.closeQuickAddPopup(event)">
+        <form id="quick-add-popup-form" class="bg-[var(--bg)] border border-gray-300 dark:border-gray-700 w-full max-w-2xl rounded-2xl shadow-2xl p-2 transform scale-95 transition-transform duration-200 flex items-center gap-3" onsubmit="window.handleQuickAddSubmit(event, true)">
+            <i class="fa-solid fa-plus text-[var(--primary)] text-xl pl-4"></i>
+            <input type="text" id="quick-add-popup-input" class="w-full bg-transparent text-gray-900 dark:text-gray-100 text-lg outline-none py-3 placeholder-gray-400" placeholder="Type your task here..." autocomplete="off">
+            <button type="submit" class="bg-[var(--primary)] hover:bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold transition shadow-md">Add Task</button>
+        </form>
+    </div>
 
     <div id="task-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden px-4">
         <div class="card bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-2xl max-w-md w-full border border-gray-700 animate-fade max-h-[90vh] overflow-y-auto flex flex-col">
@@ -1792,9 +1804,10 @@ const fetchAllData = async () => {
             const tasksData = JSON.stringify(Array.from(selectedTasks)); 
             e.dataTransfer.setData('text/plain', tasksData); 
         };
-        window.handleQuickAddSubmit = async (e) => {
+        window.handleQuickAddSubmit = async (e, isPopup = false) => {
     e.preventDefault();
-    const input = document.getElementById('quick-add-input');
+    const inputId = isPopup ? 'quick-add-popup-input' : 'quick-add-input';
+    const input = document.getElementById(inputId);
     const title = input.value.trim();
     if (!title) return;
     
@@ -1824,6 +1837,7 @@ const fetchAllData = async () => {
         input.value = '';
         showToast('Task added');
         fetchAllData();
+        if (isPopup) window.closeQuickAddPopup();
     } catch (err) {
         showToast('Failed to add task', 'error');
     } finally {
@@ -1835,6 +1849,59 @@ const fetchAllData = async () => {
         document.addEventListener('dragend', () => { document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging')); });
 
         window.toggleCompactMode = () => { isCompactMode = !isCompactMode; localStorage.setItem('compactMode', isCompactMode); const icon = document.getElementById('compact-icon'); if(isCompactMode) { els.content.classList.add('compact-mode'); icon.className = "fa-solid fa-expand"; } else { els.content.classList.remove('compact-mode'); icon.className = "fa-solid fa-compress"; } renderApp(); };
+
+        let isFullSpread = localStorage.getItem('fullSpread') === 'true';
+        window.toggleLayoutSpread = () => {
+            isFullSpread = !isFullSpread;
+            localStorage.setItem('fullSpread', isFullSpread);
+            window.applyLayoutSpread();
+        };
+
+        window.applyLayoutSpread = () => {
+            const main = document.querySelector('main');
+            const icon = document.getElementById('layout-icon');
+            const text = document.getElementById('layout-text');
+            if (isFullSpread) {
+                main.classList.remove('container', 'mx-auto');
+                main.classList.add('w-full', 'px-4');
+                if (icon) icon.className = "fa-solid fa-compress-arrows-alt";
+                if (text) text.textContent = "Full Spread";
+            } else {
+                main.classList.add('container', 'mx-auto');
+                main.classList.remove('w-full');
+                if (icon) icon.className = "fa-solid fa-arrows-left-right";
+                if (text) text.textContent = "Standard";
+            }
+        };
+        // Run immediately on load
+        window.applyLayoutSpread();
+
+        // TickTick Style Popup Logic
+        window.openQuickAddPopup = () => {
+            const overlay = document.getElementById('quick-add-popup-overlay');
+            const form = document.getElementById('quick-add-popup-form');
+            const input = document.getElementById('quick-add-popup-input');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            setTimeout(() => {
+                overlay.classList.remove('opacity-0');
+                form.classList.remove('scale-95');
+                input.focus();
+            }, 10);
+        };
+
+        window.closeQuickAddPopup = (e) => {
+            const overlay = document.getElementById('quick-add-popup-overlay');
+            const form = document.getElementById('quick-add-popup-form');
+            if (!e || e.target === overlay || e.key === 'Escape') {
+                overlay.classList.add('opacity-0');
+                form.classList.add('scale-95');
+                setTimeout(() => {
+                    overlay.classList.add('hidden');
+                    overlay.classList.remove('flex');
+                }, 200);
+            }
+        };
 
 
         window.setView = (view) => { 
@@ -2887,7 +2954,7 @@ window.openModal = (isEdit, taskId = null) => {
         window.togglePomoTimer = (e) => { e.stopPropagation(); const btn = document.getElementById('pomo-toggle'); if (isPomoRunning) { clearInterval(pomoInterval); isPomoRunning = false; btn.textContent = "Resume"; } else { isPomoRunning = true; btn.textContent = "Pause"; pomoInterval = setInterval(() => { if(pomoSeconds > 0) { pomoSeconds--; window.updatePomoDisplay(); } }, 1000); } };
         window.resetPomo = (e) => { e.stopPropagation(); clearInterval(pomoInterval); isPomoRunning = false; pomoSeconds = 25 * 60; document.getElementById('pomo-toggle').textContent = "Start"; window.updatePomoDisplay(); };
 
-        document.addEventListener('keydown', (e) => { if (e.target.matches('input, textarea, select, [contenteditable], [contenteditable="true"]')) { if(e.key === 'Escape') e.target.blur(); return; } if (e.key.toLowerCase() === 'n') { e.preventDefault(); window.openAddTaskModal(); } if (e.key === '/') { e.preventDefault(); document.getElementById('quick-add-input').focus(); } if (e.key === 'Escape') { document.getElementById('task-modal').classList.add('hidden'); document.getElementById('project-modal').classList.add('hidden'); window.closeSidePane(); window.clearSelection(); } if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey) { window.refreshData(); } if (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'k') { const tasks = getFilteredTasks(); if(tasks.length === 0) return; let idx = -1; if(lastSelectedId) idx = tasks.findIndex(t => t.id === lastSelectedId); let newIdx = idx; if (e.key.toLowerCase() === 'j') newIdx = Math.min(tasks.length - 1, idx + 1); if (e.key.toLowerCase() === 'k') newIdx = Math.max(0, idx - 1); if(newIdx !== idx && tasks[newIdx]) { window.clearSelection(); const id = tasks[newIdx].id; selectedTasks.add(id); lastSelectedId = id; renderApp(); const el = document.querySelector(`[data-task-id="${id}"]`); if(el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } } });
+        document.addEventListener('keydown', (e) => { if (e.target.matches('input, textarea, select, [contenteditable], [contenteditable="true"]')) { if(e.key === 'Escape') e.target.blur(); return; } if (e.key.toLowerCase() === 'n') { e.preventDefault(); window.openAddTaskModal(); } if (e.key === '/') { e.preventDefault(); window.openQuickAddPopup(); } if (e.key === 'Escape') { document.getElementById('task-modal').classList.add('hidden'); document.getElementById('project-modal').classList.add('hidden'); window.closeSidePane(); window.clearSelection(); window.closeQuickAddPopup(e); } if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey) { window.refreshData(); } if (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'k') { const tasks = getFilteredTasks(); if(tasks.length === 0) return; let idx = -1; if(lastSelectedId) idx = tasks.findIndex(t => t.id === lastSelectedId); let newIdx = idx; if (e.key.toLowerCase() === 'j') newIdx = Math.min(tasks.length - 1, idx + 1); if (e.key.toLowerCase() === 'k') newIdx = Math.max(0, idx - 1); if(newIdx !== idx && tasks[newIdx]) { window.clearSelection(); const id = tasks[newIdx].id; selectedTasks.add(id); lastSelectedId = id; renderApp(); const el = document.querySelector(`[data-task-id="${id}"]`); if(el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } } });
        const calculateNextOccurrence = (dueDate, rrule) => {
     if (!dueDate || !rrule) return '';
     let nextDate = new Date(dueDate);
@@ -3908,25 +3975,27 @@ document.addEventListener('keydown', (e) => {
     </div>
 </div>
 
-<div class="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1f2937] border-t border-gray-200 dark:border-gray-700 flex justify-around items-center p-3 z-50 pb-safe">
-    <button onclick="window.setFilter('inbox')" class="flex flex-col items-center gap-1 text-gray-500 hover:text-blue-500">
+<div class="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#1f2937] border-t border-gray-200 dark:border-gray-700 flex justify-around items-center h-16 z-50 pb-safe">
+    <button onclick="window.setFilter('inbox')" class="flex flex-col items-center gap-1 text-gray-500 hover:text-blue-500 w-16">
         <i class="fa-solid fa-inbox text-xl"></i>
         <span class="text-[10px] font-bold">Inbox</span>
     </button>
-    <button onclick="window.setFilter('today')" class="flex flex-col items-center gap-1 text-gray-500 hover:text-blue-500">
+    <button onclick="window.setFilter('today')" class="flex flex-col items-center gap-1 text-gray-500 hover:text-blue-500 w-16">
         <i class="fa-solid fa-calendar-day text-xl"></i>
         <span class="text-[10px] font-bold">Today</span>
     </button>
     
-    <button onclick="window.openAddTaskModal()" class="bg-blue-600 text-white rounded-full w-12 h-12 flex items-center justify-center -mt-8 shadow-lg border-4 border-[var(--bg)]">
-        <i class="fa-solid fa-plus text-xl"></i>
-    </button>
+    <div class="relative w-16 h-full flex justify-center">
+        <button onclick="window.openQuickAddPopup()" class="absolute -top-14 bg-[var(--primary)] text-white rounded-full w-12 h-12 flex items-center justify-center shadow-xl border-4 border-[var(--bg)] transition-transform hover:scale-105 active:scale-95">
+            <i class="fa-solid fa-plus text-2xl"></i>
+        </button>
+    </div>
     
-    <button onclick="window.setView('calendar')" class="flex flex-col items-center gap-1 text-gray-500 hover:text-blue-500">
+    <button onclick="window.setView('calendar')" class="flex flex-col items-center gap-1 text-gray-500 hover:text-blue-500 w-16">
         <i class="fa-solid fa-calendar text-xl"></i>
         <span class="text-[10px] font-bold">Calendar</span>
     </button>
-    <button onclick="window.toggleSidebar()" class="flex flex-col items-center gap-1 text-gray-500 hover:text-blue-500">
+    <button onclick="window.toggleSidebar()" class="flex flex-col items-center gap-1 text-gray-500 hover:text-blue-500 w-16">
         <i class="fa-solid fa-bars text-xl"></i>
         <span class="text-[10px] font-bold">Menu</span>
     </button>

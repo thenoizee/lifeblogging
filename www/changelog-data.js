@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.50.0-alpha",
+    date: "2026-05-09",
+    changes: [
+                "In TaskTrackr: Added a global Quick Add popup, triggered by the '/' keyboard shortcut or the mobile Add button.",
+                "In TaskTrackr: Added a Layout Toggle button to seamlessly switch the app between a 'Standard' container width and a 'Full Spread' 100% monitor width view.",
+                "In TaskTrackr: Fixed a mobile layout bug where the bottom navigation Quick Add button was pushed below the screen due to flexbox clipping by switching to an explicit style offset (-24px).",
+    ]
+},
+    {
     version: "v15.49.0-alpha",
     date: "2026-05-08",
     changes: [
