@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.52.0-alpha",
+    date: "2026-05-09",
+    changes: [
+                "In PlantTrackr: Added a unified dismiss function to allow dismissing any overdue care reminders (like Fertilizer or Water), automatically logging them as 'Skipped' and resetting the timer.",
+                "In PlantTrackr: Added a Dismiss ('X') button directly to the action alerts on the Dashboard.",
+                "In PlantTrackr: Enhanced the Garden tab plant cards to prominently display the specific Zone/Micro-spot alongside the general Space.",
+                "In PlantTrackr: Improved the Spaces tab to clearly list all available zones as pill tags, cleanly format environmental stats, and display the active plant count per space.",
+                "In PlantTrackr: Introduced a new 'Zone' filter on the Garden tab that dynamically populates based on the currently selected Space.",
+                "In PlantTrackr: Journal entries marked as 'Skipped' or 'Dismissed' now have distinct visual styling (grayed out) to quickly differentiate them from completed care tasks.",
+                "In PlantTrackr: Added a new Bulk 'Move Space' action to the Bulk Select mode, allowing multiple plants to be relocated to a new Space and Zone simultaneously."
+    ]
+},
+    {
     version: "v15.51.0-alpha",
     date: "2026-05-09",
     changes: [
@@ -270,9 +283,9 @@ changes: [
     version: "v15.25.0-alpha",
     date: "2026-04-26",
     changes: [
-        "In Shared Navigation: Redesigned the notifications modal to display as a centered, floating dialog with rounded corners and a max height, rather than a full-screen takeover.",
-        "In Shared Navigation: Added a click-outside event listener allowing users to dismiss the notifications modal by clicking the background backdrop.",
-        "In Loggr: Adjusted the top padding of the main container to sit perfectly flush with the shared navigation bar."
+        "In SharedNav: Redesigned the notifications modal to display as a centered, floating dialog with rounded corners and a max height, rather than a full-screen takeover.",
+        "In SharedNav: Added a click-outside event listener allowing users to dismiss the notifications modal by clicking the background backdrop.",
+        "In Loggr: Adjusted the top padding of the main container to sit perfectly flush with the SharedNav bar."
     ]
 },
     {
@@ -308,7 +321,7 @@ changes: [
     changes: [
         "In Loggr: Transitioned the UI to match the standard Dashboard style and layout, utilizing standard Tailwind classes.",
         "In Loggr: Replaced the legacy top navigation bar with the unified shared-nav architecture.",
-        "In Loggr: Resolved flexbox layout bugs that were preventing the shared navigation sidebar from properly aligning to the edge of the viewport.",
+        "In Loggr: Resolved flexbox layout bugs that were preventing the SharedNav sidebar from properly aligning to the edge of the viewport.",
     ]
 },
     {
@@ -342,11 +355,11 @@ changes: [
     version: "v15.17.0-alpha", // Replace with your next version number
     date: "2026-04-22",
     changes: [
-                "In Text Generator: Upgraded 'Copy Body' functionality to support and retain rich-text HTML formatting (bold, italics, hyperlinks) alongside plain text.",
-                "In Text Generator: Converted the generated text area to render HTML instead of raw text strings.",
-                "In Text Generator: Improved the UI for adding custom fields in the Manage Templates tab by replacing the small text button with a large, full-width dashed button.",
-                "In Text Generator: Added a rich-text formatting toolbar to the Manage Templates tab allowing users to quickly insert HTML tags for bold, italic, underline, and hyperlinks.",
-                "In Text Generator: Added specific CSS styling to ensure hyperlinks are distinctively colored and underlined in both the Use tab generated output and the Manage tab Live Preview.",
+                "In Text/Merge Generator: Upgraded 'Copy Body' functionality to support and retain rich-text HTML formatting (bold, italics, hyperlinks) alongside plain text.",
+                "In Text/Merge Generator: Converted the generated text area to render HTML instead of raw text strings.",
+                "In Text/Merge Generator: Improved the UI for adding custom fields in the Manage Templates tab by replacing the small text button with a large, full-width dashed button.",
+                "In Text/Merge Generator: Added a rich-text formatting toolbar to the Manage Templates tab allowing users to quickly insert HTML tags for bold, italic, underline, and hyperlinks.",
+                "In Text/Merge Generator: Added specific CSS styling to ensure hyperlinks are distinctively colored and underlined in both the Use tab generated output and the Manage tab Live Preview.",
     ]
     },
     {
@@ -370,7 +383,7 @@ changes: [
     version: "v15.14.0-alpha",
     date: "2026-04-21",
     changes: [
-                "In Text Generator (Work): Updated Firebase Authentication to use `initializeAuth` with `browserLocalPersistence` to prevent IndexedDB database locks on mobile WebViews.",
+                "In Text/Merge Generator: Updated Firebase Authentication to use `initializeAuth` with `browserLocalPersistence` to prevent IndexedDB database locks on mobile WebViews.",
     ]
     },
     {
@@ -423,8 +436,8 @@ changes: [
     version: "v15.9.0-alpha",
     date: "2026-04-19",
     changes: [
-        "In Shared Navigation (shared-nav.js): Restored Firebase database syncing for the theme toggle so Dark Mode preferences persist across multiple devices.",
-        "In Shared Navigation (shared-nav.js): Added a window storage event listener to instantly sync Dark Mode state across all currently open live tabs.",
+        "In SharedNav: Restored Firebase database syncing for the theme toggle so Dark Mode preferences persist across multiple devices.",
+        "In SharedNav: Added a window storage event listener to instantly sync Dark Mode state across all currently open live tabs.",
     ]
     },
     {
@@ -450,7 +463,7 @@ changes: [
     date: "2026-04-17",
     changes: [
                 "In WarrantyTrackr: Updated Firebase Auth initialization to explicitly use browserLocalPersistence to prevent login tokens from dropping.",
-                "In Time: Updated Firebase Auth initialization to explicitly use browserLocalPersistence to prevent login tokens from dropping.",
+                "In Timestamp Converter: Updated Firebase Auth initialization to explicitly use browserLocalPersistence to prevent login tokens from dropping.",
                 "In RouteTrackr: Updated Firebase Auth initialization to explicitly use browserLocalPersistence to prevent login tokens from dropping.",
     ]
 },
@@ -589,7 +602,7 @@ changes: [
                 "In Loggr: Added an instant CSS loading overlay to significantly improve perceived speed during initial background data fetches.",
                 "In Loggr: Enabled native Firestore IndexedDbPersistence, allowing full access to history and calendar features even when completely offline.",
                 "In Loggr: Implemented lazy-loading for the Triage pane and restricted attribute fetching to the last 30 days to heavily optimize bandwidth.",
-                "In AppNavigation: The active Service Worker version is now exposed alongside the app version in the top-right header for easier ecosystem debugging.",
+                "In SharedNav: The active Service Worker version is now exposed alongside the app version in the top-right header for easier ecosystem debugging.",
                 "In Service Worker: Fixed fatal offline crashes by gracefully intercepting unhandled Promise rejections and ignoring opaque Firebase API calls.",
                 "In Service Worker: Split the caching system to separate permanent external assets (Tailwind, Fonts) from versioned app files, preventing offline style loss during updates.",
                 "In Service Worker: Implemented automated cache-busting by tying the Service Worker installation URL directly to the active version in the Changelog."
@@ -638,18 +651,18 @@ changes: [
     version: "v14.24.0-alpha",
     date: "2026-03-28",
     changes: [
-                "In Core (sw.js) & Backend (functions): Implemented true background push notification support via Firebase Cloud Messaging, allowing HealthManagr reminders to be delivered even when the app is fully closed.",
+                "In Core & Core (functions): Implemented true background push notification support via Firebase Cloud Messaging, allowing HealthManagr reminders to be delivered even when the app is fully closed.",
                 "In HealthManagr: Fixed 'todayStr is not defined' error on the dashboard caused by scope constraints inside the rendering loop.",
-                "In Core (sw.js): Cleaned up old cache URLs (e.g., /medicine, /timestamp) that were causing the Service Worker installation to throw 404 network errors.",
-                "In Core (sw.js): Removed Tailwind CDN from the cache array as it intentionally blocks Service Worker fetching via CORS."
+                "In Core: Cleaned up old cache URLs (e.g., /medicine, /timestamp) that were causing the Service Worker installation to throw 404 network errors.",
+                "In Core: Removed Tailwind CDN from the cache array as it intentionally blocks Service Worker fetching via CORS."
     ]
 },
     {
     version: "v14.23.0-alpha",
     date: "2026-03-28",
     changes: [
-                "In Core (shared-nav.js): Added support for priority notifications that cannot be manually dismissed or removed via 'Clear All' or 'Clear App' buttons.",
-                "In Core (shared-nav.js): Added the ability to pass and render specific app theme colors directly inside the notification tray.",
+                "In Core: Added support for priority notifications that cannot be manually dismissed or removed via 'Clear All' or 'Clear App' buttons.",
+                "In Core: Added the ability to pass and render specific app theme colors directly inside the notification tray.",
                 "In HealthManagr: Integrated priority notifications with custom app coloring for Low Medication Stock and Expiring Medications.",
                 "In HealthManagr: Added priority notifications for Missed Scheduled Doses.",
                 "In HealthManagr: Added a daily priority reminder that triggers if Contact Lenses haven't been logged by 8:00 PM."
@@ -748,7 +761,7 @@ changes: [
         version: "v14.13.0-alpha",
         date: "2026-03-23",
         changes: [
-            "Global: The Shared Navigation header now dynamically pulls and displays the latest version number directly from the changelog data.",
+            "Global: The SharedNav header now dynamically pulls and displays the latest version number directly from the changelog data.",
             "In VehicleManagr: Added a tri-way auto-calculator to the Quick Fuel modal (calculates Total Cost, Litres, or Price/L automatically based on the other two).",
             "In VehicleManagr: Added strict pre-save validation to the Quick Fuel modal to ensure required fields (like Station and Cost) are filled before closing.",
             "In VehicleManagr: Fixed a data transfer bug where clearing a field in the Quick Log modal failed to clear the underlying main form.",
@@ -801,8 +814,8 @@ changes: [
         version: "v14.8.0-alpha",
         date: "2026-03-20",
         changes: [
-            "In Shared Nav: Updated the user avatar button to link directly to the user's Public Profile instead of the Account settings.",
-            "In Account Settings: Added the ability to specify a custom FontAwesome profile icon for the Public Profile.",
+            "In Shared Nav: Updated the user avatar button to link directly to the user's Public Profile instead of the Account Page.",
+            "In Account: Added the ability to specify a custom FontAwesome profile icon for the Public Profile.",
             "In Public Profile: The page now dynamically displays the user's custom FontAwesome icon if one is set, falling back to their initial."
         ]
     },
@@ -872,10 +885,10 @@ changes: [
         version: "v14.1.0-alpha",
         date: "2026-03-16",
         changes: [
-            "In Account Settings: Added a new 'Public Profile' tab to preview how the user's profile appears to others.",
-            "In Account Settings: Implemented dynamic data initialization for the public profile, displaying Account Age and a placeholder email.",
-            "In Account Settings: Mapped the user's Display Name to the public profile preview with real-time visual updates upon saving.",
-            "In Account Settings: Updated the navigation configuration to include the new Public Profile tab and 'id-card' icon."
+            "In Account: Added a new 'Public Profile' tab to preview how the user's profile appears to others.",
+            "In Account: Implemented dynamic data initialization for the public profile, displaying Account Age and a placeholder email.",
+            "In Account: Mapped the user's Display Name to the public profile preview with real-time visual updates upon saving.",
+            "In Account: Updated the navigation configuration to include the new Public Profile tab and 'id-card' icon."
         ]
     },
     {
@@ -1011,14 +1024,14 @@ changes: [
     changes: [
         "In PDF Tools: Added a new 'Split to Multiple' tool, allowing users to visually split a PDF into multiple files using an interactive thumbnail grid and click-to-cut scissors.",
         "In PDF Tools: Added a new 'Remove Blank Pages' tool that automatically detects and deletes empty pages by analyzing both text content and visual pixel noise.",
-        "In Text Generator (Work): Introduced an 'Archive' button to the template manager, enabling users to easily toggle the archived status of their templates directly from the list."
+        "In Text/Merge Generator: Introduced an 'Archive' button to the template manager, enabling users to easily toggle the archived status of their templates directly from the list."
     ]
     },
     {
     version: "v13.0.0-alpha", 
     date: "2026-03-07",
     changes: [
-        "In HydrationTrackr & FoodTrackr: Unified the backend database collection (`foodLog`) to allow seamless real-time data syncing between both apps.",
+        "In HydrationTrackr & FoodTrackr: Unified the Core database collection (`foodLog`) to allow seamless real-time data syncing between both apps.",
         "In HydrationTrackr: Upgraded the water logging payload to include zeroed macro fields and `drinks` categorizations to ensure strict compatibility with FoodTrackr.",
         "In FoodTrackr & HydrationTrackr: Implemented dynamic UI badges and icons in the history tables to clearly identify which app a log originated from.",
         "In FoodTrackr & HydrationTrackr: Re-engineered database listeners to dynamically normalize legacy timestamps (`date`) into the modern format (`eatenAt`), preventing crashes and restoring missing historical data.",
@@ -1251,7 +1264,7 @@ changes: [
     date: "2026-02-24",
     changes: [
         "In TaskTrackr: Secured OAuth credentials by completely removing the exposed TickTick Client Secret from the frontend code and migrating it to Google Cloud Secret Manager.",
-        "In Backend: Created a new secure 'tickTickProxy' Firebase Cloud Function with explicit CORS handling to safely route all TaskTrackr API requests and bypass browser/adblocker restrictions.",
+        "In Core: Created a new secure 'tickTickProxy' Firebase Cloud Function with explicit CORS handling to safely route all TaskTrackr API requests and bypass browser/adblocker restrictions.",
     ]
     },
     {
@@ -1415,7 +1428,7 @@ changes: [
         "In TaskTrackr: Added subtask progress indicators to task cards, displaying a dynamic completion badge (e.g., 1/3) that turns green when all subtasks are finished.",
         "In TaskTrackr: Fixed an edge-clipping bug where the blue focus ring on the Quick Add input was being cut off by the main container.",
         "In TaskTrackr: Adjusted main application window padding so the side pane and task lists float properly above the OS desktop taskbar.",
-        "In TaskTrackr: Implemented a negative margin layout fix to seamlessly integrate the app with the external shared navigation bar without leaving dead space."
+        "In TaskTrackr: Implemented a negative margin layout fix to seamlessly integrate the app with the external SharedNav bar without leaving dead space."
     ]
     },
     {
@@ -1521,7 +1534,7 @@ changes: [
         "Mood Widget: Complete overhaul of the Android home screen widget with a new layout featuring dynamic background colors mapped to mood levels.",
         "Mood Widget: Added a manual synchronization button to the widget interface for instant data refreshing.",
         "Mood Widget: Implemented emoji mapping and 'Last Updated' timestamps for improved visual feedback on the home screen.",
-        "Backend: Enhanced the 'getLatestMood' Cloud Function to return dynamic hex color codes and implemented a 5-minute client-side caching strategy.",
+        "Core: Enhanced the 'getLatestMood' Cloud Function to return dynamic hex color codes and implemented a 5-minute client-side caching strategy.",
         "Build System: Configured Android Gradle Plugin compatibility and corrected XML syntax errors to support modern Android Studio environments."
     ]
     },
@@ -1655,9 +1668,9 @@ changes: [
     version: "v10.63.0-alpha",
     date: "2026-02-14",
     changes: [
-        "In Text Generator: Enabled the description field in the template editor, allowing users to add custom notes to their templates.",
-        "In Text Generator: Overhauled the main layout to use a fluid width (95%), removing wasted screen space on larger displays.",
-        "In Text Generator: Widened the sidebar panels and optimized vertical height calculations to make better use of the available screen space."
+        "In Text/Merge Generator: Enabled the description field in the template editor, allowing users to add custom notes to their templates.",
+        "In Text/Merge Generator: Overhauled the main layout to use a fluid width (95%), removing wasted screen space on larger displays.",
+        "In Text/Merge Generator: Widened the sidebar panels and optimized vertical height calculations to make better use of the available screen space."
     ]
     },
     {
@@ -1765,7 +1778,7 @@ changes: [
     version: "v10.51.0-alpha",
     date: "2026-02-08",
     changes: [
-        "In Account Page: Added a dedicated 'Credits' tab to the Settings interface, explicitly acknowledging all external libraries, APIs, and services powering the Lifeblogging ecosystem (e.g., Open Food Facts, Trakt, TickTick).",
+        "In Account: Added a dedicated 'Credits' tab to the Settings interface, explicitly acknowledging all external libraries, APIs, and services powering the Lifeblogging ecosystem (e.g., Open Food Facts, Trakt, TickTick).",
     ]
     },
     {
@@ -1803,10 +1816,10 @@ changes: [
     version: "v10.47.0-alpha",
     date: "2026-02-06",
     changes: [
-        "In Account Page: Migrated the application to the unified `SharedNav` system, replacing the legacy manual header with the standard Hub navigation.",
-        "In Account Page: Refactored the long scrolling layout into four distinct tabs: General, Services, Data, and Security for improved organization.",
-        "In Account Page: Centralized third-party integrations (Trakt, Last.fm, Google Tasks, TickTick) into a dedicated 'Services' tab.",
-        "In Account Page: Moved sensitive actions (Change Password/Email, Delete Account) to a protected 'Security' tab."
+        "In Account: Migrated the application to the unified `SharedNav` system, replacing the legacy manual header with the standard Hub navigation.",
+        "In Account: Refactored the long scrolling layout into four distinct tabs: General, Services, Data, and Security for improved organization.",
+        "In Account: Centralized third-party integrations (Trakt, Last.fm, Google Tasks, TickTick) into a dedicated 'Services' tab.",
+        "In Account: Moved sensitive actions (Change Password/Email, Delete Account) to a protected 'Security' tab."
     ]
     },
     {
@@ -1898,7 +1911,7 @@ changes: [
     version: "v10.38.1-alpha",
     date: "2026-02-02",
     changes: [
-        "In LabelGenerator: Updated favicon.",
+        "In Label Generator: Updated favicon.",
         "In FoodTrackr: Bug fix.",
     ]
     },
@@ -2061,7 +2074,7 @@ changes: [
         "In PlantTrackr: Introduced 'Winter Mode' in settings, a global toggle that automatically extends watering schedules by 50% during colder months.",
         "In PlantTrackr: Added 'Light Condition' (Low/Medium/High) and 'Position Details' fields to track specific sun exposure and placement for each plant.",
         "In FoodTrackr: Implemented drag-and-drop functionality for Bulk Manage mode, allowing multiple selected items to be moved between sections simultaneously.",
-        "In Text Generator: Updated the template loader to automatically sort and select the latest version by default when opening a template."
+        "In Text/Merge Generator: Updated the template loader to automatically sort and select the latest version by default when opening a template."
     ]
     },
     {
@@ -2140,7 +2153,7 @@ changes: [
     version: "v10.13.0-alpha",
     date: "2026-01-21",
     changes: [
-        "In Shared Navigation: Added support for an `onThemeChange` callback, enabling apps to execute custom logic (like saving to Firestore) when the theme is toggled.",
+        "In SharedNav: Added support for an `onThemeChange` callback, enabling apps to execute custom logic (like saving to Firestore) when the theme is toggled.",
         "In WarrantyTrackr: Replaced the legacy header and sidebar with the unified `SharedNav` system, including user authentication state synchronization.",
         "In WarrantyTrackr: Connected dashboard statistic counters to live data and restored the 'Sort By' dropdown which was missing after the navigation migration.",
         "In VehicleManagr: Updated icon in App, Dashboard, and Shared Nav menu to car-tunnel."
@@ -2168,7 +2181,7 @@ changes: [
     changes: [
         "In RecipeManagr: Migrated the application to the unified `shared-nav` system, replacing the legacy hardcoded header and mobile navigation bar.",
         "In RecipeManagr: Relocated the 'Options' menu (cog icon) to the Filter & Sort section to maintain accessibility after removing the custom header.",
-        "In RecipeManagr: Integrated the search functionality directly into the shared navigation bar, updating filtering logic to listen to the new global input.",
+        "In RecipeManagr: Integrated the search functionality directly into the SharedNav bar, updating filtering logic to listen to the new global input.",
     ]
     },
     {
@@ -2220,7 +2233,7 @@ changes: [
     date: "2026-01-19",
     changes: [
         "In MediManagr: Migrated the application to the unified `shared-nav` system, replacing the legacy hardcoded header and mobile navigation bar.",
-        "In MediManagr: Updated the dark mode implementation to use the standard `.dark` class strategy, ensuring compatibility with the shared navigation theme toggle.",
+        "In MediManagr: Updated the dark mode implementation to use the standard `.dark` class strategy, ensuring compatibility with the SharedNav theme toggle.",
         "In MediManagr: Overhauled the 'Record Doses' mobile layout, switching from a horizontal scroll to a vertical 'Agenda View' for better usability on small screens.",
         "In MediManagr: Redesigned the 'History' tab on mobile to use a compact vertical stack, hiding empty days and headers to maximize screen efficiency."
     ]
@@ -2239,10 +2252,10 @@ changes: [
     version: "v10.4.0-alpha",
     date: "2026-01-19",
     changes: [
-        "In Text Generator: Migrated to use the new shared navigation system for consistent styling and mobile menu support.",
-        "In Text Generator: Re-added 'Duplicate as New' and 'Edit Master Template' quick action buttons to the workspace header.",
-        "In Text Generator: Added a mobile sidebar toggle to easily show/hide the template list on smaller screens.",
-        "In Text Generator: Fixed bugs related to the sync status indicator and theme initialization."
+        "In Text/Merge Generator: Migrated to use the new SharedNav system for consistent styling and mobile menu support.",
+        "In Text/Merge Generator: Re-added 'Duplicate as New' and 'Edit Master Template' quick action buttons to the workspace header.",
+        "In Text/Merge Generator: Added a mobile sidebar toggle to easily show/hide the template list on smaller screens.",
+        "In Text/Merge Generator: Fixed bugs related to the sync status indicator and theme initialization."
     ]
     },
     {
@@ -2274,8 +2287,8 @@ changes: [
     version: "v10.0.1-alpha",
     date: "2026-01-18",
     changes: [
-        "In PodTrackr: Updated icon to match the new shared navigation dropdown menu.",
-        "In RecipeManager: Updated icon to match the new shared navigation dropdown menu."
+        "In PodTrackr: Updated icon to match the new SharedNav dropdown menu.",
+        "In RecipeManagr: Updated icon to match the new SharedNav dropdown menu."
     ]
     },
     {
@@ -2287,7 +2300,7 @@ changes: [
         "Global: Upgraded the UI with Glassmorphism (backdrop blur) and injected custom 'thin' scrollbar styling globally.",
         "Global: Replaced the static email text with a circular User Avatar (initials) and added a 'Current App' indicator to the Hub drawdown.",
         "Global: Enhanced the Dark/Light mode toggle with a 360° spin animation and state persistence.",
-        "In VidTrackr: Migrated to the new Shared Navigation system while dynamically preserving the Search Bar and Watch Status indicator.",    ]
+        "In VidTrackr: Migrated to the new SharedNav system while dynamically preserving the Search Bar and Watch Status indicator.",    ]
     },
     {
     version: "v9.149.0-alpha",
@@ -2345,12 +2358,12 @@ changes: [
     version: "v9.144.0-alpha",
     date: "2026-01-16",
     changes: [
-        "In Text Generator: Overhauled 'Manage' tab layout: Implemented a responsive split-pane design with a collapsible sidebar and toggleable live preview for better editing screen UX.",
-        "In Text Generator: Overhauled 'Use' tab layout: Replaced accordion steps with a modern split-pane workspace, featuring a searchable sidebar list and instant template selection.",
-        "In Text Generator: Implemented Real-Time Preview: Removed the 'Generate' button in the Use tab; templates now update instantly as fields are modified.",
-        "In Text Generator: Enhanced Placeholder System: Fixed missing pronouns, updated placeholder tags to be compact and draggable, and moved the toolbar to full-width above the editor.",
-        "In Text Generator: UI Improvements: Added 'Target Audience' and 'Purpose' metadata badges to both the Template Header and the Sidebar list for easier identification.",
-        "In Text Generator: Refined Navigation: Added pill-style folder filtering and consolidated the Pronoun/Time/Version controls into a unified toolbar."
+        "In Text/Merge Generator: Overhauled 'Manage' tab layout: Implemented a responsive split-pane design with a collapsible sidebar and toggleable live preview for better editing screen UX.",
+        "In Text/Merge Generator: Overhauled 'Use' tab layout: Replaced accordion steps with a modern split-pane workspace, featuring a searchable sidebar list and instant template selection.",
+        "In Text/Merge Generator: Implemented Real-Time Preview: Removed the 'Generate' button in the Use tab; templates now update instantly as fields are modified.",
+        "In Text/Merge Generator: Enhanced Placeholder System: Fixed missing pronouns, updated placeholder tags to be compact and draggable, and moved the toolbar to full-width above the editor.",
+        "In Text/Merge Generator: UI Improvements: Added 'Target Audience' and 'Purpose' metadata badges to both the Template Header and the Sidebar list for easier identification.",
+        "In Text/Merge Generator: Refined Navigation: Added pill-style folder filtering and consolidated the Pronoun/Time/Version controls into a unified toolbar."
     ]
     },
     {
@@ -2459,9 +2472,9 @@ changes: [
     changes: [
         "In TaskTrackr: Streamlined the project sidebar by moving the 'Data Sources' toggles and 'Disconnect' button into a dedicated 'Connections' modal.",
         "In Hub: Implemented a Service Health Monitor that automatically checks for expired tokens or connection errors (Google Tasks, Trakt) and displays a notification badge on the Account button.",
-        "In Account Page: Added full Google Tasks integration controls, allowing users to Connect and Disconnect directly from settings.",
-        "In Account Page: Implemented smart re-authentication logic that flags Google tokens older than 55 minutes or error states, transforming the button into a 'Reconnect' action.",
-        "In Account Page: Updated the Google sign-in flow to force the 'Select Account' prompt, ensuring a fresh token is retrieved during re-authentication."
+        "In Account: Added full Google Tasks integration controls, allowing users to Connect and Disconnect directly from settings.",
+        "In Account: Implemented smart re-authentication logic that flags Google tokens older than 55 minutes or error states, transforming the button into a 'Reconnect' action.",
+        "In Account: Updated the Google sign-in flow to force the 'Select Account' prompt, ensuring a fresh token is retrieved during re-authentication."
     ]
     },
     {
@@ -2516,7 +2529,7 @@ changes: [
         "In Analyser: Removed the 'Account & Data' menu from the navigation bar.",
         "In Analyser: Added a dedicated 'Import / Export' dropdown menu in the top right for quick data management.",
         "In Analyser: Removed user profile details (User ID, Member Since) and Sign Out controls; these are now centralized on the Account page.",
-        "In Account Page: Added a 'Member Since' display below the user email to show account creation date.",
+        "In Account: Added a 'Member Since' display below the user email to show account creation date.",
     ]
     },
     {
@@ -2585,11 +2598,11 @@ changes: [
     version: "v9.117.0-alpha",
     date: "2026-01-04",
     changes: [
-        "In Text Generator: Overhauled the template selection list into a responsive grid of cards, featuring color-coded 'Target Audience' tags and hover effects.",
-        "In Text Generator: Redesigned the 'Step 3' preview area to simulate a realistic email client window for better visualization of the generated output.",
-        "In Text Generator: Added a mobile-specific toggle for the 'Manage Templates' sidebar to prevent layout stacking issues on smaller screens.",
-        "In Text Generator: Implemented functional real-time search filtering in the Template Manager to allow finding templates by name.",
-        "In Text Generator: Added a 'Generating...' loading state with a spinner to the main action button for better user feedback.",
+        "In Text/Merge Generator: Overhauled the template selection list into a responsive grid of cards, featuring color-coded 'Target Audience' tags and hover effects.",
+        "In Text/Merge Generator: Redesigned the 'Step 3' preview area to simulate a realistic email client window for better visualization of the generated output.",
+        "In Text/Merge Generator: Added a mobile-specific toggle for the 'Manage Templates' sidebar to prevent layout stacking issues on smaller screens.",
+        "In Text/Merge Generator: Implemented functional real-time search filtering in the Template Manager to allow finding templates by name.",
+        "In Text/Merge Generator: Added a 'Generating...' loading state with a spinner to the main action button for better user feedback.",
     ]
     },
     {
@@ -2652,8 +2665,8 @@ changes: [
     version: "v9.110.0-alpha",
     date: "2026-01-04",
     changes: [
-        "In Text Generator: Renamed the tool from 'Work / Email Generator' to 'Text Generator' and overhauled the UI to match the standard dashboard style, merging navigation tabs into the sticky header.",
-        "In Text Generator: Redesigned the 'Manage Templates' tab with a split-pane layout featuring a sidebar for template selection and a real-time live preview editor.",
+        "In Text/Merge Generator: Renamed the tool from 'Work / Email Generator' to 'Text/Merge Generator' and overhauled the UI to match the standard dashboard style, merging navigation tabs into the sticky header.",
+        "In Text/Merge Generator: Redesigned the 'Manage Templates' tab with a split-pane layout featuring a sidebar for template selection and a real-time live preview editor.",
     ]
     },
     {
@@ -3119,7 +3132,7 @@ changes: [
     changes: [
         "In VidTrackr: Implemented persistent, cross-device Trakt authentication by syncing OAuth tokens to the Firebase user profile (similar to TaskTrackr).",
         "In VidTrackr: Added a dedicated `callback.html` handler to intercept Trakt tokens and save them directly to the database.",
-        "In Account Page: Added a 'Trakt Integration' section to centrally Connect/Disconnect the service and view connection status.",
+        "In Account: Added a 'Trakt Integration' section to centrally Connect/Disconnect the service and view connection status.",
         "In VidTrackr: Updated dashboard initialization to prioritize database tokens over local storage and gracefully handle 'logged in but not connected' states."
     ]
     },
@@ -3135,7 +3148,7 @@ changes: [
     version: "v9.63.0-alpha",
     date: "2025-12-23",
     changes: [
-        "In Account Page: Introduced a new 'Profile' section in settings, allowing users to set a custom 'Display Name' that is used system-wide.",
+        "In Account: Introduced a new 'Profile' section in settings, allowing users to set a custom 'Display Name' that is used system-wide.",
         "In Dashboard: The greeting message now dynamically uses the user's 'Display Name' (e.g., 'Hello, XYZ!') instead of the email address, with real-time updates."
     ]
     },
@@ -3162,14 +3175,14 @@ changes: [
     version: "v9.60.2-alpha",
     date: "2025-12-22",
     changes: [
-        "In Account Page: Callback auth bug fix 2."
+        "In Account: Callback auth bug fix 2."
     ]
     },
     {
     version: "v9.60.1-alpha",
     date: "2025-12-22",
     changes: [
-        "In Account Page: Callback auth bug fix."
+        "In Account: Callback auth bug fix."
     ]
     },
     {
@@ -3178,8 +3191,8 @@ changes: [
     changes: [ 
         "In TaskTrackr: Implemented a centralized `callback.html` to handle OAuth authentication redirects, ensuring consistent login behavior across the application.",
         "In TaskTrackr: Updated the login flow to preserve the user's session state, automatically redirecting them back to their previous page (Hub or Account) after connecting.",
-        "In Account Page: Integrated the new authentication callback to allow users to connect or disconnect their TickTick account directly from the settings interface.",
-        "In Account Page: Added logic to verify and display the TickTick connection status using the shared token stored in Firestore."
+        "In Account: Integrated the new authentication callback to allow users to connect or disconnect their TickTick account directly from the settings interface.",
+        "In Account: Added logic to verify and display the TickTick connection status using the shared token stored in Firestore."
     ]
     },
     {
@@ -3232,7 +3245,7 @@ changes: [
         "In TaskTrackr: Updated the application logic to differentiate between active tasks and history items, ensuring completed tasks can be viewed in detail from the side pane.",
         "In TaskTrackr: Refined the task completion handler to prevent duplicate logging of history items and ensure smoother state transitions.",
         "In TaskTrackr: Fixed the 'Completed' filter behavior to trigger an immediate fetch of historical data, resolving the issue where completed tasks would disappear.",
-        "In Account Page: Added ability to link & disconnect account to TickTick directly in the Account Page."
+        "In Account: Added ability to link & disconnect account to TickTick directly in the Account Page."
     ]
     },
     {
@@ -3335,8 +3348,8 @@ changes: [
     version: "v9.45.0-alpha",
     date: "2025-12-08",
     changes: [
-        "In Account Page: Introduced last.fm account connection in account page for upcoming Dashboard feature release.",
-        "In Account Page: Bug fix - Updated Account Page VidTrackr notes export to only include notes from VidTrackr when exporting."
+        "In Account: Introduced last.fm account connection in account page for upcoming Dashboard feature release.",
+        "In Account: Bug fix - Updated Account Page VidTrackr notes export to only include notes from VidTrackr when exporting."
     ]
     },
     {
@@ -3378,11 +3391,11 @@ changes: [
     version: "v9.42.0-alpha",
     date: "2025-12-06",
     changes: [
-        "In Account Page: Added a comprehensive 'Data Export' tool allowing users to back up their entire account lifetime data.",
-        "In Account Page: Implemented granular export controls, letting users select specific apps (e.g., VidTrackr, MediManagr) via checkboxes to export only the data they need.",
-        "In Account Page: Added smart file handling where single-source exports download as timestamped JSON files, while multi-source selections are automatically bundled into a structured ZIP file using JSZip.",
-        "In Account Page: Configured specific export paths for the entire suite of apps, including FoodTrackr, WarrantyTrackr, RecipeManagr, Label Generator, and Email Templates.",
-        "In Account Page: Enhanced the exporter to intelligently include shared dependencies, such as the 'notes' collection when exporting VidTrackr or PodTrackr."
+        "In Account: Added a comprehensive 'Data Export' tool allowing users to back up their entire account lifetime data.",
+        "In Account: Implemented granular export controls, letting users select specific apps (e.g., VidTrackr, MediManagr) via checkboxes to export only the data they need.",
+        "In Account: Added smart file handling where single-source exports download as timestamped JSON files, while multi-source selections are automatically bundled into a structured ZIP file using JSZip.",
+        "In Account: Configured specific export paths for the entire suite of apps, including FoodTrackr, WarrantyTrackr, RecipeManagr, Label Generator, and Email Templates.",
+        "In Account: Enhanced the exporter to intelligently include shared dependencies, such as the 'notes' collection when exporting VidTrackr or PodTrackr."
     ]
     },
     {
@@ -3629,7 +3642,7 @@ changes: [
     "version": "v9.24.0-alpha",
     "date": "2025-10-20",
     "changes": [
-        "Dark mode preference now syncs with your Firebase account settings across the LifeBlogging hub.",
+        "Dark mode preference now syncs with your Firebase Account Page across the LifeBlogging hub.",
         "Added a 'Scheduled Time' input in the 'Use Templates' tab. This automatically populates the `{{Greeting}}` placeholder based on the time you enter, making it easy to prepare emails in advance.",
     ]
     },

@@ -293,7 +293,10 @@
                 <option value="newest">Sort: Newest</option>
             </select>
             <select id="plant-filter-location" class="input-std col-span-1 md:!w-auto text-sm px-2">
-                <option value="all">All Locations</option>
+                <option value="all">All Spaces</option>
+            </select>
+            <select id="plant-filter-zone" class="input-std col-span-1 md:!w-auto text-sm px-2 hidden">
+                <option value="all">All Zones</option>
             </select>
             <input type="text" id="plant-search-input" class="input-std col-span-2 md:col-span-1 md:!w-32 text-sm" placeholder="Search...">
             
@@ -325,6 +328,7 @@
                         <option value="water">Water</option>
                         <option value="fertilize">Fertilize</option>
                         <option value="mist">Mist</option>
+                        <option value="move">Move Space</option>
                         <option value="delete">Delete</option>
                     </select>
                     <button onclick="window.executeBulkAction()" class="btn-primary py-1 px-3 text-xs bg-blue-600 hover:bg-blue-700">Go</button>
@@ -1027,6 +1031,24 @@
         </div>
     </div>
 
+    <div id="bulk-move-modal" class="modal-overlay hidden" style="display: none; z-index: 60;">
+        <div class="modal-content animate-fade max-w-sm">
+            <button class="absolute top-4 right-4 text-2xl hover:text-red-500 close-modal-btn" onclick="document.getElementById('bulk-move-modal').style.display='none'">&times;</button>
+            <h2 class="text-2xl font-bold mb-4 text-[var(--primary)]"><i class="fa-solid fa-truck-moving"></i> Move Plants</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-bold">Destination Space</label>
+                    <select id="bulk-move-location" class="input-std w-full"></select>
+                </div>
+                <div id="bulk-move-zone-container" class="hidden">
+                    <label class="text-sm font-bold">Specific Zone (Optional)</label>
+                    <select id="bulk-move-zone" class="input-std w-full"></select>
+                </div>
+                <button onclick="window.confirmBulkMove()" class="btn-primary w-full">Move <span id="bulk-move-count">0</span> Plants</button>
+            </div>
+        </div>
+    </div>
+
     <div id="bulk-water-modal" class="modal-overlay hidden" style="display: none; z-index: 60;">
         <div class="modal-content animate-fade max-w-sm">
             <button class="absolute top-4 right-4 text-2xl hover:text-red-500 close-modal-btn" onclick="document.getElementById('bulk-water-modal').style.display='none'">&times;</button>
@@ -1583,6 +1605,17 @@
             if (window.selectedPlants.size === 0) return showMsg("No plants selected", "error");
             const action = document.getElementById("bulk-action-select").value;
             
+            if (action === 'move') {
+                const locSelect = getEl('bulk-move-location');
+                locSelect.innerHTML = '<option value="">-- Select Space --</option>';
+                state.locations.forEach(l => locSelect.innerHTML += `<option value="${l.id}">${l.name}</option>`);
+                getEl('bulk-move-count').textContent = window.selectedPlants.size;
+                getEl('bulk-move-zone-container').classList.add('hidden');
+                getEl('bulk-move-zone').innerHTML = '<option value="">-- No Zone --</option>';
+                toggleDisplay(getEl('bulk-move-modal'), true);
+                return;
+            }
+
             if (action === 'delete') {
                 if (!confirm(`Are you sure you want to DELETE ${window.selectedPlants.size} plants? This cannot be undone.`)) return;
                 try {
@@ -1619,6 +1652,44 @@
         };
 
         window.waterSelectedPlants = window.executeBulkAction;
+
+        getEl('bulk-move-location')?.addEventListener('change', (e) => {
+            const zoneContainer = getEl('bulk-move-zone-container');
+            const zoneSelect = getEl('bulk-move-zone');
+            const loc = state.locations.find(l => l.id === e.target.value);
+            zoneSelect.innerHTML = '<option value="">-- No Zone --</option>';
+            if (loc && loc.positions && loc.positions.length > 0) {
+                loc.positions.forEach(p => zoneSelect.innerHTML += `<option value="${p}">${p}</option>`);
+                zoneContainer.classList.remove('hidden');
+            } else {
+                zoneContainer.classList.add('hidden');
+            }
+        });
+
+        window.confirmBulkMove = async () => {
+            const newLoc = getEl('bulk-move-location').value;
+            const newZone = getEl('bulk-move-zone').value;
+            if (!newLoc) return showMsg("Please select a destination space.", "error");
+
+            try {
+                showMsg("Moving plants...", "success", 0);
+                const batchPromises = Array.from(window.selectedPlants).map(plantId => {
+                    const updates = { location: newLoc, position: newZone, updatedAt: Timestamp.now() };
+                    const log = addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                        plantId, type: "Note", date: new Date().toISOString(), notes: `Bulk moved to new space.`, createdAt: Timestamp.now()
+                    });
+                    const update = updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), updates);
+                    return Promise.all([log, update]);
+                });
+                
+                await Promise.all(batchPromises);
+                showMsg(`Successfully moved ${window.selectedPlants.size} plants!`);
+                toggleDisplay(getEl('bulk-move-modal'), false);
+                window.toggleSelectMode();
+            } catch (e) {
+                showMsg(e.message, "error");
+            }
+        };
 
         const renderPottingShed = () => {
             const nurserySection = getEl("dashboard-nursery-section");
@@ -1723,14 +1794,23 @@
                         </button>
                     </div>
                     
-                    <div class="grid grid-cols-2 gap-2 text-sm opacity-80 mt-2">
-                        <div title="Light"><i class="fa-solid fa-lightbulb w-4 text-yellow-500"></i> ${loc.light}</div>
-                        <div title="Humidity"><i class="fa-solid fa-droplet w-4 text-blue-400"></i> ${loc.humidity}</div>
+                    <div class="grid grid-cols-2 gap-2 text-sm opacity-80 mt-2 bg-[var(--input-bg)] p-2 rounded">
+                        <div title="Light"><i class="fa-solid fa-lightbulb w-4 text-yellow-500"></i> <span class="capitalize">${loc.light}</span></div>
+                        <div title="Humidity"><i class="fa-solid fa-droplet w-4 text-blue-400"></i> <span class="capitalize">${loc.humidity}</span></div>
                         ${loc.tempSummer ? `<div title="Summer Temp"><i class="fa-solid fa-temperature-full w-4 text-red-400"></i> ${loc.tempSummer}°C (S)</div>` : ''}
                         ${loc.tempWinter ? `<div title="Winter Temp"><i class="fa-solid fa-temperature-empty w-4 text-blue-300"></i> ${loc.tempWinter}°C (W)</div>` : ''}
-                        <div title="Draft" class="col-span-2"><i class="fa-solid fa-wind w-4 text-gray-400"></i> Draft: ${loc.draft}</div>
+                        <div title="Draft" class="col-span-2"><i class="fa-solid fa-wind w-4 text-gray-400"></i> Draft: <span class="capitalize">${loc.draft}</span></div>
                     </div>
-                    <div class="mt-3 pt-3 border-t border-[var(--border)] flex justify-end">
+                    ${loc.positions && loc.positions.length > 0 ? `
+                        <div class="mt-3">
+                            <p class="text-xs font-bold opacity-60 mb-1 uppercase tracking-wider"><i class="fa-solid fa-crosshairs"></i> Zones / Micro-Spots</p>
+                            <div class="flex flex-wrap gap-1.5">
+                                ${loc.positions.map(p => `<span class="text-[10px] bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-800 shadow-sm">${p}</span>`).join('')}
+                            </div>
+                        </div>
+                    ` : `<div class="mt-3"><p class="text-xs italic opacity-50"><i class="fa-solid fa-circle-info"></i> No specific zones defined.</p></div>`}
+                    <div class="mt-3 pt-3 border-t border-[var(--border)] flex justify-between items-center">
+                        <span class="text-xs font-bold text-[var(--primary)] bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded shadow-sm border border-green-200 dark:border-green-800">${state.plants.filter(p => p.location === loc.id && p.status !== 'dead').length} Plants</span>
                         <button onclick="document.getElementById('bulk-water-location').value='${loc.id}'; window.bulkWaterByLocation();" class="btn-secondary text-xs text-blue-500 border-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/30">
                             <i class="fa-solid fa-hand-holding-droplet mr-1"></i> Water All Here
                         </button>
@@ -1848,6 +1928,11 @@
             let displayPlants = state.plants.filter(p => p.status === 'alive' || !p.status);
             if (filterLoc.value && filterLoc.value !== 'all') {
                 displayPlants = displayPlants.filter(p => p.location === filterLoc.value);
+                
+                const filterZone = getEl("plant-filter-zone");
+                if (filterZone && filterZone.value !== 'all') {
+                    displayPlants = displayPlants.filter(p => p.position === filterZone.value);
+                }
             }
             
             const searchQ = getEl("plant-search-input") ? getEl("plant-search-input").value.toLowerCase() : "";
@@ -1951,15 +2036,16 @@ card.innerHTML = `
     
     <div class="space-y-2 mb-4 flex-grow">
         <div class="flex items-center gap-2 text-sm font-semibold">
-            <i class="fa-solid fa-location-dot w-4 text-gray-400"></i> ${displayLocation}
-            ${potBadge}
+            <i class="fa-solid fa-location-dot w-4 text-[var(--primary)]"></i> ${displayLocation}
+            ${plant.position ? `<span class="text-[10px] bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 px-1.5 py-0.5 rounded border border-purple-200 dark:border-purple-800"><i class="fa-solid fa-crosshairs"></i> ${plant.position}</span>` : ''}
         </div>
         
-        <div class="flex items-center gap-2 text-xs opacity-70 ml-6">
-            ${finalLight ? `<i class="fa-solid fa-sun text-yellow-500"></i> <span class="capitalize">${finalLight}</span> ${inheritedBadge}` : '<span>No light info</span>'}
+        <div class="flex flex-wrap items-center gap-2 text-xs opacity-80 ml-6">
+            ${finalLight ? `<span class="bg-[var(--input-bg)] px-2 py-0.5 rounded shadow-sm border border-[var(--border)]"><i class="fa-solid fa-sun text-yellow-500"></i> <span class="capitalize">${finalLight}</span> ${inheritedBadge}</span>` : ''}
+            ${potBadge}
         </div>
 
-        ${plant.waterFreq ? `<div class="flex items-center gap-2 text-sm text-blue-500 mt-2"><i class="fa-solid fa-droplet w-4"></i> Base: ${plant.waterFreq}d <span class="opacity-50 text-xs">(Auto-adjusts for weather/pots)</span></div>` : ''}
+        ${plant.waterFreq ? `<div class="flex items-center gap-2 text-sm text-blue-500 mt-2 bg-blue-50 dark:bg-blue-900/20 p-1.5 rounded"><i class="fa-solid fa-droplet w-4"></i> Base: ${plant.waterFreq}d <span class="opacity-50 text-xs">(Auto-adjusts)</span></div>` : ''}
         ${snoozeHtml}
     </div>
 
@@ -2363,9 +2449,10 @@ freq = Math.max(1, freq);
                                         </div>
                                     </div>
                                     <div class="flex gap-1">
-                                        <button class="btn-secondary p-1.5 rounded text-xs" onclick="openSnoozeModal('${plant.id}')" title="Snooze"><i class="fa-solid fa-clock text-yellow-500"></i></button>
-                                        <button class="btn-primary p-1.5 rounded text-xs quick-water-btn" data-id="${plant.id}"><i class="fa-solid fa-check"></i></button>
-                                    </div>
+                                    <button class="btn-secondary p-1.5 rounded text-xs" onclick="window.dismissTask('${plant.id}', 'Water')" title="Dismiss Reminder"><i class="fa-solid fa-xmark text-red-500"></i></button>
+                                    <button class="btn-secondary p-1.5 rounded text-xs" onclick="openSnoozeModal('${plant.id}')" title="Snooze"><i class="fa-solid fa-clock text-yellow-500"></i></button>
+                                    <button class="btn-primary p-1.5 rounded text-xs quick-water-btn" data-id="${plant.id}"><i class="fa-solid fa-check"></i></button>
+                                </div>
                                 `;
                                 if (combinedCareList) combinedCareList.appendChild(div);
                             }
@@ -2400,6 +2487,10 @@ freq = Math.max(1, freq);
                                         <p class="font-bold text-sm">${plant.name} <span class="text-xs font-normal opacity-70 ml-1">needs fertilizer</span></p>
                                         <p class="text-xs text-orange-500 font-bold">${daysOverdue} days overdue</p>
                                     </div>
+                                </div>
+                                <div class="flex gap-1">
+                                    <button class="btn-secondary p-1.5 rounded text-xs" onclick="window.dismissTask('${plant.id}', 'Fertilize')" title="Dismiss Reminder"><i class="fa-solid fa-xmark text-red-500"></i></button>
+                                    <button class="btn-primary bg-orange-600 hover:bg-orange-700 p-1.5 rounded text-xs" onclick="window.openQuickLogModal('${plant.id}')"><i class="fa-solid fa-check"></i></button>
                                 </div>
                             `;
                             if (combinedCareList) combinedCareList.appendChild(div);
@@ -2694,19 +2785,25 @@ if (state.compost) {
                         if (isCompost) photoHtml = `<div class="w-12 h-12 md:w-10 md:h-10 rounded bg-orange-100 flex items-center justify-center text-orange-600 shrink-0"><i class="fa-solid fa-recycle"></i></div>`;
                     }
 
+                    const isSkipped = log.notes && (log.notes.includes('Skipped') || log.notes.includes('Dismissed'));
+                    const typeBadgeStyle = isSkipped 
+                        ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border border-gray-300 dark:border-gray-600' 
+                        : 'bg-[var(--input-bg)] text-[var(--primary)]';
+
                     row.innerHTML = `
                         <div class="col-span-2 text-xs opacity-70 flex items-center gap-2">
                             <i class="fa-regular fa-calendar md:hidden"></i> ${new Date(log.date).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'})}
                         </div>
-                        <div class="col-span-3 font-bold text-lg md:text-base leading-tight w-full flex justify-between md:block">
+                        <div class="col-span-3 font-bold text-lg md:text-base leading-tight w-full flex justify-between md:block ${isSkipped ? 'opacity-50' : ''}">
                             ${plantName}
-                            <div class="md:hidden flex gap-2">
+                            <div class="md:hidden flex gap-2 opacity-100">
                                 <button class="text-gray-400 hover:text-blue-500 edit-log-btn p-1" data-id="${log.id}"><i class="fa-solid fa-pen"></i></button>
                                 <button class="text-gray-400 hover:text-red-500 delete-log-btn p-1" data-id="${log.id}"><i class="fa-solid fa-trash"></i></button>
                             </div>
                         </div>
                         <div class="col-span-2">
-                            <span class="bg-[var(--input-bg)] text-[var(--primary)] px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">${log.type}</span>
+                            <span class="${typeBadgeStyle} px-2 py-1 rounded text-xs font-bold uppercase tracking-wider">${log.type}</span>
+                            ${isSkipped ? '<span class="text-[10px] ml-1 opacity-50" title="Skipped Routine"><i class="fa-solid fa-forward-step"></i></span>' : ''}
                         </div>
                         <div class="col-span-4 text-sm opacity-90 flex items-start gap-3 mt-2 md:mt-0 w-full">
                             ${photoHtml}
@@ -2737,6 +2834,19 @@ if (state.compost) {
                 });
                 await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { snoozeUntil: null });
                 showMsg("Watering logged!");
+            } catch (e) { showMsg(e.message, "error"); }
+        };
+
+        window.dismissTask = async (plantId, taskType) => {
+            if (!confirm(`Dismiss ${taskType} reminder? This will log it as skipped and reset the timer.`)) return;
+            try {
+                await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                    plantId, type: taskType, date: new Date().toISOString(), notes: "Skipped / Dismissed", createdAt: Timestamp.now()
+                });
+                if (taskType === 'Water') {
+                    await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { snoozeUntil: null });
+                }
+                showMsg(`${taskType} reminder dismissed`);
             } catch (e) { showMsg(e.message, "error"); }
         };
 
@@ -4898,7 +5008,26 @@ window.saveCompostSettings = async () => {
 
         document.getElementById("layout-location-select").addEventListener("change", renderLayout);
         // Add this line so the Garden tab filter actually triggers a re-render
-        document.getElementById("plant-filter-location").addEventListener("change", renderPlants);
+        document.getElementById("plant-filter-location").addEventListener("change", (e) => {
+            const zoneSelect = getEl("plant-filter-zone");
+            const locId = e.target.value;
+            if (locId === 'all') {
+                zoneSelect.classList.add('hidden');
+                zoneSelect.value = 'all';
+            } else {
+                const loc = state.locations.find(l => l.id === locId);
+                if (loc && loc.positions && loc.positions.length > 0) {
+                    zoneSelect.innerHTML = '<option value="all">All Zones</option>';
+                    loc.positions.forEach(p => zoneSelect.innerHTML += `<option value="${p}">${p}</option>`);
+                    zoneSelect.classList.remove('hidden');
+                } else {
+                    zoneSelect.classList.add('hidden');
+                    zoneSelect.value = 'all';
+                }
+            }
+            renderPlants();
+        });
+        document.getElementById("plant-filter-zone").addEventListener("change", renderPlants);
         if (document.getElementById("plant-search-input")) {
             document.getElementById("plant-search-input").addEventListener("input", renderPlants);
         }
