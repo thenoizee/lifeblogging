@@ -79,6 +79,153 @@ export class AppNavigation {
         
         // Fetch and display Service Worker version
         this.displayServiceWorkerVersion();
+
+        // Initialize Global Command Palette
+        this.initCommandPalette();
+    }
+
+    initCommandPalette() {
+        this.renderCommandPaletteModal();
+        
+        // Listen for Ctrl+K or Cmd+K
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                this.toggleCommandPalette();
+            }
+        });
+    }
+
+    toggleCommandPalette() {
+        const modal = document.getElementById('nav-command-palette-modal');
+        const input = document.getElementById('nav-command-input');
+        if (modal.classList.contains('hidden')) {
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                input.focus();
+            }, 10);
+        } else {
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+    }
+
+    renderCommandPaletteModal() {
+        if (document.getElementById('nav-command-palette-modal')) return;
+
+        const paletteHtml = `
+<div id="nav-command-palette-modal" class="hidden fixed inset-0 z-[2147483647] bg-gray-800/40 dark:bg-gray-900/80 backdrop-blur-sm flex flex-col items-center p-4 pt-[15vh] sm:p-6 transition-opacity duration-300 opacity-0">
+    <div class="w-full max-w-2xl bg-white dark:bg-gray-800 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/10">
+        <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center">
+            <i class="fa-solid fa-terminal text-gray-400 mr-3"></i>
+            <input id="nav-command-input" type="text" placeholder="Type a command (e.g., /water 250, /task Buy Milk)" class="flex-1 bg-transparent border-none outline-none text-lg text-gray-800 dark:text-gray-200 placeholder-gray-400" autocomplete="off">
+            <span class="text-xs text-gray-400 ml-2 border border-gray-200 dark:border-gray-700 rounded px-2 py-1">ESC</span>
+        </div>
+    </div>
+</div>`;
+        document.body.insertAdjacentHTML('beforeend', paletteHtml);
+
+        const input = document.getElementById('nav-command-input');
+        const modal = document.getElementById('nav-command-palette-modal');
+
+        // Close on ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+                this.toggleCommandPalette();
+            }
+        });
+
+        // Close on outside click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) this.toggleCommandPalette();
+        });
+
+        // Handle commands
+        input.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter' && input.value.trim().startsWith('/')) {
+                this.executeCommand(input.value.trim());
+                input.value = '';
+                this.toggleCommandPalette();
+            }
+        });
+    }
+
+    async executeCommand(commandStr) {
+        const parts = commandStr.split(' ');
+        const action = parts[0].toLowerCase();
+        const value = parts.slice(1).join(' ');
+        
+        const db = getFirestore();
+        const userEmail = this.userEmail;
+
+        if (userEmail === 'Guest') {
+            alert('Please log in to use Quick Add commands.');
+            return;
+        }
+
+        try {
+            switch(action) {
+                case '/water':
+                    // Parses amount, defaulting to 250 if just "/water" is typed
+                    const amountStr = value.replace(/[^0-9]/g, '');
+                    const amount = amountStr ? parseInt(amountStr) : 250;
+                    
+                    await addDoc(collection(db, 'hydration_logs'), {
+                        userEmail: userEmail,
+                        amount: amount,
+                        timestamp: serverTimestamp(),
+                        source: 'command_palette'
+                    });
+                    this.showTemporaryNotification(`Logged ${amount}ml of water!`, 'bg-cyan-500');
+                    break;
+
+                case '/task':
+                    if (!value) return;
+                    await addDoc(collection(db, 'tasks'), {
+                        userEmail: userEmail,
+                        title: value,
+                        completed: false,
+                        createdAt: serverTimestamp(),
+                        source: 'command_palette'
+                    });
+                    this.showTemporaryNotification(`Task added: "${value}"`, 'bg-blue-500');
+                    break;
+
+                case '/log':
+                    if (!value) return;
+                    await addDoc(collection(db, 'logs'), {
+                        userEmail: userEmail,
+                        content: value,
+                        timestamp: serverTimestamp(),
+                        source: 'command_palette'
+                    });
+                    this.showTemporaryNotification(`Quick log saved!`, 'bg-green-500');
+                    break;
+
+                default:
+                    alert(`Unknown command: ${action}. Try /water, /task, or /log.`);
+            }
+        } catch (error) {
+            console.error("Error executing command: ", error);
+            alert('Failed to execute command. Check console.');
+        }
+    }
+
+    showTemporaryNotification(message, colorClass) {
+        const notifHtml = `
+            <div id="temp-cmd-notif" class="fixed top-4 right-4 ${colorClass} text-white px-4 py-2 rounded shadow-lg z-[2147483647] transition-opacity duration-300">
+                ${message}
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', notifHtml);
+        setTimeout(() => {
+            const el = document.getElementById('temp-cmd-notif');
+            if (el) {
+                el.classList.add('opacity-0');
+                setTimeout(() => el.remove(), 300);
+            }
+        }, 3000);
     }
 
     async displayServiceWorkerVersion() {

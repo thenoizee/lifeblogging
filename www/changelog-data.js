@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.51.0-alpha",
+    date: "2026-05-09",
+    changes: [
+                "All: Implemented basis of a Global Command Palette (Cmd/Ctrl+K) in shared-nav.js to allow Quick Add commands (/water, /task, /log) from anywhere in the ecosystem in a future update.",
+    ]
+    },
+    {
     version: "v15.50.0-alpha",
     date: "2026-05-09",
     changes: [
