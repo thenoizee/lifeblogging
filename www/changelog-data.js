@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.54.0-alpha",
+    date: "2026-05-09",
+    changes: [
+        "In RecipeManagr: Converted the 'Add Recipe' tab panel into an isolated, self-scrolling flex column ('flex: 1; min-height: 0;') to eliminate flexbox scroll clipping.",
+        "In RecipeManagr: Reorganized the massive 'Add Recipe' form into semantic, collapsible <details> accordions to reduce mobile scroll fatigue.",
+        "In RecipeManagr: Converted the 'Add Recipe' save controls into a fixed floating action bar safely pinned to the bottom of the viewport.",
+        "In RecipeManagr: Updated the 'Edit Recipe' auto-scroll behavior to target the specific tab container instead of the locked main window.",
+        "In RecipeManagr: Elevated the Recipe Details Modal z-index and added specific mobile bottom padding to clear the app's navigation bar.",
+        "In RecipeManagr: Completely overhauled the Details Modal desktop grid layout: Meta/Details as a full-width top accordion, Ingredients as a sticky left sidepane, and Instructions occupying the main right content body."
+    ]
+},
+    {
     version: "v15.53.0-alpha", // adjust to current
     date: "2026-05-09",
     changes: [
