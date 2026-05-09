@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.53.0-alpha", // adjust to current
+    date: "2026-05-09",
+    changes: [
+        "In PlantTrackr: Added a new 'Mulched' tracking routine and action log.",
+        "In PlantTrackr: Rearranged the 'Edit Details' modal to prioritize Specific Zone next to Location.",
+        "In PlantTrackr: Improved the 'In Ground' pot type selection to dynamically hide irrelevant inputs like 'Pot Size' and 'Saucer'."
+    ]
+},
+    {
     version: "v15.52.0-alpha",
     date: "2026-05-09",
     changes: [
