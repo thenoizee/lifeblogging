@@ -2,11 +2,21 @@
 
 export const changelogData = [
     {
+    version: "v15.55.0-alpha",
+    date: "2026-05-12",
+    changes: [
+                "In VidTrackr: Increased the watch history fetch limit from 20 to 100 for both full series/movies and individual episodes.",
+                "In VidTrackr: Fixed the status badge logic so that total series plays no longer calculate a misleading 'rewatch' badge for an entire show.",
+                "In VidTrackr: Removed the inaccurate 'Watch Count' and plays text from the main show overview page.",
+                "In VidTrackr: Overhauled Cast & Guest rendering on episode pages to correctly identify guests. The app now strictly checks the episode's native 'guest_stars' array, uses the top 30 billed actors from the parent show to catch hidden guests within the standard cast array, sorts guests to the front of the list, and visually highlights them."
+    ]
+},
+    {
     version: "v15.54.0-alpha",
     date: "2026-05-09",
     changes: [
         "In RecipeManagr: Converted the 'Add Recipe' tab panel into an isolated, self-scrolling flex column ('flex: 1; min-height: 0;') to eliminate flexbox scroll clipping.",
-        "In RecipeManagr: Reorganized the massive 'Add Recipe' form into semantic, collapsible <details> accordions to reduce mobile scroll fatigue.",
+        "In RecipeManagr: Reorganized the massive 'Add Recipe' form into semantic, collapsible -details- accordions to reduce mobile scroll fatigue.",
         "In RecipeManagr: Converted the 'Add Recipe' save controls into a fixed floating action bar safely pinned to the bottom of the viewport.",
         "In RecipeManagr: Updated the 'Edit Recipe' auto-scroll behavior to target the specific tab container instead of the locked main window.",
         "In RecipeManagr: Elevated the Recipe Details Modal z-index and added specific mobile bottom padding to clear the app's navigation bar.",

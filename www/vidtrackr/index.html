@@ -1670,7 +1670,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 
                 // FIX 1: Initialize collectionList to empty array to prevent ReferenceError
                 let item, notes, history = [], related = [], showInfo = null, people = null, comments = null, collectionList = [], showProgress = null;
-                let localWlSnap = null; 
+                let localWlSnap = null, showPeople = null;
 
                 const fetchCommentsSafe = (url) => fetchDirect(url).catch(err => { console.warn("Comments unavailable", err); return []; });
 
@@ -1691,19 +1691,20 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                     const commentUrl = `/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}/comments/newest?limit=10`;
                     
                     // Fetch all data in parallel (Including Local Watchlist Check)
-                    [history, comments, notes, localWlSnap, people] = await Promise.all([
-                        fetchDirect(`/users/me/history/episodes/${id}?limit=20`),
+                    [history, comments, notes, localWlSnap, people, showPeople] = await Promise.all([
+                        fetchDirect(`/users/me/history/episodes/${id}?limit=100`),
                         fetchCommentsSafe(commentUrl),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
                         (currentUser ? getDoc(doc(db, `users/${currentUser.uid}/watchlist`, localWlKey)) : null),
-                        fetchDirect(`/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}/people?extended=images`).catch(() => null)
+                        fetchDirect(`/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}/people?extended=images`).catch(() => null),
+                        fetchDirect(`/shows/${showInfo.ids.trakt}/people?extended=images`).catch(() => null)
                     ]);
                 } else {
                     const commentUrl = `/${type}s/${id}/comments/newest?limit=10`;
                     [item, notes, history, related, people, comments, localWlSnap] = await Promise.all([
                         fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
-                        (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=20`) : (type === 'show' ? fetchDirect(`/users/me/history/shows/${id}?limit=20`) : [])),
+                        (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=100`) : (type === 'show' ? fetchDirect(`/users/me/history/shows/${id}?limit=100`) : [])),
                         fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`),
                         fetchDirect(`/${type}s/${id}/people?extended=images`),
                         fetchCommentsSafe(commentUrl),
@@ -1835,12 +1836,12 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
 
                 if (isSkipped) {
                     statusBadge = `<span class="bg-gray-700 text-gray-300 border border-gray-500 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_10px_rgba(255,255,255,0.1)]"><i class="fa-solid fa-forward-step mr-2"></i> SKIPPED / FILLER</span>`;
-                } else if (plays > 1) {
+                } else if (plays > 1 && type !== 'show') {
                     const rewatchCount = plays - 1;
                     const ordinal = (n) => { const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
                     statusBadge = `<span class="bg-purple-500/20 text-purple-300 border border-purple-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(168,85,247,0.2)]" title="Total Plays: ${plays}"><i class="fa-solid fa-rotate-right mr-2"></i> ${ordinal(rewatchCount)} Rewatch</span>`;
                 } else if (isWatched) {
-                    statusBadge = `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> Full Watch</span>`;
+                    statusBadge = `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> ${type === 'show' ? 'Started / Watched' : 'Full Watch'}</span>`;
                 } else {
                     statusBadge = `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
                 }
@@ -1865,17 +1866,60 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 // Cast & Guest HTML
                 let castHtml = '';
                 if (people) {
-                    let castMembers = (people.cast || []).map(p => ({ ...p, role_type: 'Regular' }));
-                    if (isEpisode && people.guest_stars) {
-                        let guestMembers = people.guest_stars.map(p => ({ ...p, role_type: 'Guest' }));
-                        castMembers = [...guestMembers, ...castMembers];
+                    let combinedMembers = [];
+                    let seenIds = new Set();
+
+                    // 1. Identify True Regulars from the Show Level (Dictionary Lookup)
+                    // Trakt returns EVERYONE in showPeople.cast (800+ actors!). 
+                    // We restrict our "Regular" dictionary strictly to the top 30 billed actors across the show.
+                    let trueRegularIds = new Set();
+                    if (isEpisode && showPeople && showPeople.cast) {
+                        showPeople.cast.slice(0, 30).forEach(p => trueRegularIds.add(p.person.ids.trakt));
                     }
-                    if (castMembers.length > 0) {
+
+                    // 2. Process Episode Guest Stars Array First (They are definitely guests)
+                    if (people.guest_stars) {
+                        people.guest_stars.forEach(p => {
+                            if (!seenIds.has(p.person.ids.trakt)) {
+                                seenIds.add(p.person.ids.trakt);
+                                combinedMembers.push({ ...p, role_type: 'Guest' });
+                            }
+                        });
+                    }
+
+                    // 3. Process Episode/Movie Cast Array
+                    if (people.cast) {
+                        people.cast.forEach(p => {
+                            if (!seenIds.has(p.person.ids.trakt)) {
+                                seenIds.add(p.person.ids.trakt);
+                                
+                                let role = 'Regular';
+                                // Cross-check against the top 30 dictionary to catch hidden guests
+                                if (isEpisode && trueRegularIds.size > 0 && !trueRegularIds.has(p.person.ids.trakt)) {
+                                    role = 'Guest'; 
+                                }
+                                
+                                combinedMembers.push({ ...p, role_type: role });
+                            }
+                        });
+                    }
+
+                    // 4. Sort: Let's put Guests first for episodes so they are prominently featured
+                    if (isEpisode) {
+                        combinedMembers.sort((a, b) => (a.role_type === 'Guest' ? -1 : 1));
+                    }
+
+                    if (combinedMembers.length > 0) {
                         castHtml = `
                         <h3 class="text-xs font-bold text-[var(--primary)] mb-4 uppercase tracking-widest mt-8">Top Cast & Guests</h3>
                         <div class="flex gap-4 overflow-x-auto pb-6 hide-scroll">
-                            ${castMembers.slice(0, 20).map(person => {
+                            ${combinedMembers.slice(0, 20).map(person => {
                                  const pImg = getImage(person.person, 'person'); 
+                                 const charName = person.character || (person.characters ? person.characters[0] : 'Unknown');
+                                 
+                                 // Visually distinguish guests
+                                 const roleColor = person.role_type === 'Guest' ? 'text-amber-400' : 'text-[var(--primary)]';
+
                                  return `
                                  <div class="flex-shrink-0 w-28 group relative cursor-pointer" onclick="location.hash='#detail/person/${person.person.ids.trakt}'" title="View Filmography">
                                     <div class="w-24 h-24 mx-auto rounded-full bg-gray-800 border-2 border-gray-700 overflow-hidden mb-3 shadow-lg group-hover:border-[var(--primary)] transition transform group-hover:scale-105">
@@ -1883,8 +1927,8 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                                     </div>
                                     <div class="text-center">
                                         <p class="font-bold text-xs truncate text-white group-hover:text-[var(--primary)] transition">${person.person.name}</p>
-                                        <p class="text-[10px] uppercase font-bold text-[var(--primary)] mt-0.5">${person.role_type}</p>
-                                        <p class="text-xs text-gray-500 truncate">${person.characters ? person.characters[0] : 'Unknown'}</p>
+                                        <p class="text-[10px] uppercase font-bold ${roleColor} mt-0.5">${person.role_type}</p>
+                                        <p class="text-xs text-gray-500 truncate" title="${charName}">${charName}</p>
                                     </div>
                                  </div>`
                             }).join('')}
@@ -2049,7 +2093,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                             <div class="mb-6 space-y-1 text-sm text-gray-400">
                                 ${director !== 'N/A' ? `<p><strong class="text-gray-300">Director:</strong> ${director}</p>` : ''}
                                 ${studios !== 'N/A' ? `<p><strong class="text-gray-300">Studio:</strong> ${studios}</p>` : ''}
-                                ${plays > 0 ? `<p><strong class="text-gray-300">Watch Count:</strong> ${plays} play${plays > 1 ? 's' : ''}</p><p><strong class="text-gray-300">Last Watched:</strong> ${history.length > 0 ? new Date(history[0].watched_at).toLocaleDateString() : 'Unknown'}</p>` : `<p><strong class="text-gray-300">Watch Count:</strong> 0 plays</p>`}
+                                ${type === 'show' ? '' : (plays > 0 ? `<p><strong class="text-gray-300">Watch Count:</strong> ${plays} play${plays > 1 ? 's' : ''}</p><p><strong class="text-gray-300">Last Watched:</strong> ${history.length > 0 ? new Date(history[0].watched_at).toLocaleDateString() : 'Unknown'}</p>` : `<p><strong class="text-gray-300">Watch Count:</strong> 0 plays</p>`)}
                             </div>
                             <p class="text-gray-300 text-lg leading-relaxed mb-6 max-w-3xl">${item.overview || 'No overview available.'}</p>
                             ${castHtml}
