@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.56.0-alpha",
+    date: "2026-05-12",
+    changes: [
+        "In PDF Tools: Unified the application into a central 'Workspace Suite'—the active file is now held in memory and seamlessly carried over when switching between tools in the sidebar.",
+        "In PDF Tools: Removed the legacy 'Continue Editing' dropdown menu, replacing it with an automatic workflow and a sticky 'Active Workspace File' banner.",
+        "In PDF Tools: Added 'Undelete' functionality to the Organise tool. Deleted pages can now be instantly restored by clicking the undo icon.",
+        "In PDF Tools: Introduced a true 'Full Screen' mode for the Organise tool to maximize screen real estate when sorting large documents.",
+        "In PDF Tools: Dynamically injected the visual PDF Document Viewer into 9 core tools (Watermark, Page Numbers, Extract, Split Half, Recreate, Remove Blanks, ADF Fixer, Flatten, and PDF to Images) so users can verify the active document visually.",
+        "In PDF Tools: Fixed a UI bug where single-file tools failed to hide their dropzones when receiving a file from the global workspace.",
+        "In PDF Tools: Implemented an interactive 'Action History' logger in the bottom right corner.",
+        "In PDF Tools: Users can now see a granular log of exact edits made across the app and instantly 'Undo' these changes. Support includes undoing cross-tool workspace updates and individual page drags/rotations in the Organise panel."
+    ]
+    },
+    {
     version: "v15.55.0-alpha",
     date: "2026-05-12",
     changes: [
