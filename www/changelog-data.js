@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.57.0-alpha",
+    date: "2026-05-12",
+    changes: [
+                "In PlantTrackr: Added the ability to apply multiple bulk actions (Water, Feed, Mist) to multiple plants simultaneously.",
+                "In PlantTrackr: Added 'Sowing Method' tracking to the Seed Storage modal (e.g., Indoors, Directly Sown, Propagator)."
+    ]
+    },
+    {
     version: "v15.56.0-alpha",
     date: "2026-05-12",
     changes: [
