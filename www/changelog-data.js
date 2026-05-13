@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.58.0-alpha",
+    date: "2026-05-13",
+    changes: [
+        "In RecipeManagr: Fixed a bug preventing image uploads on mobile devices by replacing 'hidden' classes with 'sr-only' on file inputs.",
+        "In RecipeManagr: Added live visual image previews for the main recipe image immediately after selection.",
+        "In RecipeManagr: Added live thumbnail previews for step images, replacing the generic 'Set' text feedback.",
+        "In RecipeManagr: Ensured the main image preview is properly cleared and hidden upon form reset.",
+        "In PlantTrackr: Added a customizable minimum rain threshold (mm) input to the 'Auto-Log Rain as Water' setting.",
+        "In PlantTrackr: Added an initialization prompt to ask for a rain threshold on load if the auto-log feature is enabled but no value is set.",
+        "In PlantTrackr: Fixed CSS alignment issues on the Settings toggle switches (Winter Mode & Auto-Rain) so the toggle thumb stays within the track.",
+        "In PlantTrackr: Added dark mode background colors to the Settings toggle tracks.",
+    ]
+},
+    {
     version: "v15.57.0-alpha",
     date: "2026-05-12",
     changes: [

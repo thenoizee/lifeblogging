@@ -466,21 +466,26 @@
                         <p class="font-bold">Winter Mode</p>
                         <p class="text-xs opacity-70">Reduces watering frequency by 50%</p>
                     </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
+                    <label class="inline-flex items-center cursor-pointer">
                         <input type="checkbox" id="winter-mode-toggle" class="sr-only peer">
-                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        <div class="relative w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                     </label>
                 </div>
                 <div class="flex items-center justify-between mt-4">
                     <div>
                         <p class="font-bold">Auto-Log Rain as Water</p>
-                        <p class="text-xs opacity-70">Automatically logs water for exposed plants if rain exceeds 2mm.</p>
+                        <p class="text-xs opacity-70">Automatically logs water for exposed plants if rain exceeds your minimum threshold.</p>
                     </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
+                    <label class="inline-flex items-center cursor-pointer">
                         <input type="checkbox" id="auto-rain-toggle" class="sr-only peer">
-                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        <div class="relative w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                     </label>
                 </div>
+                <div id="auto-rain-threshold-container" class="mt-3 flex items-center gap-3 hidden">
+                    <label class="text-sm font-bold opacity-80">Minimum Rain (mm):</label>
+                    <input type="number" id="auto-rain-threshold" class="input-std !w-24 text-sm py-1 px-2" value="2" min="1">
+                    <button id="save-rain-threshold-btn" class="btn-primary text-xs py-1 px-3">Save</button>
+                </div>
             </div>
 
             <div class="card p-6 mb-6">
@@ -2272,7 +2277,8 @@ window.toggleGardenView = (view) => {
                         const tempText = maxTemp < 10 ? `Cold ❄️ (${maxTemp}°C)` : maxTemp < 20 ? `Mild 🌤️ (${maxTemp}°C)` : maxTemp < 30 ? `Warm ☀️ (${maxTemp}°C)` : `Hot 🔥 (${maxTemp}°C)`;
                         const tempColor = maxTemp < 10 ? 'text-blue-500' : maxTemp < 30 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500';
 
-                        if (state.autoRainWater && rain >= 2) {
+                        const rainThreshold = state.autoRainThreshold || 2;
+                        if (state.autoRainWater && rain >= rainThreshold) {
                             const todayStr = new Date().toISOString().split('T')[0];
                             const rainLogKey = `rain_logged_${todayStr}`;
                             if (!localStorage.getItem(rainLogKey)) {
@@ -4786,18 +4792,40 @@ window.saveCompostSettings = async () => {
             }
         });
 
-                onSnapshot(doc(db, 'users', state.user.uid, 'settings', 'general'), (snap) => {
+                onSnapshot(doc(db, 'users', state.user.uid, 'settings', 'general'), async (snap) => {
                     if (snap.exists()) {
                         state.winterMode = snap.data().winterMode || false;
                         state.autoRainWater = snap.data().autoRainWater || false;
+                        state.autoRainThreshold = snap.data().autoRainThreshold; 
                     } else {
                         state.winterMode = false;
                         state.autoRainWater = false;
+                        state.autoRainThreshold = undefined;
                     }
+                    
+                    if (state.autoRainWater && (state.autoRainThreshold === undefined || state.autoRainThreshold === null)) {
+                        const inputVal = prompt("You have Auto-Log Rain enabled! Please enter the minimum rain threshold (in mm) to trigger auto-logging:", "2");
+                        const parsedVal = parseFloat(inputVal);
+                        state.autoRainThreshold = !isNaN(parsedVal) && parsedVal > 0 ? parsedVal : 2;
+                        try {
+                            await setDoc(doc(db, 'users', state.user.uid, 'settings', 'general'), { 
+                                autoRainThreshold: state.autoRainThreshold 
+                            }, { merge: true });
+                            showMsg("Rain threshold saved!");
+                        } catch(e) { console.error(e); }
+                    } else if (!state.autoRainThreshold) {
+                        state.autoRainThreshold = 2; // Default fallback
+                    }
+
                     const toggle = getEl("winter-mode-toggle");
                     if(toggle) toggle.checked = state.winterMode;
                     const rainToggle = getEl("auto-rain-toggle");
-                    if(rainToggle) rainToggle.checked = state.autoRainWater;
+                    if(rainToggle) {
+                        rainToggle.checked = state.autoRainWater;
+                        toggleDisplay(getEl("auto-rain-threshold-container"), state.autoRainWater);
+                    }
+                    if(getEl("auto-rain-threshold")) getEl("auto-rain-threshold").value = state.autoRainThreshold;
+
                     renderDashboard(); 
                 });
 
@@ -4807,10 +4835,32 @@ window.saveCompostSettings = async () => {
                     }, { merge: true });
                 });
                 getEl("auto-rain-toggle").addEventListener('change', async (e) => {
+                    const isChecked = e.target.checked;
+                    toggleDisplay(getEl("auto-rain-threshold-container"), isChecked);
+                    
+                    let newThreshold = state.autoRainThreshold || 2;
+                    if (isChecked && (!state.autoRainThreshold)) {
+                        const inputVal = prompt("Please enter the minimum rain threshold (in mm) to trigger auto-logging:", "2");
+                        const parsedVal = parseFloat(inputVal);
+                        newThreshold = !isNaN(parsedVal) && parsedVal > 0 ? parsedVal : 2;
+                    }
+
                     await setDoc(doc(db, 'users', state.user.uid, 'settings', 'general'), { 
-                        autoRainWater: e.target.checked 
+                        autoRainWater: isChecked,
+                        autoRainThreshold: newThreshold
                     }, { merge: true });
                 });
+
+                getEl("save-rain-threshold-btn").addEventListener('click', async () => {
+                    const val = parseFloat(getEl("auto-rain-threshold").value);
+                    if (isNaN(val) || val <= 0) return showMsg("Please enter a valid number greater than 0", "error");
+                    try {
+                        await setDoc(doc(db, 'users', state.user.uid, 'settings', 'general'), {
+                            autoRainThreshold: val
+                        }, { merge: true });
+                        showMsg("Rain threshold updated!", "success");
+                    } catch(e) { showMsg(e.message, "error"); }
+                });
 
                 getEl("log-plant-select").addEventListener("change", window.updateQuickLogPreview);
 
