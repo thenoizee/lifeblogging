@@ -5,6 +5,16 @@ export const changelogData = [
     version: "v15.58.0-alpha",
     date: "2026-05-13",
     changes: [
+        "In Hub (index.html): Implemented dynamic time-based greetings (e.g., Good morning, Good afternoon) based on the user's local time.",
+        "In AppNavigation (shared-nav.js): Added dynamic time-based greetings to the user avatar hover tooltip across all applications.",
+        "In Service Worker (sw.js): Bumped cache version to v2.0.10.",
+        "In Service Worker (sw.js): Added Last.fm (ws.audioscrobbler.com) and TickTick (api.ticktick.com) APIs to the cache bypass list to prevent stale data and ensure live fetching on desktop browsers."
+    ]
+},
+    {
+    version: "v15.58.0-alpha",
+    date: "2026-05-13",
+    changes: [
         "In RecipeManagr: Fixed a bug preventing image uploads on mobile devices by replacing 'hidden' classes with 'sr-only' on file inputs.",
         "In RecipeManagr: Added live visual image previews for the main recipe image immediately after selection.",
         "In RecipeManagr: Added live thumbnail previews for step images, replacing the generic 'Set' text feedback.",

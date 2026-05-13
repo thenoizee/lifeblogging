@@ -279,6 +279,16 @@ export class AppNavigation {
 
     renderHeader() {
         const userInitial = this.userEmail.charAt(0).toUpperCase();
+        
+        const hour = new Date().getHours();
+        let greeting = "Hello";
+        if (hour >= 5 && hour < 12) greeting = "Good morning";
+        else if (hour >= 12 && hour < 17) greeting = "Good afternoon";
+        else if (hour >= 17 && hour < 22) greeting = "Good evening";
+        else greeting = "It's getting late";
+        
+        const userName = this.userEmail === 'Guest' ? 'Guest' : this.userEmail.split('@')[0];
+        const avatarTitle = `${greeting}, ${userName}!`;
 
         const headerHtml = `
 <div id="nav-notifications-modal" class="hidden fixed inset-0 z-[2147483647] bg-gray-800/40 dark:bg-gray-900/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 sm:p-6 transition-opacity duration-300 opacity-0">
@@ -390,7 +400,7 @@ export class AppNavigation {
                             </div>
                         </div>
                         
-                        <a href="#" id="nav-user-avatar" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity" title="Logged in as: ${this.userEmail}">
+                        <a href="#" id="nav-user-avatar" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity" title="${avatarTitle}">
                             ${userInitial}
                         </a>
 

@@ -1,6 +1,6 @@
 // Automatically grab the version from the registration URL (e.g., sw.js?v=1.2.0)
 const urlParams = new URL(self.location).searchParams;
-const LATEST_VERSION = urlParams.get('v') || "2.0.9";
+const LATEST_VERSION = urlParams.get('v') || "2.0.10";
 
 console.log(`[sw.js] 🟢 Booting up Service Worker v${LATEST_VERSION}`);
 
@@ -211,7 +211,9 @@ self.addEventListener('fetch', event => {
       url.pathname.includes('/__/auth/') ||
       url.hostname.includes('cloudfunctions.net') ||
       url.hostname.includes('api.open-meteo.com') ||
-      url.hostname.includes('openfoodfacts.org')) {
+      url.hostname.includes('openfoodfacts.org') ||
+      url.hostname.includes('ws.audioscrobbler.com') ||
+      url.hostname.includes('api.ticktick.com')) {
     return; 
   }
 
