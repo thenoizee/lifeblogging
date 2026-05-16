@@ -2,6 +2,21 @@
 
 export const changelogData = [
     {
+    version: "v15.62.0-alpha",
+    date: "2026-05-17",
+    changes: [
+                "In FoodTrackr: Added 'Leftover' as a first-class source type in the logging form for clearer history records.",
+                "In FoodTrackr: Refined the leftover restoration flow to automatically toggle the new Leftover radio button.",
+                "In FoodTrackr: Implemented a Debounced Live Search on the search input to automatically fetch results after 600ms of inactivity.",
+                "In FoodTrackr: Replaced empty loading states with Tailwind CSS skeleton loaders for smoother UX during API calls.",
+                "In FoodTrackr: Added a 'Quick Add Raw Macros' button to bypass search and instantly open an editable log form for fast entry.",
+                "In FoodTrackr: Completely redesigned the Search tab UI, bundling the search input, barcode scanner, filters, and quick actions into a cohesive, modern 'Action Card' and removing the redundant search button.",
+                "In FoodTrackr: Redesigned the 'Meal & Time' section into a modern, responsive segmented control panel.",
+                "In FoodTrackr: Restructured meal selection buttons to display as stacked icon tiles using CSS grid for superior mobile tapability.",
+                "In FoodTrackr: Promoted the Date & Time picker to a distinct header element within the Meal card for better visual hierarchy.",
+    ]
+},
+    {
     version: "v15.61.0-alpha",
     date: "2026-05-16",
     changes: [
