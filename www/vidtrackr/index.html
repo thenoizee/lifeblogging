@@ -1661,8 +1661,10 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
             hideLoader();
         }
 
-        async function renderDetail(type, id, initialSeason = null) {
-            showLoader(); els.content.innerHTML = '';
+        async function renderDetail(type, id, initialSeason = null, forceAllHistory = false) {
+            window.renderDetail = renderDetail; // Expose globally for inline onclick
+            const historyLimit = forceAllHistory ? 10000 : 100;
+            showLoader(); els.content.innerHTML = '';
             try {
                 const noteKey = `${type}_${id}`;
                 const localWlKey = `${type}_${id}`; 
@@ -1692,7 +1694,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                     
                     // Fetch all data in parallel (Including Local Watchlist Check)
                     [history, comments, notes, localWlSnap, people, showPeople] = await Promise.all([
-                        fetchDirect(`/users/me/history/episodes/${id}?limit=100`),
+                        fetchDirect(`/users/me/history/episodes/${id}?limit=${historyLimit}`),
                         fetchCommentsSafe(commentUrl),
                         getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
                         (currentUser ? getDoc(doc(db, `users/${currentUser.uid}/watchlist`, localWlKey)) : null),
@@ -1702,9 +1704,9 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                 } else {
                     const commentUrl = `/${type}s/${id}/comments/newest?limit=10`;
                     [item, notes, history, related, people, comments, localWlSnap] = await Promise.all([
-                        fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
-                        getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
-                        (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=100`) : (type === 'show' ? fetchDirect(`/users/me/history/shows/${id}?limit=100`) : [])),
+                        fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
+                        getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
+                        (type === 'movie' ? fetchDirect(`/users/me/history/movies/${id}?limit=${historyLimit}`) : (type === 'show' ? fetchDirect(`/users/me/history/shows/${id}?limit=${historyLimit}`) : [])),
                         fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`),
                         fetchDirect(`/${type}s/${id}/people?extended=images`),
                         fetchCommentsSafe(commentUrl),
@@ -1852,16 +1854,17 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
 
                 // History List HTML
                 let historyHtml = '';
-                if (history.length > 0) {
-                      historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 mb-4 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left"></i> Watch History</h3><div class="space-y-2">${history.map(h => {
-                          const epInfo = h.episode ? ` <span class="text-[var(--primary)] text-xs ml-2">S${h.episode.season}E${h.episode.number}</span>` : '';
-                          const rId = h.episode ? h.episode.ids.trakt : id;
-                          const rType = h.episode ? 'episode' : type;
-                          const hRating = userRatings.get(parseInt(rId));
-                          const hRatingHtml = hRating ? `<span class="text-yellow-500 text-xs font-bold mr-3"><i class="fa-solid fa-star"></i> ${hRating}</span>` : '';
-                          return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition" onclick="window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
-                      }).join('')}</div></div>`;
-                }
+                if (history.length > 0) {
+                      const loadMoreBtn = (!forceAllHistory && history.length === 100) ? `<div class="mt-4 pt-4 border-t border-gray-800/50 text-center"><p class="text-[10px] text-gray-500 italic mb-3">Note: Watch history is capped at your last 100 plays by default to save data.</p><button onclick="event.stopPropagation(); window.renderDetail('${type}', '${id}', null, true)" class="bg-gray-800 hover:bg-[var(--primary)] text-white text-xs font-bold px-4 py-2 rounded-lg transition border border-gray-700 shadow-md flex items-center gap-2 mx-auto"><i class="fa-solid fa-rotate-right"></i> Force Load Rest</button></div>` : '';
+                      historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 backdrop-blur-sm animate-fade"><h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2 cursor-pointer hover:text-gray-300 transition select-none" onclick="const content = this.nextElementSibling; const icon = this.querySelector('.fa-chevron-down'); content.classList.toggle('hidden'); icon.classList.toggle('rotate-180');"><i class="fa-solid fa-clock-rotate-left"></i> Watch History (${history.length}${!forceAllHistory && history.length === 100 ? '+' : ''})<span class="ml-auto"><i class="fa-solid fa-chevron-down transition-transform duration-300"></i></span></h3><div class="space-y-2 hidden mt-4">${history.map(h => {
+                          const epInfo = h.episode ? ` <span class="text-[var(--primary)] text-xs ml-2">S${h.episode.season}E${h.episode.number}</span>` : '';
+                          const rId = h.episode ? h.episode.ids.trakt : id;
+                          const rType = h.episode ? 'episode' : type;
+                          const hRating = userRatings.get(parseInt(rId));
+                          const hRatingHtml = hRating ? `<span class="text-yellow-500 text-xs font-bold mr-3"><i class="fa-solid fa-star"></i> ${hRating}</span>` : '';
+                          return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition" onclick="window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                      }).join('')}${loadMoreBtn}</div></div>`;
+                }
 
                 // Cast & Guest HTML
                 let castHtml = '';
@@ -2083,7 +2086,7 @@ const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', char
                         <div class="md:w-2/3 lg:w-3/4">
                             <h1 class="text-4xl md:text-6xl font-bold mb-2 leading-tight tracking-tight">${item.title}</h1>
                             ${item.tagline ? `<p class="text-xl text-gray-400 italic mb-4">"${item.tagline}"</p>` : ''}
-                            ${type === 'show' ? await (async () => { try { showProgress = await fetchDirect(`/shows/${id}/progress/watched`); const percent = showProgress.aired > 0 ? Math.round((showProgress.completed / showProgress.aired) * 100) : 0; return `<div class="mb-6 bg-gray-800 rounded-full h-4 w-full overflow-hidden border border-gray-700 relative group"><div class="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-1000" style="width: ${percent}%"></div><div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">${percent}% WATCHED</div></div>`; } catch(e){ return ''; } })() : ''}
+                            ${type === 'show' ? await (async () => { try { showProgress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=${showSpecials}&count_specials=${showSpecials}&extended=full,images`); const percent = showProgress.aired > 0 ? Math.round((showProgress.completed / showProgress.aired) * 100) : 0; let nextEpHtml = ''; if (showProgress.next_episode) { const nx = showProgress.next_episode; const nxImg = getImage({ type: 'episode', episode: nx, show: item }, null, true); nextEpHtml = `<div class="mb-6 bg-[var(--bg)] rounded-xl p-4 border border-gray-700 hover:border-[var(--primary)] flex items-center gap-4 cursor-pointer transition shadow-lg group" onclick="location.hash='#detail/episode/${nx.ids.trakt}'"><div class="w-24 h-14 md:w-32 md:h-18 flex-shrink-0 rounded-lg overflow-hidden bg-gray-900 relative"><img src="${nxImg}" class="w-full h-full object-cover group-hover:scale-110 transition duration-300" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-1 left-1 bg-[var(--primary)] text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shadow-sm">Up Next</div></div><div class="flex-grow min-w-0"><p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">Season ${nx.season} <span class="mx-1">•</span> Episode ${nx.number}</p><h4 class="font-bold text-sm md:text-base text-gray-200 truncate group-hover:text-[var(--primary)] transition">${nx.title}</h4></div><div class="hidden sm:flex items-center text-xs text-gray-500 font-bold mr-2">Continue Watching <i class="fa-solid fa-circle-play text-[var(--primary)] text-xl ml-2"></i></div></div>`; } return `<div class="mb-6 bg-gray-800 rounded-full h-4 w-full overflow-hidden border border-gray-700 relative group"><div class="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-1000" style="width: ${percent}%"></div><div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">${percent}% WATCHED</div></div>${nextEpHtml}`; } catch(e){ return ''; } })() : ''}
                             <div class="flex flex-wrap items-center gap-4 text-gray-300 mb-6 text-sm md:text-base font-medium">
                                 <span class="bg-gray-800 px-3 py-1 rounded-md border border-gray-700 text-white">${item.year || 'N/A'}</span>
                                 <span class="border border-gray-600 px-2 py-0.5 rounded text-xs uppercase text-gray-400">${cert}</span>

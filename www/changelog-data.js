@@ -2,7 +2,17 @@
 
 export const changelogData = [
     {
-    version: "v15.58.0-alpha",
+  version: "v15.60.0-alpha",
+  date: "2026-05-16",
+  changes: [
+    "In VidTrackr: Added 'Up Next Episode' display module directly to show detail pages.",
+    "In VidTrackr: Updated the episode fallback image logic to intelligently use the parent show's fanart via the global getImage function.",
+    "In VidTrackr: Transformed the watch history list on detail pages into a user-friendly, collapsible accordion.",
+    "In VidTrackr: Introduced a dynamic loading limit to the watch history, including a 'Force Load Rest' button to fetch records beyond the standard 100-item cap.",
+  ]
+},
+    {
+    version: "v15.59.0-alpha",
     date: "2026-05-13",
     changes: [
         "In Hub (index.html): Implemented dynamic time-based greetings (e.g., Good morning, Good afternoon) based on the user's local time.",
