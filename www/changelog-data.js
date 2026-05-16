@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.61.0-alpha",
+    date: "2026-05-16",
+    changes: [
+        "In MoneyManagr: Introduced a dual-mode CSV import system with support for both Standard CSV and Midata (UK Standard) formats.",
+        "In MoneyManagr: Added an interactive import preview table allowing users to review, edit descriptions, and toggle inclusion of transactions before committing to the inbox.",
+        "In MoneyManagr: Implemented a 3-tier duplicate detection system (New, Potential Duplicate, Exact Duplicate) that compares strict hashes as well as soft date/amount pairs.",
+        "In MoneyManagr: Added inline UI warnings in the import preview that display the exact description of existing transactions when a potential duplicate is flagged.",
+        "In MoneyManagr: Promoted the Pending Transactions flow into a prominent 'Action Needed' dashboard card with an active transaction count.",
+        "In MoneyManagr: Added a bulk categorization feature to the review inbox, allowing multiple transactions to be selected and assigned to a person/category simultaneously.",
+        "In MoneyManagr: Added 'Skip for Now' and 'Delete All' actions to the transaction review modal for better inbox management.",
+    ]
+},
+    {
   version: "v15.60.0-alpha",
   date: "2026-05-16",
   changes: [
