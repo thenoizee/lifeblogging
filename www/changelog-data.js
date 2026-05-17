@@ -2,6 +2,29 @@
 
 export const changelogData = [
     {
+    version: "v15.64.0-alpha",
+    date: "2026-05-17",
+    changes: [
+        "In MoneyManagr: Added 'Transfer', 'Savings (General)', 'Savings (ISA)', 'Pension', and 'Investments' to default categories to allow more granular tracking.",
+        "In MoneyManagr: Split the main dashboard UI into 'My Accounts & Savings' and 'Who Owes What' with dedicated lists.",
+        "In MoneyManagr: Expanded the account creation modal to include dropdown types for 'Person', 'Bank Account', and 'Investment / Pension'.",
+        "In MoneyManagr: Added a 'Fulfill Sub' tab and 'Transfer' button to the inbox review screen.",
+        "In MoneyManagr: Updated categorization logic to handle internal 'Transfers' (moving money directly to/from accounts without double-counting) and manual 'Subscriptions'.",
+        "In MoneyManagr: Disabled automatic background logging of subscriptions to enforce manual reconciliation and prevent duplicate entries.",
+        "In MoneyManagr: Added the 'currency-symbol' class to the 'This Week' total, target amounts, and Pot Details balance to ensure dynamic currency updates work universally.",
+        "In MoneyManagr: Removed hardcoded 'Target: $' from the Pot Details Modal to fix the '$Unlinked spending & income' text glitch."
+    ]
+},
+    {
+    version: "v15.63.0-alpha",
+    date: "2026-05-17",
+    changes: [
+        "In PlantTrackr: Added 'Companion Plants' selection to the Plant Modal to track and display plants that grow well together.",
+        "In PlantTrackr: Added a 'Sheltered' status and a Frost Blanket/Cloche toggle in the Quick Log, which automatically pauses frost alerts for covered plants.",
+        "In PlantTrackr: Introduced Harvest Tracking in the Quick Log to record specific harvested amounts (e.g., weights or quantities)."
+    ]
+},
+    {
     version: "v15.62.0-alpha",
     date: "2026-05-17",
     changes: [
