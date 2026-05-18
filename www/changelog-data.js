@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.65.0-alpha",
+    date: "2026-05-18",
+    changes: [
+                "In Account Settings: Added a 'Social Links' configuration section supporting Website, Twitter, Instagram, GitHub, LinkedIn, YouTube, and Facebook URLs.",
+                "In Account Settings: Implemented an auto-sync function that captures the user's account creation date and saves it to their public Firestore profile document upon loading.",
+                "In Public Profile: Added dynamic rendering to display the user's saved social media links as interactive icons beneath their verified badge.",
+                "In Public Profile: Fixed the 'Member since unknown' display bug by fetching and rendering the synced account creation date from the database."
+    ]
+},
+    {
     version: "v15.64.0-alpha",
     date: "2026-05-17",
     changes: [
