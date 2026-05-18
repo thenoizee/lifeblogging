@@ -145,7 +145,17 @@
                              </div>
                         </div>
                     </div>
-                    <div class="progress-bar-bg w-full h-4 rounded-full overflow-hidden mt-4">
+                    
+                    <div class="flex flex-col sm:flex-row items-center justify-center mt-8 gap-8 border-t border-[var(--border-color)] pt-8">
+                        <div class="relative w-48 h-48 rounded-full bg-blue-50 dark:bg-gray-800 flex items-center justify-center overflow-hidden border-4 border-blue-200 dark:border-blue-900 shadow-inner">
+                            <div id="water-fill-visual" class="absolute bottom-0 w-full bg-blue-500 transition-all duration-1000 ease-in-out" style="height: 0%; opacity: 0.85;"></div>
+                            <div class="relative z-10 text-center mix-blend-difference text-white drop-shadow-md">
+                                 <div class="text-4xl font-bold"><span id="visual-percentage">0</span>%</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="progress-bar-bg w-full h-4 rounded-full overflow-hidden mt-6">
                         <div id="today-progress" class="progress-bar-fill h-full rounded-full" style="width: 0%;"></div>
                     </div>
                 </div>
@@ -255,6 +265,11 @@
                                 <input type="time" id="settings-day-reset" class="w-full p-3 rounded-lg">
                                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">For late night tracking (e.g. 04:00 AM)</p>
                             </div>
+                        </div>
+                        
+                        <div class="flex items-center space-x-2 mt-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <input type="checkbox" id="settings-include-foodtrackr" class="h-5 w-5 rounded text-blue-600">
+                            <label for="settings-include-foodtrackr" class="font-semibold text-lg">Include FoodTrackr Drinks</label>
                         </div>
                         
                         <h3 class="text-xl font-bold mt-6 mb-2">Custom Cups / Quick Add</h3>
@@ -385,6 +400,7 @@
         let appSettings = {
             dailyGoal: 2000,
             units: 'ml', // 'ml' or 'oz'
+            includeFoodTrackr: true, // Toggle FoodTrackr drinks
             weekStart: 1, // 0=Sun, 1=Mon, 6=Sat
             dayReset: "00:00", // "HH:MM"
             drinkFactors: { water: 1, coffee: 0.8, tea: 0.9, juice: 0.8, other: 0.5 },
@@ -526,6 +542,9 @@
                 ui.weekStartSelect.value = appSettings.weekStart ?? 1;
                 ui.dayResetInput.value = appSettings.dayReset || "00:00";
                 
+                const ftCheckbox = document.getElementById('settings-include-foodtrackr');
+                if (ftCheckbox) ftCheckbox.checked = appSettings.includeFoodTrackr !== false;
+                
                 updateUnitLabels();
                 renderDrinkFactors(appSettings.drinkFactors);
                 renderCustomCupsSettings();
@@ -585,6 +604,9 @@
             
             // USE SYNCHRONOUS GLOBAL DATA
             globalLogs.forEach(log => {
+                const isFoodTrackr = log.uploadedApp === 'FoodTrackr' || (!log.uploadedApp && log.section === 'drinks' && !log.attributeName);
+                if (appSettings.includeFoodTrackr === false && isFoodTrackr) return; // Skip FoodTrackr if disabled
+
                 if (log.dateObj >= range.start && log.dateObj < range.end) {
                     const amount = log.quantity !== undefined ? log.quantity : (log.attributeValue || log.amount || 0);
                     const drinkType = log.name || log.attributeName || 'water';
@@ -605,6 +627,14 @@
             ui.todayProgress.style.width = `${Math.min(percentage, 100)}%`;
             ui.todayPercentage.textContent = percentage;
             ui.todayRemaining.textContent = remaining;
+            
+            // Update circular visual display
+            const visualFill = document.getElementById('water-fill-visual');
+            const visualPct = document.getElementById('visual-percentage');
+            if (visualFill && visualPct) {
+                visualFill.style.height = `${Math.min(percentage, 100)}%`;
+                visualPct.textContent = percentage;
+            }
             
             updateStreaks(); 
         }
@@ -631,6 +661,9 @@
             document.getElementById('hist-date-range').textContent = historyViewMode === 'all' ? "All Time" : rangeStr;
 
             const filteredLogs = allLogs.filter(l => {
+                const isFoodTrackr = l.uploadedApp === 'FoodTrackr' || (!l.uploadedApp && l.section === 'drinks' && !l.attributeName);
+                if (appSettings.includeFoodTrackr === false && isFoodTrackr) return false;
+                
                 const d = l.dateObj;
                 return d >= startDate && d <= endDate;
             });
@@ -766,11 +799,13 @@
         }
 
         document.getElementById('save-settings-btn').addEventListener('click', () => {
+            const ftCheckbox = document.getElementById('settings-include-foodtrackr');
             const updates = {
                 units: ui.unitSelect.value,
                 dailyGoal: parseVol(ui.dailyGoalInput.value),
                 weekStart: parseInt(ui.weekStartSelect.value),
                 dayReset: ui.dayResetInput.value,
+                includeFoodTrackr: ftCheckbox ? ftCheckbox.checked : true,
                 reminders: {
                     enabled: document.getElementById('enable-reminders').checked,
                     interval: parseInt(document.getElementById('reminder-interval').value)

@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.67.0-alpha",
+    date: "2026-05-18",
+    changes: [
+                "In HydrationTrackr: Added a settings toggle to include or exclude FoodTrackr drinks, and introduced a visual circular progress display towards the daily goal on the dashboard.",
+    ]
+},
+    {
     version: "v15.66.0-alpha",
     date: "2026-05-18",
     changes: [
