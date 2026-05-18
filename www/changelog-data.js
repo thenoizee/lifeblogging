@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.66.0-alpha",
+    date: "2026-05-18",
+    changes: [
+        "In PetManagr: Added dynamic calculation and display of pet age based on Date of Birth.",
+        "In PetManagr: Implemented empty state UI for the Pet List when no pets are added.",
+        "In PetManagr: Implemented empty state UI for the Dashboard Weight Trends chart when no weights are logged.",
+    ]
+},
+    {
     version: "v15.65.0-alpha",
     date: "2026-05-18",
     changes: [
