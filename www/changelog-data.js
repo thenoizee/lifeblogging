@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.68.0-alpha",
+    date: "2026-05-18",
+    changes: [
+                "In Printing Label Generator: Added an independent 'Margin Bottom' control to separate top and bottom padding.",
+                "In Printing Label Generator: Updated the layout UI to a 3-column grid to fit the new Margin Bottom input alongside Top and Left margins.",
+                "In Printing Label Generator: Updated the CSS variables, JavaScript math calculations, and Firebase preset saving logic to fully support the new bottom margin."
+    ]
+},
+    {
     version: "v15.67.0-alpha",
     date: "2026-05-18",
     changes: [
