@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.71.0-alpha",
+    date: "2026-05-20",
+    changes: [
+        "In HealthManagr: Refactored lens logging to support direct date overrides, enabling one-click logging from calendar views.",
+"In HealthManagr: Updated Weekly and Monthly views to allow quick-logging of missing lens entries directly from the calendar interface.",
+"In HealthManagr: Improved lens stock validation logic to be more resilient with expiry dates and added improved visual feedback for logged vs. missed status.",
+        "In HealthManagr: Redesigned the Dashboard cards (Dashboard, Adherence, Medication Breakdown, All Logs Overview) to use the new modern, flush, full-width header aesthetic.",
+        "In HealthManagr: Upgraded the Lenses tab cards (Weekly Overview, Left Eye, Right Eye, Eye Health Records, Lens Usage History) with color-coordinated flush headers (e.g., Blue for Left Eye, Green for Right Eye).",
+        "In HealthManagr: Updated all dynamic Grooming elements (Hair, Nails, Beard, Ears, etc.) to use the flush header design, featuring distinct, vibrant header colors for each grooming category to improve visual consistency and scannability."
+    ]
+},
+
+    {
     version: "v15.70.0-alpha",
     date: "2026-05-19",
     changes: [
