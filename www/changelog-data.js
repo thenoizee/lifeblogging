@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.69.0-alpha",
+    date: "2026-05-19",
+    changes: [
+                "In VehicleManagr: Overhauled the entire application UI to use modern, flush, full-width header bars on all data cards.",
+                "In VehicleManagr: Redesigned the Log tab entry cards (Fuel, Service, Consumables, Expense, Health & Tyres, and Trips) with color-coordinated flush headers.",
+                "In VehicleManagr: Upgraded the Trusted Parts Inventory and Virtual Glovebox with matching flush headers for better visual hierarchy.",
+                "In VehicleManagr: Extended the aesthetic overhaul to the Tyre Status, Vehicle Stats, and Chart cards on the Dashboard.",
+                "In VehicleManagr: Unified the remaining Settings and History elements by applying the flush header UI to the Activity Log, My Vehicles, Danger Zone, and Data Management cards."
+    ]
+},
+    {
     version: "v15.68.0-alpha",
     date: "2026-05-18",
     changes: [
