@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.70.0-alpha",
+    date: "2026-05-19",
+    changes: [
+                "In MoneyManagr: Redesigned the Dashboard cards (This Week, Personal Ledger, Action Needed, Import & Export) to use the new modern, flush, full-width header aesthetic.",
+                "In MoneyManagr: Upgraded all tools and settings cards (App Settings, Budgets, Spending Breakdown, Subscriptions, Random Round Up, Time Machine) with color-coordinated flush headers.",
+                "In MoneyManagr: Updated dynamic account and person elements to use the flush header design, improving visual consistency across the entire application suite."
+    ]
+},
+    {
     version: "v15.69.0-alpha",
     date: "2026-05-19",
     changes: [
