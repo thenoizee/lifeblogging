@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.73.0-alpha",
+    date: "2026-05-21",
+    changes: [
+        "In MoneyManagr: Streamlined the Review Inbox and Categorize Transaction UI by merging multi-tab layouts into a unified, space-efficient single-view form.",
+        "In MoneyManagr: Rewrote the action modal JS logic (openActionModal, openBulkActionModal, and applyCategorization) to drop tab switching and dynamically treat bank accounts, investments, and people as selectable assignment options.",
+        "In MoneyManagr: Condensed large toggle buttons in the Deposit ('I Paid'/'They Paid') and Import ('Simple CSV'/'Midata') modals into slimmer, compact layouts.",
+    ]
+},
+    {
     version: "v15.72.0-alpha",
     date: "2026-05-20",
     changes: [
