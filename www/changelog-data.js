@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.72.0-alpha",
+    date: "2026-05-20",
+    changes: [
+        "In MoneyManagr: Fixed bug where 'originalDate' from bank CSV imports was being overwritten or ignored in the transaction details modal.",
+        "In MoneyManagr: Resolved an Uncaught TypeError preventing new accounts/pots from being saved by properly checking for the 'pot-target' element.",
+        "In MoneyManagr: Overhauled the Net Balance header into a frosted-glass gradient card UI.",
+        "In MoneyManagr: Adjusted dashboard typography, making section headers sleeker and more modern.",
+    ]
+},
+    {
     version: "v15.71.0-alpha",
     date: "2026-05-20",
     changes: [
