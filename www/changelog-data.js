@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.74.0-alpha",
+    date: "2026-05-23",
+    changes: [
+        "In PlantTrackr: Rebuilt the Garden tab header to separate view toggles and filters into logical rows.",
+        "In PlantTrackr: Overhauled the Bulk Actions UI, converting inline tools into a sticky, floating banner at the bottom of the screen.",
+        "In PlantTrackr: Clarified spatial terminology by renaming 'Spaces & Locations' to 'Spaces & Zones'.",
+        "In PlantTrackr: Redesigned the Add Space modal to visually separate 'Broad Space Name' from 'Specific Zones' inputs."
+    ]
+},
+    {
     version: "v15.73.0-alpha",
     date: "2026-05-21",
     changes: [
