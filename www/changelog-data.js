@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    "version": "v15.75.0-alpha",
+    "date": "2026-05-23",
+    "changes": [
+        "In MoneyManagr: Fixed a ReferenceError by hoisting 'getGroupedPotsHTML' to global scope.",
+        "In MoneyManagr: Patched 'openPotDetails' crash by restoring missing 'detail-pot-name' and 'detail-pot-progress' IDs in the modal.",
+        "In MoneyManagr: Standardized modal button sizing and iconography across the app.",
+        "In MoneyManagr: Restructured account assignment dropdowns to nest Bank/Investment accounts under the 'Personal Ledger' optgroup.",
+        "In MoneyManagr: Redesigned the transaction review/categorization modal UI for a cleaner, grouped input layout."
+    ]
+},
+    {
     version: "v15.74.0-alpha",
     date: "2026-05-23",
     changes: [
