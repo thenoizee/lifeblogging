@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.76.1-alpha",
+    date: "2026-05-23",
+    changes: [
+        "In LightManagr: Bug fix."
+    ]
+},
+    {
     version: "v15.76.0-alpha",
     date: "2026-05-23",
     changes: [
