@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.77.0-alpha",
+    date: "2026-05-24",
+    changes: [
+        "In FoodTrackr: Revamped the UI for single-item actions (Move, Copy, Split, Delete) removing bulky button rows in favor of sleek, compact ghost buttons.",
+        "In FoodTrackr: Overhauled the Bulk Action dock into a floating rounded glass-morphism style pill, improving UX for multi-item management.",
+        "In FoodTrackr: Completely redesigned the Move/Copy and Edit Item modals to match the modern application aesthetic.",
+        "In FoodTrackr: Redesigned the Log Details form to be more compact and card-based, reducing vertical clutter and grouping Portion/Macros into a unified dashboard-style card.",
+    ]
+},
+    {
     version: "v15.76.1-alpha",
     date: "2026-05-23",
     changes: [
