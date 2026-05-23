@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.76.0-alpha",
+    date: "2026-05-23",
+    changes: [
+        "In TaskTrackr: Updated callback.html to use initializeAuth with browserLocalPersistence for consistent authentication sessions.",
+        "In VidTrackr: Updated callback.html to use initializeAuth with browserLocalPersistence for consistent authentication sessions.",
+        "In LightManagr: Updated callback.html to use initializeAuth with browserLocalPersistence for consistent authentication sessions."
+    ]
+},
+    {
     "version": "v15.75.0-alpha",
     "date": "2026-05-23",
     "changes": [
