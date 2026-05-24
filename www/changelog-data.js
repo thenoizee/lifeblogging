@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.78.0-alpha",
+    date: "2026-05-24",
+    changes: [
+        "In PlantTrackr: Redesigned the Potting & Environment section in the Add/Edit Plant form into a cohesive, icon-driven grid for better data entry.",
+"In PlantTrackr: Overhauled the View Details modal, replacing vertical text lists with a sleek mini-dashboard grid for Location, Pot Setup, Soil Setup, and Health.",
+"In PlantTrackr: Enhanced Garden Card badges to display subtle, space-saving visual indicators for specialized soil types and saucers.",
+"In PlantTrackr: Updated JavaScript mapping logic to seamlessly support the new modular UI widgets and improved soil/pot relationship data.",
+    ]
+},
+    {
     version: "v15.77.0-alpha",
     date: "2026-05-24",
     changes: [
