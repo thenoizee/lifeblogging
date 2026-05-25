@@ -570,6 +570,12 @@ body {
             <input type="hidden" id="project-modal-id">
             <div class="space-y-4">
                 <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase">Parent Project</label>
+                    <select id="project-parent-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm mb-4">
+                        <option value="">None (Top Level)</option>
+                    </select>
+                </div>
+                <div>
                     <label class="text-xs font-bold text-gray-500 uppercase">Name</label>
                     <input type="text" id="project-name-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm">
                 </div>
@@ -1425,10 +1431,52 @@ const fetchAllData = async () => {
     if (projects && !inboxProj) inboxProj = projects.find(p => p.name.toLowerCase() === 'inbox');
     const inboxId = inboxProj ? inboxProj.id : 'inbox';
 
+    // Fetch custom project hierarchy & color mapping from Firebase
+    let hierarchyMap = {};
+    let customColors = {};
+    let localProjects = [];
+    if (auth.currentUser) {
+        try {
+            const hSnaps = await getDocs(collection(db, 'users', auth.currentUser.uid, 'project_hierarchy'));
+            hSnaps.forEach(doc => { 
+                const data = doc.data();
+                if(data.parentId) hierarchyMap[doc.id] = data.parentId; 
+                if(data.color) customColors[doc.id] = data.color;
+                
+                // Capture Local Fallback Projects
+                if(data.isLocal || doc.id.startsWith('local_proj_')) {
+                    localProjects.push({
+                        id: doc.id,
+                        name: data.name || 'Unnamed List',
+                        color: data.color || '#4b5563',
+                        parentId: data.parentId || null
+                    });
+                }
+            });
+        } catch(e) { console.error("Could not fetch hierarchy", e); }
+    }
+
     projectMap = (projects || []).reduce((acc, p) => ({
         ...acc,
-        [p.id]: { name: p.name, color: p.color, kind: p.kind, isInbox: p.id === inboxId }
+        [p.id]: { 
+            name: p.name, 
+            color: customColors[p.id] || p.color, 
+            kind: p.kind, 
+            isInbox: p.id === inboxId, 
+            parentId: hierarchyMap[p.id] || p.groupId || p.parentId || null 
+        }
     }), {});
+
+    // Inject local projects seamlessly into the UI
+    localProjects.forEach(lp => {
+        projectMap[lp.id] = {
+            name: lp.name,
+            color: lp.color,
+            kind: 'local_list',
+            isInbox: false,
+            parentId: lp.parentId
+        };
+    });
     if (!projectMap[inboxId]) projectMap[inboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
 
     // --- NEW: FETCH GOOGLE DATA ---
@@ -1713,18 +1761,45 @@ const fetchAllData = async () => {
         projectMap[id].name.toLowerCase() === 'inbox'
     ) || 'inbox';
     
-    Object.entries(projectMap).forEach(([id, proj]) => {
-        if (id === inboxId) return; 
-        if (id === 'google_calendar' && !currentState.visibleSources.google_calendar) return; // Hide calendar pseudo-project if source is disabled
-        const color = getProjectColor(id);
-        const iconStyle = `color: ${color}`;
-        
-        html += `<button onclick="window.updateFilter('projectId', '${id}'); window.updateFilter('filter', 'all')" 
-                class="w-full text-left ${btnPadding} py-2 rounded-lg transition-all flex items-center gap-3 text-sm font-medium ${currentState.projectId === id ? 'bg-gray-700 text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'}" title="${escapeHtml(proj.name)}">
-                    <i class="fa-solid fa-circle text-[10px]" style="${iconStyle}"></i>
-                    <span class="truncate ${textVisibility}">${escapeHtml(proj.name)}</span>
-                </button>`;
+    // Build project tree
+    const tree = [];
+    const lookup = {};
+    Object.entries(projectMap).forEach(([id, p]) => {
+        if (id === inboxId || (id === 'google_calendar' && !currentState.visibleSources.google_calendar)) return;
+        lookup[id] = { id, ...p, children: [] };
     });
+    
+    Object.values(lookup).forEach(p => {
+        if (p.parentId && lookup[p.parentId]) {
+            lookup[p.parentId].children.push(p);
+        } else {
+            tree.push(p);
+        }
+    });
+
+    const renderTree = (nodes, depth = 0) => {
+        let treeHtml = '';
+        nodes.forEach(proj => {
+            const color = getProjectColor(proj.id);
+            const iconStyle = `color: ${color}`;
+            const paddingLeft = depth > 0 && !isCollapsed ? `padding-left: ${depth * 1.5 + 0.75}rem;` : '';
+            const arrowIcon = proj.children.length > 0 && !isCollapsed ? `<i class="fa-solid fa-chevron-down text-[10px] opacity-50 ml-auto"></i>` : '';
+            
+            treeHtml += `<button onclick="window.updateFilter('projectId', '${proj.id}'); window.updateFilter('filter', 'all')" 
+                    class="w-full text-left ${btnPadding} py-2 rounded-lg transition-all flex items-center gap-3 text-sm font-medium ${currentState.projectId === proj.id ? 'bg-gray-700 text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'}" style="${paddingLeft}" title="${escapeHtml(proj.name)}">
+                        <i class="fa-solid fa-circle text-[10px]" style="${iconStyle}"></i>
+                        <span class="truncate ${textVisibility}">${escapeHtml(proj.name)}</span>
+                        ${arrowIcon}
+                    </button>`;
+            
+            if (proj.children.length > 0) {
+                treeHtml += renderTree(proj.children, depth + 1);
+            }
+        });
+        return treeHtml;
+    };
+
+    html += renderTree(tree);
 
     listEl.innerHTML = html;
 };
@@ -2014,7 +2089,10 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             }
 
             // --- GLOBAL FILTERS ---
-            if (currentState.projectIds.length > 0) {
+            if (currentState.projectId && currentState.projectId !== 'all') {
+                tasks = tasks.filter(t => t.projectId === currentState.projectId || t.calendarId === currentState.projectId);
+            }
+            if (currentState.projectIds && currentState.projectIds.length > 0) {
                 tasks = tasks.filter(t => currentState.projectIds.includes(t.projectId) || currentState.projectIds.includes(t.calendarId)); 
             }
             if (currentState.priority !== 'all') tasks = tasks.filter(t => t.priority == currentState.priority);
@@ -2432,8 +2510,19 @@ const renderTaskCard = (task) => {
             // Populate dynamic project list into the bulk action dropdown
             const bulkProjectSelect = document.getElementById('bulk-project-select');
             if (bulkProjectSelect) {
-                bulkProjectSelect.innerHTML = `<option value="" disabled selected>Move to Project</option>` + 
-                    Object.entries(projectMap).map(([id, p]) => `<option value="${id}">${escapeHtml(p.name)}</option>`).join('');
+                const buildBulkOptions = (parentId = null, depth = 0) => {
+                    let options = '';
+                    Object.entries(projectMap).forEach(([pid, p]) => {
+                        const pParent = p.parentId || p.groupId || null;
+                        if (pParent == parentId && pid !== 'google_calendar') {
+                            const indent = '— '.repeat(depth);
+                            options += `<option value="${pid}">${indent}${escapeHtml(p.name)}</option>`;
+                            options += buildBulkOptions(pid, depth + 1);
+                        }
+                    });
+                    return options;
+                };
+                bulkProjectSelect.innerHTML = `<option value="" disabled selected>Move to Project</option>` + buildBulkOptions(null, 0);
             }
 
             if (selectedTasks.size > 0) { 
@@ -2481,6 +2570,10 @@ const renderTaskCard = (task) => {
                             payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); 
                         } 
                         
+                        // Save original state before mutating
+                        const oldProjectId = task.projectId;
+                        const oldSource = task.source;
+
                         // Handle Project / Labels reassignment
                         if (action === 'project' && value) {
                             task.projectId = value;
@@ -2492,8 +2585,22 @@ const renderTaskCard = (task) => {
                             payload.priority = parseInt(value);
                         }
 
-                        await api(`/task/${tid}`, 'POST', payload); 
-                    } 
+                        // Determine if destination project is local
+                        const isLocalDest = task.projectId.startsWith('local_proj_') || (projectMap[task.projectId] && projectMap[task.projectId].kind === 'local_list');
+                        
+                        if (isLocalDest || task.source === 'local') {
+                            task.source = 'local';
+                            if (auth.currentUser) {
+                                await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { ...task, updated: new Date() }, { merge: true });
+                            }
+                            // Clear from TickTick if it was moved to local
+                            if (action === 'project' && isLocalDest && oldSource !== 'local') {
+                                try { await api(`/project/${oldProjectId}/task/${tid}`, 'DELETE'); } catch(e){ console.error("Failed to delete old TickTick task", e); }
+                            }
+                        } else {
+                            await api(`/task/${tid}`, 'POST', payload); 
+                        }
+                    }
                 })); 
                 
                 // Cleanup and reset UI
@@ -2647,17 +2754,29 @@ const renderProjectsManager = () => {
             html += `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">`; 
             html += projects.map(([id, p]) => { 
                 const color = getProjectColor(id); 
-                return `<div class="card p-5 rounded-xl border border-gray-800 flex justify-between items-center group shadow-md" style="border-left: 4px solid ${color};"><span class="font-bold text-lg">${escapeHtml(p.name)}</span><div class="flex gap-2 opacity-0 group-hover:opacity-100 transition"><button onclick="window.openProjectModal('${id}', '${escapeHtml(p.name)}', '${p.color}')" class="p-2 text-blue-400 hover:bg-blue-900/30 rounded"><i class="fa-solid fa-pen"></i></button><button onclick="window.deleteProject('${id}')" class="p-2 text-red-400 hover:bg-red-900/30 rounded"><i class="fa-solid fa-trash"></i></button></div></div>` 
-            }).join(''); 
+                const parentName = (p.parentId || p.groupId) && projectMap[p.parentId || p.groupId] ? projectMap[p.parentId || p.groupId].name : '';
+                const parentBadge = parentName ? `<div class="text-[10px] text-gray-500 uppercase font-bold mt-1"><i class="fa-solid fa-folder-tree mr-1"></i> ${escapeHtml(parentName)}</div>` : '';
+                
+                return `<div class="card p-5 rounded-xl border border-gray-800 flex justify-between items-center group shadow-md" style="border-left: 4px solid ${color};"><div><span class="font-bold text-lg">${escapeHtml(p.name)}</span>${parentBadge}</div><div class="flex gap-2 opacity-0 group-hover:opacity-100 transition"><button onclick="window.openProjectModal('${id}', '${escapeHtml(p.name)}', '${p.color}', '${p.parentId || p.groupId || ''}')" class="p-2 text-blue-400 hover:bg-blue-900/30 rounded"><i class="fa-solid fa-pen"></i></button><button onclick="window.deleteProject('${id}')" class="p-2 text-red-400 hover:bg-red-900/30 rounded"><i class="fa-solid fa-trash"></i></button></div></div>` 
+            }).join('');
             html += `</div>`; 
             els.content.innerHTML = html; 
         };
 
-        window.openProjectModal = (id = null, name = '', color = null) => { 
+        window.openProjectModal = (id = null, name = '', color = null, parentId = null) => { 
             document.getElementById('project-modal-id').value = id || ''; 
             document.getElementById('project-name-input').value = name; 
             document.getElementById('project-modal-title').textContent = id ? 'Edit Project' : 'New Project'; 
             
+            const parentSelect = document.getElementById('project-parent-input');
+            if (parentSelect) {
+                parentSelect.innerHTML = '<option value="">None (Top Level)</option>' + 
+                    Object.entries(projectMap)
+                    .filter(([pid, p]) => pid !== id && pid !== 'inbox' && pid !== 'google_calendar')
+                    .map(([pid, p]) => `<option value="${pid}" ${parentId === pid ? 'selected' : ''}>${escapeHtml(p.name)}</option>`)
+                    .join('');
+            }
+
             // Render Color Picker
             const container = document.getElementById('project-color-picker');
             const currentColor = color || PROJECT_COLORS[0];
@@ -2682,16 +2801,57 @@ const renderProjectsManager = () => {
             const id = document.getElementById('project-modal-id').value; 
             const name = document.getElementById('project-name-input').value; 
             const color = document.getElementById('project-color-input').value;
+            const parentSelect = document.getElementById('project-parent-input');
+            const parentId = parentSelect ? parentSelect.value : null;
             
             if(!name) return showToast('Name required', 'error'); 
             showLoader(); 
             try { 
-                if(id) await api(`/project/${id}`, 'POST', { name, color }); 
-                else await api('/project', 'POST', { name, color }); 
-                showToast('Project saved'); 
+                const ticktickPayload = { name };
+                let actualId = id;
+                let ticktickSuccess = false;
+
+                // 1. Try sending to TickTick (unless it's an existing local-only project)
+                if (!id || !id.startsWith('local_proj_')) {
+                    try {
+                        let savedProject;
+                        if(id) savedProject = await api(`/project/${id}`, 'POST', ticktickPayload); 
+                        else savedProject = await api('/project', 'POST', ticktickPayload); 
+                        
+                        if (savedProject && savedProject.id) {
+                            actualId = savedProject.id;
+                            ticktickSuccess = true;
+                        }
+                    } catch (ttErr) {
+                        console.warn("TickTick API failed. Proceeding with local project fallback.", ttErr);
+                    }
+                }
+
+                // 2. If TickTick failed (like throwing a 500 limit error), generate a local ID
+                if (!actualId) {
+                    actualId = 'local_proj_' + Date.now() + Math.random().toString(36).substr(2, 9);
+                    showToast('Created Local Project (TickTick Sync Failed)', 'success');
+                } else if (ticktickSuccess || id.startsWith('local_proj_')) {
+                    showToast('Project saved');
+                }
+                
+                // 3. Save everything to Firebase
+                if (auth.currentUser) {
+                    await setDoc(doc(db, 'users', auth.currentUser.uid, 'project_hierarchy', actualId), {
+                        name: name, // Store name locally just in case
+                        parentId: parentId || null,
+                        color: color || null,
+                        updated: new Date(),
+                        isLocal: actualId.startsWith('local_proj_')
+                    }, { merge: true });
+                }
+                
                 document.getElementById('project-modal').classList.add('hidden'); 
                 fetchAllData(); 
-            } catch(e) { showToast('Error', 'error'); } 
+            } catch(e) { 
+                showToast('Error saving project', 'error'); 
+                console.error(e); 
+            } 
             hideLoader(); 
         };
         
@@ -2731,8 +2891,12 @@ window.submitTaskForm = async () => {
         existingTask = taskCache.find(t => t.id === id) || {};
     }
 
-    // 3. Get Save Location
-    const destination = document.getElementById('modal-destination-input').value;
+    // 3. Get Save Location (Force local if project is local)
+    let destination = document.getElementById('modal-destination-input').value;
+    const selectedPid = document.getElementById('modal-project-input').value;
+    if (selectedPid.startsWith('local_proj_') || (projectMap[selectedPid] && projectMap[selectedPid].kind === 'local_list')) {
+        destination = 'local';
+    }
     const isGoogle = destination === 'google' || existingTask.source === 'google';
 
     // --- GENERATE RRULE STRING ---
@@ -2780,8 +2944,12 @@ window.submitTaskForm = async () => {
             if (!auth.currentUser) throw new Error("You must be logged in to save local tasks.");
             const taskData = { ...payload, updated: new Date(), source: 'local' };
             
-            if (id && existingTask.source === 'local') {
-                await updateDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', id), taskData);
+            if (id) {
+                // Moving an existing non-local task to Local
+                if (existingTask.source !== 'local') {
+                    try { await api(`/project/${existingTask.projectId}/task/${id}`, 'DELETE'); } catch(e){ console.warn("Could not delete from TickTick", e); }
+                }
+                await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', id), taskData, { merge: true });
             } else {
                 taskData.created = new Date();
                 taskData.status = 0; 
@@ -2862,10 +3030,21 @@ window.openModal = (isEdit, taskId = null) => {
     // 1. Reset Modal
     container.innerHTML = '';
     
-    // 2. Populate Projects
-    pSelect.innerHTML = Object.entries(projectMap).map(([id, p]) => 
-        `<option value="${id}">${escapeHtml(p.name)}</option>`
-    ).join('');
+    // 2. Populate Projects Hierarchically
+    const buildProjectOptions = (parentId = null, depth = 0) => {
+        let options = '';
+        Object.entries(projectMap).forEach(([pid, p]) => {
+            const pParent = p.parentId || p.groupId || null;
+            if (pParent == parentId && pid !== 'google_calendar') {
+                const indent = '— '.repeat(depth);
+                options += `<option value="${pid}">${indent}${escapeHtml(p.name)}</option>`;
+                options += buildProjectOptions(pid, depth + 1);
+            }
+        });
+        return options;
+    };
+    
+    pSelect.innerHTML = buildProjectOptions(null, 0);
     
     if(!Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox')) {
         pSelect.innerHTML = `<option value="inbox">Inbox</option>` + pSelect.innerHTML;
@@ -2941,9 +3120,41 @@ window.openModal = (isEdit, taskId = null) => {
         document.getElementById('modal-project-input').value = inboxId;
         if (destInput) destInput.value = 'ticktick';
     } 
+    
+    // Dynamically lock destination if a Local Project is selected
+    if (destInput) {
+        const updateDestinationRule = () => {
+            const pid = pSelect.value;
+            const isLocalProj = pid.startsWith('local_proj_') || (projectMap[pid] && projectMap[pid].kind === 'local_list');
+            
+            let warnEl = document.getElementById('local-proj-warning');
+            if (!warnEl) {
+                warnEl = document.createElement('div');
+                warnEl.id = 'local-proj-warning';
+                warnEl.className = 'text-[10px] text-orange-500 font-bold mt-1 flex items-center gap-1 hidden';
+                warnEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> This list is local-only. Task forced to Local mode.';
+                destInput.parentNode.appendChild(warnEl);
+            }
+
+            if (isLocalProj) {
+                destInput.value = 'local';
+                destInput.disabled = true;
+                destInput.classList.add('opacity-50');
+                warnEl.classList.remove('hidden');
+            } else {
+                destInput.disabled = false;
+                destInput.classList.remove('opacity-50');
+                warnEl.classList.add('hidden');
+            }
+        };
+        
+        pSelect.onchange = updateDestinationRule;
+        updateDestinationRule(); // Run once on open
+    }
 
     modal.classList.remove('hidden');
 };
+
 
         /* Pomo, Keydown, Helper functions */
         let pomoInterval; let pomoSeconds = 25 * 60; let isPomoRunning = false;
@@ -3390,7 +3601,7 @@ window.toggleSubtask = async (taskId, itemIndex) => {
 };
         
         window.closeSidePane = () => { const pane = document.getElementById('side-pane'); pane.classList.remove('open'); document.getElementById('side-pane-overlay').classList.add('opacity-0'); setTimeout(() => document.getElementById('side-pane-overlay').classList.add('hidden'), 300); };
-        window.openAddTaskModal = () => window.openModal(false); window.openProjectModal = (id = null, name = '') => { document.getElementById('project-modal-id').value = id || ''; document.getElementById('project-name-input').value = name; document.getElementById('project-modal-title').textContent = id ? 'Edit Project' : 'New Project'; document.getElementById('project-modal').classList.remove('hidden'); }; window.submitProjectForm = async () => { const id = document.getElementById('project-modal-id').value; const name = document.getElementById('project-name-input').value; if(!name) return showToast('Name required', 'error'); showLoader(); try { if(id) await api(`/project/${id}`, 'POST', { name }); else await api('/project', 'POST', { name }); showToast('Project saved'); document.getElementById('project-modal').classList.add('hidden'); fetchAllData(); } catch(e) { showToast('Error', 'error'); } hideLoader(); }; 
+        window.openAddTaskModal = () => window.openModal(false); 
         window.deleteProject = (id) => { 
     window.openConfirmModal(
         "Delete Project?", 

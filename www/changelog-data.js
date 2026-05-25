@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.82.0-alpha",
+    date: "2026-05-26",
+    changes: [
+        "In TaskTrackr: Implemented nested project hierarchies, allowing lists to be assigned a parent project visually in the sidebar, modals, and grid views.",
+        "In TaskTrackr: Built a local Firebase storage bridge to save custom project colors and parent-child hierarchy relationships.",
+        "In TaskTrackr: Introduced 'Local-Only Lists' as an automatic fallback, allowing lists to be created and stored purely in the local database.",
+        "In TaskTrackr: Updated the Task Creation modal to auto-detect local-only projects, lock the save destination to 'Local', and display a visual warning to the user.",
+        "In TaskTrackr: Updated the Add Task and Bulk Action modals to display projects in a native, indented tree structure.",
+        "In TaskTrackr: Fixed a bug where moving an existing TickTick cloud task into a local-only project caused the task to duplicate instead of migrating.",
+        "In TaskTrackr: Resolved an issue where selecting a project from the sidebar or dropdown failed to properly filter the tasks in the main view."
+    ]
+},
+    {
     version: "v15.81.0-alpha",
     date: "2026-05-26",
     changes: [
