@@ -2,7 +2,15 @@
 
 export const changelogData = [
     {
-    version: "v15.78.0-alpha",
+    version: "v15.79.0-alpha",
+    date: "2026-05-25",
+    changes: [
+        "In PlantTrackr: Enhanced the Spaces and Garden Layout tools to properly support, track, and visually differentiate Propagation stations and propagating plants.",
+        "In PlantTrackr: Added a new feature to generate, print, and scan unique QR codes for individual plants to quickly access their profiles and log care."
+    ]
+},
+    {
+    version: "v15.79.0-alpha",
     date: "2026-05-25",
     changes: [
                 "In MoneyManagr: Redesigned the main dashboard to be much more compact and moved the Action Needed review pane to the absolute top.",
