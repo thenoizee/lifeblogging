@@ -3,6 +3,16 @@
 export const changelogData = [
     {
     version: "v15.78.0-alpha",
+    date: "2026-05-25",
+    changes: [
+                "In MoneyManagr: Redesigned the main dashboard to be much more compact and moved the Action Needed review pane to the absolute top.",
+                "In MoneyManagr: Updated the Net Balance calculation so bank/investment accounts and the personal ledger no longer falsely count towards 'Owed to you' or 'You owe' debt totals.",
+                "In MoneyManagr: The currency setting now automatically syncs across all devices.",
+                "In MoneyManagr: Clarified transaction timestamps by tracking three distinct dates: Original Bank Date, Import Date, and Categorisation Date."
+    ]
+},
+    {
+    version: "v15.78.0-alpha",
     date: "2026-05-24",
     changes: [
         "In PlantTrackr: Redesigned the Potting & Environment section in the Add/Edit Plant form into a cohesive, icon-driven grid for better data entry.",
