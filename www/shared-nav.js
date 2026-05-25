@@ -29,6 +29,7 @@ export class AppNavigation {
             { name: 'HealthManagr', url: '/healthmanagr', icon: 'fa-notes-medical', color: 'bg-pink-600' },
             { name: 'PodTrackr', url: '/podtrackr', icon: 'fa-podcast', color: 'bg-purple-600' },
             { name: 'Loggr', url: '/log', icon: 'fa-pen-to-square', color: 'bg-green-600' },
+            { name: 'JournalTrackr', url: '/journaltrackr', icon: 'fa-book-journal-whills', color: 'bg-violet-600' },
             { name: 'Analyser', url: '/analyser', icon: 'fa-chart-line', color: 'bg-indigo-600' },
             { name: 'Hydration', url: '/hydrationtrackr', icon: 'fa-droplet', color: 'bg-cyan-600' },
             { name: 'Vehicle', url: '/vehiclemanagr', icon: 'fa-car-tunnel', color: 'bg-zinc-600' },

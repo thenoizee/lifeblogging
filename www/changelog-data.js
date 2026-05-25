@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.81.0-alpha",
+    date: "2026-05-26",
+    changes: [
+        "Launched JournalTrackr: A private, markdown-supported daily journaling application integrated into the Hub.",
+        "In Hub: Added JournalTrackr to the 'Daily & Tracking' section of the main dashboard.",
+        "In SharedNav: Appended JournalTrackr to the global Hub dropdown menu for quick access across the ecosystem."
+    ]
+},
+    {
     version: "v15.80.0-alpha",
     date: "2026-05-25",
     changes: [
