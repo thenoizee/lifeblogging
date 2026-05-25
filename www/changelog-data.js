@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.80.0-alpha",
+    date: "2026-05-25",
+    changes: [
+        "In FoodTrackr: Implemented percentage of total package calculation on Daily Log, History, and Leftovers for new logs.",
+        "In FoodTrackr: Added Product Code persistence to database entries for all logs, meals, and favorite foods.",
+        "In FoodTrackr: Added 'Re-Log' prompt on History/Favorites: User can now choose to fetch fresh data from Open Food Facts or use original saved data.",
+        "In FoodTrackr: Added robust error handling and timeout for API re-log fetching to prevent UI hangs during service outages.",
+        "In FoodTrackr: Fixed 'Identifier parseQty already declared' console error by consolidating helper functions."
+    ]
+},
+    {
     version: "v15.79.0-alpha",
     date: "2026-05-25",
     changes: [

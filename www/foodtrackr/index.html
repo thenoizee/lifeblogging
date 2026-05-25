@@ -3149,8 +3149,14 @@ document.getElementById('close-edit-modal-btn').addEventListener('click', () => 
 });
 
 const executeSmartCopy = async () => {
+    // 📢 LOUD LOG 1: Prove the button works and the new code is running
+    console.log("🔥 executeSmartCopy was triggered!"); 
+
     const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
-    if (checkedBoxes.length === 0) return;
+    if (checkedBoxes.length === 0) {
+        console.log("⚠️ No checkboxes were selected. Exiting.");
+        return;
+    }
 
     const keepTime = document.getElementById('copy-keep-time').checked;
     const batch = writeBatch(db);
@@ -3158,11 +3164,55 @@ const executeSmartCopy = async () => {
     const timestampNow = Timestamp.now();
     let copyCount = 0;
 
-    checkedBoxes.forEach(cb => {
+    const btn = document.getElementById('confirm-copy-btn');
+    btn.textContent = "Checking API & Copying...";
+    btn.disabled = true;
+
+    console.log(`📦 Processing ${checkedBoxes.length} items for copy...`);
+
+    for (const cb of checkedBoxes) {
         const originalId = cb.dataset.id;
-        const originalItem = foodLog.find(i => i.id === originalId);
+        let originalItem = foodLog.find(i => i.id === originalId);
         
         if (originalItem) {
+            // 📢 LOUD LOG 2: Do we actually have a product code to search with?
+            if (originalItem.productCode) {
+                try {
+                    console.log(`🌐 API Check triggered for: [${originalItem.name}] (Code: ${originalItem.productCode})`);
+                    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${originalItem.productCode}`);
+                    
+                    if (res.ok) {
+                        const json = await res.json();
+                        if (json.status === 1 && json.product) {
+                            console.log(`✅ Success! Updated macros fetched for [${originalItem.name}]`);
+                            const nutriments = json.product.nutriments || {};
+                            
+                            originalItem.baseNutrients = {
+                                calories: parseFloat(nutriments['energy-kcal_100g'] || 0),
+                                protein: parseFloat(nutriments.proteins_100g || 0),
+                                carbs: parseFloat(nutriments.carbohydrates_100g || 0),
+                                fat: parseFloat(nutriments.fat_100g || 0)
+                            };
+
+                            const multiplier = (originalItem.quantity || 100) / 100;
+                            originalItem.calories = originalItem.baseNutrients.calories * multiplier;
+                            originalItem.protein = originalItem.baseNutrients.protein * multiplier;
+                            originalItem.carbs = originalItem.baseNutrients.carbs * multiplier;
+                            originalItem.fat = originalItem.baseNutrients.fat * multiplier;
+                        } else {
+                            console.log(`❌ API returned status 0 (Product not found) for [${originalItem.name}]`);
+                        }
+                    } else {
+                        console.warn(`⚠️ API responded with an error (${res.status}) for [${originalItem.name}]`);
+                    }
+                } catch (err) {
+                    console.error(`🚨 Fatal network error checking API for [${originalItem.name}]`, err);
+                }
+            } else {
+                // 📢 LOUD LOG 3: This catches historical items or manual entries
+                console.log(`⏩ Skipping API for [${originalItem.name}] - No productCode exists on this item.`);
+            }
+
             const docRef = doc(collection(db, `users/${user.uid}/foodLog`));
             const { id, eatenAt, ...data } = originalItem;
 
@@ -3180,17 +3230,19 @@ const executeSmartCopy = async () => {
             });
             copyCount++;
         }
-    });
+    }
 
     try {
+        console.log("💾 Committing batch to Firestore...");
         await batch.commit();
-        if(typeof showToast === 'function') showToast(`Successfully copied ${copyCount} items!`, 'success');
-        else alert(`Successfully copied ${copyCount} items!`);
-        
+        console.log("🎉 Batch commit successful!");
+        showToast(`Successfully copied ${copyCount} items!`, 'success');
         document.getElementById('copy-history-modal').classList.add('hidden');
     } catch (error) {
-        console.error("Copy failed", error);
+        console.error("🚨 Firestore batch commit failed:", error);
         showToast("Failed to copy items.");
+    } finally {
+        updateCopyButtonState(); 
     }
 };
 
@@ -3340,7 +3392,7 @@ const renderDailyLog = () => {
             </div>
                             <div class="text-xs flex items-center gap-2 mt-1">
                                 <span class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded font-mono border border-gray-200 dark:border-gray-600" title="${(item.quantity || 100)}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}">
-                                    ${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${(item.quantity || 100)}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}
+                                    ${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${(item.quantity || 100)}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}${item.packageSize ? ` <span class="opacity-75 text-[10px] font-bold ml-1 text-blue-600 dark:text-blue-400">(${Math.round((item.quantity / item.packageSize) * 100)}%)</span>` : ''}
                                 </span>
                                 <span class="font-bold text-orange-600 dark:text-orange-400">
                                     ${item.calories.toFixed(0)} kcal
@@ -3541,12 +3593,12 @@ const renderHistoryTable = () => {
                         <span class="${badgeColors} px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1">${sourceIcon} ${subText}</span>
                         
                         <span class="sm:hidden text-gray-300 mx-1">|</span>
-                        <span class="sm:hidden font-mono">${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${item.quantity || 100}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}</span>
+                        <span class="sm:hidden font-mono">${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${item.quantity || 100}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}${item.packageSize ? ` <span class="opacity-75 text-[10px] font-bold ml-1 text-blue-600 dark:text-blue-400">(${Math.round((item.quantity / item.packageSize) * 100)}%)</span>` : ''}</span>
                         <span class="sm:hidden px-1.5 py-0.5 rounded-[4px] bg-gray-100 dark:bg-gray-700 capitalize text-[10px]">${SECTION_NAMES[section] || section}</span>
                     </div>
                 </td>
                 
-                <td class="p-3 text-right font-mono text-xs hidden sm:table-cell align-middle">${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${item.quantity || 100}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}</td>
+                <td class="p-3 text-right font-mono text-xs hidden sm:table-cell align-middle">${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${item.quantity || 100}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}${item.packageSize ? ` <span class="opacity-75 text-[10px] font-bold ml-1 text-blue-600 dark:text-blue-400"><br>(${Math.round((item.quantity / item.packageSize) * 100)}%)</span>` : ''}</td>
                 <td class="p-3 hidden sm:table-cell align-middle"><span class="px-2 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-[var(--text-color-secondary)] capitalize">${SECTION_NAMES[section] || section}</span></td>
                 <td class="p-2 sm:p-3 text-right font-mono font-bold text-orange-600 dark:text-orange-400 text-xs sm:text-sm align-middle">${(item.calories || 0).toFixed(0)}</td>
                 <td class="p-3 text-right font-mono text-xs hidden md:table-cell align-middle">${(item.protein || 0).toFixed(1)}</td>
@@ -3668,9 +3720,7 @@ document.getElementById('history-search-input').addEventListener('input', () => 
             btn.parentNode.replaceChild(newBtn, btn);
             
             newBtn.addEventListener('click', () => {
-                selectFoodItem(item, 100); 
-                document.getElementById('product-modal').classList.add('hidden');
-                document.querySelector('[data-tab="log-food"]').click();
+                handleReLogItem(item, 100);
             });
         }
     }
@@ -3716,9 +3766,7 @@ window.openProductModalFromFavorite = (foodId) => {
         const newBtn = btn.cloneNode(true);
         btn.parentNode.replaceChild(newBtn, btn);
         newBtn.addEventListener('click', () => {
-            selectFoodItem(item, 100); 
-            document.getElementById('product-modal').classList.add('hidden');
-            document.querySelector('[data-tab="log-food"]').click();
+            handleReLogItem(item, 100);
         });
     }
 };
@@ -4027,7 +4075,9 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
                     ingredients: itemToEdit.ingredients || '',
                     allergens: itemToEdit.allergens || '',
                     uploadedApp: itemToEdit.uploadedApp || 'FoodTrackr',
-                    restaurantName: itemToEdit.restaurantName || ''
+                    restaurantName: itemToEdit.restaurantName || '',
+                    packageSize: itemToEdit.packageSize || null,
+                    productCode: itemToEdit.productCode || null
                 };
                 setNutrientFieldsReadOnly(!!itemToEdit.baseNutrients);
                 
@@ -4674,7 +4724,7 @@ const renderRecentFoods = () => {
         `;
 
         card.addEventListener('click', () => {
-            selectFoodItem(item, item.quantity || 100);
+            handleReLogItem(item, item.quantity || 100);
         });
         listEl.appendChild(card);
     });
@@ -4866,6 +4916,8 @@ const executeSplit = async (itemId, eatenPercentage) => {
         uploadedApp: item.uploadedApp || 'FoodTrackr',
         ingredients: item.ingredients || '',
         allergens: item.allergens || '',
+        packageSize: item.packageSize || null,
+        productCode: item.productCode || null,
         quantity: leftoverQty,
         calories: item.calories * leftoverRatio,
         protein: item.protein * leftoverRatio,
@@ -5062,8 +5114,21 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     document.getElementById('quantity-amount').value = defaultAmount;
     unitSelect.value = defaultUnit;
     
-    currentFoodItem = { 
+    const parseQty = (str) => {
+    if (!str) return null;
+    const match = str.match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
+    if (!match) return null;
+    let val = parseFloat(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit === 'kg' || unit === 'l') val *= 1000;
+    return val;
+};
+      const packageSize = parseQty(product.quantity);
+
+      currentFoodItem = { 
           baseNutrients, 
+          packageSize: packageSize,
+          productCode: product.code || null,
           originalName: product.product_name || '',
           source: 'Open Food Facts', 
           brands, 
@@ -5082,15 +5147,7 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     document.getElementById('log-food-btn').textContent = 'Log Food';
 
     const quantityStr = product.quantity || '100g';
-    const parseQty = (str) => {
-        if (!str) return null;
-        const match = str.match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
-        if(!match) return null;
-        let val = parseFloat(match[1]);
-        const unit = match[2].toLowerCase();
-        if(unit === 'kg' || unit === 'l') val *= 1000;
-        return val;
-    }
+    
     renderQuickButtons(product, parseQty(quantityStr), servingGrams, product.serving_size);
     
     const formSection = document.getElementById('entry-form-section');
@@ -5218,6 +5275,49 @@ const toggleQuickFavorite = async (product, event) => {
             showToast('Failed to save favorite.', 'error');
         }
     }
+};
+
+const handleReLogItem = async (item, defaultQty) => {
+    // 1. Check if we even have a code to look up
+    if (!item.productCode) {
+        console.log("No ProductCode available, skipping API fetch.");
+        selectFoodItem(item, defaultQty);
+        return;
+    }
+
+    try {
+        // 2. Ask user for permission
+        const useNewData = confirm(
+            "Fetch latest data from Open Food Facts?\n\n" +
+            "• Click OK to check for updated nutrition.\n" +
+            "• Click Cancel to use the original log details."
+        );
+
+        if (useNewData) {
+            const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${item.productCode}`);
+            if (!res.ok) throw new Error("API Response not OK");
+            
+            const json = await res.json();
+            
+            if (json.status === 1 && json.product) {
+                showToast("Updated data loaded!", "success");
+                selectProductFromSearch(json.product, defaultQty);
+            } else {
+                showToast("Product not found on API. Using original.", "error");
+                selectFoodItem(item, defaultQty);
+            }
+        } else {
+            selectFoodItem(item, defaultQty);
+        }
+    } catch (e) {
+        console.error("Re-log fetch error:", e);
+        showToast("Server error during fetch. Using original data.", "error");
+        selectFoodItem(item, defaultQty);
+    }
+
+    // Common cleanup
+    document.getElementById('product-modal').classList.add('hidden');
+    document.querySelector('[data-tab="log-food"]').click();
 };
 
 const selectFoodItem = (item, qty = 100) => {
@@ -5355,9 +5455,7 @@ window.openProductModalFromLog = (itemId) => {
             const newBtn = btn.cloneNode(true);
             btn.parentNode.replaceChild(newBtn, btn);
             newBtn.addEventListener('click', () => {
-                selectFoodItem(item, 100); 
-                document.getElementById('product-modal').classList.add('hidden');
-                document.querySelector('[data-tab="log-food"]').click();
+                handleReLogItem(item, 100);
             });
         }
     }
@@ -6059,6 +6157,8 @@ document.getElementById('confirm-quick-log-meal-btn').addEventListener('click', 
                 uploadedApp: item.uploadedApp || 'FoodTrackr',
                 ingredients: item.ingredients || '',
                 allergens: item.allergens || '',
+                packageSize: item.packageSize || null,
+                productCode: item.productCode || null,
                 isOptional: false
             }));
             
@@ -6414,7 +6514,9 @@ const switchTab = (tabId) => {
                  servingUnits: currentFoodItem.servingUnits || null,
               
                  ingredients: currentFoodItem.ingredients || null,
-                 allergens: currentFoodItem.allergens || null
+                 allergens: currentFoodItem.allergens || null,
+                 packageSize: currentFoodItem.packageSize || null,
+                 productCode: currentFoodItem.productCode || null
           };
 
           if (!foodData.name || isNaN(foodData.calories)) {
@@ -6530,6 +6632,8 @@ document.getElementById('save-favorite-btn').addEventListener('click', async () 
             ingredients: currentFoodItem.ingredients || null,
             allergens: currentFoodItem.allergens || null,
             uploadedApp: currentFoodItem.uploadedApp || 'FoodTrackr',
+            packageSize: currentFoodItem.packageSize || null,
+            productCode: currentFoodItem.productCode || null,
             
             updatedAt: Timestamp.now()
         };
@@ -6597,8 +6701,7 @@ document.getElementById('save-favorite-btn').addEventListener('click', async () 
             if (action === 'log-favorite') {
                 const food = favoriteFoods.find(f => f.id === id);
                 if (food) {
-                    selectFoodItem(food, 100); 
-                    document.querySelector('[data-tab="log-food"]').click();
+                    handleReLogItem(food, 100);
                 }
             } else if (action === 'delete-favorite') {
                 showConfirm('Are you sure you want to delete this favorite?', async () => {
@@ -6648,7 +6751,9 @@ document.getElementById('save-favorite-btn').addEventListener('click', async () 
                     currentFoodItem = { 
                         baseNutrients: food.baseNutrients, source: 'Favorite (Editing)', 
                         brands: food.brands, imageUrl: food.imageUrl,
-                        servingUnits: food.servingUnits 
+                        servingUnits: food.servingUnits,
+                        packageSize: food.packageSize || null,
+                        productCode: food.productCode || null
                     };
                     
                     editingItemId = id;
@@ -6752,39 +6857,95 @@ document.querySelectorAll('input[name="source-type"]').forEach(radio => {
       });
       
       document.getElementById('copy-btn').addEventListener('click', async () => {
-          if (itemsToMoveCopy.length === 0) return;
-          
-          const newEatenAt = Timestamp.fromDate(new Date(document.getElementById('move-copy-datetime').value));
-          const newSection = document.getElementById('move-copy-section').value;
-          
-          const batch = writeBatch(db);
-          const now = Timestamp.now();
+    if (itemsToMoveCopy.length === 0) return;
 
-          itemsToMoveCopy.forEach(item => {
-              const { id, eatenAt, ...itemData } = item;
-              const newLogItem = {
-                  ...itemData,
-                  eatenAt: newEatenAt,
-                  section: newSection,
-                  createdAt: now,
-                  updatedAt: now,
-                  createdBy: user.email,
-                  updatedBy: user.email,
-              };
-              const newRef = doc(collection(db, `users/${user.uid}/foodLog`));
-              batch.set(newRef, newLogItem);
-          });
-          
-          try {
-              await batch.commit();
-              showToast(`Successfully copied ${itemsToMoveCopy.length} item(s)!`);
-              document.getElementById('move-copy-modal').classList.add('hidden');
-              itemsToMoveCopy = [];
-          } catch (error) {
-              console.error("Error copying items:", error);
-              showToast('Failed to copy items.');
-          }
-      });
+    // 1. Check if ANY item in the selection actually has a product code to update
+    const hasUpdatableItems = itemsToMoveCopy.some(item => item.productCode);
+    let useNewData = false;
+
+    // 2. If we have updatable items, ask the user what they want to do
+    if (hasUpdatableItems) {
+        useNewData = confirm(
+            "Fetch latest data from Open Food Facts?\n\n" +
+            "• Click OK to check for updated nutrition.\n" +
+            "• Click Cancel to use the original log details."
+        );
+    }
+
+    const newEatenAt = Timestamp.fromDate(new Date(document.getElementById('move-copy-datetime').value));
+    const newSection = document.getElementById('move-copy-section').value;
+    const batch = writeBatch(db);
+    const now = Timestamp.now();
+
+    // Visual feedback on the button
+    const copyBtnEl = document.getElementById('copy-btn');
+    const originalText = copyBtnEl.innerHTML;
+    copyBtnEl.innerHTML = useNewData 
+        ? '<i class="fa-solid fa-spinner fa-spin"></i> Checking API...' 
+        : '<i class="fa-solid fa-spinner fa-spin"></i> Copying...';
+    copyBtnEl.disabled = true;
+
+    for (let item of itemsToMoveCopy) {
+        // 3. ONLY fetch from the API if they clicked OK AND the item has a product code
+        if (useNewData && item.productCode) {
+            try {
+                const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${item.productCode}`);
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json.status === 1 && json.product) {
+                        const nutriments = json.product.nutriments || {};
+
+                        // Update base nutrients from the API
+                        item.baseNutrients = {
+                            calories: parseFloat(nutriments['energy-kcal_100g'] || 0),
+                            protein: parseFloat(nutriments.proteins_100g || 0),
+                            carbs: parseFloat(nutriments.carbohydrates_100g || 0),
+                            fat: parseFloat(nutriments.fat_100g || 0)
+                        };
+
+                        // Recalculate logged amount based on original quantity
+                        const multiplier = (item.quantity || 100) / 100;
+                        item.calories = item.baseNutrients.calories * multiplier;
+                        item.protein = item.baseNutrients.protein * multiplier;
+                        item.carbs = item.baseNutrients.carbs * multiplier;
+                        item.fat = item.baseNutrients.fat * multiplier;
+                    }
+                }
+            } catch (err) {
+                console.warn(`API fetch failed for ${item.name}. Using old historical data.`, err);
+            }
+        }
+
+        // Strip out the old ID and eatenAt, and prepare for Firestore
+        const { id, eatenAt, ...itemData } = item;
+        const newLogItem = {
+            ...itemData,
+            eatenAt: newEatenAt,
+            section: newSection,
+            createdAt: now,
+            updatedAt: now,
+            createdBy: user.email,
+            updatedBy: user.email,
+        };
+
+        const newRef = doc(collection(db, `users/${user.uid}/foodLog`));
+        batch.set(newRef, newLogItem);
+    }
+
+    try {
+        await batch.commit();
+        showToast(`Successfully copied ${itemsToMoveCopy.length} item(s)!`);
+        document.getElementById('move-copy-modal').classList.add('hidden');
+        itemsToMoveCopy = [];
+    } catch (error) {
+        console.error("Error copying items:", error);
+        showToast('Failed to copy items.');
+    } finally {
+        // Reset the button
+        copyBtnEl.innerHTML = originalText;
+        copyBtnEl.disabled = false;
+    }
+});
       
       document.getElementById('move-btn').addEventListener('click', async () => {
           if (itemsToMoveCopy.length === 0) return;
