@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.83.0-alpha",
+    date: "2026-05-26",
+    changes: [
+        "In RouteTrackr: Implemented dynamic API endpoints to respect the user's selected speed profile (e.g., routing via bicycle networks instead of footpaths).",
+        "In RouteTrackr: Improved the elevation API payload generator to grab the maximum 100 points evenly spaced across the entire route, fixing accuracy drops on longer trails.",
+        "In RouteTrackr: Replaced the basic pop-array undo feature with a true Undo/Redo stack for Waypoint management.",
+        "In RouteTrackr: Added a Live Tracking mode button to the map overlay to continuously follow the user's geolocation on the trail.",
+        "In RouteTrackr: Added a Right-Click Context Menu to the map allowing users to quickly set a location as Start, Destination, or add a Waypoint.",
+        "In RouteTrackr: Implemented draggable route lines by adding interactive midpoint markers between waypoints that, when dragged, seamlessly reroute and insert a new point.",
+        "In RouteTrackr: Updated waypoint markers to display clear start and end flags, and replaced generic intermediate pointers with numbered waypoints for better route clarity."
+    ]
+},
+    {
     version: "v15.82.0-alpha",
     date: "2026-05-26",
     changes: [
