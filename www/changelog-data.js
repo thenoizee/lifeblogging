@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.84.0-alpha",
+    date: "2026-05-27",
+    changes: [
+        "In FoodTrackr: Added full ingredient editing capabilities to Grouped Meals within the Edit modal, allowing removal of specific items.",
+        "In FoodTrackr: Overhauled the 'Pack' quick-select logic to log accurate custom units (e.g., '0.5 Pack') and retain conversion ratios across the app.",
+        "In FoodTrackr: Synchronized portion and unit display across Manage Foods, History, and Log lists to prevent UI clutter and duplicate unit strings.",
+        "In FoodTrackr: Improved the re-logging function to accurately restore historically selected custom units rather than defaulting back to 100g.",
+        "In FoodTrackr: Polished the UI of the Manage Foods/Meals tab to align with standard design components.",
+        "In FoodTrackr: Upgraded the quantity parser to accurately calculate total weights from multi-item strings (e.g., parsing '4 x 60g' as 240g).",
+        "In FoodTrackr: Resolved an 'Uncaught TypeError' crash caused by mismatching custom unit names in the quick-select buttons.",
+        "In FoodTrackr: Ensured quick fraction buttons (e.g., 1/4 Pack, Half Pack) correctly persist and render when editing an existing log entry."
+    ]
+},
+    {
     version: "v15.83.0-alpha",
     date: "2026-05-26",
     changes: [

@@ -1456,6 +1456,11 @@ body.bulk-active {
                     <button id="add-unit-btn" class="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-bold px-4 rounded-lg transition-colors border border-gray-200 dark:border-gray-600"><i class="fa-solid fa-plus"></i></button>
                 </div>
             </div>
+            
+            <div id="edit-meal-items-section" class="hidden mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Meal Ingredients</label>
+                <div id="edit-meal-items-list" class="space-y-2 max-h-48 overflow-y-auto custom-scrollbar"></div>
+            </div>
 
             <input type="hidden" id="edit-item-id">
             <input type="hidden" id="edit-item-type">
@@ -2687,14 +2692,17 @@ const renderQuickButtons = (product, packageSize, servingSize, servingSizeStr) =
     if (!container) return;
     container.innerHTML = '';
     
-    const createBtn = (label, qtyGrams) => {
+    const createBtn = (label, amount, unitName, isServing = false) => {
         const btn = document.createElement('button');
         btn.type = 'button'; 
-        btn.className = 'text-[10px] md:text-xs py-1 px-2 rounded border border-gray-200 bg-white hover:bg-orange-50 hover:border-orange-200 transition-colors text-gray-600 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300';
+        btn.className = isServing 
+            ? 'text-[10px] md:text-xs py-1 px-2 rounded border border-orange-200 bg-orange-50 text-orange-700 font-semibold dark:bg-orange-900/50 dark:border-orange-700 dark:text-orange-300'
+            : 'text-[10px] md:text-xs py-1 px-2 rounded border border-gray-200 bg-white hover:bg-orange-50 hover:border-orange-200 transition-colors text-gray-600 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300';
+        
         btn.textContent = label;
         btn.addEventListener('click', () => {
-            document.getElementById('quantity-amount').value = qtyGrams;
-            document.getElementById('quantity-unit').value = 'g';
+            document.getElementById('quantity-amount').value = amount;
+            document.getElementById('quantity-unit').value = unitName;
             updateQuantityInGrams(); 
         });
         container.appendChild(btn);
@@ -2702,29 +2710,20 @@ const renderQuickButtons = (product, packageSize, servingSize, servingSizeStr) =
 
     if (servingSize) {
         const unitSelect = document.getElementById('quantity-unit');
-        const servingOption = Array.from(unitSelect.options).find(opt => opt.dataset.custom === 'true');
+        const servingOption = Array.from(unitSelect.options).find(opt => opt.value.toLowerCase().includes('serving'));
+        const servingName = servingOption ? servingOption.value : `Serving (${servingSizeStr || servingSize+'g'})`;
         
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'text-[10px] md:text-xs py-1 px-2 rounded border border-orange-200 bg-orange-50 text-orange-700 font-semibold dark:bg-orange-900/50 dark:border-orange-700 dark:text-orange-300';
-        btn.textContent = `1 Serving (${servingSizeStr || servingSize+'g'})`;
-        btn.addEventListener('click', () => {
-            if (servingOption) {
-                unitSelect.value = servingOption.value;
-                document.getElementById('quantity-amount').value = 1;
-            } else {
-                document.getElementById('quantity-amount').value = servingSize;
-                unitSelect.value = 'g';
-            }
-            updateQuantityInGrams();
-        });
-        container.appendChild(btn);
+        createBtn(`1 Serving (${servingSizeStr || servingSize+'g'})`, 1, servingName, true);
     }
 
     if (packageSize) {
-        createBtn('1/4 Pack', (packageSize * 0.25).toFixed(0));
-        createBtn('1/2 Pack', (packageSize * 0.5).toFixed(0));
-        createBtn('Whole Pack', packageSize);
+        const unitSelect = document.getElementById('quantity-unit');
+        const packOption = Array.from(unitSelect.options).find(opt => opt.value.toLowerCase().includes('pack'));
+        const packName = packOption ? packOption.value : `Pack (${product.quantity || packageSize+'g'})`;
+        
+        createBtn('1/4 Pack', 0.25, packName);
+        createBtn('1/2 Pack', 0.5, packName);
+        createBtn('Whole Pack', 1, packName);
     }
 };
 
@@ -3045,8 +3044,40 @@ const updateCopyButtonState = () => {
     btn.disabled = count === 0;
 };
 
-// Add a global variable to hold units while editing
+// Add global variables to hold state while editing
 let tempServingUnits = [];
+let tempMealItems = [];
+
+const renderEditMealItems = () => {
+    const list = document.getElementById('edit-meal-items-list');
+    list.innerHTML = '';
+    if (tempMealItems.length === 0) {
+        list.innerHTML = '<p class="text-xs text-center text-gray-500">No items</p>';
+        return;
+    }
+    tempMealItems.forEach((ing, index) => {
+        const div = document.createElement('div');
+        div.className = 'flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700 text-sm';
+        div.innerHTML = `
+            <div class="truncate pr-2">
+                <span class="font-semibold block truncate text-xs">${ing.name}</span>
+                <span class="text-[10px] text-gray-500">${ing.quantity}g • ${Math.round(ing.calories)} kcal</span>
+            </div>
+            <button type="button" class="text-red-500 hover:text-red-700 px-2 shrink-0 remove-meal-item-btn" data-index="${index}"><i class="fa-solid fa-times pointer-events-none"></i></button>
+        `;
+        list.appendChild(div);
+    });
+};
+
+// Delegate event listener for the meal items list
+document.getElementById('edit-meal-items-list')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.remove-meal-item-btn');
+    if (btn) {
+        const index = parseInt(btn.dataset.index);
+        tempMealItems.splice(index, 1);
+        renderEditMealItems();
+    }
+});
 
 const openEditItemModal = (item, type) => {
     document.getElementById('edit-modal-title').textContent = type === 'meal' ? 'Edit Meal' : 'Edit Favorite';
@@ -3056,8 +3087,11 @@ const openEditItemModal = (item, type) => {
     document.getElementById('edit-item-image').value = item.imageUrl || '';
 
     const unitsSection = document.getElementById('edit-units-section');
+    const mealItemsSection = document.getElementById('edit-meal-items-section');
+
     if (type === 'favorite') {
         unitsSection.classList.remove('hidden');
+        mealItemsSection.classList.add('hidden');
         document.getElementById('edit-item-cal').value = (item.calories || 0).toFixed(0);
         document.getElementById('edit-item-prot').value = (item.protein || 0).toFixed(1);
         document.getElementById('edit-item-carb').value = (item.carbs || 0).toFixed(1);
@@ -3068,8 +3102,12 @@ const openEditItemModal = (item, type) => {
         renderEditServingUnits();
     } else {
         unitsSection.classList.add('hidden');
+        mealItemsSection.classList.remove('hidden');
         document.getElementById('edit-item-cal').value = '';
         document.querySelectorAll('#edit-item-modal input[type="number"]').forEach(i => i.disabled = true);
+        
+        tempMealItems = item.items ? JSON.parse(JSON.stringify(item.items)) : [];
+        renderEditMealItems();
     }
 
     document.getElementById('edit-item-modal').classList.remove('hidden');
@@ -3132,6 +3170,8 @@ document.getElementById('save-edit-modal-btn').addEventListener('click', async (
         updateData.carbs = parseFloat(document.getElementById('edit-item-carb').value) || 0;
         updateData.fat = parseFloat(document.getElementById('edit-item-fat').value) || 0;
         updateData.servingUnits = tempServingUnits; 
+    } else if (type === 'meal') {
+        updateData.items = tempMealItems;
     }
 
     try {
@@ -3392,7 +3432,7 @@ const renderDailyLog = () => {
             </div>
                             <div class="text-xs flex items-center gap-2 mt-1">
                                 <span class="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded font-mono border border-gray-200 dark:border-gray-600" title="${(item.quantity || 100)}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}">
-                                    ${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${(item.quantity || 100)}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}${item.packageSize ? ` <span class="opacity-75 text-[10px] font-bold ml-1 text-blue-600 dark:text-blue-400">(${Math.round((item.quantity / item.packageSize) * 100)}%)</span>` : ''}
+                                    ${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${(item.quantity || 100)}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}${(item.packageSize && !(item.displayUnit || '').toLowerCase().includes('pack')) ? ` <span class="opacity-75 text-[10px] font-bold ml-1 text-blue-600 dark:text-blue-400">(${Math.round((item.quantity / item.packageSize) * 100)}%)</span>` : ''}
                                 </span>
                                 <span class="font-bold text-orange-600 dark:text-orange-400">
                                     ${item.calories.toFixed(0)} kcal
@@ -3593,12 +3633,12 @@ const renderHistoryTable = () => {
                         <span class="${badgeColors} px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1">${sourceIcon} ${subText}</span>
                         
                         <span class="sm:hidden text-gray-300 mx-1">|</span>
-                        <span class="sm:hidden font-mono">${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${item.quantity || 100}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}${item.packageSize ? ` <span class="opacity-75 text-[10px] font-bold ml-1 text-blue-600 dark:text-blue-400">(${Math.round((item.quantity / item.packageSize) * 100)}%)</span>` : ''}</span>
+                        <span class="sm:hidden font-mono">${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${item.quantity || 100}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}${(item.packageSize && !(item.displayUnit || '').toLowerCase().includes('pack')) ? ` <span class="opacity-75 text-[10px] font-bold ml-1 text-blue-600 dark:text-blue-400">(${Math.round((item.quantity / item.packageSize) * 100)}%)</span>` : ''}</span>
                         <span class="sm:hidden px-1.5 py-0.5 rounded-[4px] bg-gray-100 dark:bg-gray-700 capitalize text-[10px]">${SECTION_NAMES[section] || section}</span>
                     </div>
                 </td>
                 
-                <td class="p-3 text-right font-mono text-xs hidden sm:table-cell align-middle">${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${item.quantity || 100}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}${item.packageSize ? ` <span class="opacity-75 text-[10px] font-bold ml-1 text-blue-600 dark:text-blue-400"><br>(${Math.round((item.quantity / item.packageSize) * 100)}%)</span>` : ''}</td>
+                <td class="p-3 text-right font-mono text-xs hidden sm:table-cell align-middle">${item.displayAmount ? `${item.displayAmount} ${item.displayUnit}` : `${item.quantity || 100}${item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g'}`}${(item.packageSize && !(item.displayUnit || '').toLowerCase().includes('pack')) ? ` <span class="opacity-75 text-[10px] font-bold ml-1 text-blue-600 dark:text-blue-400"><br>(${Math.round((item.quantity / item.packageSize) * 100)}%)</span>` : ''}</td>
                 <td class="p-3 hidden sm:table-cell align-middle"><span class="px-2 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-[var(--text-color-secondary)] capitalize">${SECTION_NAMES[section] || section}</span></td>
                 <td class="p-2 sm:p-3 text-right font-mono font-bold text-orange-600 dark:text-orange-400 text-xs sm:text-sm align-middle">${(item.calories || 0).toFixed(0)}</td>
                 <td class="p-3 text-right font-mono text-xs hidden md:table-cell align-middle">${(item.protein || 0).toFixed(1)}</td>
@@ -3686,7 +3726,7 @@ document.getElementById('history-search-input').addEventListener('input', () => 
         _source: item.source,
         _stores: item.stores || '',
         _restaurantName: item.restaurantName,
-        quantity: item.quantity + unit,
+        quantity: item.packageSize ? item.packageSize + unit : item.quantity + unit,
         serving_size: item.quantity + unit,
         image_front_thumb_url: item.imageUrl,
         nutriments: {
@@ -3720,7 +3760,7 @@ document.getElementById('history-search-input').addEventListener('input', () => 
             btn.parentNode.replaceChild(newBtn, btn);
             
             newBtn.addEventListener('click', () => {
-                handleReLogItem(item, 100);
+                handleReLogItem(item);
             });
         }
     }
@@ -3760,15 +3800,15 @@ window.openProductModalFromFavorite = (foodId) => {
     showProductDetailsModal(mockProduct);
 
     const btn = document.getElementById('select-product-btn');
-    if(btn) {
-        btn.classList.remove('hidden');
-        btn.textContent = "Log This Food";
-        const newBtn = btn.cloneNode(true);
-        btn.parentNode.replaceChild(newBtn, btn);
-        newBtn.addEventListener('click', () => {
-            handleReLogItem(item, 100);
-        });
-    }
+        if(btn) {
+            btn.classList.remove('hidden');
+            btn.textContent = "Log This Food";
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+            newBtn.addEventListener('click', () => {
+                handleReLogItem(item);
+            });
+        }
 };
 
 
@@ -4033,7 +4073,19 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
                 const unitSelect = document.getElementById('quantity-unit');
                 unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
                 
-                // NEW: Restore the exact display amount and unit, falling back to quantity/grams
+                // Re-inject custom units BEFORE setting value
+                if (itemToEdit.servingUnits && Array.isArray(itemToEdit.servingUnits)) {
+                    itemToEdit.servingUnits.forEach(u => {
+                        const option = document.createElement('option');
+                        option.value = u.name;
+                        option.textContent = u.name;
+                        option.dataset.grams = u.grams;
+                        option.dataset.custom = 'true';
+                        unitSelect.appendChild(option);
+                    });
+                }
+                
+                // Restore the exact display amount and unit, falling back to quantity/grams
                 document.getElementById('quantity-amount').value = itemToEdit.displayAmount || itemToEdit.quantity || 100;
                 unitSelect.value = itemToEdit.displayUnit || 'g';
                 if (!unitSelect.value) unitSelect.value = 'g'; // Fallback if custom unit is missing
@@ -4041,6 +4093,7 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
                 document.getElementById('quantity').value = itemToEdit.quantity || 100; 
                 
                 document.getElementById('calories').value = (itemToEdit.calories || 0).toFixed(0);
+
                 document.getElementById('protein').value = (itemToEdit.protein || 0).toFixed(1);
                 document.getElementById('carbs').value = (itemToEdit.carbs || 0).toFixed(1);
                 document.getElementById('fat').value = (itemToEdit.fat || 0).toFixed(1);
@@ -4426,31 +4479,33 @@ const renderRecipesQuickList = () => {
 
             sortedFavs.forEach(food => {
                 const card = document.createElement('div');
-                card.className = 'p-4 border rounded-lg flex flex-col gap-2 bg-[var(--bg-color)]';
+                card.className = 'p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow';
                 
                 const imageUrl = (food.imageUrl && food.imageUrl.startsWith('http')) ? food.imageUrl : PLACEHOLDER_IMG;
 
                 card.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center overflow-hidden cursor-pointer hover:opacity-70 transition-opacity" onclick="window.openProductModalFromFavorite('${food.id}')" title="View Details">
-                            <img src="${imageUrl}" alt="${food.name}" class="manage-list-image pointer-events-none">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex items-center overflow-hidden cursor-pointer hover:opacity-70 transition-opacity flex-grow min-w-0" onclick="window.openProductModalFromFavorite('${food.id}')" title="View Details">
+                            <div class="w-12 h-12 rounded-lg bg-gray-50 dark:bg-gray-700 border border-gray-100 dark:border-gray-600 p-1 mr-3 shrink-0">
+                                <img src="${imageUrl}" alt="${food.name}" class="w-full h-full object-contain pointer-events-none">
+                            </div>
                             <div class="truncate pointer-events-none">
-                                <h3 class="font-bold truncate">${food.name || 'Unnamed'}</h3>
+                                <h3 class="font-bold text-gray-900 dark:text-gray-100 text-sm truncate">${food.name || 'Unnamed'}</h3>
                                 <p class="text-xs truncate text-gray-500">${food.brands || 'Manual Entry'} | ${(food.calories || 0).toFixed(0)} kcal/100g</p>
                             </div>
                         </div>
-                        <div class="flex gap-2 flex-shrink-0 ml-2">
-                            <button class="secondary-button text-xs py-2 px-3 rounded-md" data-action="edit-favorite" data-id="${food.id}">Edit</button>
-                            <button class="destructive-button text-xs py-2 px-3 rounded-md" data-action="delete-favorite" data-id="${food.id}">Delete</button>
+                        <div class="flex gap-1 flex-shrink-0 ml-1">
+                            <button class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 dark:bg-gray-700 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors" data-action="edit-favorite" data-id="${food.id}"><i class="fa-solid fa-pencil pointer-events-none"></i></button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 dark:bg-gray-700 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" data-action="delete-favorite" data-id="${food.id}"><i class="fa-solid fa-trash pointer-events-none"></i></button>
                         </div>
                     </div>
-                    <button class="main-button w-full" data-action="log-favorite" data-id="${food.id}">Log 100g</button>
+                    <button class="mt-1 w-full py-2 bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 font-bold rounded-lg border border-orange-200 dark:border-orange-800/50 hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors" data-action="log-favorite" data-id="${food.id}"><i class="fa-solid fa-plus mr-1"></i> Log Food</button>
                 `;
                 myFoodsList.appendChild(card);
             });
 
             const mealHeader = document.createElement('h3');
-            mealHeader.className = 'text-xl font-semibold mb-3 mt-8 text-left md:col-span-2';
+            mealHeader.className = 'text-xl font-semibold mb-3 mt-8 text-left md:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-6';
             mealHeader.innerHTML = '<i class="fa-solid fa-utensils text-blue-500"></i> Saved Meals';
             myFoodsList.appendChild(mealHeader);
             
@@ -4463,24 +4518,25 @@ const renderRecipesQuickList = () => {
             sortedMeals.forEach(meal => {
                 const totalCals = (meal.items || []).reduce((sum, item) => sum + (item.isOptional ? 0 : (item.calories || 0)), 0);
                 const card = document.createElement('div');
-                card.className = 'p-4 border rounded-lg flex flex-col gap-2 bg-[var(--bg-color)]';
+                card.className = 'p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow';
                 
                 card.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center overflow-hidden">
-                             <i class="fa-solid fa-utensils manage-list-image text-center text-2xl text-[var(--text-color-secondary)] flex-shrink-0"></i>
-                             <div class="truncate">
-                                 <h3 class="font-bold truncate">${meal.name || 'Unnamed Meal'}</h3>
-                                 <p class="text-xs truncate">${(meal.items || []).length} items | Approx. ${totalCals.toFixed(0)} cals</p>
-                             </div>
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex items-center overflow-hidden cursor-pointer hover:opacity-70 transition-opacity flex-grow min-w-0" data-action="preview-meal" data-id="${meal.id}" title="View Details">
+                            <div class="w-12 h-12 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-500 border border-blue-100 dark:border-blue-800 mr-3 shrink-0">
+                                 <i class="fa-solid fa-utensils text-lg pointer-events-none"></i>
+                            </div>
+                            <div class="truncate pointer-events-none">
+                                <h3 class="font-bold text-gray-900 dark:text-gray-100 text-sm truncate">${meal.name || 'Unnamed Meal'}</h3>
+                                <p class="text-xs truncate text-gray-500">${(meal.items || []).length} items | Approx. ${totalCals.toFixed(0)} cals</p>
+                            </div>
                         </div>
-                        <div class="flex gap-2 flex-shrink-0 ml-2">
-                            <button class="secondary-button text-xs py-2 px-3 rounded-md" data-action="preview-meal" data-id="${meal.id}">Preview</button>
-                            <button class="secondary-button text-xs py-2 px-3 rounded-md" data-action="edit-meal" data-id="${meal.id}">Rename</button>
-                            <button class="destructive-button text-xs py-2 px-3 rounded-md" data-action="delete-meal" data-id="${meal.id}">Delete</button>
+                        <div class="flex gap-1 flex-shrink-0 ml-1">
+                            <button class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 dark:bg-gray-700 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors" data-action="edit-meal" data-id="${meal.id}"><i class="fa-solid fa-pencil pointer-events-none"></i></button>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 dark:bg-gray-700 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" data-action="delete-meal" data-id="${meal.id}"><i class="fa-solid fa-trash pointer-events-none"></i></button>
                         </div>
                     </div>
-                     <button class="main-button w-full mt-2" data-action="log-meal" data-id="${meal.id}">Log Meal directly</button>
+                     <button class="mt-1 w-full py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold rounded-lg border border-blue-200 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors" data-action="log-meal" data-id="${meal.id}"><i class="fa-solid fa-plus mr-1"></i> Log Meal</button>
                 `;
                 myFoodsList.appendChild(card);
             });
@@ -4724,7 +4780,7 @@ const renderRecentFoods = () => {
         `;
 
         card.addEventListener('click', () => {
-            handleReLogItem(item, item.quantity || 100);
+            handleReLogItem(item);
         });
         listEl.appendChild(card);
     });
@@ -5026,7 +5082,7 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     });
 });
 
-        const selectProductFromSearch = (product, qty = 100) => {
+        const selectProductFromSearch = (product, defaultAmount = 100, preferredUnit = 'g') => {
     const name = product.product_name || 'Unknown';
     const brands = product.brands || '';
     const imageUrl = product.image_front_thumb_url || product.image_front_small_url || PLACEHOLDER_IMG;
@@ -5069,7 +5125,6 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
         </div>
     `;
 
-    // Add this logic immediately after the innerHTML assignment:
     setTimeout(() => {
         const btn = document.getElementById('reopen-details-btn');
         if(btn) btn.addEventListener('click', (e) => {
@@ -5093,10 +5148,27 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     const unitSelect = document.getElementById('quantity-unit');
     unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
     
+    const parseQty = (str) => {
+        if (!str) return null;
+        const multiMatch = str.match(/(\d+)\s*[xX*]\s*(\d*\.?\d+)\s*(g|ml|l|kg)/i);
+        if (multiMatch) {
+            let val = parseFloat(multiMatch[1]) * parseFloat(multiMatch[2]);
+            const unit = multiMatch[3].toLowerCase();
+            if (unit === 'kg' || unit === 'l') val *= 1000;
+            return val;
+        }
+        const match = str.match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
+        if (!match) return null;
+        let val = parseFloat(match[1]);
+        const unit = match[2].toLowerCase();
+        if (unit === 'kg' || unit === 'l') val *= 1000;
+        return val;
+    };
+    
     let servingUnits = [];
     let servingGrams = parseServingToGrams(product);
-    let defaultUnit = 'g';
-    let defaultAmount = qty;
+    let packageSize = parseFloat(product.product_quantity) || (product.quantity ? parseQty(product.quantity) : null);
+    let fallbackUnit = 'g';
 
     if (servingGrams) {
         const servingName = `Serving (${product.serving_size || servingGrams + 'g'})`;
@@ -5107,37 +5179,42 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
         option.dataset.custom = 'true';
         unitSelect.appendChild(option);
         servingUnits.push({ name: servingName, grams: servingGrams });
-        defaultUnit = servingName;
-        defaultAmount = 1; 
+        if (preferredUnit === 'Serving') preferredUnit = servingName;
+    }
+
+    if (product.quantity || packageSize) {
+        const packName = `Pack (${product.quantity || packageSize + 'g'})`;
+        const option = document.createElement('option');
+        option.value = packName;
+        option.textContent = packName;
+        option.dataset.grams = packageSize || 100;
+        option.dataset.custom = 'true';
+        unitSelect.appendChild(option);
+        servingUnits.push({ name: packName, grams: packageSize || 100 });
+        if (preferredUnit === 'Pack') preferredUnit = packName;
+    }
+
+    if (typeof preferredUnit === 'number') {
+        defaultAmount = preferredUnit;
+        preferredUnit = 'g';
     }
 
     document.getElementById('quantity-amount').value = defaultAmount;
-    unitSelect.value = defaultUnit;
-    
-    const parseQty = (str) => {
-    if (!str) return null;
-    const match = str.match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
-    if (!match) return null;
-    let val = parseFloat(match[1]);
-    const unit = match[2].toLowerCase();
-    if (unit === 'kg' || unit === 'l') val *= 1000;
-    return val;
-};
-      const packageSize = parseQty(product.quantity);
+    unitSelect.value = preferredUnit || fallbackUnit;
 
-      currentFoodItem = { 
-          baseNutrients, 
-          packageSize: packageSize,
-          productCode: product.code || null,
-          originalName: product.product_name || '',
-          source: 'Open Food Facts', 
-          brands, 
-          stores: product.stores || '',
-          imageUrl, 
-          servingUnits: servingUnits,
-          ingredients: product.ingredients_text_en || product.ingredients_text || '',
-          allergens: product.allergens_from_ingredients || ''
-      };
+    currentFoodItem = { 
+        baseNutrients, 
+        packageSize: packageSize,
+        productCode: product.code || null,
+        originalName: product.product_name || '',
+        source: 'Open Food Facts', 
+        brands, 
+        stores: product.stores || '',
+        imageUrl, 
+        servingUnits: servingUnits,
+        ingredients: product.ingredients_text_en || product.ingredients_text || '',
+        allergens: product.allergens_from_ingredients || ''
+    };
     
     updateQuantityInGrams(); 
     setNutrientFieldsReadOnly(true);
@@ -5154,6 +5231,7 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     formSection.classList.remove('hidden');
     formSection.scrollIntoView({ behavior: 'smooth' });
 };
+
 
 // --- RECENT SEARCHES LOGIC ---
     const saveRecentSearch = (query) => {
@@ -5277,11 +5355,15 @@ const toggleQuickFavorite = async (product, event) => {
     }
 };
 
-const handleReLogItem = async (item, defaultQty) => {
+const handleReLogItem = async (item) => {
+    // Determine the default amount and unit from the historical item
+    const defaultAmount = item.displayAmount || item.quantity || 100;
+    const defaultUnit = item.displayUnit || 'g';
+
     // 1. Check if we even have a code to look up
     if (!item.productCode) {
         console.log("No ProductCode available, skipping API fetch.");
-        selectFoodItem(item, defaultQty);
+        selectFoodItem(item, defaultAmount, defaultUnit);
         return;
     }
 
@@ -5301,18 +5383,18 @@ const handleReLogItem = async (item, defaultQty) => {
             
             if (json.status === 1 && json.product) {
                 showToast("Updated data loaded!", "success");
-                selectProductFromSearch(json.product, defaultQty);
+                selectProductFromSearch(json.product, defaultAmount, defaultUnit);
             } else {
                 showToast("Product not found on API. Using original.", "error");
-                selectFoodItem(item, defaultQty);
+                selectFoodItem(item, defaultAmount, defaultUnit);
             }
         } else {
-            selectFoodItem(item, defaultQty);
+            selectFoodItem(item, defaultAmount, defaultUnit);
         }
     } catch (e) {
         console.error("Re-log fetch error:", e);
         showToast("Server error during fetch. Using original data.", "error");
-        selectFoodItem(item, defaultQty);
+        selectFoodItem(item, defaultAmount, defaultUnit);
     }
 
     // Common cleanup
@@ -5320,47 +5402,42 @@ const handleReLogItem = async (item, defaultQty) => {
     document.querySelector('[data-tab="log-food"]').click();
 };
 
-const selectFoodItem = (item, qty = 100) => {
-          // 1. Prepare UI: Hide lists, show form
-          restoreSourceUI(item.source, item.restaurantName || item.brands);
-          document.querySelectorAll('.subtab-content').forEach(el => el.classList.add('hidden'));
-          
-          // ADD THIS LINE HERE:
-          setDefaultDateTime();
+const selectFoodItem = (item, amount = 100, unitName = 'g') => {
+            // 1. Prepare UI: Hide lists, show form
+            restoreSourceUI(item.source, item.restaurantName || item.brands);
+            document.querySelectorAll('.subtab-content').forEach(el => el.classList.add('hidden'));
+            
+            setDefaultDateTime();
 
-          document.getElementById('search-results').classList.add('hidden');
-          document.getElementById('search-controls').classList.add('hidden');
-          document.getElementById('entry-form-section').classList.remove('hidden');
-          document.getElementById('back-to-search-btn').classList.remove('hidden');
-          document.getElementById('selected-product-display').classList.add('hidden'); // Hide the "Currently Logging" banner for local items to keep it clean
+            document.getElementById('search-results').classList.add('hidden');
+            document.getElementById('search-controls').classList.add('hidden');
+            document.getElementById('entry-form-section').classList.remove('hidden');
+            document.getElementById('back-to-search-btn').classList.remove('hidden');
+            document.getElementById('selected-product-display').classList.add('hidden'); 
 
-          // 2. Populate Basic Info
-          document.getElementById('food-name').value = item.name || '';
-          
-          // 3. Handle Quantity & Units
-          const unitSelect = document.getElementById('quantity-unit');
-          // Clear old custom units
-          unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
-          
-          let defaultUnit = 'g';
-          let defaultAmount = qty; // Expecting grams passed in
+            // 2. Populate Basic Info
+            document.getElementById('food-name').value = item.name || '';
+            
+            // 3. Handle Quantity & Units
+            const unitSelect = document.getElementById('quantity-unit');
+            unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
 
-          // If the saved item has custom serving units, restore them
-          if (item.servingUnits && Array.isArray(item.servingUnits)) {
-              item.servingUnits.forEach(u => {
-                   const option = document.createElement('option');
-                   option.value = u.name;
-                   option.textContent = u.name;
-                   option.dataset.grams = u.grams;
-                   option.dataset.custom = 'true';
-                   unitSelect.appendChild(option);
-              });
-          }
+            if (item.servingUnits && Array.isArray(item.servingUnits)) {
+                item.servingUnits.forEach(u => {
+                     const option = document.createElement('option');
+                     option.value = u.name;
+                     option.textContent = u.name;
+                     option.dataset.grams = u.grams;
+                     option.dataset.custom = 'true';
+                     unitSelect.appendChild(option);
+                });
+            }
 
-          document.getElementById('quantity-amount').value = defaultAmount;
-          unitSelect.value = defaultUnit;
-          
-          // 4. Set State
+            document.getElementById('quantity-amount').value = amount;
+            unitSelect.value = unitName;
+            if (!unitSelect.value) unitSelect.value = 'g';
+            
+            // 4. Set State
           // Ensure we have a valid baseNutrients object. If it's a legacy item without baseNutrients, reconstruct it from the flat values.
           const baseNutrients = item.baseNutrients || {
               calories: item.calories, 
@@ -5403,9 +5480,16 @@ const selectFoodItem = (item, qty = 100) => {
           // 7. Scroll user to form
           document.getElementById('entry-form-section').scrollIntoView({ behavior: 'smooth' });
           
-          // 8. Restore Quick Buttons (Optional: generic pack sizes)
-          const btnContainer = document.getElementById('form-quick-qty-buttons');
-          if(btnContainer) btnContainer.innerHTML = ''; 
+          // 8. Restore Quick Buttons
+          const quantityStr = item.packageSize ? item.packageSize + 'g' : null;
+          const serving = item.servingUnits?.find(u => u.name.toLowerCase().includes('serving'));
+          
+          renderQuickButtons(
+              { quantity: quantityStr }, 
+              item.packageSize, 
+              serving ? serving.grams : null, 
+              serving ? serving.name.replace('Serving (', '').replace(')', '') : null
+          );
       };
 
 window.openProductModalFromLog = (itemId) => {
@@ -5422,7 +5506,7 @@ window.openProductModalFromLog = (itemId) => {
         _source: item.source,
         _stores: item.stores || '',                  
         _restaurantName: item.restaurantName,  
-        quantity: (item.quantity || 100) + unit,
+        quantity: item.packageSize ? item.packageSize + unit : (item.quantity || 100) + unit,
         serving_size: (item.quantity || 100) + unit, 
         image_front_thumb_url: item.imageUrl,
         ingredients_text: item.ingredients || 'No ingredients saved.',
@@ -5455,7 +5539,7 @@ window.openProductModalFromLog = (itemId) => {
             const newBtn = btn.cloneNode(true);
             btn.parentNode.replaceChild(newBtn, btn);
             newBtn.addEventListener('click', () => {
-                handleReLogItem(item, 100);
+                handleReLogItem(item);
             });
         }
     }
@@ -5795,12 +5879,14 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
                 <div>
                     <h3 class="font-bold mb-2">Quick Quantity</h3>
                     <div id="quantity-buttons" class="flex flex-wrap gap-2">
-                        ${servingSize ? `<button class="secondary-button text-xs" data-qty="${servingSize}">Serving (${servingSizeStr})</button>` : ''}
-                        <button class="secondary-button text-xs" data-qty="${packageSize * 0.25}">1/4</button>
-                        <button class="secondary-button text-xs" data-qty="${packageSize / 3}">1/3</button>
-                        <button class="secondary-button text-xs" data-qty="${packageSize / 2}">Half</button>
-                        <button class="secondary-button text-xs" data-qty="${packageSize * 0.75}">3/4</button>
-                        <button class="secondary-button text-xs" data-qty="${packageSize}">Whole</button>
+                        ${servingSize ? `<button class="secondary-button text-xs" data-amount="1" data-unit="Serving">Serving (${servingSizeStr})</button>` : ''}
+                        ${product.quantity ? `
+                        <button class="secondary-button text-xs" data-amount="0.25" data-unit="Pack">1/4 Pack</button>
+                        <button class="secondary-button text-xs" data-amount="0.333" data-unit="Pack">1/3 Pack</button>
+                        <button class="secondary-button text-xs" data-amount="0.5" data-unit="Pack">Half Pack</button>
+                        <button class="secondary-button text-xs" data-amount="0.75" data-unit="Pack">3/4 Pack</button>
+                        <button class="secondary-button text-xs" data-amount="1" data-unit="Pack">Whole Pack</button>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -5834,12 +5920,12 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
 
     document.getElementById('close-modal-btn').addEventListener('click', () => modal.classList.add('hidden'));
 
-    const selectAndClose = (qty) => {
-        selectProductFromSearch(product, qty);
+    const selectAndClose = (amount, unitName) => {
+        selectProductFromSearch(product, amount, unitName);
         modal.classList.add('hidden');
     };
 
-    document.getElementById('select-product-btn').addEventListener('click', () => selectAndClose(100));
+    document.getElementById('select-product-btn').addEventListener('click', () => selectAndClose(100, 'g'));
 
     modal.addEventListener('click', (e) => {
         // CLOSE MODAL IF CLICK IS ON THE OVERLAY
@@ -5849,7 +5935,7 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
 
         const button = e.target.closest('#quantity-buttons button');
         if (button) {
-            selectAndClose(parseFloat(button.dataset.qty));
+            selectAndClose(parseFloat(button.dataset.amount), button.dataset.unit);
         }
     });
 };
@@ -5891,6 +5977,11 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
             const amount = parseFloat(document.getElementById('quantity-amount').value) || 0;
             const unitSelect = document.getElementById('quantity-unit');
             const selectedOption = unitSelect.options[unitSelect.selectedIndex];
+            
+            if (!selectedOption) {
+                unitSelect.value = 'g';
+                return updateQuantityInGrams();
+            }
             
             const customUnitWrapper = document.getElementById('custom-unit-edit-wrapper');
             const customUnitInput = document.getElementById('custom-unit-grams');
