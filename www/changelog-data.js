@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.85.0-alpha",
+    date: "2026-05-28",
+    changes: [
+        "In FoodTrackr: Fixed the 'Edit on Open Food Facts' button in the product details modal for older log items by safely extracting and passing the product code reference.",
+        "In FoodTrackr: Conditionally hid the Open Food Facts edit button for manual entries or items without a valid product code to prevent broken links.",
+        "In FoodTrackr: Added the Open Food Facts barcode/ID reference directly to the search result product cards and the modal's detailed information section.",
+        "In FoodTrackr: Added robust fallback checks safely parsing product IDs to handle Open Food Facts API response inconsistencies.",
+        "In FoodTrackr: Replaced hard deletion confirmation modals with global non-blocking 'Undo' toast notifications across the log, favorites, meals, and leftovers.",
+        "In FoodTrackr: Added a 'Legacy' visual indicator badge in the daily log and history tables to clearly identify older items lacking metadata or proper Open Food Facts links."
+    ]
+},
+    {
     version: "v15.84.0-alpha",
     date: "2026-05-27",
     changes: [

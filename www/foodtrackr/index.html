@@ -2134,6 +2134,47 @@ const showToast = (message, type = 'info') => {
     }, 3000);
 };
 
+const deletedItemsMemory = new Map();
+
+const showUndoToast = (message, itemData, collectionName, docId) => {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast info`;
+
+    toast.innerHTML = `
+        <i class="fa-solid fa-rotate-left text-xl"></i>
+        <span class="flex-grow font-medium">${message}</span>
+        <button class="undo-btn ml-3 font-bold text-orange-400 hover:text-orange-300 uppercase text-sm tracking-wide cursor-pointer transition-colors bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-600 shadow-sm">Undo</button>
+    `;
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => toast.classList.add('show'));
+
+    const undoBtn = toast.querySelector('.undo-btn');
+    let isUndone = false;
+
+    undoBtn.addEventListener('click', async () => {
+        isUndone = true;
+        try {
+            await setDoc(doc(db, `users/${user.uid}/${collectionName}`, docId), itemData);
+            showToast('Action undone.', 'success');
+        } catch (e) {
+            console.error(e);
+            showToast('Failed to undo.', 'error');
+        }
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    });
+
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }
+        if (!isUndone) deletedItemsMemory.delete(docId); 
+    }, 6000); 
+};
+
 // --- MEAL BUILDER STATE & LOGIC ---
 let isMealBuilderMode = false;
 let builderItems = [];
@@ -3423,7 +3464,7 @@ const renderDailyLog = () => {
                     <div class="flex items-start overflow-hidden flex-grow cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded p-1 transition-colors" onclick="openProductModalFromLog('${item.id}')" title="View Details">
                         <img src="${imageUrl}" alt="${item.name}" class="log-item-image mt-1 w-12 h-12">
                         <div class="flex-grow min-w-0 flex flex-col justify-center gap-1 pl-3">
-                                <span class="font-semibold text-base leading-snug break-words text-gray-900 dark:text-gray-100">${item.name} ${groupedBadge}</span>
+                                <span class="font-semibold text-base leading-snug break-words text-gray-900 dark:text-gray-100">${item.name} ${groupedBadge} ${(!item.productCode || !item.baseNutrients) && item.source !== 'Manual Entry' && item.source !== 'Leftover' && item.uploadedApp !== 'HydrationTrackr' && !(item.source || '').startsWith('Meal:') ? `<span class="ml-1 text-[9px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border border-amber-200 dark:border-amber-800 align-middle shadow-sm" title="Legacy item: Missing metadata or Open Food Facts link. Re-log to update."><i class="fa-solid fa-link-slash mr-0.5"></i>Legacy</span>` : ''}</span>
                                 ${item.originalName && item.originalName !== item.name ? `<span class="block text-[10px] text-gray-400 mt-0.5 -mb-0.5 truncate opacity-75" title="${item.originalName}">Original: ${item.originalName}</span>` : ''}
                                 <div class="mt-1 flex flex-wrap gap-1">
                  <span class="${badgeColors} px-2 py-0.5 rounded-md font-bold text-[10px] flex items-center gap-1 uppercase tracking-wide border shadow-sm">
@@ -3628,6 +3669,7 @@ const renderHistoryTable = () => {
                                 <button class="text-left font-semibold text-[var(--text-color-primary)] hover:text-orange-600 hover:underline transition-colors leading-tight text-xs sm:text-sm" onclick="openProductModalFromHistory('${item.id}')">
                                     ${item.name || 'Unknown Item'}
                                 </button>
+                                ${(!item.productCode || !item.baseNutrients) && item.source !== 'Manual Entry' && item.source !== 'Leftover' && item.uploadedApp !== 'HydrationTrackr' && !(item.source || '').startsWith('Meal:') ? `<span class="ml-2 text-[9px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border border-amber-200 dark:border-amber-800 align-middle shadow-sm inline-block" title="Legacy item: Missing metadata."><i class="fa-solid fa-link-slash mr-0.5"></i> Legacy</span>` : ''}
                                 ${item.originalName && item.originalName !== item.name ? `<div class="text-[10px] text-gray-400 mt-0.5 w-48 sm:w-64 truncate opacity-75" title="${item.originalName}">Original: ${item.originalName}</div>` : ''}
                                 <div class="text-[10px] sm:text-xs mt-1 flex flex-wrap items-center gap-2">
                         <span class="${badgeColors} px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1">${sourceIcon} ${subText}</span>
@@ -3721,8 +3763,9 @@ document.getElementById('history-search-input').addEventListener('input', () => 
     const unit = item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g';
 
     const mockProduct = {
-        product_name: item.name,
-        brands: item.restaurantName || item.brands || item.source,
+            code: item.productCode || null,
+            product_name: item.name,
+            brands: item.restaurantName || item.brands || item.source,
         _source: item.source,
         _stores: item.stores || '',
         _restaurantName: item.restaurantName,
@@ -3771,8 +3814,9 @@ window.openProductModalFromFavorite = (foodId) => {
     if (!item) return;
 
     const mockProduct = {
-        product_name: item.name,
-        brands: item.brands || item.source || '',
+            code: item.productCode || null,
+            product_name: item.name,
+            brands: item.brands || item.source || '',
         _source: item.source,
         _stores: item.stores || '',                  
         _restaurantName: item.restaurantName,
@@ -3946,7 +3990,7 @@ window.openProductModalFromFavorite = (foodId) => {
 let pendingGroupDeleteItems = [];
 let itemToDeleteId = null;
 
-const handleDeleteLogItem = (itemId) => {
+const handleDeleteLogItem = async (itemId) => {
     if (!itemId) return;
     const itemToDelete = foodLog.find(item => item.id === itemId);
     if (!itemToDelete) return;
@@ -3977,16 +4021,21 @@ const handleDeleteLogItem = (itemId) => {
         }
     }
 
-    // Standard single-item delete fallback
-    showConfirm('Are you sure you want to delete this log entry?', async () => {
-        try {
-            await deleteDoc(doc(db, `users/${user.uid}/foodLog`, itemId));
-            showToast('Item deleted.', 'success');
-        } catch (error) {
-            console.error("Error deleting log item:", error);
-            showToast('Failed to delete item.', 'error');
-        }
-    });
+    // Standard single-item delete fallback with Undo
+    const { id, ...dataToRestore } = itemToDelete;
+    deletedItemsMemory.set(itemId, dataToRestore);
+    
+    const el = document.querySelector(`.log-item[data-id="${itemId}"]`) || document.querySelector(`button[data-action="delete-table"][data-id="${itemId}"]`)?.closest('tr');
+    if (el) el.style.display = 'none';
+
+    try {
+        await deleteDoc(doc(db, `users/${user.uid}/foodLog`, itemId));
+        showUndoToast('Log entry deleted.', dataToRestore, 'foodLog', itemId);
+    } catch (error) {
+        if (el) el.style.display = ''; 
+        console.error("Error deleting log item:", error);
+        showToast('Failed to delete item.', 'error');
+    }
 };
 
 // Modal Listeners
@@ -4827,6 +4876,9 @@ const groupedBadge = isGrouped ?
 
         // Star Icon Logic
         const starIconClass = isFavorite ? 'fa-solid fa-star text-yellow-400' : 'fa-regular fa-star text-gray-400 hover:text-yellow-400';
+        
+        const pCode = product.code || product._id || product.id;
+        const validCode = (pCode && String(pCode) !== 'undefined') ? pCode : null;
 
         card.innerHTML = `
             <div class="w-20 h-20 flex-shrink-0 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-100 dark:border-gray-600 p-1 overflow-hidden relative">
@@ -4835,7 +4887,8 @@ const groupedBadge = isGrouped ?
             </div>
             
             <div class="flex-grow min-w-0 pr-8"> <h3 class="font-bold text-gray-900 dark:text-white text-base leading-tight truncate" title="${name}">${name}</h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400 truncate mb-2" title="${brands}${stores}">${brands}${stores}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400 truncate mb-1" title="${brands}${stores}">${brands}${stores}</p>
+                ${validCode ? `<p class="text-[10px] text-gray-400 font-mono mb-2">Code: ${validCode}</p>` : ''}
                 
                 <div class="flex items-center gap-2">
                      <div class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300">
@@ -4906,9 +4959,16 @@ const renderLeftovers = () => {
         const delBtn = card.querySelector('.delete-leftover-btn');
         delBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            if(confirm('Discard these leftovers?')) {
+            const { id: lId, ...dataToRestore } = item;
+            
+            card.style.display = 'none'; 
+
+            try {
                 await deleteDoc(doc(db, `users/${user.uid}/leftovers`, item.id));
-                showToast('Leftovers discarded.');
+                showUndoToast('Leftovers discarded.', dataToRestore, 'leftovers', item.id);
+            } catch (err) {
+                card.style.display = ''; 
+                showToast('Failed to discard leftovers.', 'error');
             }
         });
         
@@ -5202,10 +5262,13 @@ document.querySelectorAll('input[name="log-section-radio"]').forEach(radio => {
     document.getElementById('quantity-amount').value = defaultAmount;
     unitSelect.value = preferredUnit || fallbackUnit;
 
+    const pCode = product.code || product._id || product.id;
+    const validCode = (pCode && String(pCode) !== 'undefined') ? pCode : null;
+
     currentFoodItem = { 
         baseNutrients, 
         packageSize: packageSize,
-        productCode: product.code || null,
+        productCode: validCode,
         originalName: product.product_name || '',
         source: 'Open Food Facts', 
         brands, 
@@ -5501,6 +5564,7 @@ window.openProductModalFromLog = (itemId) => {
     const unit = item.uploadedApp === 'HydrationTrackr' ? 'ml' : 'g';
 
     const mockProduct = {
+        code: item.productCode || null,
         product_name: item.name,
         brands: item.brands || item.source || '',
         _source: item.source,
@@ -5718,6 +5782,9 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
         const showProductDetailsModal = (product) => {
     const modal = document.getElementById('product-modal');
     const name = product.product_name || 'Unknown';
+    
+    const pCode = product.code || product._id || product.id;
+    const validCode = (pCode && String(pCode) !== 'undefined') ? pCode : null;
     const brands = product.brands || '';
     const quantityStr = product.quantity || '100g';
     const servingSizeStr = product.serving_size || '';
@@ -5897,6 +5964,7 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
                      <span class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">${ecoscore}</span>
                      <span class="badge bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">${novaGroup}</span>
                 </div>
+                <p class="text-xs mt-2"><strong>Barcode/ID:</strong> ${validCode || 'N/A'}</p>
                 <p class="text-xs mt-2"><strong>Categories:</strong> ${categories}</p>
                 <p class="text-xs mt-2"><strong>Labels:</strong> ${labels}</p>
                 <p class="text-xs mt-2"><strong>Sold in:</strong> ${countries}</p>
@@ -5909,11 +5977,13 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
             </div>
             <div class="button-group">
                 <button id="select-product-btn" class="main-button">Select This Product</button>
-                <a href="https://world.openfoodfacts.org/product/${product.code}" target="_blank" class="secondary-button text-center flex-grow py-3 px-4 rounded-lg flex items-center justify-center gap-2" style="padding-top: 12px; padding-bottom: 12px;">
+                ${validCode ? `
+                <a href="https://world.openfoodfacts.org/product/${validCode}" target="_blank" class="secondary-button text-center flex-grow py-3 px-4 rounded-lg flex items-center justify-center gap-2" style="padding-top: 12px; padding-bottom: 12px;">
                    <i class="fa-solid fa-pen-to-square"></i> Edit on Open Food Facts
                 </a>
+                ` : ''}
             </div>
-            <p class="text-xs text-center mt-2 text-[var(--text-color-secondary)]">Changes submitted to Open Food Facts are reviewed and may not appear immediately.</p>
+            ${validCode ? `<p class="text-xs text-center mt-2 text-[var(--text-color-secondary)]">Changes submitted to Open Food Facts are reviewed and may not appear immediately.</p>` : ''}
         </div>
     `;
     modal.classList.remove('hidden');
@@ -6795,15 +6865,21 @@ document.getElementById('save-favorite-btn').addEventListener('click', async () 
                     handleReLogItem(food, 100);
                 }
             } else if (action === 'delete-favorite') {
-                showConfirm('Are you sure you want to delete this favorite?', async () => {
-    try { 
-        await deleteDoc(doc(db, `users/${user.uid}/favoriteFoods`, id)); 
-        showToast('Favorite deleted', 'success');
-    } catch (err) { 
-        console.error(err); 
-        showToast("Failed to delete favorite.", 'error');
-    }
-});
+                const food = favoriteFoods.find(f => f.id === id);
+                if (!food) return;
+                const { id: fId, ...dataToRestore } = food;
+                
+                const el = button.closest('.group');
+                if (el) el.style.display = 'none';
+
+                try { 
+                    await deleteDoc(doc(db, `users/${user.uid}/favoriteFoods`, id)); 
+                    showUndoToast('Favorite deleted.', dataToRestore, 'favoriteFoods', id);
+                } catch (err) { 
+                    if (el) el.style.display = '';
+                    console.error(err); 
+                    showToast("Failed to delete favorite.", 'error');
+                }
             } else if (action === 'edit-favorite') {
                 const food = favoriteFoods.find(f => f.id === id);
                 if (food) openEditItemModal(food, 'favorite'); 
@@ -6865,9 +6941,20 @@ document.getElementById('save-favorite-btn').addEventListener('click', async () 
                 const meal = meals.find(m => m.id === id);
                 if (meal) openPreviewMealModal(meal);
             } else if (action === 'delete-meal') {
-                if (confirm('Are you sure you want to delete this meal?')) {
-                     try { await deleteDoc(doc(db, `users/${user.uid}/meals`, id)); } 
-                     catch (err) { console.error(err); showToast("Failed to delete meal.")}
+                const meal = meals.find(m => m.id === id);
+                if (!meal) return;
+                const { id: mId, ...dataToRestore } = meal;
+                
+                const el = button.closest('.group');
+                if (el) el.style.display = 'none';
+
+                try { 
+                    await deleteDoc(doc(db, `users/${user.uid}/meals`, id)); 
+                    showUndoToast('Meal deleted.', dataToRestore, 'meals', id);
+                } catch (err) { 
+                    if (el) el.style.display = '';
+                    console.error(err); 
+                    showToast("Failed to delete meal.");
                 }
             } else if (action === 'edit-meal') {
                 const meal = meals.find(m => m.id === id);
