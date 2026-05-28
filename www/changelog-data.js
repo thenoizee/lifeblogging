@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.87.0-alpha",
+    date: "2026-05-29",
+    changes: [
+        "In FoodTrackr: Fixed API search and caching logic to be completely case-insensitive.",
+        "In Loggr: Added a session counter to track how many items have been logged in the current session."
+    ]
+},
+    {
   version: "v15.86.0-alpha",
   date: "2026-05-29",
   changes: [
