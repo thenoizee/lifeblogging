@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+  version: "v15.86.0-alpha",
+  date: "2026-05-29",
+  changes: [
+    "In PlantTrackr: Added a default feeding frequency of 14 days for new plants.",
+    "In PlantTrackr: Implemented a toggle to enable or disable feeding reminders for individual plants.",
+    "In PlantTrackr: Improved outside location type by explicitly separating 'Outside (Exposed)' and 'Outside (Sheltered / Covered)'.",
+    "In PlantTrackr: Reorganized the Garden tab to integrate propagations into the 'Active' view, adding a 'Show Props' toggle to hide or show them on demand.",
+  ]
+},
+    {
     version: "v15.85.0-alpha",
     date: "2026-05-28",
     changes: [
