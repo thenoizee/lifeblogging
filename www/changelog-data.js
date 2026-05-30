@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.93.0-alpha",
+    date: "2026-05-30",
+    changes: [
+                "In Analyser: Fixed a bug where the 'Planner & Triage' tab would remain visible on all screens after being opened.",
+                "In Analyser: Wrapped floating heatmap CSS variables inside a :root selector to resolve console syntax errors.",
+    ]
+},
+    {
     version: "v15.92.0-alpha",
     date: "2026-05-30",
     changes: [
