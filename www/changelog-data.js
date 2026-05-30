@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.88.0-alpha",
+    date: "2026-05-30",
+    changes: [
+        "In JournalTrackr: Updated the timestamp logic to log actual UTC moments in time so timezone changes don't shift your true moment of logging.",
+        "In JournalTrackr: Refactored the UI, calendar grid, flashbacks, and heatmap to accurately display entries in the local time they are currently being viewed in.",
+        "In JournalTrackr: Updated logo through system from journal to newspaper.",
+        "In Loggr: Transitioned to storing all newly logged dates (Quick Log, Manual Log) in UTC ISO format to prevent cross-timezone drifting.",
+        "In Loggr: Updated display logic to parse stored UTC times and show them accurately in the current local timezone.",
+        "In Loggr: Updated the Session Log and Unsynced Log display format to show full dates (dd-mm-yyyy hh:mm) instead of just the time."
+    ]
+},
+    {
     version: "v15.87.0-alpha",
     date: "2026-05-29",
     changes: [
