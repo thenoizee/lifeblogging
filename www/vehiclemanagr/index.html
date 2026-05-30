@@ -927,18 +927,24 @@ body {
             else { btn.classList.remove('loading'); btn.disabled = false; }
         };
 
+        const toLocalISOString = (date) => {
+            const d = new Date(date);
+            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+            return d.toISOString().slice(0, 16);
+        };
+
         // Add this helper function near the top of your script (e.g., after 'const ui = ...')
 const getTimestamp = (prefix) => {
     const d = document.getElementById(`${prefix}-date`).value;
     const t = document.getElementById(`${prefix}-time`).value;
     if(!d) return null;
-    return `${d}T${t || '12:00'}`; // Default to 12:00 if time is empty
+    return new Date(`${d}T${t || '12:00'}`).toISOString(); // Convert to UTC
 };
 
 // REPLACE the setDefaults function
 const setDefaults = () => {
     const now = new Date();
-    const current = now.toISOString().slice(0, 10);
+    const current = toLocalISOString(now).slice(0, 10);
     
     ['fuel','service','expense','health','trip','consumable'].forEach(prefix => { 
         const el = document.getElementById(`${prefix}-date`); 
@@ -1153,8 +1159,7 @@ document.getElementById('meta-ins-cost').value = v.insuranceCost || '';
                     if(price > 0) {
                         const cat = document.getElementById('inv-category').value;
                         const now = new Date();
-                        // Format date as YYYY-MM-DDTHH:mm for consistency
-                        const dateStr = now.toISOString().slice(0, 10) + 'T' + now.toTimeString().slice(0, 5);
+                        const dateStr = now.toISOString();
                         
                         let historyData = {
                             date: dateStr,
@@ -1572,7 +1577,12 @@ if (alerts.length > 0) {
             appState.charts.mpg = new Chart(document.getElementById('mpg-chart'), { type: 'line', data: { datasets: [{ data: chartPts, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'month' } } }, plugins: { legend: { display: false } } } });
 
             const months = {};
-            history.forEach(d => { if(d.date) months[d.date.substring(0, 7)] = (months[d.date.substring(0, 7)]||0) + (getNum(d.fuelCost)+getNum(d.cost)+getNum(d.expenseCost)); });
+            history.forEach(d => { 
+                if(d.date) {
+                    const localMonth = toLocalISOString(new Date(d.date)).substring(0, 7);
+                    months[localMonth] = (months[localMonth]||0) + (getNum(d.fuelCost)+getNum(d.cost)+getNum(d.expenseCost)); 
+                }
+            });
             if(includePurchase && v.purchaseDate) months[v.purchaseDate.substring(0, 7)] = (months[v.purchaseDate.substring(0, 7)]||0) + getNum(v.purchasePrice);
             if(appState.charts.cost) appState.charts.cost.destroy();
             appState.charts.cost = new Chart(document.getElementById('cost-breakdown-chart'), { type: 'bar', data: { labels: Object.keys(months).sort(), datasets: [{ label:'Cost', data: Object.keys(months).sort().map(m=>months[m]), backgroundColor: '#3b82f6' }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
@@ -1677,7 +1687,11 @@ if(v.insuranceIsAuto && v.insuranceExpiry) addVirtual(v.insuranceExpiry, 'Car In
         // Date Formatting
         let dateDisplay = d.date;
         if(d.date && d.date.includes('T')) {
-            const [datePart, timePart] = d.date.split('T');
+            const localIso = toLocalISOString(new Date(d.date));
+            const datePartRaw = localIso.split('T')[0];
+            const [yyyy, mm, dd] = datePartRaw.split('-');
+            const datePart = `${dd}/${mm}/${yyyy}`;
+            const timePart = localIso.split('T')[1].substring(0, 5);
             dateDisplay = `<div class="flex flex-col"><span class="font-semibold">${datePart}</span><span class="text-xs text-gray-400">${d.isVirtual ? 'Pending' : timePart}</span></div>`;
         }
 
@@ -1949,8 +1963,9 @@ window.quickLog = (type) => {
 
         // NEW: Default Date/Time to Now
         const now = new Date();
-        document.getElementById('qf-date').value = now.toISOString().slice(0, 10);
-        document.getElementById('qf-time').value = now.toTimeString().slice(0, 5);
+        const localNow = toLocalISOString(now);
+        document.getElementById('qf-date').value = localNow.slice(0, 10);
+        document.getElementById('qf-time').value = localNow.slice(11, 16);
 
         // ... existing smart odometer / driver logic ...
 
@@ -2167,9 +2182,9 @@ document.getElementById("log-health-btn").onclick = () => saveEntry("log-health-
             
             // Handle date format for datetime-local
             // 1. Logic to split the date string
-const datePart = item.date ? item.date.split('T')[0] : '';
-// Get time if exists (HH:MM), otherwise empty
-const timePart = item.date && item.date.includes('T') ? item.date.split('T')[1].substring(0,5) : '';
+const localIso = item.date ? toLocalISOString(new Date(item.date)) : '';
+const datePart = localIso ? localIso.split('T')[0] : '';
+const timePart = localIso ? localIso.split('T')[1].substring(0,5) : '';
 
 // 2. Generate HTML for split fields (Replaces the old 'mkInput' for date)
 html += `<div class="flex gap-2">
@@ -2291,7 +2306,7 @@ const tVal = getVal('time');
 
 if(dVal) {
     // If a time is provided, use it; otherwise default to 12:00
-    data.date = `${dVal}T${tVal || '12:00'}`;
+    data.date = new Date(`${dVal}T${tVal || '12:00'}`).toISOString();
 }
 
                 if(item.type === 'fuel-up') {

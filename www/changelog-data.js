@@ -5,6 +5,15 @@ export const changelogData = [
     version: "v15.89.0-alpha",
     date: "2026-05-30",
     changes: [
+        "In VehicleManagr: Migrated save functionality to use true UTC times while preserving localized UI times.",
+        "In VehicleManagr: Updated the history table to format dates as DD/MM/YYYY.",
+        "In PlantTrackr: Standardized time handling to convert and display local times while saving in true UTC."
+    ]
+},
+    {
+    version: "v15.89.0-alpha",
+    date: "2026-05-30",
+    changes: [
         "In FoodTrackr: Applied the standardized UTC timezone offset logic across the local time parsing handlers to prevent cross-timezone drifting on date inputs.",
         "In FoodTrackr: Fully redesigned the Product Details modal to be far more readable.",
         "In FoodTrackr: The Product Details modal now clearly distinguishes between 'Consumed At' (when you ate the food) and 'System Recorded' (when the entry was actually saved to the database).",
