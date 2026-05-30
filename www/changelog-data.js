@@ -2,7 +2,14 @@
 
 export const changelogData = [
     {
-    version: "v15.89.0-alpha",
+    version: "v15.91.0-alpha",
+    date: "2026-05-30",
+    changes: [
+        "In VidTrackr: Updated the episode director extraction logic to gracefully handle and display multiple co-directors."
+    ]
+},
+    {
+    version: "v15.90.0-alpha",
     date: "2026-05-30",
     changes: [
         "In VehicleManagr: Migrated save functionality to use true UTC times while preserving localized UI times.",
