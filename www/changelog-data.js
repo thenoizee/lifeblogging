@@ -5,6 +5,15 @@ export const changelogData = [
     version: "v15.91.0-alpha",
     date: "2026-05-30",
     changes: [
+                "In FoodTrackr: Optimized Smart Copy with parallel API fetches to significantly improve batch copying speed.",
+                "In FoodTrackr: Added debounce to history search to prevent UI freezing on rapid keystrokes.",
+                "In FoodTrackr: Capped default history and database listeners to the past 3 months to prevent DOM lag, with a new 'Load Older History' override."
+    ]
+},
+    {
+    version: "v15.91.0-alpha",
+    date: "2026-05-30",
+    changes: [
         "In VidTrackr: Updated the episode director extraction logic to gracefully handle and display multiple co-directors."
     ]
 },

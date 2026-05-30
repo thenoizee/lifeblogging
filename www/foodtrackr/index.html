@@ -1593,6 +1593,12 @@ body.bulk-active {
             </table>
         </div>
     </div>
+    
+    <div id="load-all-history-container" class="flex justify-center mt-4">
+        <button id="load-all-history-btn" class="secondary-button py-2 px-6 rounded-xl font-bold text-sm shadow-sm flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left"></i> Load Older History
+        </button>
+    </div>
 </div>
 
 
@@ -1994,6 +2000,9 @@ if (initialTheme === 'dark') document.documentElement.classList.add('dark');
 
       // --- State Variables ---
       let user = null;
+      let loadAllHistory = false;
+      let foodLogUnsub = null;
+      let waterLogUnsub = null;
       const searchCache = new Map();
       let recentSearches = JSON.parse(localStorage.getItem('foodTrackr_recentSearches')) || [];
       let foodLog = [];
@@ -2460,7 +2469,14 @@ const compressImage = (file, maxWidth = 800) => {
           const list = document.getElementById('sourdough-history-list');
           list.innerHTML = '<p class="text-center text-xs text-gray-500 mt-4">Loading...</p>';
           
-          const q = query(collection(db, `users/${user.uid}/sourdoughLogs`), orderBy("createdAt", "desc"));
+          let q;
+          if (loadAllHistory) {
+              q = query(collection(db, `users/${user.uid}/sourdoughLogs`), orderBy("createdAt", "desc"));
+          } else {
+              const threeMonthsAgo = new Date();
+              threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+              q = query(collection(db, `users/${user.uid}/sourdoughLogs`), where("createdAt", ">=", Timestamp.fromDate(threeMonthsAgo)), orderBy("createdAt", "desc"));
+          }
           
           if(sourdoughUnsub) sourdoughUnsub();
           
@@ -2562,6 +2578,19 @@ const compressImage = (file, maxWidth = 800) => {
                       }
                   });
               });
+              
+              if (!loadAllHistory && snapshot.docs.length > 0) {
+                  const loadMoreBtn = document.createElement('button');
+                  loadMoreBtn.className = 'w-full py-2 text-xs font-bold text-gray-500 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors rounded-lg mt-2 mb-2';
+                  loadMoreBtn.textContent = 'Load Older Entries';
+                  loadMoreBtn.onclick = () => {
+                      loadAllHistory = true;
+                      document.getElementById('load-all-history-container')?.classList.add('hidden');
+                      if (typeof window.setupLogListeners === 'function') window.setupLogListeners();
+                      loadSourdoughLogs();
+                  };
+                  list.appendChild(loadMoreBtn);
+              }
           });
       };
 
@@ -3248,67 +3277,72 @@ const executeSmartCopy = async () => {
 
     console.log(`📦 Processing ${checkedBoxes.length} items for copy...`);
 
-    for (const cb of checkedBoxes) {
+    // Create an array of promises to fetch all API data concurrently
+    const copyPromises = Array.from(checkedBoxes).map(async (cb) => {
         const originalId = cb.dataset.id;
         let originalItem = foodLog.find(i => i.id === originalId);
         
-        if (originalItem) {
-            // 📢 LOUD LOG 2: Do we actually have a product code to search with?
-            if (originalItem.productCode) {
-                try {
-                    console.log(`🌐 API Check triggered for: [${originalItem.name}] (Code: ${originalItem.productCode})`);
-                    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${originalItem.productCode}`);
-                    
-                    if (res.ok) {
-                        const json = await res.json();
-                        if (json.status === 1 && json.product) {
-                            console.log(`✅ Success! Updated macros fetched for [${originalItem.name}]`);
-                            const nutriments = json.product.nutriments || {};
-                            
-                            originalItem.baseNutrients = {
-                                calories: parseFloat(nutriments['energy-kcal_100g'] || 0),
-                                protein: parseFloat(nutriments.proteins_100g || 0),
-                                carbs: parseFloat(nutriments.carbohydrates_100g || 0),
-                                fat: parseFloat(nutriments.fat_100g || 0)
-                            };
+        if (!originalItem) return;
 
-                            const multiplier = (originalItem.quantity || 100) / 100;
-                            originalItem.calories = originalItem.baseNutrients.calories * multiplier;
-                            originalItem.protein = originalItem.baseNutrients.protein * multiplier;
-                            originalItem.carbs = originalItem.baseNutrients.carbs * multiplier;
-                            originalItem.fat = originalItem.baseNutrients.fat * multiplier;
-                        } else {
-                            console.log(`❌ API returned status 0 (Product not found) for [${originalItem.name}]`);
-                        }
+        // Clone the item so we don't mutate the live state while processing
+        let itemToCopy = { ...originalItem };
+
+        if (itemToCopy.productCode) {
+            try {
+                console.log(`🌐 API Check triggered for: [${itemToCopy.name}] (Code: ${itemToCopy.productCode})`);
+                const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${itemToCopy.productCode}`);
+                
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json.status === 1 && json.product) {
+                        console.log(`✅ Success! Updated macros fetched for [${itemToCopy.name}]`);
+                        const nutriments = json.product.nutriments || {};
+                        
+                        itemToCopy.baseNutrients = {
+                            calories: parseFloat(nutriments['energy-kcal_100g'] || 0),
+                            protein: parseFloat(nutriments.proteins_100g || 0),
+                            carbs: parseFloat(nutriments.carbohydrates_100g || 0),
+                            fat: parseFloat(nutriments.fat_100g || 0)
+                        };
+
+                        const multiplier = (itemToCopy.quantity || 100) / 100;
+                        itemToCopy.calories = itemToCopy.baseNutrients.calories * multiplier;
+                        itemToCopy.protein = itemToCopy.baseNutrients.protein * multiplier;
+                        itemToCopy.carbs = itemToCopy.baseNutrients.carbs * multiplier;
+                        itemToCopy.fat = itemToCopy.baseNutrients.fat * multiplier;
                     } else {
-                        console.warn(`⚠️ API responded with an error (${res.status}) for [${originalItem.name}]`);
+                        console.log(`❌ API returned status 0 (Product not found) for [${itemToCopy.name}]`);
                     }
-                } catch (err) {
-                    console.error(`🚨 Fatal network error checking API for [${originalItem.name}]`, err);
+                } else {
+                    console.warn(`⚠️ API responded with an error (${res.status}) for [${itemToCopy.name}]`);
                 }
-            } else {
-                // 📢 LOUD LOG 3: This catches historical items or manual entries
-                console.log(`⏩ Skipping API for [${originalItem.name}] - No productCode exists on this item.`);
+            } catch (err) {
+                console.error(`🚨 Fatal network error checking API for [${itemToCopy.name}]`, err);
             }
-
-            const docRef = doc(collection(db, `users/${user.uid}/foodLog`));
-            const { id, eatenAt, ...data } = originalItem;
-
-            let newEatenAtDate = new Date(now);
-            if (keepTime) {
-                const originalDate = originalItem.eatenAt.toDate();
-                newEatenAtDate.setHours(originalDate.getHours(), originalDate.getMinutes());
-            }
-
-            batch.set(docRef, {
-                ...data,
-                eatenAt: Timestamp.fromDate(newEatenAtDate),
-                createdAt: timestampNow,
-                updatedAt: timestampNow,
-            });
-            copyCount++;
+        } else {
+            console.log(`⏩ Skipping API for [${itemToCopy.name}] - No productCode exists on this item.`);
         }
-    }
+
+        const docRef = doc(collection(db, `users/${user.uid}/foodLog`));
+        const { id, eatenAt, ...data } = itemToCopy;
+
+        let newEatenAtDate = new Date(now);
+        if (keepTime && originalItem.eatenAt) {
+            const originalDate = originalItem.eatenAt.toDate();
+            newEatenAtDate.setHours(originalDate.getHours(), originalDate.getMinutes());
+        }
+
+        batch.set(docRef, {
+            ...data,
+            eatenAt: Timestamp.fromDate(newEatenAtDate),
+            createdAt: timestampNow,
+            updatedAt: timestampNow,
+        });
+        copyCount++;
+    });
+
+    // Wait for all concurrent fetches and batch operations to complete
+    await Promise.all(copyPromises);
 
     try {
         console.log("💾 Committing batch to Firestore...");
@@ -6550,36 +6584,57 @@ const switchTab = (tabId) => {
                   renderFrequentFoods();
               };
 
-              // 1. Listen to unified FoodTrackr DB
-              onSnapshot(query(collection(db, `users/${user.uid}/foodLog`)), (snap) => {
-                  mainFoodLogs = snap.docs.map(doc => {
-                      const data = doc.data();
-                      // Normalizer: If eatenAt is missing, fallback to legacy date
-                      if (!data.eatenAt && data.date) data.eatenAt = data.date; 
-                      return { id: doc.id, ...data };
-                  }).filter(log => log.eatenAt); // Ensure it has a valid date object
-                  
-                  mergeAndRenderFood();
-              });
+              window.setupLogListeners = () => {
+                  if (foodLogUnsub) foodLogUnsub();
+                  if (waterLogUnsub) waterLogUnsub();
 
-              // 2. Listen to old Hydration DB to recover past logs and inject them into FoodTrackr
-              onSnapshot(query(collection(db, `users/${user.uid}/${LEGACY_WATER_COLLECTION}`)), (snap) => {
-                  legacyWaterLogs = snap.docs.map(doc => {
-                      const data = doc.data();
+                  const threeMonthsAgo = new Date();
+                  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                  const threeMonthsAgoTimestamp = Timestamp.fromDate(threeMonthsAgo);
+
+                  let foodQuery = collection(db, `users/${user.uid}/foodLog`);
+                  if (!loadAllHistory) {
+                      foodQuery = query(foodQuery, where("eatenAt", ">=", threeMonthsAgoTimestamp));
+                  }
+
+                  // 1. Listen to unified FoodTrackr DB
+                  foodLogUnsub = onSnapshot(foodQuery, (snap) => {
+                      mainFoodLogs = snap.docs.map(doc => {
+                          const data = doc.data();
+                          if (!data.eatenAt && data.date) data.eatenAt = data.date; 
+                          return { id: doc.id, ...data };
+                      }).filter(log => log.eatenAt); 
                       
-                      // Convert legacy hydration logs to look exactly like FoodTrackr drinks
-                      if (!data.eatenAt && data.date) data.eatenAt = data.date;
-                      data.section = 'drinks';
-                      data.name = data.name || data.attributeName || 'Water';
-                      data.quantity = data.quantity !== undefined ? data.quantity : (data.attributeValue || 0);
-                      data.calories = 0; data.protein = 0; data.carbs = 0; data.fat = 0;
-                      data.uploadedApp = "HydrationTrackr"; // Retroactively tag them for the cyan badge
+                      mergeAndRenderFood();
+                  });
+
+                  // 2. Listen to old Hydration DB
+                  waterLogUnsub = onSnapshot(query(collection(db, `users/${user.uid}/${LEGACY_WATER_COLLECTION}`)), (snap) => {
+                      legacyWaterLogs = snap.docs.map(doc => {
+                          const data = doc.data();
+                          if (!data.eatenAt && data.date) data.eatenAt = data.date;
+                          data.section = 'drinks';
+                          data.name = data.name || data.attributeName || 'Water';
+                          data.quantity = data.quantity !== undefined ? data.quantity : (data.attributeValue || 0);
+                          data.calories = 0; data.protein = 0; data.carbs = 0; data.fat = 0;
+                          data.uploadedApp = "HydrationTrackr"; 
+                          
+                          return { id: doc.id, ...data };
+                      }).filter(log => {
+                          if (!log.eatenAt) return false;
+                          if (!loadAllHistory) {
+                              const logDate = log.eatenAt.toDate ? log.eatenAt.toDate() : new Date(0);
+                              return logDate >= threeMonthsAgo;
+                          }
+                          return true;
+                      });
                       
-                      return { id: doc.id, ...data };
-                  }).filter(log => log.eatenAt);
-                  
-                  mergeAndRenderFood();
-              });
+                      mergeAndRenderFood();
+                  });
+              };
+
+              // Start the listeners with the default 3-month cap
+              window.setupLogListeners();
 
               const qFavs = query(collection(db, `users/${user.uid}/favoriteFoods`));
               onSnapshot(qFavs, (snapshot) => {
@@ -7433,8 +7488,22 @@ document.querySelectorAll('input[name="source-type"]').forEach(radio => {
           renderHistoryTable(e.target.value);
       });
 
+      let historySearchTimeout;
       document.getElementById('history-search-input')?.addEventListener('input', () => {
-          renderHistoryTable(null); 
+          clearTimeout(historySearchTimeout);
+          historySearchTimeout = setTimeout(() => {
+              renderHistoryTable(null); 
+          }, 300);
+      });
+
+      document.getElementById('load-all-history-btn')?.addEventListener('click', () => {
+          loadAllHistory = true;
+          document.getElementById('load-all-history-container').classList.add('hidden');
+          showToast('Loading older history...', 'info');
+          if (typeof window.setupLogListeners === 'function') window.setupLogListeners();
+          if (!document.getElementById('sourdough-modal').classList.contains('hidden')) {
+              if (typeof loadSourdoughLogs === 'function') loadSourdoughLogs();
+          }
       });
         
     </script>
