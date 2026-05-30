@@ -71,9 +71,9 @@
         color: var(--button-bg);
         font-weight: 700;
     }
-    .dark-mode .history-view-btn.active {
+    .dark .history-view-btn.active, .dark-mode .history-view-btn.active {
         background-color: #374151;
-        color: white;
+        color: white !important;
     }
     
     .tab-content { display: none; }
@@ -203,15 +203,15 @@
                     <h2 class="text-2xl font-bold mb-4">Intake History</h2>
 
                     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                        <div class="bg-gray-100 dark-mode:bg-gray-800 p-1 rounded-lg flex space-x-1">
-                            <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all" data-view="day">Day</button>
-                            <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all bg-white dark-mode:bg-gray-700 shadow-sm" data-view="week">Week</button>
-                            <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all" data-view="month">Month</button>
-                            <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all" data-view="year">Year</button>
-                            <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium transition-all" data-view="all">All</button>
+                        <div class="bg-gray-100 dark:bg-gray-800 p-1 rounded-lg flex space-x-1">
+                            <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 transition-all hover:bg-gray-200 dark:hover:bg-gray-700" data-view="day">Day</button>
+                            <button class="history-view-btn active px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 transition-all hover:bg-gray-200 dark:hover:bg-gray-700" data-view="week">Week</button>
+                            <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 transition-all hover:bg-gray-200 dark:hover:bg-gray-700" data-view="month">Month</button>
+                            <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 transition-all hover:bg-gray-200 dark:hover:bg-gray-700" data-view="year">Year</button>
+                            <button class="history-view-btn px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 transition-all hover:bg-gray-200 dark:hover:bg-gray-700" data-view="all">All</button>
                         </div>
 
-                        <div class="flex items-center space-x-4 bg-gray-50 dark-mode:bg-gray-800 px-4 py-2 rounded-lg">
+                        <div class="flex items-center space-x-4 bg-gray-50 dark:bg-gray-800 px-4 py-2 rounded-lg text-gray-800 dark:text-gray-100">
                             <button id="hist-prev-btn" class="p-1 hover:text-blue-500 transition-colors"><i class="fa-solid fa-chevron-left"></i></button>
                             <span id="hist-date-range" class="font-bold text-lg min-w-[140px] text-center">Loading...</span>
                             <button id="hist-next-btn" class="p-1 hover:text-blue-500 transition-colors"><i class="fa-solid fa-chevron-right"></i></button>
@@ -579,7 +579,13 @@
                 newLogs = snap.docs.map(doc => {
                     const data = doc.data();
                     const ts = data.eatenAt || data.date;
-                    data.dateObj = (ts && typeof ts.toDate === 'function') ? ts.toDate() : new Date();
+                    if (ts && typeof ts.toDate === 'function') {
+                        data.dateObj = ts.toDate();
+                    } else if (typeof ts === 'string') {
+                        data.dateObj = new Date(ts.replace(" ", "T"));
+                    } else {
+                        data.dateObj = new Date();
+                    }
                     return { id: doc.id, ...data };
                 });
                 mergeLogs();
@@ -591,7 +597,13 @@
                 oldLogs = snap.docs.map(doc => {
                     const data = doc.data();
                     const ts = data.eatenAt || data.date;
-                    data.dateObj = (ts && typeof ts.toDate === 'function') ? ts.toDate() : new Date();
+                    if (ts && typeof ts.toDate === 'function') {
+                        data.dateObj = ts.toDate();
+                    } else if (typeof ts === 'string') {
+                        data.dateObj = new Date(ts.replace(" ", "T"));
+                    } else {
+                        data.dateObj = new Date();
+                    }
                     return { id: doc.id, ...data, isLegacy: true }; // Tag as legacy so edit/delete works correctly
                 });
                 mergeLogs();
@@ -694,6 +706,23 @@
             });
 
             document.getElementById('hist-total').textContent = formatVol(totalVolume);
+
+            // Calculate daily average
+            let daysInRange = 1;
+            if (historyViewMode === 'week') {
+                daysInRange = 7;
+            } else if (historyViewMode === 'month') {
+                daysInRange = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
+            } else if (historyViewMode === 'year') {
+                const year = startDate.getFullYear();
+                daysInRange = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0) ? 366 : 365;
+            } else if (historyViewMode === 'all') {
+                const diffTime = Math.abs(endDate - startDate);
+                daysInRange = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+            }
+            
+            const avgVolume = totalVolume / daysInRange;
+            document.getElementById('hist-avg').textContent = formatVol(avgVolume);
             
             const tbody = document.querySelector('#history-table-container');
             tbody.innerHTML = `<table class="w-full text-left divide-y dark:divide-gray-700">${
@@ -701,7 +730,7 @@
                     const dateObj = log.dateObj;
                     const dateDisplay = historyViewMode === 'day' 
                         ? dateObj.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
-                        : dateObj.toLocaleString([], {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+                        : dateObj.toLocaleString('en-GB', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}).replace(',', '');
                     
                     const amount = log.quantity !== undefined ? log.quantity : log.attributeValue;
                     const drinkType = log.name || log.attributeName || 'water';
@@ -848,6 +877,7 @@
         async function logWater(amount, drinkType = 'water', entryDate = null, notes = "", tags = ["manual_entry"]) {
             if (!currentUser || amount <= 0) return;
             try {
+                const formattedDate = entryDate ? new Date(entryDate).toISOString() : new Date().toISOString();
                 const now = Timestamp.now();
                 const logEntry = {
                     name: drinkType,                 // New format
@@ -862,8 +892,8 @@
                     status: "drank",
                     notes: notes,
                     tags: tags,
-                    eatenAt: entryDate ? Timestamp.fromDate(new Date(entryDate)) : now, // New format
-                    date: entryDate ? Timestamp.fromDate(new Date(entryDate)) : now,    // Legacy support
+                    eatenAt: formattedDate,          // New format (using UTC string like loggr)
+                    date: formattedDate,             // Legacy support (using UTC string like loggr)
                     dailyGoal: appSettings.dailyGoal,
                     createdAt: now,
                     uploadedApp: "HydrationTrackr",  // Cross-app Metadata
@@ -946,8 +976,9 @@
              const ctx = document.getElementById('history-chart').getContext('2d');
              if(historyChart) historyChart.destroy();
              
-             const labels = Array.from(chartMap.keys());
-             const data = Array.from(chartMap.values()).map(v => formatVol(v));
+             // Sort labels chronologically so the chart always reads oldest to newest
+             const labels = Array.from(chartMap.keys()).sort();
+             const data = labels.map(label => formatVol(chartMap.get(label)));
              
              historyChart = new Chart(ctx, {
                 type: 'bar',
@@ -1011,12 +1042,12 @@
              
              try {
                 const docRef = doc(db, `users/${currentUser.uid}/${DB_COLLECTION}`, editingLogId);
-                const dtVal = Timestamp.fromDate(new Date(document.getElementById('edit-datetime').value));
+                const dtValStr = new Date(document.getElementById('edit-datetime').value).toISOString();
                 const typeVal = document.getElementById('edit-drink-type').value;
                 
                 await updateDoc(docRef, {
-                    date: dtVal,
-                    eatenAt: dtVal,
+                    date: dtValStr,
+                    eatenAt: dtValStr,
                     attributeName: typeVal,
                     name: typeVal,
                     attributeValue: mlVal,

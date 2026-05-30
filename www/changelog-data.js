@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.92.0-alpha",
+    date: "2026-05-30",
+    changes: [
+        "In HydrationTrackr: Updated database logic to parse and save dates as UTC ISO strings (matching Loggr) instead of Firestore Timestamps.",
+        "In HydrationTrackr: Fixed invisible text on the History view buttons by correcting the Tailwind dark mode prefix.",
+        "In HydrationTrackr: Updated detailed history logs to display dates in the full dd/mm/yyyy hh:mm format.",
+        "In HydrationTrackr: Added missing logic to calculate and display the Daily Average volume for the selected time period.",
+        "In HydrationTrackr: Fixed the history chart displaying dates backwards by chronologically sorting the X-axis labels."
+    ]
+},
+    {
     version: "v15.91.0-alpha",
     date: "2026-05-30",
     changes: [
