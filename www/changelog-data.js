@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.94.0-alpha",
+    date: "2026-05-31",
+    changes: [
+        "In FoodTrackr: Added data discrepancy warnings in the product modal to highlight inconsistencies between serving size and package size, including logic for uneven/fractional servings.",
+        "In FoodTrackr: Abstracted data discrepancy logic into a reusable global helper function and injected visual warning badges directly into immediate search results.",
+        "In FoodTrackr: Added a global fullscreen image viewer functionality and made product images inside the product details modal clickable to expand.",
+        "In FoodTrackr: Redesigned the quick log menu buttons in the entry form and product details modal to provide visual distinction between serving and package options, adding active toast confirmations.",
+        "In FoodTrackr: Expanded Quick Serving Logic to dynamically calculate and display valid whole integer servings (1, 2, 3 servings) strictly constrained by the total package size.",
+        "In FoodTrackr: Added generated fractional pack amounts (25%, 50%, 75%) alongside a toast warning if selecting these fractional amounts deviates from the manufacturer's recommended serving size."
+    ]
+},
+    {
     version: "v15.93.0-alpha",
     date: "2026-05-30",
     changes: [

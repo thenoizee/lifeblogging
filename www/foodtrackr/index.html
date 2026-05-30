@@ -2033,6 +2033,49 @@ if (initialTheme === 'dark') document.documentElement.classList.add('dark');
 
       // --- Constants ---
        const ALL_SECTIONS = ['breakfast', 'brunch', 'lunch', 'afternoon_tea', 'dinner', 'puddings', 'drinks'];
+
+       window.openFullscreenImage = (src) => {
+           const viewer = document.createElement('div');
+           viewer.className = 'fixed inset-0 z-[6000] bg-black/90 flex items-center justify-center cursor-pointer p-4 backdrop-blur-sm';
+           viewer.innerHTML = `<img src="${src}" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl"><div class="absolute top-4 right-6 text-white text-4xl font-light hover:text-orange-500 transition-colors">&times;</div>`;
+           viewer.onclick = () => viewer.remove();
+           document.body.appendChild(viewer);
+       };
+
+       const getProductDiscrepancy = (servingSize, packageSize) => {
+           let hasDiscrepancy = false;
+           let discrepancyMsg = '';
+           let shortMsg = '';
+
+           if (servingSize && packageSize) {
+               if (servingSize > packageSize) {
+                   hasDiscrepancy = true;
+                   discrepancyMsg = 'Serving size is larger than the total package size.';
+                   shortMsg = 'Serving > Pack';
+               } else {
+                   const servingsPerPack = packageSize / servingSize;
+                   if (servingsPerPack > 1 && Math.abs(servingsPerPack - Math.round(servingsPerPack)) > 0.15) {
+                       hasDiscrepancy = true;
+                       discrepancyMsg = `Package contains an uneven number of servings (${servingsPerPack.toFixed(1)}). Servings are usually whole numbers relative to the package size.`;
+                       shortMsg = `Uneven Servings (${servingsPerPack.toFixed(1)})`;
+                   }
+               }
+           } else if (packageSize && !servingSize) {
+               hasDiscrepancy = true;
+               discrepancyMsg = 'Package size is known, but serving size is missing.';
+               shortMsg = 'Missing Serving Data';
+           }
+
+           return { hasDiscrepancy, discrepancyMsg, shortMsg };
+       };
+
+       window.openFullscreenImage = (src) => {
+           const viewer = document.createElement('div');
+           viewer.className = 'fixed inset-0 z-[6000] bg-black/90 flex items-center justify-center cursor-pointer p-4 backdrop-blur-sm';
+           viewer.innerHTML = `<img src="${src}" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl"><div class="absolute top-4 right-6 text-white text-4xl font-light hover:text-orange-500 transition-colors">&times;</div>`;
+           viewer.onclick = () => viewer.remove();
+           document.body.appendChild(viewer);
+       };
        const SECTION_NAMES = {
            breakfast: 'Breakfast',
            brunch: 'Brunch',
@@ -2759,18 +2802,24 @@ const renderQuickButtons = (product, packageSize, servingSize, servingSizeStr) =
     if (!container) return;
     container.innerHTML = '';
     
-    const createBtn = (label, amount, unitName, isServing = false) => {
+    const createBtn = (label, amount, unitName, isServing = false, showWarning = false) => {
         const btn = document.createElement('button');
         btn.type = 'button'; 
         btn.className = isServing 
-            ? 'text-[10px] md:text-xs py-1 px-2 rounded border border-orange-200 bg-orange-50 text-orange-700 font-semibold dark:bg-orange-900/50 dark:border-orange-700 dark:text-orange-300'
-            : 'text-[10px] md:text-xs py-1 px-2 rounded border border-gray-200 bg-white hover:bg-orange-50 hover:border-orange-200 transition-colors text-gray-600 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300';
+            ? 'text-[10px] md:text-xs py-1.5 px-3 rounded-lg border border-orange-200 bg-orange-50 text-orange-700 font-semibold dark:bg-orange-900/50 dark:border-orange-700 dark:text-orange-300 shadow-sm hover:bg-orange-100 transition-colors'
+            : 'text-[10px] md:text-xs py-1.5 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors text-gray-600 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 shadow-sm';
         
-        btn.textContent = label;
+        btn.innerHTML = `<i class="fa-solid ${isServing ? 'fa-spoon' : 'fa-chart-pie'} mr-1 opacity-70"></i> ${label}`;
         btn.addEventListener('click', () => {
             document.getElementById('quantity-amount').value = amount;
             document.getElementById('quantity-unit').value = unitName;
             updateQuantityInGrams(); 
+            
+            if (showWarning) {
+                showToast(`Form updated to ${label}. Warning: Doesn't match exact serving size!`, 'info');
+            } else {
+                showToast(`Form updated to ${label}`, 'success');
+            }
         });
         container.appendChild(btn);
     };
@@ -2780,7 +2829,17 @@ const renderQuickButtons = (product, packageSize, servingSize, servingSizeStr) =
         const servingOption = Array.from(unitSelect.options).find(opt => opt.value.toLowerCase().includes('serving'));
         const servingName = servingOption ? servingOption.value : `Serving (${servingSizeStr || servingSize+'g'})`;
         
-        createBtn(`1 Serving (${servingSizeStr || servingSize+'g'})`, 1, servingName, true);
+        createBtn(`1 Serving`, 1, servingName, true, false);
+        
+        // Calculate how many whole servings actually fit in the package (default to 3 if package size is unknown)
+        const maxServings = packageSize ? Math.floor(packageSize / servingSize) : 3;
+        
+        if (maxServings >= 2) {
+            createBtn(`2 Servings`, 2, servingName, true, false);
+        }
+        if (maxServings >= 3) {
+            createBtn(`3 Servings`, 3, servingName, true, false);
+        }
     }
 
     if (packageSize) {
@@ -2788,9 +2847,11 @@ const renderQuickButtons = (product, packageSize, servingSize, servingSizeStr) =
         const packOption = Array.from(unitSelect.options).find(opt => opt.value.toLowerCase().includes('pack'));
         const packName = packOption ? packOption.value : `Pack (${product.quantity || packageSize+'g'})`;
         
-        createBtn('1/4 Pack', 0.25, packName);
-        createBtn('1/2 Pack', 0.5, packName);
-        createBtn('Whole Pack', 1, packName);
+        const shouldWarn = !!servingSize;
+        createBtn('25% Pack', 0.25, packName, false, shouldWarn);
+        createBtn('50% Pack', 0.5, packName, false, shouldWarn);
+        createBtn('75% Pack', 0.75, packName, false, shouldWarn);
+        createBtn('Whole Pack', 1, packName, false, false);
     }
 };
 
@@ -4916,13 +4977,32 @@ const groupedBadge = isGrouped ?
         const pCode = product.code || product._id || product.id;
         const validCode = (pCode && String(pCode) !== 'undefined') ? pCode : null;
 
+        const parseQuantityStr = (str) => {
+            if (!str) return null;
+            const match = str.match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
+            if(!match) return null;
+            let val = parseFloat(match[1]);
+            const unit = match[2].toLowerCase();
+            if(unit === 'kg' || unit === 'l') val *= 1000;
+            return val;
+        };
+        const searchServingGrams = parseQuantityStr(product.serving_size || product.serving_quantity);
+        const searchPackGrams = parseQuantityStr(product.product_quantity || product.quantity);
+        const { hasDiscrepancy, shortMsg } = getProductDiscrepancy(searchServingGrams, searchPackGrams);
+        
+        const discrepancyBadgeHTML = hasDiscrepancy 
+            ? `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 border border-red-200 dark:border-red-800 ml-2 align-middle shadow-sm" title="Data Discrepancy: Consider updating OpenFoodFacts">
+                <i class="fa-solid fa-scale-unbalanced"></i> ${shortMsg}
+               </span>` 
+            : '';
+
         card.innerHTML = `
             <div class="w-20 h-20 flex-shrink-0 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-100 dark:border-gray-600 p-1 overflow-hidden relative">
                 ${groupedBadge}
                 <img src="${imageUrl}" class="w-full h-full object-contain">
             </div>
             
-            <div class="flex-grow min-w-0 pr-8"> <h3 class="font-bold text-gray-900 dark:text-white text-base leading-tight truncate" title="${name}">${name}</h3>
+            <div class="flex-grow min-w-0 pr-8"> <h3 class="font-bold text-gray-900 dark:text-white text-base leading-tight truncate flex items-center" title="${name}"><span class="truncate">${name}</span>${discrepancyBadgeHTML}</h3>
                 <p class="text-sm text-gray-500 dark:text-gray-400 truncate mb-1" title="${brands}${stores}">${brands}${stores}</p>
                 ${validCode ? `<p class="text-[10px] text-gray-400 font-mono mb-2">Code: ${validCode}</p>` : ''}
                 
@@ -5862,6 +5942,8 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
     const allergens = product.allergens_from_ingredients || 'None listed.';
     
     // --- DATA QUALITY CHECK ---
+    const { hasDiscrepancy, discrepancyMsg } = getProductDiscrepancy(servingSize, packageSize);
+    
     const missingFields = [];
     if (!product.serving_size && !product.serving_quantity) missingFields.push('Serving Size');
     if (typeof nutriments['energy-kcal_100g'] === 'undefined') missingFields.push('Calories');
@@ -5878,7 +5960,7 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
     let dataWarningHTML = '';
     if (isNutritionIncomplete || missingFields.length > 0) {
         const missingText = missingFields.length > 0 ? `Missing: <strong>${missingFields.join(', ')}</strong>.` : 'Nutrition facts may be incomplete.';
-        dataWarningHTML = `
+        dataWarningHTML += `
             <div class="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 p-3 rounded-lg mb-4 text-sm">
                 <div class="flex items-start gap-3">
                     <i class="fa-solid fa-triangle-exclamation text-yellow-600 dark:text-yellow-400 mt-0.5"></i>
@@ -5887,6 +5969,23 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
                         <p class="text-yellow-700 dark:text-yellow-300 mb-2">${missingText}</p>
                         <p class="text-xs text-yellow-600 dark:text-yellow-400">
                             You can still log this item, but adding this data to the database helps everyone.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    if (hasDiscrepancy) {
+        dataWarningHTML += `
+            <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 p-3 rounded-lg mb-4 text-sm mt-2">
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-scale-unbalanced text-red-600 dark:text-red-400 mt-0.5"></i>
+                    <div>
+                        <p class="font-bold text-red-800 dark:text-red-200">Data Discrepancy Detected</p>
+                        <p class="text-red-700 dark:text-red-300 mb-2">${discrepancyMsg}</p>
+                        <p class="text-xs text-red-600 dark:text-red-400">
+                            Please consider updating this product's information on Open Food Facts to help improve accuracy.
                         </p>
                     </div>
                 </div>
@@ -6021,7 +6120,7 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
             ${dataWarningHTML}
 
             <div class="image-scroll-container">
-                ${allImages.map(url => `<img src="${url}" alt="${name}" style="background-color: white;">`).join('')}
+                ${allImages.map(url => `<img src="${url}" alt="${name}" style="background-color: white;" class="cursor-pointer hover:opacity-80 transition-opacity" onclick="openFullscreenImage(this.src)">`).join('')}
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -6051,15 +6150,25 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
                 
                 <div class="flex flex-col gap-6">
                     <div class="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
-                        <h3 class="font-bold mb-3 text-orange-600 dark:text-orange-400 border-b border-gray-200 dark:border-gray-600 pb-2"><i class="fa-solid fa-scale-balanced mr-2"></i>Quick Quantity</h3>
-                        <div id="quantity-buttons" class="flex flex-wrap gap-2">
-                            ${servingSize ? `<button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-800/50 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="1" data-unit="Serving">Serving (${servingSizeStr})</button>` : ''}
+                        <h3 class="font-bold mb-3 text-orange-600 dark:text-orange-400 border-b border-gray-200 dark:border-gray-600 pb-2"><i class="fa-solid fa-bolt mr-2"></i>Quick Log Options</h3>
+                        <p class="text-[10px] text-gray-500 mb-2">Click below to immediately select this product with the chosen amount.</p>
+                        <div id="quantity-buttons" class="grid grid-cols-2 gap-2">
+                            ${servingSize ? `
+                                <button class="secondary-button text-xs py-2 px-3 font-bold bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 hover:bg-orange-100 transition-colors rounded-lg flex flex-col items-center col-span-2 ${(!packageSize || (packageSize / servingSize >= 1.8)) ? 'sm:col-span-1' : ''}" data-amount="1" data-unit="Serving" onclick="showToast('Using 1 whole recommended serving.', 'success')">
+                                    <span class="block"><i class="fa-solid fa-utensils mr-1"></i> Use 1 Serving</span>
+                                    <span class="text-[9px] font-normal opacity-80 mt-0.5">(${servingSizeStr})</span>
+                                </button>
+                                ${(!packageSize || (packageSize / servingSize >= 1.8)) ? `
+                                <button class="secondary-button text-xs py-2 px-3 font-bold bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 hover:bg-orange-100 transition-colors rounded-lg flex flex-col items-center col-span-2 sm:col-span-1" data-amount="2" data-unit="Serving" onclick="showToast('Using 2 whole recommended servings.', 'success')">
+                                    <span class="block"><i class="fa-solid fa-utensils mr-1"></i> Use 2 Servings</span>
+                                    <span class="text-[9px] font-normal opacity-80 mt-0.5">(${(servingSize * 2).toFixed(0)}g)</span>
+                                </button>
+                                ` : ''}
+                            ` : ''}
                             ${product.quantity ? `
-                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="0.25" data-unit="Pack">1/4 Pack</button>
-                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="0.333" data-unit="Pack">1/3 Pack</button>
-                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="0.5" data-unit="Pack">Half Pack</button>
-                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="0.75" data-unit="Pack">3/4 Pack</button>
-                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-orange-100 dark:bg-orange-900/40 border border-orange-300 dark:border-orange-700 text-orange-800 dark:text-orange-200" data-amount="1" data-unit="Pack">Whole Pack</button>
+                                <button class="secondary-button text-xs py-2 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg col-span-1" data-amount="0.25" data-unit="Pack" onclick="${servingSize ? `showToast('Warning: Fractional pack amount may not match recommended serving size!', 'info')` : ''}"><i class="fa-solid fa-chart-pie mr-1"></i> 25% Pack</button>
+                                <button class="secondary-button text-xs py-2 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg col-span-1" data-amount="0.5" data-unit="Pack" onclick="${servingSize ? `showToast('Warning: Fractional pack amount may not match recommended serving size!', 'info')` : ''}"><i class="fa-solid fa-chart-pie mr-1"></i> 50% Pack</button>
+                                <button class="secondary-button text-xs py-2 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-500 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg col-span-2" data-amount="1" data-unit="Pack"><i class="fa-solid fa-box mr-1"></i> Whole Pack</button>
                             ` : ''}
                         </div>
                     </div>
