@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.89.0-alpha",
+    date: "2026-05-30",
+    changes: [
+        "In FoodTrackr: Applied the standardized UTC timezone offset logic across the local time parsing handlers to prevent cross-timezone drifting on date inputs.",
+        "In FoodTrackr: Fully redesigned the Product Details modal to be far more readable.",
+        "In FoodTrackr: The Product Details modal now clearly distinguishes between 'Consumed At' (when you ate the food) and 'System Recorded' (when the entry was actually saved to the database).",
+        "In FoodTrackr: The Product Details modal now beautifully renders Brands and Shops as highly visible UI tags.",
+        "In FoodTrackr: The Product Details modal now displays the crossed-out Original Name if you have custom-renamed an item."
+    ]
+},
+    {
     version: "v15.88.0-alpha",
     date: "2026-05-30",
     changes: [

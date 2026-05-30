@@ -2077,12 +2077,9 @@ if (initialTheme === 'dark') document.documentElement.classList.add('dark');
 
       // --- Helper Functions ---
       const toLocalISOString = (date) => {
-          const year = date.getFullYear();
-          const month = (date.getMonth() + 1).toString().padStart(2, '0');
-          const day = date.getDate().toString().padStart(2, '0');
-          const hours = date.getHours().toString().padStart(2, '0');
-          const minutes = date.getMinutes().toString().padStart(2, '0');
-          return `${year}-${month}-${day}T${hours}:${minutes}`;
+          const d = new Date(date);
+          d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+          return d.toISOString().slice(0, 16);
       };
 
       const setDefaultDateTime = () => {
@@ -3788,7 +3785,10 @@ document.getElementById('history-search-input').addEventListener('input', () => 
         allergens_from_ingredients: item.allergens || 'No allergen info saved.',
         categories: item.section || 'Log Entry',
         labels: 'History Item',
-        countries: 'User Log'
+        countries: 'User Log',
+        eatenAt: item.eatenAt,
+        createdAt: item.createdAt,
+        original_name: item.originalName
     };
 
     showProductDetailsModal(mockProduct);
@@ -5590,7 +5590,10 @@ window.openProductModalFromLog = (itemId) => {
         },
         categories: item.section,
         labels: 'Log Entry',
-        countries: 'User Log'
+        countries: 'User Log',
+        eatenAt: item.eatenAt,
+        createdAt: item.createdAt,
+        original_name: item.originalName
     };
 
     showProductDetailsModal(mockProduct);
@@ -5784,6 +5787,7 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
         const showProductDetailsModal = (product) => {
     const modal = document.getElementById('product-modal');
     const name = product.product_name || 'Unknown';
+    const originalName = product.original_name || null;
     
     const pCode = product.code || product._id || product.id;
     const validCode = (pCode && String(pCode) !== 'undefined') ? pCode : null;
@@ -5907,85 +5911,157 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
         }
     }
 
+    let loggedTimeHTML = '';
+    if (product.eatenAt || product.createdAt) {
+        const formatTime = (ts) => {
+            if (!ts) return null;
+            const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+            if (isNaN(d)) return null;
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            const hours = String(d.getHours()).padStart(2, '0');
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            return { date: `${day}-${month}-${year}`, time: `${hours}:${minutes}` };
+        };
+        
+        const eaten = formatTime(product.eatenAt);
+        const created = formatTime(product.createdAt);
+        
+        loggedTimeHTML = '<div class="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-3">';
+        if (eaten) {
+            loggedTimeHTML += `
+                <div class="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 p-3 rounded-xl flex items-center gap-3 shadow-sm">
+                    <div class="w-10 h-10 rounded-full bg-white dark:bg-gray-800 shadow-sm flex items-center justify-center text-orange-500 shrink-0">
+                        <i class="fa-solid fa-calendar-check"></i>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-bold text-orange-600/70 dark:text-orange-400/70 uppercase tracking-wider mb-0.5">Consumed At</p>
+                        <p class="font-bold text-gray-800 dark:text-gray-100 text-xs">${eaten.date} <span class="ml-1 px-1.5 py-0.5 bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300 rounded font-mono">${eaten.time}</span></p>
+                    </div>
+                </div>`;
+        }
+        if (created) {
+            loggedTimeHTML += `
+                <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 rounded-xl flex items-center gap-3 shadow-sm">
+                    <div class="w-10 h-10 rounded-full bg-white dark:bg-gray-800 shadow-sm flex items-center justify-center text-blue-500 shrink-0">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-bold text-blue-600/70 dark:text-blue-400/70 uppercase tracking-wider mb-0.5">System Recorded</p>
+                        <p class="font-bold text-gray-800 dark:text-gray-100 text-xs">${created.date} <span class="ml-1 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 rounded font-mono">${created.time}</span></p>
+                    </div>
+                </div>`;
+        }
+        loggedTimeHTML += '</div>';
+    }
+
+    let titleHTML = `<h2 class="text-2xl font-black pr-8 text-gray-800 dark:text-white leading-tight">${name} ${isFavorite ? '<i class="fas fa-star text-yellow-500 ml-1 text-lg"></i>' : ''}</h2>`;
+    if (originalName && originalName !== name) {
+        titleHTML += `<p class="text-xs text-gray-400 font-medium italic mt-1">Original Name: <span class="line-through">${originalName}</span></p>`;
+    }
+    
+    let metaTagsHTML = '';
+    const cleanBrand = (brands || '').replace('Manual Entry', '').replace('Manual', '').trim();
+    if (cleanBrand) {
+        metaTagsHTML += `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-semibold border border-gray-200 dark:border-gray-600"><i class="fa-solid fa-tag text-gray-400"></i> ${cleanBrand}</span>`;
+    }
+    if (stores && stores !== 'N/A') {
+        metaTagsHTML += `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold border border-emerald-200 dark:border-emerald-800"><i class="fa-solid fa-shop text-emerald-500"></i> ${stores}</span>`;
+    }
+    const tagsContainer = metaTagsHTML ? `<div class="flex flex-wrap gap-2 mb-4">${metaTagsHTML}</div>` : '';
+
     modal.innerHTML = `
-        <div class="modal-container text-left">
-            <div class="flex justify-between items-start">
-                <h2 class="text-2xl font-bold mb-1 pr-8">${name} ${isFavorite ? '<i class="fas fa-star text-yellow-500"></i>' : ''}</h2>
-                <button id="close-modal-btn" class="text-2xl font-bold text-[var(--text-color-secondary)] hover:text-[var(--text-color-primary)]">&times;</button>
+        <div class="modal-container text-left custom-scrollbar overflow-y-auto max-h-[90vh]">
+            <div class="flex justify-between items-start mb-3">
+                <div>${titleHTML}</div>
+                <button id="close-modal-btn" class="text-2xl font-bold text-[var(--text-color-secondary)] hover:text-orange-500 transition-colors bg-gray-100 dark:bg-gray-800 w-8 h-8 rounded-full flex items-center justify-center shrink-0">&times;</button>
             </div>
             
             ${modalSourceBadgeHTML}
             
-            <p class="text-lg text-[var(--text-color-secondary)] mb-4">${brands}</p>
+            ${tagsContainer}
             
+            ${loggedTimeHTML}
+
             ${dataWarningHTML}
 
             <div class="image-scroll-container">
                 ${allImages.map(url => `<img src="${url}" alt="${name}" style="background-color: white;">`).join('')}
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <h3 class="font-bold mb-2">Nutrition Facts</h3>
-                    <p class="text-sm mb-2">Serving: ${servingSizeStr || '<span class="text-red-500">Unknown</span>'} | Package: ${quantityStr}</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-100 dark:border-gray-700 h-max">
+                    <h3 class="font-bold mb-3 text-orange-600 dark:text-orange-400 border-b border-gray-200 dark:border-gray-600 pb-2"><i class="fa-solid fa-chart-pie mr-2"></i>Nutrition Facts</h3>
+                    <div class="flex justify-between text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-3">
+                        <span>Serving: ${servingSizeStr || '<span class="text-red-500">Unknown</span>'}</span>
+                        <span>Package: ${quantityStr}</span>
+                    </div>
                     <table class="w-full text-sm">
-                        <thead><tr class="border-b"><th class="text-left">Nutrient</th><th class="text-right">Per 100g/ml</th><th class="text-right">Per Package (${packageSize.toFixed(0)}g/ml)</th></tr></thead>
+                        <thead><tr class="border-b border-gray-200 dark:border-gray-600"><th class="text-left pb-2 text-gray-500 font-bold">Nutrient</th><th class="text-right pb-2 text-gray-500 font-bold">Per 100g</th><th class="text-right pb-2 text-gray-500 font-bold">Total Pack</th></tr></thead>
                         <tbody>
-                            <tr class="border-b"><td>Calories</td><td class="text-right">${baseNutrients.calories.toFixed(0)}</td><td class="text-right">${(baseNutrients.calories * packageMultiplier).toFixed(0)}</td></tr>
-                            <tr class="border-b"><td>Protein</td><td class="text-right">${baseNutrients.protein.toFixed(1)}g</td><td class="text-right">${(baseNutrients.protein * packageMultiplier).toFixed(1)}g</td></tr>
-                            <tr class="border-b"><td>Carbs</td><td class="text-right">${baseNutrients.carbs.toFixed(1)}g</td><td class="text-right">${(baseNutrients.carbs * packageMultiplier).toFixed(1)}g</td></tr>
-                            <tr class="border-b"><td>Fat</td><td class="text-right">${baseNutrients.fat.toFixed(1)}g</td><td class="text-right">${(baseNutrients.fat * packageMultiplier).toFixed(1)}g</td></tr>
+                            <tr class="border-b border-gray-100 dark:border-gray-700"><td class="py-2 font-medium">Calories</td><td class="text-right font-mono">${baseNutrients.calories.toFixed(0)}</td><td class="text-right font-mono font-black text-orange-600 dark:text-orange-400">${(baseNutrients.calories * packageMultiplier).toFixed(0)}</td></tr>
+                            <tr class="border-b border-gray-100 dark:border-gray-700"><td class="py-2 font-medium">Protein</td><td class="text-right font-mono">${baseNutrients.protein.toFixed(1)}g</td><td class="text-right font-mono font-bold">${(baseNutrients.protein * packageMultiplier).toFixed(1)}g</td></tr>
+                            <tr class="border-b border-gray-100 dark:border-gray-700"><td class="py-2 font-medium">Carbs</td><td class="text-right font-mono">${baseNutrients.carbs.toFixed(1)}g</td><td class="text-right font-mono font-bold">${(baseNutrients.carbs * packageMultiplier).toFixed(1)}g</td></tr>
+                            <tr class="border-b border-gray-200 dark:border-gray-600"><td class="py-2 font-medium">Fat</td><td class="text-right font-mono">${baseNutrients.fat.toFixed(1)}g</td><td class="text-right font-mono font-bold">${(baseNutrients.fat * packageMultiplier).toFixed(1)}g</td></tr>
                             ${Object.keys(DETAILED_NUTRIENTS_MAP).map(key => `
-                                <tr class="border-b">
-                                    <td>${DETAILED_NUTRIENTS_MAP[key].replace(' (g)', '')}</td>
-                                    <td class="text-right">${(baseNutrients[key] || 0).toFixed(1)}g</td>
-                                    <td class="text-right">${((baseNutrients[key] || 0) * packageMultiplier).toFixed(1)}g</td>
+                                <tr class="border-b border-gray-100 dark:border-gray-700 opacity-70 hover:opacity-100 transition-opacity">
+                                    <td class="py-1 text-xs">${DETAILED_NUTRIENTS_MAP[key].replace(' (g)', '')}</td>
+                                    <td class="text-right font-mono text-[10px]">${(baseNutrients[key] || 0).toFixed(1)}g</td>
+                                    <td class="text-right font-mono font-bold text-xs">${((baseNutrients[key] || 0) * packageMultiplier).toFixed(1)}g</td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
                 </div>
-                <div>
-                    <h3 class="font-bold mb-2">Quick Quantity</h3>
-                    <div id="quantity-buttons" class="flex flex-wrap gap-2">
-                        ${servingSize ? `<button class="secondary-button text-xs" data-amount="1" data-unit="Serving">Serving (${servingSizeStr})</button>` : ''}
-                        ${product.quantity ? `
-                        <button class="secondary-button text-xs" data-amount="0.25" data-unit="Pack">1/4 Pack</button>
-                        <button class="secondary-button text-xs" data-amount="0.333" data-unit="Pack">1/3 Pack</button>
-                        <button class="secondary-button text-xs" data-amount="0.5" data-unit="Pack">Half Pack</button>
-                        <button class="secondary-button text-xs" data-amount="0.75" data-unit="Pack">3/4 Pack</button>
-                        <button class="secondary-button text-xs" data-amount="1" data-unit="Pack">Whole Pack</button>
-                        ` : ''}
+                
+                <div class="flex flex-col gap-6">
+                    <div class="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
+                        <h3 class="font-bold mb-3 text-orange-600 dark:text-orange-400 border-b border-gray-200 dark:border-gray-600 pb-2"><i class="fa-solid fa-scale-balanced mr-2"></i>Quick Quantity</h3>
+                        <div id="quantity-buttons" class="flex flex-wrap gap-2">
+                            ${servingSize ? `<button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-800/50 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="1" data-unit="Serving">Serving (${servingSizeStr})</button>` : ''}
+                            ${product.quantity ? `
+                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="0.25" data-unit="Pack">1/4 Pack</button>
+                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="0.333" data-unit="Pack">1/3 Pack</button>
+                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="0.5" data-unit="Pack">Half Pack</button>
+                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-orange-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200" data-amount="0.75" data-unit="Pack">3/4 Pack</button>
+                            <button class="secondary-button text-xs py-1.5 px-3 font-bold bg-orange-100 dark:bg-orange-900/40 border border-orange-300 dark:border-orange-700 text-orange-800 dark:text-orange-200" data-amount="1" data-unit="Pack">Whole Pack</button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-100 dark:border-gray-700 flex-grow">
+                        <h3 class="font-bold mb-3 text-orange-600 dark:text-orange-400 border-b border-gray-200 dark:border-gray-600 pb-2"><i class="fa-solid fa-tags mr-2"></i>Details</h3>
+                        <div class="flex flex-wrap gap-2 text-[10px] mb-4">
+                             <span class="badge bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 shadow-sm border border-blue-200 dark:border-blue-800">${nutriscore}</span>
+                             <span class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 shadow-sm border border-green-200 dark:border-green-800">${ecoscore}</span>
+                             <span class="badge bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 shadow-sm border border-purple-200 dark:border-purple-800">${novaGroup}</span>
+                        </div>
+                        <div class="space-y-1.5">
+                            <p class="text-xs"><strong class="text-gray-500 dark:text-gray-400">Barcode/ID:</strong> <span class="font-mono bg-white dark:bg-gray-800 px-1 rounded border border-gray-200 dark:border-gray-700">${validCode || 'N/A'}</span></p>
+                            <p class="text-xs"><strong class="text-gray-500 dark:text-gray-400">Categories:</strong> ${categories}</p>
+                            <p class="text-xs"><strong class="text-gray-500 dark:text-gray-400">Labels:</strong> ${labels}</p>
+                            <p class="text-xs"><strong class="text-gray-500 dark:text-gray-400">Sold in:</strong> ${countries}</p>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="mt-4">
-                <h3 class="font-bold mb-2">Additional Information</h3>
-                <div class="flex flex-wrap gap-2 text-xs">
-                     <span class="badge bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">${nutriscore}</span>
-                     <span class="badge bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">${ecoscore}</span>
-                     <span class="badge bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">${novaGroup}</span>
-                </div>
-                <p class="text-xs mt-2"><strong>Barcode/ID:</strong> ${validCode || 'N/A'}</p>
-                <p class="text-xs mt-2"><strong>Categories:</strong> ${categories}</p>
-                <p class="text-xs mt-2"><strong>Labels:</strong> ${labels}</p>
-                <p class="text-xs mt-2"><strong>Sold in:</strong> ${countries}</p>
-                <p class="text-xs mt-2"><strong>Shops:</strong> ${stores}</p>
+            
+            <div class="mt-6 bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
+                <h3 class="font-bold mb-3 text-orange-600 dark:text-orange-400 border-b border-gray-200 dark:border-gray-600 pb-2"><i class="fa-solid fa-flask mr-2"></i>Ingredients & Allergens</h3>
+                <p class="text-xs p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-inner leading-relaxed text-gray-700 dark:text-gray-300 font-medium whitespace-pre-wrap">${ingredients}</p>
+                <p class="text-xs mt-3"><strong class="text-red-500"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Allergens:</strong> <span class="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 px-2 py-0.5 rounded font-bold">${allergens}</span></p>
             </div>
-            <div class="mt-4">
-                <h3 class="font-bold mb-2">Ingredients & Allergens</h3>
-                <p class="text-xs p-2 bg-[var(--input-bg-color)] rounded">${ingredients}</p>
-                <p class="text-xs mt-2"><strong>Allergens:</strong> ${allergens}</p>
-            </div>
-            <div class="button-group">
-                <button id="select-product-btn" class="main-button">Select This Product</button>
+            
+            <div class="button-group mt-6 gap-3">
+                <button id="select-product-btn" class="main-button shadow-md flex-grow py-3 text-base"><i class="fa-solid fa-check-circle mr-2"></i> Select This Product</button>
                 ${validCode ? `
-                <a href="https://world.openfoodfacts.org/product/${validCode}" target="_blank" class="secondary-button text-center flex-grow py-3 px-4 rounded-lg flex items-center justify-center gap-2" style="padding-top: 12px; padding-bottom: 12px;">
+                <a href="https://world.openfoodfacts.org/product/${validCode}" target="_blank" class="secondary-button text-center py-3 px-6 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 font-bold transition-all shadow-sm">
                    <i class="fa-solid fa-pen-to-square"></i> Edit on Open Food Facts
                 </a>
                 ` : ''}
             </div>
-            ${validCode ? `<p class="text-xs text-center mt-2 text-[var(--text-color-secondary)]">Changes submitted to Open Food Facts are reviewed and may not appear immediately.</p>` : ''}
+            ${validCode ? `<p class="text-[10px] text-center mt-3 text-[var(--text-color-secondary)] uppercase tracking-wide font-semibold"><i class="fa-solid fa-info-circle mr-1"></i> Changes submitted to Open Food Facts are reviewed by their community.</p>` : ''}
         </div>
     `;
     modal.classList.remove('hidden');
