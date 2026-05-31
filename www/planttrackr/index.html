@@ -1013,6 +1013,7 @@
         <p><strong class="opacity-70 inline-block w-24">Species:</strong> <span id="view-plant-species" class="font-medium"></span></p>
         <p><strong class="opacity-70 inline-block w-24">Variety:</strong> <span id="view-plant-variety" class="font-medium"></span></p>
         <p><strong class="opacity-70 inline-block w-24">Source:</strong> <span id="view-plant-brand" class="font-medium"></span></p>
+        <p><strong class="opacity-70 inline-block w-24">Acquired:</strong> <span id="view-plant-acquired" class="font-medium"></span></p>
         <p><strong class="opacity-70 inline-block w-24">Companions:</strong> <span id="view-plant-companions" class="font-medium"></span></p>
     </div>
     
@@ -1673,17 +1674,25 @@
                 reader.onload = (e) => {
                     const img = new Image();
                     img.onload = () => {
-                        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height, 1);
-                        if (ratio >= 1 && file.size < 500000) return resolve(file);
+                        // Max dimension constraints to prevent mobile canvas crash
+                        const maxDim = Math.max(img.width, img.height);
+                        let ratio = 1;
+                        if (maxDim > maxWidth) {
+                            ratio = maxWidth / maxDim;
+                        }
                         const canvas = document.createElement('canvas');
                         canvas.width = img.width * ratio;
                         canvas.height = img.height * ratio;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                         canvas.toBlob((blob) => {
-                            img.src = ''; 
+                            img.src = '';
                             canvas.width = 0; canvas.height = 0;
-                            resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+                            if (blob) {
+                                resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+                            } else {
+                                resolve(file); // Fallback if blob conversion fails
+                            }
                         }, 'image/jpeg', 0.7);
                     };
                     img.src = e.target.result;
@@ -2163,6 +2172,13 @@
                 const finalLight = plant.light || (locObj ? locObj.light : null);
                 const inheritedBadge = (!plant.light && finalLight) ? '<span class="text-[10px] bg-gray-200 dark:bg-gray-700 px-1 rounded ml-1">Inherited</span>' : '';
 
+                // Missing Photo Alert
+                const plantLogs = state.logs.filter(l => l.plantId === plant.id && l.photoUrl);
+                const lastPhotoTime = plantLogs.length > 0 ? new Date(plantLogs[0].date).getTime() : new Date(plant.acquired || 0).getTime();
+                const daysSincePhoto = Math.floor((new Date() - lastPhotoTime) / (1000 * 60 * 60 * 24));
+                const photoAlertDays = 30; // Threshold of days to trigger alert
+                const needsPhotoHtml = daysSincePhoto >= photoAlertDays ? `<span class="text-[10px] bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200 px-1.5 py-0.5 rounded ml-2 border border-purple-200 dark:border-purple-800" title="No photo taken in ${daysSincePhoto} days!"><i class="fa-solid fa-camera animate-pulse text-purple-500"></i> ${daysSincePhoto}d</span>` : '';
+
                 // SAFELY calculate snooze HTML
                 let snoozeHtml = '';
                 if (plant.snoozeUntil) {
@@ -2234,6 +2250,7 @@ card.innerHTML = `
         <div class="flex flex-wrap items-center gap-2 text-xs opacity-80 ml-6">
             ${finalLight ? `<span class="bg-[var(--input-bg)] px-2 py-0.5 rounded shadow-sm border border-[var(--border)]"><i class="fa-solid fa-sun text-yellow-500"></i> <span class="capitalize">${finalLight}</span> ${inheritedBadge}</span>` : ''}
             ${potBadge}
+            ${needsPhotoHtml}
         </div>
 
         ${plant.waterFreq ? `<div class="flex items-center gap-2 text-sm text-blue-500 mt-2 bg-blue-50 dark:bg-blue-900/20 p-1.5 rounded"><i class="fa-solid fa-droplet w-4"></i> Base: ${plant.waterFreq}d <span class="opacity-50 text-xs">(Auto-adjusts)</span></div>` : ''}
@@ -3112,6 +3129,16 @@ if (state.compost) {
     getEl("view-plant-species").textContent = plant.species || "Unknown";
     getEl("view-plant-variety").textContent = plant.variety || "N/A";
     getEl("view-plant-brand").textContent = plant.brand || "N/A";
+    
+    // Format the acquired date safely
+    let acqText = "Unknown";
+    if (plant.acquired) {
+        const d = new Date(plant.acquired);
+        if (!isNaN(d.getTime())) {
+            acqText = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+    }
+    getEl("view-plant-acquired").textContent = acqText;
     
     const locObj = state.locations.find(l => l.id === plant.location);
     getEl("view-plant-location").textContent = locObj ? locObj.name : (plant.location || "Unassigned");

@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.96.0-alpha",
+    date: "2026-06-01",
+    changes: [
+        "In RecipeManagr: Enhanced ingredient scaling to format decimal values back into readable fractions (e.g., 1/2, 1/8) and support fractional text inputs.",
+        "In RecipeManagr: Redesigned the 'Source & Origin' metadata flow, consolidating it into the Basic Details section for a cleaner UI experience.",
+        "In RecipeManagr: Reordered the recipe form.",
+        "In PlantTrackr: Fixed a memory allocation issue causing photo uploads to fail on mobile by clamping canvas dimensions.",
+        "In PlantTrackr: Added a warning badge to the Garden view for plants that haven't had a photo recorded in over 30 days.",
+        "In PlantTrackr: Added the 'Acquired' date to the plant overview modal."
+    ]
+},
+    {
     version: "v15.95.0-alpha",
     date: "2026-05-31",
     changes: [
