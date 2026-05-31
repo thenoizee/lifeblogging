@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.95.0-alpha",
+    date: "2026-05-31",
+    changes: [
+        "In VidTrackr: Implemented dynamic background tinting on detail pages to create an immersive colored glow based on the specific media's fanart or poster.",
+    ]
+},
+    {
     version: "v15.94.0-alpha",
     date: "2026-05-31",
     changes: [
