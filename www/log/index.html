@@ -1132,17 +1132,25 @@
             if (!logToSync.tags.includes("synced_from_offline")) {
                 logToSync.tags.push("synced_from_offline");
             }
+            
+            // Clean up custom properties so they don't get saved into Firestore
+            const targetDocId = logToSync.docId;
+            delete logToSync.docId;
+            delete logToSync.collectionName;
+
             await ensureCollectionExists(userId, log.collectionName);
 
             const collectionName = log.collectionName || 'manual';
-            const docRef = await addDoc(collection(db, `users/${userId}/sources/${collectionName}/data`), {
+            // Fix: Use setDoc with the pre-generated docId to prevent duplicate entries and maintain referential integrity
+            const docRef = doc(db, `users/${userId}/sources/${collectionName}/data`, targetDocId);
+            await setDoc(docRef, {
               ...logToSync,
               createdAt: logToSync.createdAt && logToSync.createdAt.seconds
                 ? Timestamp.fromMillis(logToSync.createdAt.seconds * 1000)
                 : Timestamp.now(),
             });
 
-            syncedLogs.push({ ...logToSync, docId: docRef.id, collectionName: collectionName });
+            syncedLogs.push({ ...logToSync, docId: targetDocId, collectionName: collectionName });
 
           } catch (err) {
             console.error("Failed to sync log:", err);
@@ -1274,8 +1282,22 @@
           const logEntry = sessionLogs[index];
           if (logEntry && logEntry.docId && logEntry.collectionName) {
               try {
-                  const docRef = doc(db, `users/${userId}/sources/${logEntry.collectionName}/data`, logEntry.docId);
-                  await deleteDoc(docRef);
+                  // Fix: Check if this log is currently in the custom offline pendingLogs queue first
+                  let pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
+                  const pendingIndex = pendingLogs.findIndex(l => l.docId === logEntry.docId);
+                  
+                  if (pendingIndex !== -1) {
+                      // Remove from the local storage queue so it never syncs
+                      pendingLogs.splice(pendingIndex, 1);
+                      localStorage.setItem("pendingLogs", JSON.stringify(pendingLogs));
+                      renderUnsyncedLogs();
+                  } else {
+                      // Only delete from Firestore directly if it's not strictly in our offline queue
+                      // (If it was a flaky connection, Firestore handles the queued delete automatically)
+                      const docRef = doc(db, `users/${userId}/sources/${logEntry.collectionName}/data`, logEntry.docId);
+                      await deleteDoc(docRef);
+                  }
+
                   sessionLogs.splice(index, 1);
                   renderSessionLogs();
                   showMessage("Log successfully undone.", "success");
@@ -1351,12 +1373,17 @@
             datapointUpdatedTime: Timestamp.now(),
         };
 
-        // Helper function to save locally
+        // Fix: Pre-generate the Firestore Document ID immediately so it's globally consistent across offline queues and UI
+        const newDocRef = doc(collection(db, `users/${userId}/sources/${collectionName}/data`));
+        const realDocId = newDocRef.id;
+
+        // Helper function to save locally (only used when completely offline)
         const saveLocally = () => {
             const pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
             const offlineLogEntry = {
               ...logEntry,
               collectionName: collectionName,
+              docId: realDocId, // Store the real ID
               createdAt: { seconds: logEntry.createdAt.seconds, nanoseconds: logEntry.createdAt.nanoseconds }
             };
             pendingLogs.push(offlineLogEntry);
@@ -1364,9 +1391,9 @@
             renderUnsyncedLogs();
             
             // Optimistic UI Update
-            sessionLogs.push({ ...logEntry, collectionName, docId: "local-" + Date.now() });
+            sessionLogs.push({ ...logEntry, collectionName, docId: realDocId });
             renderSessionLogs();
-            showMessage("Saved locally (Network unstable/offline)", "info");
+            showMessage("Saved locally (Network offline)", "info");
         };
 
         // 1. OFFLINE CHECK
@@ -1378,30 +1405,24 @@
         // 2. ONLINE WITH TIMEOUT (Flaky Connection Protection)
         try {
             // --- OPTIMISTIC UI UPDATE ---
-            const tempDocId = "temp-" + Date.now();
-            sessionLogs.push({ ...logEntry, docId: tempDocId, collectionName: collectionName });
+            sessionLogs.push({ ...logEntry, docId: realDocId, collectionName: collectionName });
             renderSessionLogs();
             setDefaultDateTime();
             showMessage(`Saving...`, "info");
 
-            // Create a timeout promise that rejects after 3 seconds
             const timeout = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error("NetworkTimeout")), 3000)
             );
 
-            // Race the network request against the timeout
-            const docRef = await Promise.race([
+            await Promise.race([
                 (async () => {
-                    ensureCollectionExists(userId, collectionName); // Fire and forget! Do not await.
-                    return await addDoc(collection(db, `users/${userId}/sources/${collectionName}/data`), logEntry);
+                    ensureCollectionExists(userId, collectionName);
+                    // Use setDoc instead of addDoc to apply the pre-generated ID
+                    return await setDoc(newDocRef, logEntry);
                 })(),
                 timeout
             ]);
 
-            // Success! Replace temp ID with the real Firestore ID
-            const updatedIndex = sessionLogs.findIndex(log => log.docId === tempDocId);
-            if (updatedIndex !== -1) sessionLogs[updatedIndex].docId = docRef.id;
-            
             showMessage(`Data logged successfully: ${attributeName} = ${attributeValue}`, "success");
             fetchAndPopulateTags(userId);
             fetchLogsForDateRange();
@@ -1409,9 +1430,9 @@
 
         } catch (err) {
             console.warn("Save failed or timed out:", err);
-            // Remove optimistic temp log because saveLocally generates its own offline version
-            sessionLogs = sessionLogs.filter(log => log.docId !== tempDocId);
-            saveLocally();
+            // Fix: If it timed out, Firestore's IndexedDB persistence queue HAS already taken control of it.
+            // Do NOT call saveLocally() here, otherwise it queues twice (double sync).
+            showMessage("Network is slow. Saving securely in background...", "info");
         }
       }
 
@@ -1433,8 +1454,21 @@
             datapointUpdatedTime: Timestamp.now(),
           };
 
-          const docRef = doc(db, `users/${userId}/sources/${collectionName}/data`, docId);
-          await updateDoc(docRef, logEntryUpdate);
+          // Fix: Check if this log is currently in the custom offline pendingLogs queue first
+          let pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
+          const pendingIndex = pendingLogs.findIndex(l => l.docId === docId);
+          
+          if (pendingIndex !== -1) {
+              // Update the local storage queue
+              pendingLogs[pendingIndex] = { ...pendingLogs[pendingIndex], ...logEntryUpdate };
+              localStorage.setItem("pendingLogs", JSON.stringify(pendingLogs));
+              renderUnsyncedLogs();
+          } else {
+              // Only update Firestore directly if it's not strictly in our offline queue
+              // (If it was a flaky connection, Firestore handles the queued update automatically)
+              const docRef = doc(db, `users/${userId}/sources/${collectionName}/data`, docId);
+              await updateDoc(docRef, logEntryUpdate);
+          }
 
           showMessage(`Data updated successfully: ${attributeName} = ${attributeValue}`, "success");
 

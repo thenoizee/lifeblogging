@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.97.0-alpha",
+    date: "2026-06-02",
+    changes: [
+                "In Analyser: Fixed a bug preventing the date field from autofilling correctly inside the Data Modal editor.",
+                "In Loggr: Resolved an issue resulting in duplicate records syncing to the database upon restoring a flaky network connection.",
+                "In Loggr: Fixed a bug preventing the editing and undoing of logs made in offline mode during the active session."
+    ]
+},
+    {
     version: "v15.96.1-alpha",
     date: "2026-06-02",
     changes: [
