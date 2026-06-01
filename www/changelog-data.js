@@ -5,6 +5,20 @@ export const changelogData = [
     version: "v15.97.0-alpha",
     date: "2026-06-02",
     changes: [
+                "In PlantTrackr: Moved the History and Task Forecast panels inside the main View Plant Details modal.",
+                "In PlantTrackr: Added a '+ New Plant' button to the Quick Log modal to allow fast plant creation.",
+                "In PlantTrackr: Nested the Family Tree section directly within the View Plant Details modal.",
+                "In PlantTrackr: Refreshed the Quick Log modal layout, changing constrained grids to flexible rows and removing wasted space around the Cloche toggle.",
+                "In PlantTrackr: Fixed spacing, line breaks, and column break issues in the Edit Plant modal (Placement & Space, Potting & Soil, Routines & Care, and Parent/Origin grids).",
+                "In PlantTrackr: Fixed the broken 'Save Plant' button location in the Edit Plant modal, moving it back to a sticky footer.",
+                "In PlantTrackr: Reorganized the View Plant Details layout to use a side-by-side grid on desktop to save vertical space and reduce visual clutter.",
+                "In PlantTrackr: Cleaned up Plant Cards by removing individual action buttons, routing interactions through the unified View Plant Details modal."
+    ]
+},
+    {
+    version: "v15.97.0-alpha",
+    date: "2026-06-02",
+    changes: [
                 "In Analyser: Fixed a bug preventing the date field from autofilling correctly inside the Data Modal editor.",
                 "In Loggr: Resolved an issue resulting in duplicate records syncing to the database upon restoring a flaky network connection.",
                 "In Loggr: Fixed a bug preventing the editing and undoing of logs made in offline mode during the active session."
