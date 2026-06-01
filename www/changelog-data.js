@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.96.1-alpha",
+    date: "2026-06-02",
+    changes: [
+        "In FoodTrackr: Fixed a TypeError crashing the search results when Open Food Facts API returned numeric quantities instead of strings by safely casting parameters to strings before regex matching."
+    ]
+},
+    {
     version: "v15.96.0-alpha",
     date: "2026-06-01",
     changes: [
