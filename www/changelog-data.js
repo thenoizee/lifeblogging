@@ -2,7 +2,20 @@
 
 export const changelogData = [
     {
-    version: "v15.97.0-alpha",
+    version: "v15.99.0-alpha",
+    date: "2026-06-02",
+    changes: [
+                "In PlantTrackr: Expanded the progress and health rating options to include Great, Fair, Poor, and Bad (Emergency).",
+                "In PlantTrackr: Added 'Has Photo' and 'No Photo' filters to the Garden tab.",
+                "In PlantTrackr: Added the ability to sort the Garden view and Action Required feed by Plant Health / Latest Progress Update rating.",
+                "In PlantTrackr: Upgraded the Dashboard 'Action Required' widget with a task-specific filter dropdown (e.g., Needs Water, Needs Lawn Care, Needs Progress Update).",
+                "In PlantTrackr: Elevated the Lawn Care and Compost Tracker to prominent Dashboard cards and fully expanded their modals to include custom logs, tracking features (cut height, temperature, moisture), and viewable history.",
+                "In PlantTrackr: Added 'Plant Type' (e.g., Bush, Runner, Tree, Climber) and 'Facing Direction' (e.g., North, South-West) to plant profiles and the view modal.",
+                "In PlantTrackr: Clarified the UI regarding 'Outside/Sheltered' locations and fixed bugs preventing 'Outside (Exposed)' plants from properly syncing with Bulk Water, Rain Delays, and Weather Alerts.",
+    ]
+},
+    {
+    version: "v15.98.0-alpha",
     date: "2026-06-02",
     changes: [
                 "In PlantTrackr: Moved the History and Task Forecast panels inside the main View Plant Details modal.",
