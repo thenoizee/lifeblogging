@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v15.100.0-alpha",
+    date: "2026-06-03",
+    changes: [
+        "In FoodTrackr: Added 'Per Serving' column alongside 'Per 100g' and 'Total Pack' in the product modal's nutrition table to easily review single-serving nutrients.",
+    ]
+},
+    {
     version: "v15.99.0-alpha",
     date: "2026-06-02",
     changes: [
