@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.101.0-alpha",
+    date: "2026-06-04",
+    changes: [
+        "In FoodTrackr: Exposed 'showToast' to the global window object to resolve reference errors triggered by inline HTML event handlers.",
+        "In FoodTrackr: Added type-safety checks to 'renderDashboard', 'renderRecentFoods', and 'handleSaveSectionAsMeal' to prevent crashes when accessing '.toDate()' on invalid or missing date formats.",
+        "In FoodTrackr: Updated Firebase fetch listeners to properly convert legacy string dates into Firestore Timestamp objects upon retrieval."
+    ]
+},
+    {
     version: "v15.100.0-alpha",
     date: "2026-06-03",
     changes: [

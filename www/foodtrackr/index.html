@@ -2183,6 +2183,7 @@ const showToast = (message, type = 'info') => {
         setTimeout(() => toast.remove(), 300);
     }, 3000);
 };
+window.showToast = showToast; // Expose globally for inline onclick handlers
 
 const deletedItemsMemory = new Map();
 
@@ -2940,6 +2941,7 @@ const renderQuickButtons = (product, packageSize, servingSize, servingSizeStr) =
           tomorrow.setDate(tomorrow.getDate() + 1);
 
           const selectedDayLog = foodLog.filter(item => {
+              if (!item.eatenAt || typeof item.eatenAt.toDate !== 'function') return false;
               const itemDate = item.eatenAt.toDate();
               return itemDate >= currentDashboardDate && itemDate < tomorrow;
           });
@@ -4892,7 +4894,11 @@ const renderRecentFoods = () => {
         return;
     }
 
-    const sortedLog = [...foodLog].sort((a, b) => b.eatenAt.toDate() - a.eatenAt.toDate());
+    const sortedLog = [...foodLog].sort((a, b) => {
+        const timeA = (a.eatenAt && typeof a.eatenAt.toDate === 'function') ? a.eatenAt.toDate().getTime() : 0;
+        const timeB = (b.eatenAt && typeof b.eatenAt.toDate === 'function') ? b.eatenAt.toDate().getTime() : 0;
+        return timeB - timeA;
+    });
     const seen = new Set();
     const uniqueRecent = [];
     
@@ -6506,6 +6512,7 @@ document.getElementById('confirm-quick-log-meal-btn').addEventListener('click', 
             tomorrow.setDate(tomorrow.getDate() + 1);
 
             const itemsToSave = foodLog.filter(item => {
+                if (!item.eatenAt || typeof item.eatenAt.toDate !== 'function') return false;
                 const itemDate = item.eatenAt.toDate();
                 let itemSection = item.section || 'breakfast';
                 if (itemSection === 'meals') itemSection = 'breakfast';
@@ -6717,7 +6724,9 @@ const switchTab = (tabId) => {
                   foodLogUnsub = onSnapshot(foodQuery, (snap) => {
                       mainFoodLogs = snap.docs.map(doc => {
                           const data = doc.data();
-                          if (!data.eatenAt && data.date) data.eatenAt = data.date; 
+                          if (!data.eatenAt && data.date) {
+                              data.eatenAt = Timestamp.fromDate(new Date(data.date)); 
+                          }
                           return { id: doc.id, ...data };
                       }).filter(log => log.eatenAt); 
                       
@@ -6728,7 +6737,9 @@ const switchTab = (tabId) => {
                   waterLogUnsub = onSnapshot(query(collection(db, `users/${user.uid}/${LEGACY_WATER_COLLECTION}`)), (snap) => {
                       legacyWaterLogs = snap.docs.map(doc => {
                           const data = doc.data();
-                          if (!data.eatenAt && data.date) data.eatenAt = data.date;
+                          if (!data.eatenAt && data.date) {
+                              data.eatenAt = Timestamp.fromDate(new Date(data.date));
+                          }
                           data.section = 'drinks';
                           data.name = data.name || data.attributeName || 'Water';
                           data.quantity = data.quantity !== undefined ? data.quantity : (data.attributeValue || 0);
