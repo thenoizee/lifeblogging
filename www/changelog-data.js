@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.103.0-alpha",
+    date: "2026-06-06",
+    changes: [
+        "In PlantTrackr: Added Rain vs Hose manual watering options to the 'Bulk Water' and 'Water Room' functionality.",
+        "In PlantTrackr: Transformed the 'Infirmary' and 'Potting Shed' sections into native accordion tabs set to close by default.",
+        "In PlantTrackr: Introduced a toggle to dynamically filter New Arrivals in and out of the active view.",
+        "In PlantTrackr: Fixed the 'Action Required' layout so its filters wrap cleanly on smaller mobile displays.",
+        "In PlantTrackr: Added a new 'Given Away' status option so gifted plants can be successfully archived without marking them as dead.",
+        "In PlantTrackr: Corrected the 'Basic Info' section of the Edit Plant modal to optimize its 3-column layout and prevent wasted space on desktop views.",
+    ]
+},
+    {
     version: "v15.102.0-alpha",
     date: "2026-06-06",
     changes: [
