@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.102.0-alpha",
+    date: "2026-06-06",
+    changes: [
+        "In HealthManagr: Added ability to log partial or temporary dosage amounts, which accurately adjust stock counts.",
+        "In HealthManagr: Added 'Brush Head' tracking to Grooming tab for replacing electric toothbrush heads."
+    ]
+},
+    {
     version: "v15.101.0-alpha",
     date: "2026-06-04",
     changes: [
