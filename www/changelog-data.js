@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+version: "v15.103.0-alpha",
+date: "2026-06-07",
+changes: [
+"In Dashboard: Added specific icons and colors for 'energy' (lightning bolt) and 'mainactivity', 'productivity', or 'work' (briefcase) in the Recent Activity log widget.",
+]
+},
+    {
     version: "v15.103.0-alpha",
     date: "2026-06-06",
     changes: [
