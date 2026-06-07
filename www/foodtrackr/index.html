@@ -1208,6 +1208,22 @@ body.bulk-active {
             <button id="toggle-detailed-nutrients-btn" type="button" class="text-[10px] uppercase font-bold tracking-wider text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/30 py-1.5 px-4 rounded-full transition-colors">Show Detailed Nutrients</button>
         </div>
 
+        <div id="edit-log-meal-items-section" class="hidden mt-4 pt-4 border-t border-orange-200/60 dark:border-orange-800/60">
+            <div class="flex justify-between items-center mb-2">
+                <label class="text-[10px] uppercase font-bold text-indigo-600/70 dark:text-indigo-400/70 block"><i class="fa-solid fa-layer-group mr-1"></i>Composite Ingredients</label>
+                <span class="text-[9px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">Edits immediately recalculate base macros</span>
+            </div>
+            <div id="edit-log-meal-items-list" class="space-y-2 max-h-48 overflow-y-auto custom-scrollbar bg-white dark:bg-gray-800 p-2 rounded-xl border border-gray-200 dark:border-gray-700 mb-2"></div>
+            
+            <div class="relative">
+                <div class="flex items-center bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-orange-500 transition-shadow">
+                    <i class="fa-solid fa-search text-gray-400 ml-3 text-xs"></i>
+                    <input type="text" id="composite-add-ingredient-search" placeholder="Search to add ingredient..." class="w-full text-xs p-2.5 bg-transparent outline-none text-gray-700 dark:text-gray-200" autocomplete="off">
+                </div>
+                <div id="composite-add-ingredient-results" class="hidden absolute bottom-full left-0 w-full mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto custom-scrollbar"></div>
+            </div>
+        </div>
+
         <div id="detailed-nutrients-container" class="hidden grid grid-cols-2 md:grid-cols-5 gap-3 mt-4 pt-4 border-t border-orange-200/60 dark:border-orange-800/60">
             <div><label for="fiber" class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Fiber (g)</label><div class="nutrient-input-group"><input id="fiber" type="number" class="nutrient-input w-full text-center text-sm border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg pr-6"><i class="fas fa-lock lock-icon hidden"></i></div></div>
             <div><label for="sugar" class="text-[10px] uppercase font-bold text-gray-500 mb-1 block">Sugar (g)</label><div class="nutrient-input-group"><input id="sugar" type="number" class="nutrient-input w-full text-center text-sm border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg pr-6"><i class="fas fa-lock lock-icon hidden"></i></div></div>
@@ -2900,6 +2916,9 @@ const renderQuickButtons = (product, packageSize, servingSize, servingSizeStr) =
           document.getElementById('detailed-nutrients-container').classList.add('hidden');
           document.getElementById('toggle-detailed-nutrients-btn').textContent = 'Show Detailed Nutrients';
           
+          const logMealItemsSection = document.getElementById('edit-log-meal-items-section');
+          if (logMealItemsSection) logMealItemsSection.classList.add('hidden');
+          
           const unitSelect = document.getElementById('quantity-unit');
           unitSelect.querySelectorAll('option[data-custom]').forEach(opt => opt.remove());
       };
@@ -3178,6 +3197,180 @@ const updateCopyButtonState = () => {
 // Add global variables to hold state while editing
 let tempServingUnits = [];
 let tempMealItems = [];
+
+// Renders composite items inside the active log form
+const renderEditLogMealItems = () => {
+    const list = document.getElementById('edit-log-meal-items-list');
+    list.innerHTML = '';
+    
+    if (!currentFoodItem.items || currentFoodItem.items.length === 0) {
+        list.innerHTML = '<p class="text-xs text-center text-gray-500 py-2">No ingredients remaining.</p>';
+        return;
+    }
+    
+    currentFoodItem.items.forEach((ing, index) => {
+        const div = document.createElement('div');
+        div.className = 'flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg text-sm group transition-all';
+        div.innerHTML = `
+            <div class="truncate pr-2 flex-grow">
+                <span class="font-semibold block truncate text-xs text-gray-800 dark:text-gray-200">${ing.name}</span>
+                <span class="text-[10px] text-gray-500">${Math.round(ing.calories)} kcal base</span>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <input type="number" class="w-16 p-1 text-xs font-mono font-bold border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-center edit-log-meal-qty" data-index="${index}" value="${ing.quantity}">
+                <span class="text-[10px] text-gray-500 font-bold mr-1">g</span>
+                <button type="button" class="text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 p-1 rounded transition-colors remove-log-meal-item-btn" data-index="${index}"><i class="fa-solid fa-times pointer-events-none"></i></button>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+};
+
+// Event delegation to handle removal of composite items
+document.getElementById('edit-log-meal-items-section')?.addEventListener('click', (e) => {
+    const removeBtn = e.target.closest('.remove-log-meal-item-btn');
+    if (removeBtn) {
+        const index = parseInt(removeBtn.dataset.index);
+        if (!currentFoodItem.items) return;
+        
+        const removedItem = currentFoodItem.items.splice(index, 1)[0];
+        
+        if (currentFoodItem.baseNutrients && removedItem) {
+            currentFoodItem.baseNutrients.calories = Math.max(0, currentFoodItem.baseNutrients.calories - (removedItem.calories || 0));
+            currentFoodItem.baseNutrients.protein = Math.max(0, currentFoodItem.baseNutrients.protein - (removedItem.protein || 0));
+            currentFoodItem.baseNutrients.carbs = Math.max(0, currentFoodItem.baseNutrients.carbs - (removedItem.carbs || 0));
+            currentFoodItem.baseNutrients.fat = Math.max(0, currentFoodItem.baseNutrients.fat - (removedItem.fat || 0));
+            updateNutrientFieldsFromBase();
+        }
+        
+        renderEditLogMealItems();
+    }
+});
+
+// Event delegation to handle quantity changes inline
+document.getElementById('edit-log-meal-items-section')?.addEventListener('input', (e) => {
+    if (e.target.classList.contains('edit-log-meal-qty')) {
+        const index = parseInt(e.target.dataset.index);
+        const newQty = parseFloat(e.target.value) || 0;
+        if (!currentFoodItem.items || !currentFoodItem.items[index]) return;
+        
+        const item = currentFoodItem.items[index];
+        const oldQty = item.quantity;
+        
+        if (newQty !== oldQty && currentFoodItem.baseNutrients) {
+            const oldMultiplier = oldQty / 100;
+            const newMultiplier = newQty / 100;
+            
+            const ingBase = item.baseNutrients || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+            
+            currentFoodItem.baseNutrients.calories += (ingBase.calories * newMultiplier) - (ingBase.calories * oldMultiplier);
+            currentFoodItem.baseNutrients.protein += (ingBase.protein * newMultiplier) - (ingBase.protein * oldMultiplier);
+            currentFoodItem.baseNutrients.carbs += (ingBase.carbs * newMultiplier) - (ingBase.carbs * oldMultiplier);
+            currentFoodItem.baseNutrients.fat += (ingBase.fat * newMultiplier) - (ingBase.fat * oldMultiplier);
+            
+            item.quantity = newQty;
+            item.calories = ingBase.calories * newMultiplier;
+            item.protein = ingBase.protein * newMultiplier;
+            item.carbs = ingBase.carbs * newMultiplier;
+            item.fat = ingBase.fat * newMultiplier;
+
+            updateNutrientFieldsFromBase();
+        }
+    }
+});
+
+// Quick Add Ingredient Logic for Inline Composite Editor
+let compositeSearchTimeout;
+const compositeSearchInput = document.getElementById('composite-add-ingredient-search');
+const compositeSearchResults = document.getElementById('composite-add-ingredient-results');
+
+if (compositeSearchInput) {
+    compositeSearchInput.addEventListener('input', (e) => {
+        clearTimeout(compositeSearchTimeout);
+        const query = e.target.value.trim().toLowerCase();
+        if (query.length < 3) {
+            compositeSearchResults.classList.add('hidden');
+            return;
+        }
+        
+        compositeSearchTimeout = setTimeout(async () => {
+            compositeSearchResults.innerHTML = '<div class="p-3 text-xs text-center text-gray-500"><i class="fa-solid fa-spinner fa-spin"></i> Searching...</div>';
+            compositeSearchResults.classList.remove('hidden');
+            
+            try {
+                const res = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&sort_by=unique_scans_n`);
+                const data = await res.json();
+                
+                if (data.products && data.products.length > 0) {
+                    compositeSearchResults.innerHTML = '';
+                    data.products.forEach(prod => {
+                        const div = document.createElement('div');
+                        div.className = 'p-2 text-xs border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-orange-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2';
+                        const thumb = prod.image_front_thumb_url || 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png';
+                        div.innerHTML = `
+                            <img src="${thumb}" class="w-8 h-8 object-contain rounded bg-white shrink-0 border border-gray-200">
+                            <div class="truncate flex-grow">
+                                <p class="font-bold truncate text-gray-800 dark:text-gray-200 text-sm leading-tight">${prod.product_name || 'Unknown'}</p>
+                                <p class="text-[10px] text-gray-500 truncate mt-0.5">${prod.brands || ''}</p>
+                            </div>
+                            <div class="text-[10px] font-mono text-orange-500 font-bold shrink-0 bg-orange-50 dark:bg-orange-900/30 px-2 py-1 rounded">
+                                ${(parseFloat(prod.nutriments?.['energy-kcal_100g']) || 0).toFixed(0)} kcal
+                            </div>
+                        `;
+                        div.addEventListener('click', () => {
+                            // Add item to composite meal and recalculate
+                            const baseCals = parseFloat(prod.nutriments?.['energy-kcal_100g']) || 0;
+                            const baseProt = parseFloat(prod.nutriments?.['proteins_100g']) || 0;
+                            const baseCarbs = parseFloat(prod.nutriments?.['carbohydrates_100g']) || 0;
+                            const baseFat = parseFloat(prod.nutriments?.['fat_100g']) || 0;
+                            
+                            const newItem = {
+                                name: prod.product_name || 'Unknown',
+                                brands: prod.brands || '',
+                                quantity: 100,
+                                baseNutrients: { calories: baseCals, protein: baseProt, carbs: baseCarbs, fat: baseFat },
+                                calories: baseCals, protein: baseProt, carbs: baseCarbs, fat: baseFat,
+                                imageUrl: thumb,
+                                isOptional: false
+                            };
+                            
+                            if (!currentFoodItem.items) currentFoodItem.items = [];
+                            currentFoodItem.items.push(newItem);
+                            
+                            if (currentFoodItem.baseNutrients) {
+                                currentFoodItem.baseNutrients.calories += baseCals;
+                                currentFoodItem.baseNutrients.protein += baseProt;
+                                currentFoodItem.baseNutrients.carbs += baseCarbs;
+                                currentFoodItem.baseNutrients.fat += baseFat;
+                            } else {
+                                currentFoodItem.baseNutrients = { calories: baseCals, protein: baseProt, carbs: baseCarbs, fat: baseFat };
+                                setNutrientFieldsReadOnly(true);
+                            }
+                            
+                            updateNutrientFieldsFromBase();
+                            renderEditLogMealItems();
+                            
+                            compositeSearchInput.value = '';
+                            compositeSearchResults.classList.add('hidden');
+                            window.showToast(`Added ${newItem.name} to meal.`, 'success');
+                        });
+                        compositeSearchResults.appendChild(div);
+                    });
+                } else {
+                    compositeSearchResults.innerHTML = '<div class="p-3 text-xs text-center text-gray-500">No results found.</div>';
+                }
+            } catch (err) {
+                compositeSearchResults.innerHTML = '<div class="p-3 text-xs text-center text-red-500">Search failed.</div>';
+            }
+        }, 400);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!compositeSearchInput.contains(e.target) && !compositeSearchResults.contains(e.target)) {
+            compositeSearchResults.classList.add('hidden');
+        }
+    });
+}
 
 const renderEditMealItems = () => {
     const list = document.getElementById('edit-meal-items-list');
@@ -3514,7 +3707,7 @@ const renderDailyLog = () => {
             let subText = [item.brands, item.stores].filter(Boolean).join(' • ') || item.source || '';
             const src = ((item.source || '') + ' ' + (item.brands || '')).toLowerCase();
             const groupedBadge = (item.items && item.items.length > 0) ? 
-                `<span class="ml-2 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 text-[9px] px-1 rounded font-bold uppercase">Composite</span>` : '';
+                `<span class="ml-2 bg-indigo-500 text-white dark:bg-indigo-600 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shadow-sm border border-indigo-600 dark:border-indigo-500 align-middle inline-block"><i class="fa-solid fa-layer-group mr-1"></i>Composite Meal</span>` : '';
 
             if (isMeal) {
                  sourceIcon = '<i class="fa-solid fa-layer-group text-[10px] mr-1 text-blue-500"></i>';
@@ -3578,26 +3771,26 @@ const renderDailyLog = () => {
                     </div>
                 </div>
                 ${ingredientsHTML}
-                <div class="flex justify-between gap-2 mt-3 pt-2 border-t border-gray-100 dark:border-gray-700 w-full ${isBulkMode ? 'opacity-30' : ''}">
+               <div class="flex justify-end gap-1 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 w-full ${isBulkMode ? 'opacity-30' : ''}">
                      ${(item.uploadedApp === 'HydrationTrackr' || (item.attributeName && !item.section)) ? 
-                        `<button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md flex items-center justify-center gap-2 opacity-50 cursor-not-allowed" onclick="alert('Please edit this drink directly in HydrationTrackr.')" title="Locked">
-                            <i class="fa-solid fa-lock"></i> <span class="pointer-events-none">Locked</span>
+                        `<button class="p-1.5 text-gray-400 cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors" onclick="alert('Please edit this drink directly in HydrationTrackr.')" title="Locked">
+                            <i class="fa-solid fa-lock text-xs"></i>
                         </button>
-                        <button class="destructive-button text-xs py-1.5 px-0 flex-1 rounded-md delete-log-item flex items-center justify-center gap-2" data-action="delete-daily">
-                            <i class="fa-solid fa-trash pointer-events-none"></i> <span class="pointer-events-none">Del</span>
+                        <button class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors delete-log-item" data-action="delete-daily" title="Delete">
+                            <i class="fa-solid fa-trash text-xs pointer-events-none"></i>
                         </button>` 
                      : 
-                        `<button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md text-orange-600 dark:text-orange-400 split-log-item flex items-center justify-center gap-2 hover:bg-orange-50 dark:hover:bg-gray-700" data-action="split-item">
-                            <i class="fa-solid fa-cookie-bite pointer-events-none"></i> <span class="pointer-events-none">Split</span>
+                        `<button class="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/30 rounded transition-colors split-log-item" data-action="split-item" title="Split/Leftover">
+                            <i class="fa-solid fa-cookie-bite text-xs pointer-events-none"></i>
                          </button>
-                         <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="move-copy">
-                            <i class="fa-solid fa-clone pointer-events-none"></i> <span class="pointer-events-none">Move</span>
+                         <button class="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors move-copy-log-item" data-action="move-copy" title="Move/Copy">
+                            <i class="fa-solid fa-clone text-xs pointer-events-none"></i>
                          </button>
-                         <button class="secondary-button text-xs py-1.5 px-0 flex-1 rounded-md move-copy-log-item flex items-center justify-center gap-2" data-action="edit-daily">
-                            <i class="fa-solid fa-pencil pointer-events-none"></i> <span class="pointer-events-none">Edit</span>
+                         <button class="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded transition-colors edit-log-item" data-action="edit-daily" title="Edit">
+                            <i class="fa-solid fa-pencil text-xs pointer-events-none"></i>
                          </button>
-                         <button class="destructive-button text-xs py-1.5 px-0 flex-1 rounded-md delete-log-item flex items-center justify-center gap-2" data-action="delete-daily">
-                            <i class="fa-solid fa-trash pointer-events-none"></i> <span class="pointer-events-none">Del</span>
+                         <button class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors delete-log-item" data-action="delete-daily" title="Delete">
+                            <i class="fa-solid fa-trash text-xs pointer-events-none"></i>
                          </button>`
                      }
                 </div>
@@ -3765,6 +3958,7 @@ const renderHistoryTable = () => {
                                 <button class="text-left font-semibold text-[var(--text-color-primary)] hover:text-orange-600 hover:underline transition-colors leading-tight text-xs sm:text-sm" onclick="openProductModalFromHistory('${item.id}')">
                                     ${item.name || 'Unknown Item'}
                                 </button>
+                                ${(item.items && item.items.length > 0) ? `<span class="ml-2 bg-indigo-500 text-white dark:bg-indigo-600 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shadow-sm border border-indigo-600 dark:border-indigo-500 align-middle inline-block"><i class="fa-solid fa-layer-group mr-1"></i>Composite Meal</span>` : ''}
                                 ${(!item.productCode || !item.baseNutrients) && item.source !== 'Manual Entry' && item.source !== 'Leftover' && item.uploadedApp !== 'HydrationTrackr' && !(item.source || '').startsWith('Meal:') ? `<span class="ml-2 text-[9px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border border-amber-200 dark:border-amber-800 align-middle shadow-sm inline-block" title="Legacy item: Missing metadata."><i class="fa-solid fa-link-slash mr-0.5"></i> Legacy</span>` : ''}
                                 ${item.originalName && item.originalName !== item.name ? `<div class="text-[10px] text-gray-400 mt-0.5 w-48 sm:w-64 truncate opacity-75" title="${item.originalName}">Original: ${item.originalName}</div>` : ''}
                                 <div class="text-[10px] sm:text-xs mt-1 flex flex-wrap items-center gap-2">
@@ -4280,6 +4474,20 @@ document.getElementById('confirm-copy-btn').addEventListener('click', executeSma
                     packageSize: itemToEdit.packageSize || null,
                     productCode: itemToEdit.productCode || null
                 };
+                
+                // Deep copy items if present to allow mutable editing without affecting live log immediately
+                if (itemToEdit.items && itemToEdit.items.length > 0) {
+                    currentFoodItem.items = JSON.parse(JSON.stringify(itemToEdit.items));
+                    document.getElementById('edit-log-meal-items-section').classList.remove('hidden');
+                    renderEditLogMealItems();
+                } else {
+                    currentFoodItem.items = null;
+                    document.getElementById('edit-log-meal-items-section').classList.add('hidden');
+                }
+                
+                const addSearchInput = document.getElementById('composite-add-ingredient-search');
+                if (addSearchInput) addSearchInput.value = '';
+
                 setNutrientFieldsReadOnly(!!itemToEdit.baseNutrients);
                 
                 if (itemToEdit.fiber > 0 || itemToEdit.sugar > 0) {
@@ -4972,10 +5180,10 @@ const renderRecentFoods = () => {
         const imageUrl = product.image_front_small_url || product.image_front_thumb_url || 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png';
         const hasServing = product.serving_size || product.serving_quantity;
         // CHANGE THIS:
-const isGrouped = product.items && product.items.length > 0; // Use product, not food
+const isGrouped = product.items && product.items.length > 0;
 const groupedBadge = isGrouped ? 
-    `<span class="absolute top-2 left-2 bg-indigo-500 text-white text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-tighter">
-        <i class="fa-solid fa-layer-group mr-1"></i>Grouped
+    `<span class="absolute top-2 left-2 bg-indigo-600 text-white text-[9px] px-2 py-1 rounded-md font-bold uppercase tracking-wider shadow-md border border-indigo-700 z-10">
+        <i class="fa-solid fa-layer-group mr-1"></i>Composite Meal
     </span>` : '';
 
         // Star Icon Logic
@@ -5027,8 +5235,22 @@ const groupedBadge = isGrouped ?
             </button>
         `;
         
-        // Card Click: Open Details
-        card.addEventListener('click', () => showProductDetailsModal(product));
+        // Card Click: Open Details OR 1-Click Add to Builder
+        card.addEventListener('click', (e) => {
+            // Do not trigger card click if the user is clicking the favorite star
+            if (e.target.closest('.star-btn')) return;
+            
+            // If the builder is open, bypass the details modal and add it instantly (assuming 100g base)
+            if (typeof isMealBuilderMode !== 'undefined' && isMealBuilderMode) {
+                addToBuilder(product);
+                
+                // Automatically switch back to the builder tab
+                const foodsTab = document.querySelector('[data-tab="foods-meals"]');
+                if (foodsTab) foodsTab.click();
+            } else {
+                showProductDetailsModal(product);
+            }
+        });
         searchResultsDiv.appendChild(card);
 
         // Star Click: Quick Toggle
@@ -6163,8 +6385,8 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
                 
                 <div class="flex flex-col gap-6">
                     <div class="bg-gray-50 dark:bg-gray-900/30 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
-                        <h3 class="font-bold mb-3 text-orange-600 dark:text-orange-400 border-b border-gray-200 dark:border-gray-600 pb-2"><i class="fa-solid fa-bolt mr-2"></i>Quick Log Options</h3>
-                        <p class="text-[10px] text-gray-500 mb-2">Click below to immediately select this product with the chosen amount.</p>
+                        <h3 class="font-bold mb-3 text-orange-600 dark:text-orange-400 border-b border-gray-200 dark:border-gray-600 pb-2"><i class="fa-solid fa-bolt mr-2"></i>${(typeof isMealBuilderMode !== 'undefined' && isMealBuilderMode) ? 'Quick Add Options' : 'Quick Log Options'}</h3>
+                        <p class="text-[10px] text-gray-500 mb-2">${(typeof isMealBuilderMode !== 'undefined' && isMealBuilderMode) ? 'Click below to add this product to your composite food with the chosen amount.' : 'Click below to immediately select this product with the chosen amount.'}</p>
                         <div id="quantity-buttons" class="grid grid-cols-2 gap-2">
                             ${servingSize ? `
                                 <button class="secondary-button text-xs py-2 px-3 font-bold bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 hover:bg-orange-100 transition-colors rounded-lg flex flex-col items-center col-span-2 ${(!packageSize || (packageSize / servingSize >= 1.8)) ? 'sm:col-span-1' : ''}" data-amount="1" data-unit="Serving" onclick="showToast('Using 1 whole recommended serving.', 'success')">
@@ -6210,7 +6432,7 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
             </div>
             
             <div class="button-group mt-6 gap-3">
-                <button id="select-product-btn" class="main-button shadow-md flex-grow py-3 text-base"><i class="fa-solid fa-check-circle mr-2"></i> Select This Product</button>
+                <button id="select-product-btn" class="main-button shadow-md flex-grow py-3 text-base">${(typeof isMealBuilderMode !== 'undefined' && isMealBuilderMode) ? '<i class="fa-solid fa-plus-circle mr-2"></i> Add to Composite Food' : '<i class="fa-solid fa-check-circle mr-2"></i> Select This Product'}</button>
                 ${validCode ? `
                 <a href="https://world.openfoodfacts.org/product/${validCode}" target="_blank" class="secondary-button text-center py-3 px-6 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 font-bold transition-all shadow-sm">
                    <i class="fa-solid fa-pen-to-square"></i> Edit on Open Food Facts
@@ -6225,8 +6447,50 @@ document.getElementById('bulk-save-meal-btn')?.addEventListener('click', () => {
     document.getElementById('close-modal-btn').addEventListener('click', () => modal.classList.add('hidden'));
 
     const selectAndClose = (amount, unitName) => {
-        selectProductFromSearch(product, amount, unitName);
-        modal.classList.add('hidden');
+        // Check if we are currently building a composite meal
+        if (typeof isMealBuilderMode !== 'undefined' && isMealBuilderMode) {
+            
+            // Calculate the actual grams based on the unit selected
+            let realGrams = amount;
+            if (unitName.includes('Serving')) {
+                realGrams = amount * (servingSize || 100);
+            } else if (unitName.includes('Pack')) {
+                realGrams = amount * (packageSize || 100);
+            }
+            
+            // Build the item object specifically for the composite array
+            const item = {
+                id: Date.now().toString(),
+                name: product.product_name || 'Unknown',
+                brands: product.brands || '',
+                baseNutrients: baseNutrients,
+                quantity: amount,
+                unit: unitName,
+                realGrams: realGrams,
+                imageUrl: product.image_front_thumb_url || 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png',
+                isOptional: false
+            };
+            
+            // Add it to the builder state
+            builderItems.push(item);
+            renderBuilderPanel();
+            
+            // Update the badge notification
+            const badge = document.getElementById('builder-count-badge');
+            if(badge) badge.textContent = builderItems.length;
+            
+            if (window.showToast) window.showToast(`Added ${item.name} to composite food`, 'success');
+            modal.classList.add('hidden');
+            
+            // Automatically switch back to the builder tab so the user sees the addition
+            const foodsTab = document.querySelector('[data-tab="foods-meals"]');
+            if (foodsTab) foodsTab.click();
+            
+        } else {
+            // Standard log entry
+            selectProductFromSearch(product, amount, unitName);
+            modal.classList.add('hidden');
+        }
     };
 
     document.getElementById('select-product-btn').addEventListener('click', () => selectAndClose(100, 'g'));
@@ -6939,6 +7203,11 @@ const switchTab = (tabId) => {
                  packageSize: currentFoodItem.packageSize || null,
                  productCode: currentFoodItem.productCode || null
           };
+
+          // Attach composite ingredients back if they exist
+          if (currentFoodItem.items) {
+              foodData.items = currentFoodItem.items;
+          }
 
           if (!foodData.name || isNaN(foodData.calories)) {
               showToast('Food name and calories are required.');
