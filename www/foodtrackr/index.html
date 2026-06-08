@@ -1475,7 +1475,15 @@ body.bulk-active {
             
             <div id="edit-meal-items-section" class="hidden mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Meal Ingredients</label>
-                <div id="edit-meal-items-list" class="space-y-2 max-h-48 overflow-y-auto custom-scrollbar"></div>
+                <div id="edit-meal-items-list" class="space-y-2 max-h-48 overflow-y-auto custom-scrollbar mb-2"></div>
+                
+                <div class="relative">
+                    <div class="flex items-center bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-orange-500 transition-shadow">
+                        <i class="fa-solid fa-search text-gray-400 ml-3 text-xs"></i>
+                        <input type="text" id="meal-edit-add-ingredient-search" placeholder="Search to add to meal..." class="w-full text-xs p-2.5 bg-transparent outline-none text-gray-700 dark:text-gray-200" autocomplete="off">
+                    </div>
+                    <div id="meal-edit-add-ingredient-results" class="hidden absolute bottom-full left-0 w-full mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto custom-scrollbar"></div>
+                </div>
             </div>
 
             <input type="hidden" id="edit-item-id">
@@ -3381,17 +3389,39 @@ const renderEditMealItems = () => {
     }
     tempMealItems.forEach((ing, index) => {
         const div = document.createElement('div');
-        div.className = 'flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700 text-sm';
+        div.className = 'flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm mb-2 group';
         div.innerHTML = `
-            <div class="truncate pr-2">
+            <div class="truncate pr-2 flex-grow">
                 <span class="font-semibold block truncate text-xs">${ing.name}</span>
-                <span class="text-[10px] text-gray-500">${ing.quantity}g • ${Math.round(ing.calories)} kcal</span>
+                <span class="text-[10px] text-gray-500">${Math.round(ing.calories)} kcal base</span>
             </div>
-            <button type="button" class="text-red-500 hover:text-red-700 px-2 shrink-0 remove-meal-item-btn" data-index="${index}"><i class="fa-solid fa-times pointer-events-none"></i></button>
+            <div class="flex items-center gap-2 shrink-0">
+                <input type="number" class="w-16 p-1 text-xs font-mono font-bold border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-center edit-meal-item-qty" data-index="${index}" value="${ing.quantity}">
+                <span class="text-[10px] text-gray-500 font-bold mr-1">g</span>
+                <button type="button" class="text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 p-1 rounded transition-colors remove-meal-item-btn" data-index="${index}"><i class="fa-solid fa-times pointer-events-none"></i></button>
+            </div>
         `;
         list.appendChild(div);
     });
 };
+
+document.getElementById('edit-meal-items-section')?.addEventListener('input', (e) => {
+    if (e.target.classList.contains('edit-meal-item-qty')) {
+        const index = parseInt(e.target.dataset.index);
+        const newQty = parseFloat(e.target.value) || 0;
+        if (!tempMealItems[index]) return;
+        
+        const item = tempMealItems[index];
+        const newMultiplier = newQty / 100;
+        const ingBase = item.baseNutrients || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+        
+        item.quantity = newQty;
+        item.calories = ingBase.calories * newMultiplier;
+        item.protein = ingBase.protein * newMultiplier;
+        item.carbs = ingBase.carbs * newMultiplier;
+        item.fat = ingBase.fat * newMultiplier;
+    }
+});
 
 // Delegate event listener for the meal items list
 document.getElementById('edit-meal-items-list')?.addEventListener('click', (e) => {
@@ -3402,6 +3432,85 @@ document.getElementById('edit-meal-items-list')?.addEventListener('click', (e) =
         renderEditMealItems();
     }
 });
+
+// Quick Add Ingredient Logic for Meal Editor
+let mealEditSearchTimeout;
+const mealEditSearchInput = document.getElementById('meal-edit-add-ingredient-search');
+const mealEditSearchResults = document.getElementById('meal-edit-add-ingredient-results');
+
+if (mealEditSearchInput) {
+    mealEditSearchInput.addEventListener('input', (e) => {
+        clearTimeout(mealEditSearchTimeout);
+        const query = e.target.value.trim().toLowerCase();
+        if (query.length < 3) {
+            mealEditSearchResults.classList.add('hidden');
+            return;
+        }
+        
+        mealEditSearchTimeout = setTimeout(async () => {
+            mealEditSearchResults.innerHTML = '<div class="p-3 text-xs text-center text-gray-500"><i class="fa-solid fa-spinner fa-spin"></i> Searching...</div>';
+            mealEditSearchResults.classList.remove('hidden');
+            
+            try {
+                const res = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&sort_by=unique_scans_n`);
+                const data = await res.json();
+                
+                if (data.products && data.products.length > 0) {
+                    mealEditSearchResults.innerHTML = '';
+                    data.products.forEach(prod => {
+                        const div = document.createElement('div');
+                        div.className = 'p-2 text-xs border-b border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-orange-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2';
+                        const thumb = prod.image_front_thumb_url || 'https://static.openfoodfacts.org/images/misc/dist/packaging-placeholder.png';
+                        div.innerHTML = `
+                            <img src="${thumb}" class="w-8 h-8 object-contain rounded bg-white shrink-0 border border-gray-200">
+                            <div class="truncate flex-grow">
+                                <p class="font-bold truncate text-gray-800 dark:text-gray-200 text-sm leading-tight">${prod.product_name || 'Unknown'}</p>
+                                <p class="text-[10px] text-gray-500 truncate mt-0.5">${prod.brands || ''}</p>
+                            </div>
+                            <div class="text-[10px] font-mono text-orange-500 font-bold shrink-0 bg-orange-50 dark:bg-orange-900/30 px-2 py-1 rounded">
+                                ${(parseFloat(prod.nutriments?.['energy-kcal_100g']) || 0).toFixed(0)} kcal
+                            </div>
+                        `;
+                        div.addEventListener('click', () => {
+                            const baseCals = parseFloat(prod.nutriments?.['energy-kcal_100g']) || 0;
+                            const baseProt = parseFloat(prod.nutriments?.['proteins_100g']) || 0;
+                            const baseCarbs = parseFloat(prod.nutriments?.['carbohydrates_100g']) || 0;
+                            const baseFat = parseFloat(prod.nutriments?.['fat_100g']) || 0;
+                            
+                            const newItem = {
+                                name: prod.product_name || 'Unknown',
+                                brands: prod.brands || '',
+                                quantity: 100,
+                                baseNutrients: { calories: baseCals, protein: baseProt, carbs: baseCarbs, fat: baseFat },
+                                calories: baseCals, protein: baseProt, carbs: baseCarbs, fat: baseFat,
+                                imageUrl: thumb,
+                                isOptional: false
+                            };
+                            
+                            tempMealItems.push(newItem);
+                            renderEditMealItems();
+                            
+                            mealEditSearchInput.value = '';
+                            mealEditSearchResults.classList.add('hidden');
+                            window.showToast(`Added ${newItem.name} to meal.`, 'success');
+                        });
+                        mealEditSearchResults.appendChild(div);
+                    });
+                } else {
+                    mealEditSearchResults.innerHTML = '<div class="p-3 text-xs text-center text-gray-500">No results found.</div>';
+                }
+            } catch (err) {
+                mealEditSearchResults.innerHTML = '<div class="p-3 text-xs text-center text-red-500">Search failed.</div>';
+            }
+        }, 400);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!mealEditSearchInput.contains(e.target) && !mealEditSearchResults.contains(e.target)) {
+            mealEditSearchResults.classList.add('hidden');
+        }
+    });
+}
 
 const openEditItemModal = (item, type) => {
     document.getElementById('edit-modal-title').textContent = type === 'meal' ? 'Edit Meal' : 'Edit Favorite';
@@ -3723,14 +3832,21 @@ const renderDailyLog = () => {
             else if (src.includes('leftover')) sourceIcon = '<i class="fa-solid fa-cookie-bite text-[10px] mr-1"></i>';
 
             // HTML for Composite Ingredients (if applicable)
-            const ingredientsHTML = (item.items && item.items.length > 0) ? `
-                <div class="mt-2 p-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-dashed border-gray-200 dark:border-gray-700">
-                    <p class="text-[10px] font-bold text-gray-400 uppercase mb-1">Includes:</p>
-                    <ul class="text-[10px] space-y-0.5 text-[var(--text-color-secondary)]">
-                        ${item.items.map(ing => `<li>• ${ing.name} <span class="opacity-70">(${Math.round(ing.quantity)}g)</span></li>`).join('')}
-                    </ul>
-                </div>
-            ` : '';
+const ingredientsHTML = (item.items && item.items.length > 0) ? `
+    <div class="mt-2 p-3 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-800/50 w-full col-span-full">
+        <div class="flex justify-between items-center mb-2">
+            <p class="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase"><i class="fa-solid fa-layer-group mr-1"></i> Composite Ingredients:</p>
+            <button class="text-[10px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded text-blue-500 hover:text-blue-600 hover:bg-gray-50 transition-colors edit-log-item shadow-sm" data-action="edit-daily" data-id="${item.id}"><i class="fa-solid fa-pencil mr-1"></i> Edit/Swap</button>
+        </div>
+        <ul class="text-xs space-y-1.5 text-[var(--text-color-secondary)]">
+            ${item.items.map(ing => `
+                <li class="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm">
+                    <span class="truncate pr-2 font-medium flex-grow">${ing.name}</span>
+                    <span class="shrink-0 text-gray-500 font-mono text-[10px] bg-gray-50 dark:bg-gray-900 px-1.5 py-0.5 rounded">${Math.round(ing.quantity)}g</span>
+                </li>`).join('')}
+        </ul>
+    </div>
+` : '';
 
             // Construct Inner HTML
 
@@ -4908,14 +5024,27 @@ const renderRecipesQuickList = () => {
 });
 
 // --- Save/Load Filter Preferences ---
+document.getElementById('filter-no-serving')?.addEventListener('change', () => {
+    localStorage.setItem('foodTrackr_filterNoServing', document.getElementById('filter-no-serving').checked);
+    searchFood(true);
+});
+document.getElementById('filter-serving-discrepancy')?.addEventListener('change', () => {
+    localStorage.setItem('foodTrackr_filterDiscrepancy', document.getElementById('filter-serving-discrepancy').checked);
+    searchFood(true);
+});
+
 const loadFilterPreferences = () => {
-    const savedBrand = localStorage.getItem('foodTrackr_filterBrand');
-    const savedShop = localStorage.getItem('foodTrackr_filterShop');
-    const savedCountry = localStorage.getItem('foodTrackr_filterCountry');
+    const brand = localStorage.getItem('foodTrackr_filterBrand');
+    const shop = localStorage.getItem('foodTrackr_filterShop');
+    const country = localStorage.getItem('foodTrackr_filterCountry');
+    const noServ = localStorage.getItem('foodTrackr_filterNoServing') === 'true';
+    const disc = localStorage.getItem('foodTrackr_filterDiscrepancy') === 'true';
     
-    if (savedBrand) document.getElementById('filter-brand').value = savedBrand;
-    if (savedShop) document.getElementById('filter-shop').value = savedShop;
-    if (savedCountry) document.getElementById('filter-country').value = savedCountry;
+    if (brand && document.getElementById('filter-brand')) document.getElementById('filter-brand').value = brand;
+    if (shop && document.getElementById('filter-shop')) document.getElementById('filter-shop').value = shop;
+    if (country && document.getElementById('filter-country')) document.getElementById('filter-country').value = country;
+    if (document.getElementById('filter-no-serving')) document.getElementById('filter-no-serving').checked = noServ;
+    if (document.getElementById('filter-serving-discrepancy')) document.getElementById('filter-serving-discrepancy').checked = disc;
 };
 
 document.getElementById('filter-brand').addEventListener('input', (e) => {
@@ -5149,6 +5278,31 @@ const renderRecentFoods = () => {
 
       const renderSearchResults = (products) => {
     const searchResultsDiv = document.getElementById('search-results');
+    
+    // FILTERS
+    const noServingFilter = document.getElementById('filter-no-serving')?.checked;
+    const discrepancyFilter = document.getElementById('filter-serving-discrepancy')?.checked;
+
+    products = products.filter(product => {
+        const parseQuantityStrLocal = (str) => {
+            if (!str) return null;
+            const match = String(str).match(/(\d*\.?\d+)\s*(g|ml|l|kg)/i);
+            if(!match) return null;
+            let val = parseFloat(match[1]);
+            const unit = match[2].toLowerCase();
+            if(unit === 'kg' || unit === 'l') val *= 1000;
+            return val;
+        };
+        const searchServingGrams = parseQuantityStrLocal(product.serving_size || product.serving_quantity);
+        const searchPackGrams = parseQuantityStrLocal(product.product_quantity || product.quantity);
+        const { hasDiscrepancy } = getProductDiscrepancy(searchServingGrams, searchPackGrams);
+
+        if (noServingFilter && searchServingGrams !== null) return false;
+        if (discrepancyFilter && !hasDiscrepancy) return false;
+        
+        return true;
+    });
+
     // Store products for re-rendering when starring/unstarring
     searchResultsDiv._lastProducts = products;
     

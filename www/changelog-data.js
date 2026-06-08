@@ -2,6 +2,28 @@
 
 export const changelogData = [
     {
+    version: "v15.106.0-alpha",
+    date: "2026-06-08",
+    changes: [
+        "In FoodTrackr: Implemented advanced filtering in the search interface, adding toggles to isolate products missing serving sizes and those with nutrient-to-package serving discrepancies.",
+        "In FoodTrackr: Completely redesigned the Composite Food UI in the daily log; meals now feature a prominent, styled 'Composition' card that clearly displays all nested ingredients and their individual quantities.",
+        "In FoodTrackr: Overhauled the Meal Editor to allow real-time management of composite foods, including the ability to add new ingredients via live search and update existing item quantities.",
+    ]
+    },
+    {
+    version: "v15.105.0-alpha",
+    date: "2026-06-08",
+    changes: [
+                "In FoodTrackr: Redesigned the action buttons on logged items into a sleek, compact, space-saving format.",
+                "In FoodTrackr: Added a 'Composite Ingredients' inline editor to the main log form. When editing a composite meal from the log, you can now adjust quantities or delete ingredients, dynamically recalculating the base macros.",
+                "In FoodTrackr: Added a live inline search directly into the 'Composite Ingredients' editor, allowing you to instantly find and append new ingredients to an existing composite meal on the fly.",
+                "In FoodTrackr: Fixed the Product Details modal to correctly add items to the Composite Food Builder when the builder is active, instead of navigating away.",
+                "In FoodTrackr: Dynamically updated the 'Select This Product' and 'Quick Log Options' text in the Product Details modal to reflect when the Composite Food Builder is capturing the input.",
+                "In FoodTrackr: Implemented 1-click ingredient adding. When the Composite Builder is active, clicking a search result card immediately adds the ingredient and drops you back into the builder view.",
+                "In FoodTrackr: Added highly visible 'Composite Meal' indicator badges across the Daily Log, History Table, and Search Results to easily distinguish them from single-ingredient items."
+    ]
+},
+    {
 version: "v15.104.0-alpha",
 date: "2026-06-07",
 changes: [
