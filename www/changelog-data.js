@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.107.0-alpha",
+    date: "2026-06-10",
+    changes: [
+        "In RecipeManagr: Fixed a z-index bug causing the history log modal to render underneath the main recipe details modal.",
+        "In RecipeManagr: Streamlined the user interface by combining the 'Log' and 'View History' buttons into a single 'Log / History' action.",
+        "In RecipeManagr: Added a 'Clear Search' (X) button to the main search bar that automatically toggles based on input.",
+        "In RecipeManagr: Overhauled the History modal to support attaching and viewing photo uploads for each cooking log.",
+        "In RecipeManagr: Added functionality to edit past recorded cooking logs, including updating dates, ratings, notes, and photos.",
+        "In SharedNav: Updated names of quick links to reflect their main area of usage for better readability (e.g. RecipeManagr is now simply Recipe)."
+    ]
+},
+    {
     version: "v15.106.0-alpha",
     date: "2026-06-08",
     changes: [
