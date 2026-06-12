@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.110.0-alpha",
+    date: "2026-06-13",
+    changes: [
+        "In RecipeManagr: Swapped the positions of the 'Add' and 'Plan' tabs in the navigation bar.",
+        "In RecipeManagr: Added 'Collection' and 'Source' as filtering options in the UI and updated search logic to support them.",
+        "In RecipeManagr: Improved 'Timeline' load speed by concurrently fetching history logs using Promise.all instead of sequential requests.",
+        "In RecipeManagr: Fixed instruction strikeout logic to visually strike out the entire row and reliably toggle the struck-out status on linked ingredients."
+    ]
+},
+    {
     version: "v15.109.0-alpha",
     date: "2026-06-12",
     changes: [
