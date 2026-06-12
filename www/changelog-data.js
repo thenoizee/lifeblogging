@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+        version: "v15.108.0-alpha",
+        date: "2026-06-12",
+        changes: [
+            "In FoodTrackr: Fixed an issue where the Edit Item modal was getting trapped inside hidden tab containers.",
+            "In FoodTrackr: Redesigned the Detailed Breakdown on the Insights page from a hidden table into an always-visible, colorful micronutrient card grid.",
+            "In Analyser: Expanded the Insights statistics grid to show Minimum and Maximum values alongside Averages.",
+        ]
+    },
+    {
     version: "v15.107.0-alpha",
     date: "2026-06-10",
     changes: [
