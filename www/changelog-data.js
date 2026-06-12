@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.109.0-alpha",
+    date: "2026-06-12",
+    changes: [
+                "In PlantTrackr: Changed the default Progress Update frequency to 14 days (2 weeks) and automatically doubled it to 4 weeks during Winter Mode.",
+                "In PlantTrackr: Added a 'Total Harvests' tracking function, displaying accumulated harvest yields directly on the plant details view.",
+                "In PlantTrackr: Added the ability to upload and display custom photos for Spaces/Locations.",
+                "In PlantTrackr: Upgraded the Garden Layout map with a visible grid overlay, snap-to-grid movement toggle, and free draw/drag modes.",
+                "In PlantTrackr: Added new circular shapes to the Garden Layout map."
+    ]
+},
+    {
         version: "v15.108.0-alpha",
         date: "2026-06-12",
         changes: [

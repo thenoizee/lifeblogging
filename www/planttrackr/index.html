@@ -201,6 +201,18 @@
         }
         .message-box.show { display: block; animation: fadeIn 0.3s; }
         
+        #layout-container {
+            background-color: var(--input-bg);
+        }
+        
+        .show-grid {
+            background-size: 5% 5% !important;
+            background-image: 
+                linear-gradient(to right, rgba(150, 150, 150, 0.4) 1px, transparent 1px), 
+                linear-gradient(to bottom, rgba(150, 150, 150, 0.4) 1px, transparent 1px) !important;
+            background-position: 0 0 !important;
+        }
+
         table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         th { text-align: left; padding: 0.75rem; color: var(--text); opacity: 0.7; font-weight: 600; border-bottom: 1px solid var(--border); }
         td { padding: 0.75rem; border-bottom: 1px solid var(--border); }
@@ -494,13 +506,19 @@
     </div>
 
     <div id="spaces-map-wrapper" class="hidden">
-        <div class="flex justify-between items-center mb-4">
-            <div class="bg-gray-200 dark:bg-gray-800 p-1 rounded-lg flex gap-1">
-                <button id="mode-move" class="px-4 py-1.5 rounded-md text-sm font-bold bg-white dark:bg-gray-600 shadow-sm transition-all" onclick="setMode('move')"><i class="fa-solid fa-hand-pointer mr-2"></i> Move</button>
-                <button id="mode-draw" class="px-4 py-1.5 rounded-md text-sm font-bold opacity-60 hover:opacity-100 transition-all" onclick="setMode('draw')"><i class="fa-solid fa-pencil mr-2"></i> Draw</button>
+        <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+            <div class="flex items-center gap-4">
+                <div class="bg-gray-200 dark:bg-gray-800 p-1 rounded-lg flex gap-1">
+                    <button id="mode-move" class="px-4 py-1.5 rounded-md text-sm font-bold bg-white dark:bg-gray-600 shadow-sm transition-all" onclick="setMode('move')"><i class="fa-solid fa-hand-pointer mr-2"></i> Move</button>
+                    <button id="mode-draw" class="px-4 py-1.5 rounded-md text-sm font-bold opacity-60 hover:opacity-100 transition-all" onclick="setMode('draw')"><i class="fa-solid fa-pencil mr-2"></i> Draw</button>
+                </div>
+                <label class="flex items-center gap-2 text-sm font-bold cursor-pointer bg-white dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-[var(--border)] shadow-sm">
+                    <input type="checkbox" id="layout-snap-toggle" class="w-4 h-4 text-[var(--primary)] rounded focus:ring-[var(--primary)]" checked onchange="window.toggleGrid()"> Snap to Grid
+                </label>
             </div>
             <select id="layout-location-select" class="input-std !w-auto"><option value="">-- Select Room --</option></select>
         </div>
+        <p id="layout-instructions" class="text-sm opacity-70 mb-2 font-medium pl-1"></p>
         <div id="layout-toolbar" class="card p-2 mb-4 flex gap-2 overflow-x-auto"></div>
         <div class="card relative bg-[var(--input-bg)] border-2 border-dashed border-[var(--border)] overflow-hidden" style="height: 60vh;" id="layout-container">
             <div id="layout-placeholder" class="absolute inset-0 flex items-center justify-center opacity-50 pointer-events-none"><p>Select a room/space to start</p></div>
@@ -621,6 +639,11 @@
                 <div class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
                     <label class="text-sm font-bold text-blue-800 dark:text-blue-300 block mb-1">Broad Space Name</label>
                     <input type="text" id="loc-name" class="input-std font-bold text-lg py-2" placeholder="e.g. Kitchen, Garden, Balcony">
+                </div>
+                
+                <div>
+                    <label class="text-sm font-bold block mb-1">Space Photo (Optional)</label>
+                    <input type="file" id="loc-photo" accept="image/*" class="input-std text-sm py-1.5">
                 </div>
                 
                 <div class="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg border border-purple-100 dark:border-purple-800">
@@ -1133,6 +1156,10 @@
         <div class="bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--border)]">
             <p class="opacity-60 font-bold mb-1 uppercase tracking-wider text-[9px]"><i class="fa-solid fa-heart-pulse"></i> Health</p>
             <p id="view-plant-health" class="font-bold truncate"></p>
+        </div>
+        <div class="bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--border)] col-span-2">
+            <p class="opacity-60 font-bold mb-1 uppercase tracking-wider text-[9px]"><i class="fa-solid fa-basket-shopping"></i> Total Harvests</p>
+            <p id="view-plant-harvests" class="font-bold text-[10px] truncate"></p>
         </div>
     </div>
 </div>
@@ -2103,7 +2130,9 @@
                 };
                 const icon = typeIcons[loc.type] || 'fa-map-pin';
 
+                const photoBg = loc.photoUrl ? `background-image: url('${loc.photoUrl}');` : '';
                 card.innerHTML = `
+                    ${loc.photoUrl ? `<div class="h-24 -mx-4 -mt-4 mb-4 bg-cover bg-center rounded-t-lg" style="${photoBg}"></div>` : ''}
                     <div class="flex justify-between items-start mb-4">
                         <div class="flex items-center gap-3">
                             <div class="plant-icon-circle bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300">
@@ -2888,10 +2917,12 @@ freq = Math.max(1, freq);
                 }
 
                 if (plant.progFreq) {
-                    const lastProg = plantLogs.find(l => l.type === 'Progress' || l.type === 'Growth');
-                    const lastDate = lastProg ? new Date(lastProg.date) : new Date(plant.acquired || 0);
-                    const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
-                    const daysOverdue = Math.floor(diffDays - plant.progFreq);
+                    let progFreqAdj = plant.progFreq;
+                    if (state.winterMode) progFreqAdj = progFreqAdj * 2;
+                    const lastProg = plantLogs.find(l => l.type === 'Progress' || l.type === 'Growth');
+                    const lastDate = lastProg ? new Date(lastProg.date) : new Date(plant.acquired || 0);
+                    const diffDays = (now - lastDate) / (1000 * 60 * 60 * 24);
+                    const daysOverdue = Math.floor(diffDays - progFreqAdj);
 
                     if (daysOverdue >= 0 && !isSick) {
                         if (actionFilter === 'all' || actionFilter === 'progress') {
@@ -3407,6 +3438,19 @@ if (state.compost) {
     if (getEl("view-plant-companions")) getEl("view-plant-companions").textContent = compHtml;
 
     getEl("view-plant-health").textContent = plant.health ? plant.health.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Good";
+            
+            const plantLogs = state.logs.filter(l => l.plantId === plant.id);
+            const harvestLogs = plantLogs.filter(l => l.type === 'Harvest' && l.notes && l.notes.includes('Harvested:'));
+            let harvestSummary = 'None';
+            if (harvestLogs.length > 0) {
+                const harvestTexts = harvestLogs.map(l => {
+                    const match = l.notes.match(/Harvested:\s*(.+)/);
+                    return match ? match[1] : '';
+                }).filter(Boolean);
+                harvestSummary = harvestTexts.length > 0 ? harvestTexts.join(', ') : 'None';
+            }
+            if (getEl("view-plant-harvests")) getEl("view-plant-harvests").textContent = harvestSummary;
+
             getEl("view-plant-water").textContent = plant.waterFreq ? `Every ${plant.waterFreq}d` : "N/A";
             getEl("view-plant-feed").textContent = plant.fertFreq ? `Every ${plant.fertFreq}d` : "N/A";
             getEl("view-plant-prog").textContent = plant.progFreq ? `Every ${plant.progFreq}d` : "N/A";
@@ -3464,7 +3508,7 @@ if (state.compost) {
             getEl("plant-water-freq").value = 7;
             getEl("plant-fert-freq").value = 14; // Default to 14 days
             getEl("plant-fert-enable").checked = true; // Enabled by default
-            getEl("plant-prog-freq").value = 30;
+            getEl("plant-prog-freq").value = 14;
             getEl("plant-weather").checked = false;
             getEl("plant-overwinter").checked = false;
             getEl("plant-acquired").value = toLocalISOString(new Date()).split('T')[0];
@@ -3778,6 +3822,7 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
 
             getEl("modal-location-id").value = "";
             getEl("loc-name").value = "";
+            if(getEl("loc-photo")) getEl("loc-photo").value = "";
             getEl("loc-positions").value = ""; // Default state
             getEl("loc-type").value = "inside";
             getEl("loc-light").value = "natural";
@@ -3824,6 +3869,14 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
             if (!data.name) return showMsg("Location name is required", "error");
 
             try {
+                const locFile = getEl("loc-photo")?.files[0];
+                if (locFile) {
+                    const compressed = await compressImage(locFile);
+                    const storageRef = ref(storage, `users/${state.user.uid}/locations/${Date.now()}_${compressed.name}`);
+                    await uploadBytes(storageRef, compressed);
+                    data.photoUrl = await getDownloadURL(storageRef);
+                }
+
                 if (id) {
                     await updateDoc(doc(db, `users/${state.user.uid}/plant_locations`, id), data);
                     showMsg("Space updated");
@@ -3858,7 +3911,8 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
             { id: 'veg',  label: 'Veg Patch', icon: 'fa-carrot', color: 'text-orange-500', bg: 'bg-amber-900/30', border: 'border-amber-900/50' },
             { id: 'water', label: 'Water', icon: 'fa-water', color: 'text-blue-500', bg: 'bg-blue-500/20', border: 'border-blue-400' },
             { id: 'wall', label: 'Wall', icon: 'fa-ruler-horizontal', color: 'text-stone-500', bg: 'bg-stone-500', border: '' },
-            { id: 'tree', label: 'Tree', icon: 'fa-tree', color: 'text-green-700', bg: 'bg-green-800/80', border: '' }
+            { id: 'tree', label: 'Tree', icon: 'fa-tree', color: 'text-green-700', bg: 'bg-green-800/80', border: '' },
+            { id: 'round', label: 'Round Box', icon: 'fa-circle', color: 'text-green-600', bg: 'bg-green-200/50 dark:bg-green-900/50', border: 'border-[var(--primary)] !rounded-full' }
         ];
 
         window.setMode = (mode) => {
@@ -3870,15 +3924,15 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
             const instructions = getEl('layout-instructions');
 
             if (mode === 'move') {
-                moveBtn.className = "px-4 py-1.5 rounded-md text-sm font-bold bg-white dark:bg-gray-600 shadow-sm transition-all";
-                drawBtn.className = "px-4 py-1.5 rounded-md text-sm font-bold opacity-60 hover:opacity-100 transition-all";
-                toolbar.classList.add('opacity-50', 'pointer-events-none'); 
-                instructions.innerHTML = '<i class="fa-solid fa-hand-pointer mr-1"></i> Drag items to move. Double-tap to delete.';
+                if(moveBtn) moveBtn.className = "px-4 py-1.5 rounded-md text-sm font-bold bg-white dark:bg-gray-600 shadow-sm transition-all";
+                if(drawBtn) drawBtn.className = "px-4 py-1.5 rounded-md text-sm font-bold opacity-60 hover:opacity-100 transition-all";
+                if(toolbar) toolbar.classList.add('opacity-50', 'pointer-events-none'); 
+                if(instructions) instructions.innerHTML = '<i class="fa-solid fa-hand-pointer mr-1 text-blue-500"></i> Drag items to move. Double-tap to delete.';
             } else {
-                moveBtn.className = "px-4 py-1.5 rounded-md text-sm font-bold opacity-60 hover:opacity-100 transition-all";
-                drawBtn.className = "px-4 py-1.5 rounded-md text-sm font-bold bg-white dark:bg-gray-600 shadow-sm transition-all";
-                toolbar.classList.remove('opacity-50', 'pointer-events-none');
-                instructions.innerHTML = '<i class="fa-solid fa-pencil mr-1"></i> Drag on canvas to draw area. Select tool above.';
+                if(moveBtn) moveBtn.className = "px-4 py-1.5 rounded-md text-sm font-bold opacity-60 hover:opacity-100 transition-all";
+                if(drawBtn) drawBtn.className = "px-4 py-1.5 rounded-md text-sm font-bold bg-white dark:bg-gray-600 shadow-sm transition-all";
+                if(toolbar) toolbar.classList.remove('opacity-50', 'pointer-events-none');
+                if(instructions) instructions.innerHTML = '<i class="fa-solid fa-pencil mr-1 text-green-500"></i> Drag on canvas to draw an area. Select a tool above.';
                 renderToolbar(); 
             }
         };
@@ -3898,6 +3952,18 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
             `).join('');
         };
 
+        window.toggleGrid = () => {
+            const isSnap = document.getElementById('layout-snap-toggle')?.checked;
+            const container = document.getElementById('layout-container');
+            if (container) {
+                if (isSnap) {
+                    container.classList.add('show-grid');
+                } else {
+                    container.classList.remove('show-grid');
+                }
+            }
+        };
+
         const renderLayout = () => {
             const container = document.getElementById("layout-container");
             const select = document.getElementById("layout-location-select");
@@ -3906,6 +3972,9 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
             container.innerHTML = `<div id="layout-placeholder" class="absolute inset-0 flex items-center justify-center opacity-50 pointer-events-none ${location ? 'hidden' : ''}">
                 <p><i class="fa-solid fa-map mr-2"></i>Select a room/space to start</p>
             </div>`;
+
+            window.setMode('move');
+            window.toggleGrid();
 
             container.onmousedown = handleDrawStart;
             container.ontouchstart = handleDrawStart;
@@ -3931,7 +4000,7 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
                 el.dataset.type = "structure";
                 el.addEventListener('mousedown', handleMoveStart);
                 el.addEventListener('touchstart', handleMoveStart, { passive: false });
-                el.ondblclick = (e) => { e.stopPropagation(); deleteStructure(s.id); };
+                el.ondblclick = (e) => { e.stopPropagation(); window.deleteStructure(s.id); };
                 
                 container.appendChild(el);
             });
@@ -3973,8 +4042,14 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
             const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-            const startX = ((clientX - rect.left) / rect.width) * 100;
-            const startY = ((clientY - rect.top) / rect.height) * 100;
+            let startX = ((clientX - rect.left) / rect.width) * 100;
+            let startY = ((clientY - rect.top) / rect.height) * 100;
+
+            const snap = getEl('layout-snap-toggle')?.checked ? 5 : 0;
+            if (snap) {
+                startX = Math.round(startX / snap) * snap;
+                startY = Math.round(startY / snap) * snap;
+            }
 
             const guide = document.createElement("div");
             guide.className = "absolute border-2 border-[var(--primary)] bg-[var(--primary)] bg-opacity-20 z-50 pointer-events-none";
@@ -4002,6 +4077,12 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
             
             currX = Math.max(0, Math.min(100, currX));
             currY = Math.max(0, Math.min(100, currY));
+
+            const snap = getEl('layout-snap-toggle')?.checked ? 5 : 0;
+            if (snap) {
+                currX = Math.round(currX / snap) * snap;
+                currY = Math.round(currY / snap) * snap;
+            }
 
             const left = Math.min(activeDraw.startX, currX);
             const top = Math.min(activeDraw.startY, currY);
@@ -4076,6 +4157,12 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
             
             x = Math.max(0, Math.min(100, x));
             y = Math.max(0, Math.min(100, y));
+
+            const snap = getEl('layout-snap-toggle')?.checked ? 5 : 0;
+            if (snap) {
+                x = Math.round(x / snap) * snap;
+                y = Math.round(y / snap) * snap;
+            }
 
             activeDrag.el.style.left = x + '%';
             activeDrag.el.style.top = y + '%';
@@ -4371,7 +4458,9 @@ wFreq = Math.max(1, wFreq); // Re-apply floor limit
         `;
     }
 
-    renderSimpleTask(plant.progFreq, 'Progress', 'fa-camera', 'text-purple-600 dark:text-purple-400', 'border-purple-500', 'bg-purple-50 dark:bg-purple-900/10');
+    let progFreqAdj = plant.progFreq;
+    if (plant.progFreq && state.winterMode) progFreqAdj = progFreqAdj * 2;
+    renderSimpleTask(progFreqAdj, 'Progress', 'fa-camera', 'text-purple-600 dark:text-purple-400', 'border-purple-500', 'bg-purple-50 dark:bg-purple-900/10');
 
     if (!html) {
         html = `<div class="text-center p-6 border-2 border-dashed border-[var(--border)] rounded-lg"><p class="opacity-50 text-sm font-bold"><i class="fa-solid fa-bed text-2xl mb-2 block"></i> No routines set for this plant yet.</p></div>`;
@@ -5023,7 +5112,7 @@ window.saveCompostSettings = async () => {
             getEl('plant-mist-freq').value = mFreq || '';
             getEl('plant-prune-freq').value = pFreq;
             getEl('plant-repot-freq').value = rFreq;
-            getEl('plant-prog-freq').value = 30; // Default to monthly check-ins
+            getEl('plant-prog-freq').value = 14; // Default to bi-weekly check-ins
 
             toggleDisplay(getEl('api-search-modal'), false);
         };
@@ -5568,7 +5657,7 @@ window.saveCompostSettings = async () => {
                     } catch(e) { showMsg(e.message, "error"); }
                 };
 
-                const deleteStructure = async (id) => {
+                window.deleteStructure = async (id) => {
                     if(confirm("Remove this item?")) {
                         await deleteDoc(doc(db, `users/${state.user.uid}/garden_structures`, id));
                     }
