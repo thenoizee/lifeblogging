@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.112.0-alpha",
+    date: "2026-06-13",
+    changes: [
+        "In Account Settings: Added an 'Appearance' card under the General tab to toggle automatic system theme syncing.",
+        "In AppNavigation: Added matchMedia listeners to seamlessly sync the app's dark/light mode with device OS preferences when enabled.",
+        "In AppNavigation: Manual theme overrides via the header toggle will now purposefully disable the auto-sync setting."
+    ]
+},
+    {
     version: "v15.111.0-alpha",
     date: "2026-06-13",
     changes: [

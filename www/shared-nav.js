@@ -51,26 +51,51 @@ export class AppNavigation {
             { name: 'LightManagr', url: '/lightmanagr', icon: 'fa-lightbulb', color: 'bg-yellow-500' },
         ];
 
+        // Store media query for system theme listener
+        this.systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        this.handleSystemThemeChange = this.handleSystemThemeChange.bind(this);
+
         this.init();
     }
+
+    handleSystemThemeChange(e) {
+        // Apply system theme automatically if enabled in settings
+        if (localStorage.getItem('themeAuto') === 'true') {
+            this.applyTheme(e.matches);
+        }
+    }
+
     init() {
         this.injectGlobalStyles();
         this.renderHeader();
         this.renderMobileNav();
         this.attachEvents();
         
+        let isAuto = localStorage.getItem('themeAuto') === 'true';
         let storedTheme = localStorage.getItem('theme');
-        if (!storedTheme) {
-            storedTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        
+        // Initialize theme based on Auto setting or stored explicit theme
+        if (isAuto) {
+            this.applyTheme(this.systemThemeQuery.matches);
+            this.systemThemeQuery.addEventListener('change', this.handleSystemThemeChange);
+        } else {
+            if (!storedTheme) storedTheme = this.systemThemeQuery.matches ? 'dark' : 'light';
+            this.applyTheme(storedTheme === 'dark');
         }
-        this.applyTheme(storedTheme === 'dark');
         
         this.updateActiveTab(this.activeTab);
 
         // Listen for localStorage changes from other live tabs
         window.addEventListener('storage', (e) => {
-            if (e.key === 'theme') {
+            if (e.key === 'theme' && localStorage.getItem('themeAuto') !== 'true') {
                 this.applyTheme(e.newValue === 'dark');
+            } else if (e.key === 'themeAuto') {
+                if (e.newValue === 'true') {
+                    this.systemThemeQuery.addEventListener('change', this.handleSystemThemeChange);
+                    this.applyTheme(this.systemThemeQuery.matches);
+                } else {
+                    this.systemThemeQuery.removeEventListener('change', this.handleSystemThemeChange);
+                }
             }
         });
 
@@ -555,8 +580,27 @@ export class AppNavigation {
                 const themeRef = doc(db, 'users', user.uid, 'settings', 'theme');
                 onSnapshot(themeRef, (docSnap) => {
                     if (docSnap.exists()) {
-                        const cloudTheme = docSnap.data().theme;
-                        if (cloudTheme && localStorage.getItem('theme') !== cloudTheme) {
+                        const data = docSnap.data();
+                        const cloudTheme = data.theme;
+                        const cloudAuto = data.themeAuto;
+                        
+                        // Sync auto-theme preference
+                        if (cloudAuto !== undefined) {
+                            const localAuto = localStorage.getItem('themeAuto') === 'true';
+                            if (cloudAuto !== localAuto) {
+                                localStorage.setItem('themeAuto', cloudAuto ? 'true' : 'false');
+                                if (cloudAuto) {
+                                    this.systemThemeQuery.addEventListener('change', this.handleSystemThemeChange);
+                                    this.applyTheme(this.systemThemeQuery.matches); // Sync to device immediately
+                                } else {
+                                    this.systemThemeQuery.removeEventListener('change', this.handleSystemThemeChange);
+                                    if (cloudTheme) this.applyTheme(cloudTheme === 'dark'); // Revert to explicit theme
+                                }
+                            }
+                        }
+
+                        // Sync explicit theme if auto is disabled
+                        if (!cloudAuto && cloudTheme && localStorage.getItem('theme') !== cloudTheme) {
                             this.applyTheme(cloudTheme === 'dark');
                         }
                     }
@@ -805,18 +849,26 @@ export class AppNavigation {
             themeBtn.addEventListener('click', async () => {
                 const isDark = !document.documentElement.classList.contains('dark');
                 this.applyTheme(isDark);
+                
+                // Disable automatic theme syncing if user manually toggles
+                localStorage.setItem('themeAuto', 'false');
+                this.systemThemeQuery.removeEventListener('change', this.handleSystemThemeChange);
+
                 if (this.onThemeChange) {
                     this.onThemeChange(isDark ? 'dark' : 'light');
                 }
                 themeBtn.classList.add('rotate-360');
                 setTimeout(() => themeBtn.classList.remove('rotate-360'), 500);
 
-                // Push to Firebase
+                // Push explicit manual theme to Firebase and override Auto setting
                 const auth = getAuth();
                 if (auth.currentUser) {
                     try {
                         const db = getFirestore();
-                        await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'theme'), { theme: isDark ? 'dark' : 'light' }, { merge: true });
+                        await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'theme'), { 
+                            theme: isDark ? 'dark' : 'light',
+                            themeAuto: false // Manually overriding disables auto theme
+                        }, { merge: true });
                     } catch (err) {
                         console.error("Error saving theme to cloud:", err);
                     }
