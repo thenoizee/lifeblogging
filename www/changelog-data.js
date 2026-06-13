@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.113.0-alpha",
+    date: "2026-06-14",
+    changes: [
+        "In TaskTrackr: Added 'Day Plan' (Timebox) view to the navigation tabs and routing system.",
+        "In TaskTrackr: Implemented renderTimebox function to display a visual 24-hour intra-day timeline for today's tasks.",
+        "In TaskTrackr: Added Quick-Start Focus Templates (15m, 25m, 60m, 90m) to the Pomodoro widget UI and underlying timer logic.",
+        "In TaskTrackr: Added Daily Focus Goal progress bar and Streak tracking to the Pomodoro widget, utilizing localStorage to persist daily metrics."
+    ]
+},
+    {
     version: "v15.112.0-alpha",
     date: "2026-06-13",
     changes: [

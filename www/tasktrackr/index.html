@@ -459,10 +459,24 @@ body {
                 <h3 class="text-sm font-bold flex items-center gap-2"><i class="fa-solid fa-bullseye text-red-500"></i> Focus</h3>
                 <button onclick="window.minimizePomo(event)" class="text-gray-500 hover:text-white"><i class="fa-solid fa-minus"></i></button>
             </div>
+            
+            <div class="flex justify-center gap-1 mb-3">
+                <button onclick="window.setPomoTime(15, event)" class="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-[10px] rounded hover:bg-gray-200 dark:hover:bg-gray-700 font-bold transition">15m</button>
+                <button onclick="window.setPomoTime(25, event)" class="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-[10px] rounded hover:bg-gray-200 dark:hover:bg-gray-700 font-bold transition">25m</button>
+                <button onclick="window.setPomoTime(60, event)" class="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-[10px] rounded hover:bg-gray-200 dark:hover:bg-gray-700 font-bold transition">60m</button>
+                <button onclick="window.setPomoTime(90, event)" class="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-[10px] rounded hover:bg-gray-200 dark:hover:bg-gray-700 font-bold transition">90m</button>
+            </div>
+            
             <div class="text-4xl font-mono font-bold text-center mb-4 tracking-wider" id="pomo-timer">25:00</div>
             <div class="flex gap-2">
                 <button id="pomo-toggle" onclick="window.togglePomoTimer(event)" class="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded transition">Start</button>
                 <button onclick="window.resetPomo(event)" class="px-3 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 rounded transition"><i class="fa-solid fa-rotate-left"></i></button>
+            </div>
+            
+            <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 text-center">
+                <div class="text-[10px] text-gray-500 font-bold uppercase mb-1.5 flex justify-between"><span>Daily Focus</span> <span class="text-orange-500" id="pomo-streak"><i class="fa-solid fa-fire"></i> 0</span></div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mb-1.5 overflow-hidden"><div id="pomo-progress" class="bg-gradient-to-r from-red-500 to-orange-400 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div></div>
+                <div class="text-[10px] font-bold text-gray-600 dark:text-gray-400"><span id="pomo-tracked">0h 0m</span> / 4h Goal</div>
             </div>
         </div>
     </div>
@@ -770,7 +784,7 @@ import {
 
         // Handle URL Hash for initial tab
         const initialTab = window.location.hash ? window.location.hash.substring(1) : 'classic';
-        const validTabs = ['classic', 'agenda', 'eisenhower', 'kanban', 'calendar', 'timeline'];
+        const validTabs = ['classic', 'agenda', 'timebox', 'eisenhower', 'kanban', 'calendar', 'timeline'];
         const startingTab = validTabs.includes(initialTab) ? initialTab : 'classic';
 
         // Initialize Shared Navigation
@@ -782,6 +796,7 @@ import {
             tabs: [
                 { id: 'classic', label: 'List', icon: 'fa-list' },
                 { id: 'agenda', label: 'Agenda', icon: 'fa-calendar-days' },
+                { id: 'timebox', label: 'Day Plan', icon: 'fa-clock' },
                 { id: 'eisenhower', label: 'Matrix', icon: 'fa-border-all' },
                 { id: 'kanban', label: 'Board', icon: 'fa-table-columns' },
                 { id: 'calendar', label: 'Calendar', icon: 'fa-calendar' },
@@ -1992,8 +2007,8 @@ const fetchAllData = async () => {
             // Shared Nav handles tab styling now via the 'tab-changed' event
             // But we need to ensure the local state matches
             const quickAdd = document.getElementById('quick-add-container'); 
-            if(view === 'eisenhower' || view === 'calendar' || view === 'agenda') quickAdd.classList.add('hidden'); 
-            else quickAdd.classList.remove('hidden'); 
+            if(view === 'eisenhower' || view === 'calendar' || view === 'agenda' || view === 'timebox') quickAdd.classList.add('hidden'); 
+            else quickAdd.classList.remove('hidden');
             renderApp(); 
         };
         // Add these functions
@@ -2394,7 +2409,41 @@ const counterEl = document.getElementById('header-task-count') || els.taskCounte
 if (counterEl) {
     counterEl.textContent = tasks.length;
 }
-        if (currentState.view === 'eisenhower') renderEisenhower(tasks); else if (currentState.view === 'classic') renderClassic(tasks); else if (currentState.view === 'calendar') renderCalendar(tasks); else if (currentState.view === 'kanban') renderKanban(tasks); else if (currentState.view === 'timeline') renderTimeline(tasks); else if (currentState.view === 'agenda') renderAgenda(tasks); };
+        if (currentState.view === 'eisenhower') renderEisenhower(tasks); else if (currentState.view === 'classic') renderClassic(tasks); else if (currentState.view === 'calendar') renderCalendar(tasks); else if (currentState.view === 'kanban') renderKanban(tasks); else if (currentState.view === 'timeline') renderTimeline(tasks); else if (currentState.view === 'agenda') renderAgenda(tasks); else if (currentState.view === 'timebox') renderTimebox(tasks); };
+        
+        const renderTimebox = (tasks) => {
+            const now = new Date();
+            const todayStr = now.toISOString().split('T')[0];
+            // Get today's tasks that have a specific time attached (not all day)
+            const todayTasks = tasks.filter(t => t.dueDate && t.dueDate.startsWith(todayStr) && !t.isAllDay && t.status !== 2);
+            
+            let html = '<div class="w-full max-w-3xl mx-auto space-y-2 pb-12 pt-4"><h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white pl-16">Todays Schedule</h2>';
+            
+            // Render hours from 6 AM to 11 PM
+            for(let hour = 6; hour <= 23; hour++) {
+                const hourTasks = todayTasks.filter(t => {
+                    const tDate = new Date(t.dueDate);
+                    return tDate.getHours() === hour;
+                });
+                
+                const ampm = hour >= 12 ? 'PM' : 'AM';
+                const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+                const isCurrentHour = now.getHours() === hour;
+                
+                html += `
+                <div class="flex border-b border-gray-200 dark:border-gray-700/50 min-h-[70px] group ${isCurrentHour ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}">
+                    <div class="w-16 flex-shrink-0 text-right pr-4 py-3 text-xs font-bold ${isCurrentHour ? 'text-blue-500' : 'text-gray-400 group-hover:text-blue-400'} transition-colors">
+                        ${displayHour} ${ampm}
+                    </div>
+                    <div class="flex-grow pl-4 border-l-2 ${isCurrentHour ? 'border-blue-500' : 'border-gray-100 dark:border-gray-800'} py-2 space-y-2 relative" data-hour="${hour}">
+                        ${isCurrentHour ? '<div class="absolute left-[-5px] top-1/2 w-2 h-2 rounded-full bg-blue-500 -mt-1"></div>' : ''}
+                        ${hourTasks.length > 0 ? hourTasks.map(renderTaskCard).join('') : '<div class="opacity-0 group-hover:opacity-100 text-[10px] uppercase font-bold text-gray-400 pt-2 pl-2 transition-opacity tracking-widest">Open Time</div>'}
+                    </div>
+                </div>`;
+            }
+            html += '</div>';
+            els.content.innerHTML = html;
+        };
         window.renderApp = renderApp;
 
 
@@ -3157,13 +3206,94 @@ window.openModal = (isEdit, taskId = null) => {
 
 
         /* Pomo, Keydown, Helper functions */
-        let pomoInterval; let pomoSeconds = 25 * 60; let isPomoRunning = false;
-        window.togglePomo = () => { document.getElementById('pomo-widget').classList.remove('hidden'); };
+        let pomoInterval; let pomoSeconds = 25 * 60; let isPomoRunning = false; let currentPomoSessionLength = 25;
+        let todayTrackedSeconds = parseInt(localStorage.getItem('todayTrackedSeconds') || '0');
+        let currentStreak = parseInt(localStorage.getItem('pomoStreak') || '0');
+        
+        window.togglePomo = () => { document.getElementById('pomo-widget').classList.remove('hidden'); window.updatePomoStats(); };
         window.minimizePomo = (e) => { e.stopPropagation(); document.getElementById('pomo-widget').classList.add('minimized'); };
         window.maximizePomo = () => { document.getElementById('pomo-widget').classList.remove('minimized'); };
-        window.updatePomoDisplay = () => { const m = Math.floor(pomoSeconds / 60).toString().padStart(2, '0'); const s = (pomoSeconds % 60).toString().padStart(2, '0'); document.getElementById('pomo-timer').textContent = `${m}:${s}`; if(pomoSeconds === 0) { clearInterval(pomoInterval); isPomoRunning = false; document.getElementById('pomo-toggle').textContent = "Start"; showToast("Focus session complete!", "success"); confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } }); } };
-        window.togglePomoTimer = (e) => { e.stopPropagation(); const btn = document.getElementById('pomo-toggle'); if (isPomoRunning) { clearInterval(pomoInterval); isPomoRunning = false; btn.textContent = "Resume"; } else { isPomoRunning = true; btn.textContent = "Pause"; pomoInterval = setInterval(() => { if(pomoSeconds > 0) { pomoSeconds--; window.updatePomoDisplay(); } }, 1000); } };
-        window.resetPomo = (e) => { e.stopPropagation(); clearInterval(pomoInterval); isPomoRunning = false; pomoSeconds = 25 * 60; document.getElementById('pomo-toggle').textContent = "Start"; window.updatePomoDisplay(); };
+        
+        window.setPomoTime = (minutes, e) => {
+            if(e) e.stopPropagation();
+            if(isPomoRunning) return showToast("Pause timer first", "error");
+            currentPomoSessionLength = minutes;
+            pomoSeconds = minutes * 60;
+            window.updatePomoDisplay();
+        };
+
+        window.updatePomoStats = () => {
+            const elTracked = document.getElementById('pomo-tracked');
+            const elProgress = document.getElementById('pomo-progress');
+            const elStreak = document.getElementById('pomo-streak');
+            if(!elTracked) return;
+            
+            const hours = Math.floor(todayTrackedSeconds / 3600);
+            const mins = Math.floor((todayTrackedSeconds % 3600) / 60);
+            elTracked.textContent = `${hours}h ${mins}m`;
+            
+            // 4 hour goal = 14400 seconds
+            const pct = Math.min(100, (todayTrackedSeconds / 14400) * 100);
+            elProgress.style.width = `${pct}%`;
+            elStreak.innerHTML = `<i class="fa-solid fa-fire"></i> ${currentStreak}`;
+        };
+
+        window.updatePomoDisplay = () => { 
+            const m = Math.floor(pomoSeconds / 60).toString().padStart(2, '0'); 
+            const s = (pomoSeconds % 60).toString().padStart(2, '0'); 
+            document.getElementById('pomo-timer').textContent = `${m}:${s}`; 
+            
+            if(pomoSeconds === 0) { 
+                clearInterval(pomoInterval); 
+                isPomoRunning = false; 
+                document.getElementById('pomo-toggle').textContent = "Start"; 
+                showToast("Focus session complete!", "success"); 
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } }); 
+                
+                // Update daily metrics & streaks
+                todayTrackedSeconds += (currentPomoSessionLength * 60);
+                if (todayTrackedSeconds >= 14400 && currentStreak === parseInt(localStorage.getItem('pomoStreak') || '0')) {
+                    currentStreak++; // Increase streak if goal hit today
+                    showToast("Daily Focus Goal Hit! Streak Increased!", "success");
+                }
+                localStorage.setItem('todayTrackedSeconds', todayTrackedSeconds);
+                localStorage.setItem('pomoStreak', currentStreak);
+                window.updatePomoStats();
+                
+                pomoSeconds = currentPomoSessionLength * 60; // Reset for next run
+            } 
+        };
+        
+        window.togglePomoTimer = (e) => { 
+            if(e) e.stopPropagation(); 
+            const btn = document.getElementById('pomo-toggle'); 
+            if (isPomoRunning) { 
+                clearInterval(pomoInterval); 
+                isPomoRunning = false; 
+                btn.textContent = "Resume"; 
+            } else { 
+                isPomoRunning = true; 
+                btn.textContent = "Pause"; 
+                pomoInterval = setInterval(() => { 
+                    if(pomoSeconds > 0) { 
+                        pomoSeconds--; 
+                        window.updatePomoDisplay(); 
+                    } 
+                }, 1000); 
+            } 
+        };
+        
+        window.resetPomo = (e) => { 
+            if(e) e.stopPropagation(); 
+            clearInterval(pomoInterval); 
+            isPomoRunning = false; 
+            pomoSeconds = currentPomoSessionLength * 60; 
+            document.getElementById('pomo-toggle').textContent = "Start"; 
+            window.updatePomoDisplay(); 
+        };
+        
+        // Initialize stats on load
+        setTimeout(window.updatePomoStats, 1000);
 
         document.addEventListener('keydown', (e) => { if (e.target.matches('input, textarea, select, [contenteditable], [contenteditable="true"]')) { if(e.key === 'Escape') e.target.blur(); return; } if (e.key.toLowerCase() === 'n') { e.preventDefault(); window.openAddTaskModal(); } if (e.key === '/') { e.preventDefault(); window.openQuickAddPopup(); } if (e.key === 'Escape') { document.getElementById('task-modal').classList.add('hidden'); document.getElementById('project-modal').classList.add('hidden'); window.closeSidePane(); window.clearSelection(); window.closeQuickAddPopup(e); } if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey) { window.refreshData(); } if (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'k') { const tasks = getFilteredTasks(); if(tasks.length === 0) return; let idx = -1; if(lastSelectedId) idx = tasks.findIndex(t => t.id === lastSelectedId); let newIdx = idx; if (e.key.toLowerCase() === 'j') newIdx = Math.min(tasks.length - 1, idx + 1); if (e.key.toLowerCase() === 'k') newIdx = Math.max(0, idx - 1); if(newIdx !== idx && tasks[newIdx]) { window.clearSelection(); const id = tasks[newIdx].id; selectedTasks.add(id); lastSelectedId = id; renderApp(); const el = document.querySelector(`[data-task-id="${id}"]`); if(el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } } });
        const calculateNextOccurrence = (dueDate, rrule) => {
