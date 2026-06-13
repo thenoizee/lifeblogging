@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.114.0-alph",
+    date: "2026-06-14",
+    changes: [
+        "In MoneyManagr: Completely revamped the CSV import mapping UI into an interactive, spreadsheet-like preview.",
+        "In MoneyManagr: Added support for parsing separate Time and Date columns natively during import.",
+        "In MoneyManagr: Improved the final data review table UI with better styling, explicit row numbers, and strike-throughs for duplicates.",
+        "In MoneyManagr: Upgraded the pending transaction review inbox to feature quick inline delete buttons.",
+        "In MoneyManagr: Enhanced the transaction categorization modal with a clearer, more prominent display of the transaction amount and details."
+    ]
+},
+    {
     version: "v15.113.0-alpha",
     date: "2026-06-14",
     changes: [
