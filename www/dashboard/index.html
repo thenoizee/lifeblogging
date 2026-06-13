@@ -475,7 +475,7 @@
         let unsubscribers = [];
         let targetDate = new Date();
         targetDate.setHours(0, 0, 0, 0);
-        let isLiveMode = true; // NEW STATE
+        let viewMode = 'live'; // 'live', 'latest', 'history'
 
         // --- UI References ---
         const ui = {
@@ -730,10 +730,16 @@
                 });
             }
 
-            // Replace the todayStr line with:
-            const dateToUse = isLiveMode ? new Date() : targetDate;
+            // Get correct mood logic depending on mode
+            const dateToUse = viewMode === 'history' ? targetDate : new Date();
             const todayStr = new Date(dateToUse.getTime() - (dateToUse.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-            const todaysMoodLog = allLogs.find(d => d.attributeName.toLowerCase() === 'mood' && d.date.startsWith(todayStr));
+            
+            let todaysMoodLog;
+            if (viewMode === 'latest') {
+                todaysMoodLog = allLogs.find(d => d.attributeName.toLowerCase() === 'mood');
+            } else {
+                todaysMoodLog = allLogs.find(d => d.attributeName.toLowerCase() === 'mood' && d.date.startsWith(todayStr));
+            }
 
             if (todaysMoodLog) {
                 const val = parseInt(todaysMoodLog.attributeValue);
@@ -911,12 +917,19 @@
         }
 
         const renderDailies = () => {
-            // Replace the todayStr line with:
-            const dateToUse = isLiveMode ? new Date() : targetDate;
-            const todayStr = new Date(dateToUse.getTime() - (dateToUse.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+            let filterDateStr = "";
+            if (viewMode === 'latest') {
+                if (state.dailyLogs.length > 0) {
+                    filterDateStr = state.dailyLogs[0].date.split(' ')[0];
+                }
+            } else {
+                const dateToUse = viewMode === 'history' ? targetDate : new Date();
+                filterDateStr = new Date(dateToUse.getTime() - (dateToUse.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+            }
+
             const counts = {};
             state.dailyLogs.forEach(d => {
-                if(d.date.startsWith(todayStr)) {
+                if(d.date.startsWith(filterDateStr)) {
                     counts[d.attributeName] = (counts[d.attributeName] || 0) + 1;
                 }
             });
@@ -952,9 +965,18 @@
         };
 
         const renderMeds = () => {
-            // Replace the dayName line with:
-            const dateToUse = isLiveMode ? new Date() : targetDate;
-            const dayName = dateToUse.toLocaleDateString('en-US', {weekday: 'long'});
+            let dayName;
+            if (viewMode === 'latest') {
+                if (state.todayDoses.length > 0) {
+                    const d = new Date(state.todayDoses[0].date.replace(' ', 'T'));
+                    dayName = d.toLocaleDateString('en-US', {weekday: 'long'});
+                } else {
+                    dayName = new Date().toLocaleDateString('en-US', {weekday: 'long'});
+                }
+            } else {
+                const dateToUse = viewMode === 'history' ? targetDate : new Date();
+                dayName = dateToUse.toLocaleDateString('en-US', {weekday: 'long'});
+            }
             ui.medsList.innerHTML = '';
             
             let scheduledDoses = [];
@@ -1219,21 +1241,31 @@
         };
 
         const setupListeners = (uid) => {
-            const queryDate = isLiveMode ? new Date() : new Date(targetDate);
+            const queryDate = (viewMode === 'live' || viewMode === 'latest') ? new Date() : new Date(targetDate);
             const start = new Date(queryDate); start.setHours(0, 0, 0, 0);
             const end = new Date(queryDate); end.setHours(23, 59, 59, 999);
             const startTs = Timestamp.fromDate(start);
             const endTs = Timestamp.fromDate(end);
             
             const targetDateStr = new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-            const todayStr = targetDateStr; // Uses the properly timezone-adjusted ISO string
+            const todayStr = targetDateStr; 
 
-            // Toggle UI visibility based on mode
-            ui.liveDisclaimer.classList.toggle('hidden', isLiveMode);
-            ui.datePickerContainer.classList.toggle('hidden', isLiveMode);
-            ui.liveToggleBtn.className = isLiveMode 
-                ? "bg-green-100 text-green-800 border border-green-200 px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1 dark:bg-green-900/30 dark:text-green-500 dark:border-green-700 transition-colors"
-                : "bg-[var(--card-bg)] text-[var(--text-secondary)] border border-[var(--border-color)] px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors";
+            if (viewMode === 'live') {
+                ui.liveToggleBtn.innerHTML = '<i class="fas fa-satellite-dish"></i> Live';
+                ui.liveToggleBtn.className = "bg-green-100 text-green-800 border border-green-200 px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1 dark:bg-green-900/30 dark:text-green-500 dark:border-green-700 transition-colors";
+                ui.datePickerContainer.classList.add('hidden');
+                ui.liveDisclaimer.classList.add('hidden');
+            } else if (viewMode === 'latest') {
+                ui.liveToggleBtn.innerHTML = '<i class="fas fa-bolt"></i> Latest';
+                ui.liveToggleBtn.className = "bg-purple-100 text-purple-800 border border-purple-200 px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1 dark:bg-purple-900/30 dark:text-purple-500 dark:border-purple-700 transition-colors";
+                ui.datePickerContainer.classList.add('hidden');
+                ui.liveDisclaimer.classList.add('hidden');
+            } else {
+                ui.liveToggleBtn.innerHTML = '<i class="fas fa-history"></i> History';
+                ui.liveToggleBtn.className = "bg-[var(--card-bg)] text-[var(--text-secondary)] border border-[var(--border-color)] px-2 py-0.5 rounded shadow-sm font-bold flex items-center gap-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors";
+                ui.datePickerContainer.classList.remove('hidden');
+                ui.liveDisclaimer.classList.remove('hidden');
+            }
 
             unsubscribers.push(onSnapshot(doc(db, 'users', uid, 'settings', 'profile'), (snap) => {
                 const name = snap.data()?.displayName;
@@ -1251,10 +1283,20 @@
                 ui.greeting.textContent = `${timeGreeting}, ${finalName}!`;
             }));
 
-            // If Live mode, get the 20 most recent items. If History mode, get only the items from the targetDate.
-            const dailiesQ = isLiveMode 
-                ? query(collection(db, `users/${uid}/sources/dailies/data`), orderBy('date', 'desc'), limit(20))
-                : query(collection(db, `users/${uid}/sources/dailies/data`), where('date', '>=', targetDateStr + " 00:00:00"), where('date', '<=', targetDateStr + " 23:59:59"));
+            let qStart, qEnd;
+            if (viewMode === 'live') {
+                const now = new Date();
+                const dStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                qStart = dStr + " 00:00:00";
+                qEnd = dStr + " 23:59:59";
+            } else {
+                qStart = targetDateStr + " 00:00:00";
+                qEnd = targetDateStr + " 23:59:59";
+            }
+
+            const dailiesQ = viewMode === 'latest'
+                ? query(collection(db, `users/${uid}/sources/dailies/data`), orderBy('date', 'desc'), limit(50))
+                : query(collection(db, `users/${uid}/sources/dailies/data`), where('date', '>=', qStart), where('date', '<=', qEnd));
             
             unsubscribers.push(onSnapshot(dailiesQ, (snap) => {
                 state.dailyLogs = snap.docs.map(d => d.data());
@@ -1262,19 +1304,41 @@
                 renderDailies(); 
             }));
 
-            const manualQ = isLiveMode
-                ? query(collection(db, `users/${uid}/sources/manual/data`), orderBy('date', 'desc'), limit(20))
-                : query(collection(db, `users/${uid}/sources/manual/data`), where('date', '>=', targetDateStr + " 00:00:00"), where('date', '<=', targetDateStr + " 23:59:59"));
+            const manualQ = viewMode === 'latest'
+                ? query(collection(db, `users/${uid}/sources/manual/data`), orderBy('date', 'desc'), limit(50))
+                : query(collection(db, `users/${uid}/sources/manual/data`), where('date', '>=', qStart), where('date', '<=', qEnd));
             
             unsubscribers.push(onSnapshot(manualQ, (snap) => {
                 state.manualLogs = snap.docs.map(d => d.data());
                 renderLogsAndMood();
             }));
 
-            const hydroQ = query(collection(db, `users/${uid}/hydrationtrackr`), where('date', '>=', startTs), where('date', '<=', endTs));
+            let hydroQ;
+            if (viewMode === 'latest') {
+                hydroQ = query(collection(db, `users/${uid}/hydrationtrackr`), orderBy('date', 'desc'), limit(20));
+            } else {
+                hydroQ = query(collection(db, `users/${uid}/hydrationtrackr`), where('date', '>=', startTs), where('date', '<=', endTs));
+            }
+            
             unsubscribers.push(onSnapshot(hydroQ, async (snap) => {
                 let waterTotal = 0;
-                snap.forEach(doc => waterTotal += parseInt(doc.data().attributeValue || doc.data().amount || 0));
+                
+                const getSafeDate = (val) => {
+                    if (!val) return new Date();
+                    return typeof val.toDate === 'function' ? val.toDate() : new Date(val);
+                };
+
+                if (viewMode === 'latest' && !snap.empty) {
+                    const firstDate = getSafeDate(snap.docs[0].data().date);
+                    const latestDateStr = new Date(firstDate.getTime() - (firstDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                    snap.forEach(doc => {
+                        const d = getSafeDate(doc.data().date);
+                        const dStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                        if (dStr === latestDateStr) waterTotal += parseInt(doc.data().attributeValue || doc.data().amount || 0);
+                    });
+                } else {
+                    snap.forEach(doc => waterTotal += parseInt(doc.data().attributeValue || doc.data().amount || 0));
+                }
                 
                 let waterGoal = 2000;
                 const s = await getDoc(doc(db, `users/${uid}/settings/water`));
@@ -1532,13 +1596,39 @@
                 }
             }));
 
-            const foodQ = query(collection(db, `users/${uid}/foodLog`), orderBy('eatenAt', 'desc'));
+            let foodQ;
+            if (viewMode === 'latest') {
+                foodQ = query(collection(db, `users/${uid}/foodLog`), orderBy('eatenAt', 'desc'), limit(50));
+            } else {
+                foodQ = query(collection(db, `users/${uid}/foodLog`), where('eatenAt', '>=', startTs), where('eatenAt', '<=', endTs));
+            }
             unsubscribers.push(onSnapshot(foodQ, (snap) => {
                 let cals = { total: 0, breakfast: 0, lunch: 0, dinner: 0, other: 0 };
+                let targetDateStrLocal = null;
+                
+                const getSafeDate = (val) => {
+                    if (!val) return new Date();
+                    return typeof val.toDate === 'function' ? val.toDate() : new Date(val);
+                };
+
+                if (viewMode === 'latest' && !snap.empty) {
+                    const firstDate = getSafeDate(snap.docs[0].data().eatenAt);
+                    targetDateStrLocal = new Date(firstDate.getTime() - (firstDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                }
+
                 snap.forEach(d => {
                     const data = d.data();
-                    const date = data.eatenAt.toDate();
-                    if (date >= start && date <= end) {
+                    const date = getSafeDate(data.eatenAt);
+                    
+                    let include = false;
+                    if (viewMode === 'latest') {
+                        const dStr = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                        if (dStr === targetDateStrLocal) include = true;
+                    } else {
+                        if (date >= start && date <= end) include = true;
+                    }
+
+                    if (include) {
                         const val = data.calories || 0;
                         cals.total += val;
                         const sec = (data.section || '').toLowerCase();
@@ -1565,13 +1655,29 @@
                 renderMeds();
             }));
 
-            const dosesQ = query(collection(db, `users/${uid}/doses`), where('date', '>=', targetDateStr + " 00:00:00"), where('date', '<=', targetDateStr + " 23:59:59"));
+            let dosesQ;
+            if (viewMode === 'latest') {
+                dosesQ = query(collection(db, `users/${uid}/doses`), orderBy('date', 'desc'), limit(50));
+            } else {
+                dosesQ = query(collection(db, `users/${uid}/doses`), where('date', '>=', qStart), where('date', '<=', qEnd));
+            }
             unsubscribers.push(onSnapshot(dosesQ, (snap) => {
                 state.todayDoses = []; 
+                let latestDateStrLocal = null;
+                if (viewMode === 'latest' && !snap.empty) {
+                    latestDateStrLocal = snap.docs[0].data().date.split(' ')[0];
+                }
+
                 snap.forEach(d => {
                     const data = d.data();
-                    if (data.date.startsWith(todayStr)) {
-                        state.todayDoses.push({id: d.id, ...data});
+                    if (viewMode === 'latest') {
+                        if (latestDateStrLocal && data.date.startsWith(latestDateStrLocal)) {
+                            state.todayDoses.push({id: d.id, ...data});
+                        }
+                    } else {
+                        if (data.date.startsWith(qDateStr)) {
+                            state.todayDoses.push({id: d.id, ...data});
+                        }
                     }
                 });
                 renderMeds();
@@ -1617,12 +1723,13 @@
         const refreshBtn = document.getElementById('refresh-btn');
         if(refreshBtn) refreshBtn.style.display = 'none'; 
 
-        // Setup Live Toggle Button
+        // Setup View Mode Toggle Button
         ui.liveToggleBtn.addEventListener('click', () => {
-            isLiveMode = !isLiveMode;
+            if (viewMode === 'live') viewMode = 'latest';
+            else if (viewMode === 'latest') viewMode = 'history';
+            else viewMode = 'live';
             
-            if (!isLiveMode) {
-                // Default back to today's date when turning History mode on
+            if (viewMode === 'history') {
                 targetDate = new Date();
                 targetDate.setHours(0, 0, 0, 0);
                 ui.datePicker.value = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];

@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.111.0-alpha",
+    date: "2026-06-13",
+    changes: [
+        "In Dashboard: Added a 3-way view mode toggle to switch between 'Live' (Today's data), 'Latest' (Last recorded data for each widget), and 'History' (Specific date view).",
+        "In Dashboard: Updated Mood, Dailies, Meds, Logs, Water, Calories, and Doses widgets to fully support the new 3-way view modes.",
+    ]
+},
+    {
     version: "v15.110.0-alpha",
     date: "2026-06-13",
     changes: [
