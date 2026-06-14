@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.116.0-alpha",
+    date: "2026-06-15",
+    changes: [
+        "In VidTrackr: Added global tactile button feedback to mirror the interaction physics of HealthManagr.",
+        "In VidTrackr: Updated .animate-fade to use a modalPop effect for a more premium entry animation on UI loads.",
+        "In VidTrackr: Enhanced .card hover state with elevated drop-shadows and transformation physics.",
+        "In VidTrackr: Applied universal glassmorphism properties to background card elements for enhanced depth."
+    ]
+},
+    {
     version: "v15.115.0-alpha",
     date: "2026-06-15",
     changes: [
