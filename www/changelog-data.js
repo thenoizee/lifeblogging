@@ -2,7 +2,20 @@
 
 export const changelogData = [
     {
-    version: "v15.114.0-alph",
+    version: "v15.115.0-alpha",
+    date: "2026-06-15",
+    changes: [
+        "In HealthManagr: Updated global CSS variables to introduce expressive shadows and adaptive layered transparency (glassmorphism).",
+        "In HealthManagr: Added tactile feedback animations (scale, translate, and box-shadow) to buttons, list items, stats boxes, and calendar days.",
+        "In HealthManagr: Upgraded modal windows with a pop-in keyframe animation and blurred backdrop overlay.",
+        "In HealthManagr: Implemented custom WebKit scrollbars tinted to match the primary theme.",
+        "In HealthManagr: Added glowing bottom borders to active navigation tabs.",
+        "In HealthManagr: Converted standard details/summary elements into premium accordions with smooth slide-down animations.",
+        "In HealthManagr: Completely redesigned the Grooming tab into a compact, responsive grid of premium widgets featuring floating icons, background blur blobs, and dedicated action buttons."
+    ]
+},
+    {
+    version: "v15.114.0-alpha",
     date: "2026-06-14",
     changes: [
         "In MoneyManagr: Completely revamped the CSV import mapping UI into an interactive, spreadsheet-like preview.",
