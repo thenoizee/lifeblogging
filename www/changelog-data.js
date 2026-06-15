@@ -2,6 +2,25 @@
 
 export const changelogData = [
     {
+    version: "v15.117.0-alpha",
+    date: "2026-06-16",
+    changes: [
+                "In MoneyManagr: Redesigned the 'Final Data Review' import view with a custom filter-chip bar to easily toggle between 'All', 'Review', 'Duplicates', and 'Valid' transactions.",
+                "In MoneyManagr: Added logic to securely isolate and display the optional Bank Name as a badge in the import review screen to prevent accidental deletion during description editing.",
+                "In MoneyManagr: Redesigned the 'This Week' and 'Unlinked' dashboard widgets for a more modern, premium styling.",
+                "In MoneyManagr: Standardised the Accounts and People sub-headers to group items better with subtle backgrounds.",
+                "In MoneyManagr: Unified the Import and Export action buttons into a single sleek card container.",
+                "In MoneyManagr: Completely overhauled the Tools tab layout to replace disparate coloured banners with a uniform rounded card grid, unified iconography, and a cleaner settings menu.",
+                "In MoneyManagr: Redesigned the 'Recent Activity' section to feature a modern, rounded search bar and added quick-filter chips (All, Income, Expenses) to rapidly isolate transaction types.",
+                "In MoneyManagr: Premiumised the individual transaction row styling, utilizing squircle icons, better spacing, and neutral colors for standard expenses.",
+                "In MoneyManagr: Standardised the UI for all secondary modals (Add Account, Budgets, Subscriptions, and Custom Category), implementing consistent rounded icon close buttons, nested input fields inside soft-coloured cards, and prominent primary action buttons.",
+                "In MoneyManagr: Redesigned the 'Account/Person Details' modal to match the new premium design system, featuring rounded circular buttons for Edit/Delete/Close.",
+                "In MoneyManagr: Elevated the balance display inside the details modal into a gradient container with a heavier typography scale.",
+                "In MoneyManagr: Unified the Deposit/Withdraw action buttons into a consolidated pill-box container.",
+                "In MoneyManagr: Updated the history list header within the details modal to align with the rest of the application's typography."
+    ]
+},
+    {
     version: "v15.116.0-alpha",
     date: "2026-06-15",
     changes: [
