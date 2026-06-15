@@ -536,8 +536,8 @@ body {
 </div>
                 
                 <div class="grid grid-cols-2 gap-4">
-                    <div><label class="text-xs font-bold text-gray-500 uppercase">Start Date</label><input type="datetime-local" id="modal-start-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm"></div>
-                    <div><label class="text-xs font-bold text-gray-500 uppercase">Due Date</label><input type="datetime-local" id="modal-due-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm"></div>
+                    <div><label class="text-xs font-bold text-gray-500 uppercase">Task Date/Time</label><input type="datetime-local" id="modal-due-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm" title="Generic task time. Does not require an end date."></div>
+                    <div><label class="text-xs font-bold text-gray-500 uppercase">End Date/Time (Optional)</label><input type="datetime-local" id="modal-start-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm" title="Only needed if task spans a duration."></div>
                 </div>
                 
                 <div class="col-span-2 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -931,6 +931,7 @@ window.addEventListener('DOMContentLoaded', () => {
             tag: 'all', 
             search: '', 
             sortMode: 'date',
+            kanbanGroupMode: 'project', // Toggle for Kanban Board grouping
             visibleSources: {
                 ticktick: true,
                 google: true,
@@ -939,6 +940,11 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         };
         window.sectionStates = { overdue: false, today: false, tomorrow: false, later: false, noDate: false, completed: true };
+
+        window.updateKanbanGrouping = (mode) => {
+            currentState.kanbanGroupMode = mode;
+            renderApp();
+        };
 
         const saveSettingsToFirebase = async () => {
             if (auth.currentUser) {
@@ -2007,7 +2013,7 @@ const fetchAllData = async () => {
             // Shared Nav handles tab styling now via the 'tab-changed' event
             // But we need to ensure the local state matches
             const quickAdd = document.getElementById('quick-add-container'); 
-            if(view === 'eisenhower' || view === 'calendar' || view === 'agenda' || view === 'timebox') quickAdd.classList.add('hidden'); 
+            if(view === 'calendar' || view === 'timeline') quickAdd.classList.add('hidden'); 
             else quickAdd.classList.remove('hidden');
             renderApp(); 
         };
@@ -2413,16 +2419,25 @@ if (counterEl) {
         
         const renderTimebox = (tasks) => {
             const now = new Date();
-            const todayStr = now.toISOString().split('T')[0];
+            
             // Get today's tasks that have a specific time attached (not all day)
-            const todayTasks = tasks.filter(t => t.dueDate && t.dueDate.startsWith(todayStr) && !t.isAllDay && t.status !== 2);
+            const todayTasks = tasks.filter(t => {
+                if (t.status === 2 || t.isAllDay) return false;
+                const dStr = t.startDate || t.dueDate;
+                if (!dStr) return false;
+                
+                const d = new Date(dStr);
+                return d.getDate() === now.getDate() && 
+                       d.getMonth() === now.getMonth() && 
+                       d.getFullYear() === now.getFullYear();
+            });
             
             let html = '<div class="w-full max-w-3xl mx-auto space-y-2 pb-12 pt-4"><h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white pl-16">Todays Schedule</h2>';
             
             // Render hours from 6 AM to 11 PM
             for(let hour = 6; hour <= 23; hour++) {
                 const hourTasks = todayTasks.filter(t => {
-                    const tDate = new Date(t.dueDate);
+                    const tDate = new Date(t.startDate || t.dueDate);
                     return tDate.getHours() === hour;
                 });
                 
@@ -2529,9 +2544,25 @@ const renderTaskCard = (task) => {
 
     const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); 
     const clickHandler = `window.handleCardClick(event, '${task.id}', ${!!task.isHistory})`; 
+
+    // Calculate completion percentage for subtasks to display a visual progress tracking bar
+    let progressBarHtml = '';
+    if (task.items && task.items.length > 0) {
+        const totalItems = task.items.length;
+        const completedItems = task.items.filter(i => i.status === 1).length;
+        const pct = (completedItems / totalItems) * 100;
+        const barColor = pct === 100 ? 'bg-green-500' : 'bg-[var(--primary)]';
+        
+        progressBarHtml = `
+        <div class="w-full bg-gray-200 dark:bg-gray-700/50 h-1 absolute bottom-0 left-0 z-0">
+            <div class="${barColor} h-1 transition-all duration-500" style="width: ${pct}%"></div>
+        </div>`;
+    }
     
-    return `<div class="card p-0 rounded-2xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass} text-gray-900 dark:text-gray-100" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="${clickHandler}" oncontextmenu="window.handleContextMenu(event, '${task.id}')"> 
-        <div class="project-color-strip" style="background-color: ${pColor}"></div> 
+    // Added 'pb-1' to padding to accommodate the absolute positioned progress bar at the bottom
+    return `<div class="card p-0 rounded-2xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass} text-gray-900 dark:text-gray-100 pb-1" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="${clickHandler}" oncontextmenu="window.handleContextMenu(event, '${task.id}')"> 
+        ${progressBarHtml}
+        <div class="project-color-strip z-10" style="background-color: ${pColor}"></div>
         <div class="w-12 flex items-center justify-center cursor-pointer border-r border-gray-100 dark:border-white/5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0 ml-1 z-20" onclick="window.completeTask('${task.projectId}', '${task.id}', null, event)" title="Mark Completed"> ${completeIcon} </div> 
         <div class="card-inner flex-grow p-4 min-w-0"> 
             <div class="task-details-wrapper"> 
@@ -3472,7 +3503,138 @@ window.stopRepeating = (taskId) => {
     );
 };
 
-const renderKanban = (tasks) => { const cols = { 5: { title: 'High Priority', icon: 'fa-angles-up text-red-500', items: [] }, 3: { title: 'Medium Priority', icon: 'fa-angle-up text-yellow-500', items: [] }, 1: { title: 'Low Priority', icon: 'fa-angle-down text-blue-500', items: [] }, 0: { title: 'No Priority', icon: 'fa-minus text-gray-400', items: [] } }; tasks.forEach(t => { if(cols[t.priority]) cols[t.priority].items.push(t); else cols[0].items.push(t); }); let html = `<div class="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-180px)] px-2">`; [5, 3, 1, 0].forEach(p => { const col = cols[p]; html += `<div class="kanban-col"><div class="kanban-header flex items-center justify-between font-bold mb-3 border-b border-gray-200 dark:border-gray-700/50 pb-2"><div class="flex items-center gap-2"><i class="fa-solid ${col.icon}"></i><span class="text-sm">${col.title}</span></div><span class="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-md text-[10px] font-mono">${col.items.length}</span></div><div class="kanban-body space-y-2 overflow-y-auto flex-grow hide-scroll" id="col-${p}" data-priority="${p}">${col.items.map(renderTaskCard).join('')}</div></div>`; }); html += `</div>`; els.content.innerHTML = html; setTimeout(() => { [5, 3, 1, 0].forEach(p => { new Sortable(document.getElementById(`col-${p}`), { group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', onEnd: async (evt) => { const taskId = evt.item.dataset.taskId; const newPriority = parseInt(evt.to.dataset.priority); if (newPriority !== parseInt(evt.from.dataset.priority)) { const task = taskCache.find(t => t.id === taskId); showLoader(); await api(`/task/${taskId}`, 'POST', { ...task, priority: newPriority }); hideLoader(); task.priority = newPriority; } } }); }); }, 100); };
+const renderKanban = (tasks) => { 
+    const mode = currentState.kanbanGroupMode || 'project';
+    const cols = {};
+    
+    // --- UI Controls Bar ---
+    let html = `<div class="flex justify-between items-center mb-4 px-2 shrink-0">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white hidden md:block">Board View</h2>
+        <div class="flex items-center gap-2 text-xs font-bold text-gray-500 ml-auto">
+            <label><i class="fa-solid fa-layer-group"></i> Group By:</label>
+            <select onchange="window.updateKanbanGrouping(this.value)" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 outline-none cursor-pointer shadow-sm text-gray-700 dark:text-gray-300">
+                <option value="project" ${mode === 'project' ? 'selected' : ''}>Department / Project</option>
+                <option value="priority" ${mode === 'priority' ? 'selected' : ''}>Priority</option>
+            </select>
+        </div>
+    </div>`;
+
+    html += `<div class="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-230px)] px-2">`;
+
+    // --- DEPARTMENT GROUPING MODE ---
+    if (mode === 'project') {
+        const inboxId = Object.keys(projectMap).find(id => projectMap[id].isInbox || projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
+        
+        Object.keys(projectMap).forEach(pid => {
+            if (pid !== 'google_calendar') cols[pid] = { title: projectMap[pid].name, color: getProjectColor(pid), icon: 'fa-building', items: [] };
+        });
+        if (!cols[inboxId]) cols[inboxId] = { title: 'Inbox', color: '#3b82f6', icon: 'fa-inbox', items: [] };
+
+        tasks.forEach(t => { 
+            const pid = t.projectId || inboxId;
+            if(cols[pid]) cols[pid].items.push(t); 
+            else cols[pid] = { title: 'Other', color: '#808080', icon: 'fa-layer-group', items: [t] };
+        }); 
+        
+        const visibleCols = Object.keys(cols).filter(pid => cols[pid].items.length > 0 || pid === inboxId);
+
+        visibleCols.forEach(p => { 
+            const col = cols[p]; 
+            html += `<div class="kanban-col border-t-4 shadow-sm" style="border-top-color: ${col.color}">
+                <div class="kanban-header flex items-center justify-between font-bold mb-3 border-b border-gray-200 dark:border-gray-700/50 pb-2">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid ${col.icon}" style="color: ${col.color}"></i>
+                        <span class="text-sm truncate max-w-[150px]" title="${escapeHtml(col.title)}">${escapeHtml(col.title)}</span>
+                    </div>
+                    <span class="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-md text-[10px] font-mono">${col.items.length}</span>
+                </div>
+                <div class="kanban-body space-y-2 overflow-y-auto flex-grow hide-scroll min-h-[100px]" id="col-${p}" data-group="${p}">
+                    ${col.items.map(renderTaskCard).join('')}
+                </div>
+            </div>`; 
+        }); 
+        html += `</div>`; 
+        els.content.innerHTML = html; 
+        
+        setTimeout(() => { 
+            visibleCols.forEach(p => { 
+                new Sortable(document.getElementById(`col-${p}`), { 
+                    group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', 
+                    onEnd: async (evt) => { 
+                        const taskId = evt.item.dataset.taskId; 
+                        const newVal = evt.to.dataset.group; 
+                        const oldVal = evt.from.dataset.group;
+                        if (newVal !== oldVal) { 
+                            const task = taskCache.find(t => t.id === taskId); 
+                            showLoader(); 
+                            task.projectId = newVal;
+                            try {
+                                if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { projectId: newVal, updated: new Date() }, { merge: true });
+                                else await api(`/task/${taskId}`, 'POST', { projectId: newVal }); 
+                                showToast('Moved to ' + cols[newVal].title);
+                            } catch(e) { showToast('Failed to move task', 'error'); task.projectId = oldVal; }
+                            renderApp(); hideLoader(); 
+                        } 
+                    } 
+                }); 
+            }); 
+        }, 100); 
+
+    // --- PRIORITY GROUPING MODE ---
+    } else if (mode === 'priority') {
+        cols[5] = { title: 'High Priority', color: '#ef4444', icon: 'fa-angles-up', items: [] };
+        cols[3] = { title: 'Medium Priority', color: '#eab308', icon: 'fa-angle-up', items: [] };
+        cols[1] = { title: 'Low Priority', color: '#3b82f6', icon: 'fa-angle-down', items: [] };
+        cols[0] = { title: 'No Priority', color: '#9ca3af', icon: 'fa-minus', items: [] };
+
+        tasks.forEach(t => {
+            if(cols[t.priority]) cols[t.priority].items.push(t);
+            else cols[0].items.push(t);
+        });
+
+        [5, 3, 1, 0].forEach(p => {
+            const col = cols[p];
+            html += `<div class="kanban-col border-t-4 shadow-sm" style="border-top-color: ${col.color}">
+                <div class="kanban-header flex items-center justify-between font-bold mb-3 border-b border-gray-200 dark:border-gray-700/50 pb-2">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid ${col.icon}" style="color: ${col.color}"></i>
+                        <span class="text-sm">${col.title}</span>
+                    </div>
+                    <span class="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-md text-[10px] font-mono">${col.items.length}</span>
+                </div>
+                <div class="kanban-body space-y-2 overflow-y-auto flex-grow hide-scroll min-h-[100px]" id="col-${p}" data-group="${p}">
+                    ${col.items.map(renderTaskCard).join('')}
+                </div>
+            </div>`;
+        });
+        html += `</div>`;
+        els.content.innerHTML = html;
+
+        setTimeout(() => {
+            [5, 3, 1, 0].forEach(p => {
+                new Sortable(document.getElementById(`col-${p}`), {
+                    group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag',
+                    onEnd: async (evt) => {
+                        const taskId = evt.item.dataset.taskId;
+                        const newVal = parseInt(evt.to.dataset.group);
+                        const oldVal = parseInt(evt.from.dataset.group);
+                        if (newVal !== oldVal) {
+                            const task = taskCache.find(t => t.id === taskId);
+                            showLoader();
+                            task.priority = newVal;
+                            try {
+                                if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { priority: newVal, updated: new Date() }, { merge: true });
+                                else await api(`/task/${taskId}`, 'POST', { priority: newVal });
+                                showToast('Priority updated');
+                            } catch(e) { showToast('Failed to update priority', 'error'); task.priority = oldVal; }
+                            renderApp(); hideLoader();
+                        }
+                    }
+                });
+            });
+        }, 100);
+    }
+};
         const renderCalendar = (tasks) => { 
             const date = currentCalendarDate; 
             const year = date.getFullYear(); 

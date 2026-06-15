@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.118.0-alpha",
+    date: "2026-06-16",
+    changes: [
+                "In TaskTrackr: Updated the Quick Add Bar behavior to dynamically hide on non-list views.",
+                "In TaskTrackr: Changed 'Due Date' to a generic 'Task Date/Time' in the modal and converted 'Start Date' to an optional 'End Date/Time' to support duration-less tasks.",
+                "In TaskTrackr: Fixed an issue where tasks were missing from the Day Plan / Timebox view by correcting timezone offsets and startDate checks.",
+                "In TaskTrackr: Converted the Kanban Board to group tasks by Project, enabling rapid dragging between projects.",
+                "In TaskTrackr: Added a grouping toggle to the Kanban Board to allow switching between 'Project' and 'Priority' views dynamically.",
+                "In TaskTrackr: Implemented visual subtask progress bars at the bottom of task cards to track task project progress easily.",
+                "In TaskTrackr: Updated wording in the sidebar to 'New Project'."
+    ]
+},
+    {
     version: "v15.117.0-alpha",
     date: "2026-06-16",
     changes: [
