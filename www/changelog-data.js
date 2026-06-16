@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.119.0-alpha",
+    date: "2026-06-16",
+    changes: [
+                "In Analyser: Overhauled the UI with a modern glassmorphism aesthetic, including a slate/indigo color palette, radial gradient backgrounds, and backdrop-blur effects on cards and modals.",
+                "In Analyser: Enhanced the data table scrollbar with a custom, translucent floating design.",
+                "In Analyser: Added snappy micro-interactions and transitions to buttons, filter headers, and tooltips."
+    ]
+},
+    {
     version: "v15.118.0-alpha",
     date: "2026-06-16",
     changes: [
@@ -11,7 +20,6 @@ export const changelogData = [
                 "In TaskTrackr: Converted the Kanban Board to group tasks by Project, enabling rapid dragging between projects.",
                 "In TaskTrackr: Added a grouping toggle to the Kanban Board to allow switching between 'Project' and 'Priority' views dynamically.",
                 "In TaskTrackr: Implemented visual subtask progress bars at the bottom of task cards to track task project progress easily.",
-                "In TaskTrackr: Updated wording in the sidebar to 'New Project'."
     ]
 },
     {
