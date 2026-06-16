@@ -2,6 +2,21 @@
 
 export const changelogData = [
     {
+    version: "v15.121.0-alpha",
+    date: "2026-06-17",
+    changes: [
+        "In TaskTrackr: Fixed the Calendar Day Plan state bug where syncing or adding a task kicked the user back to the monthly calendar view.",
+        "In TaskTrackr: Integrated the 'Day Plan' completely into the Calendar view and removed its redundant navigation tab to declutter the interface.",
+        "In TaskTrackr: Clicking an open time slot in the Calendar's Day Plan now automatically pre-fills the 'Add Task' modal with the exact date and hour you clicked.",
+        "In TaskTrackr: Upgraded the monthly Calendar UI with weekend background dimming, hover scaling effects, and an explicit '+X' counter for days exceeding 4 tasks.",
+        "In TaskTrackr: Completed calendar events are now visually struck-through and dimmed on the monthly grid.",
+        "In TaskTrackr: Enhanced the 'Today' calendar highlight with a prominent solid blue badge, a thicker ring, and a dynamic scale effect.",
+        "In TaskTrackr: Introduced responsive 'Hover Lift' physics across all task cards, providing satisfying shadow expansion and upward translation on hover.",
+        "In TaskTrackr: Completely overhauled the Eisenhower Matrix UI with beautiful color-coded gradients, custom empty states, and dynamic typography.",
+        "In TaskTrackr: Injected '+ Add Task' quick-action buttons directly into the bottom of all Kanban columns for frictionless list building."
+    ]
+},
+    {
     version: "v15.120.0-alpha",
     date: "2026-06-16",
     changes: [
