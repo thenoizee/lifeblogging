@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.120.0-alpha",
+    date: "2026-06-16",
+    changes: [
+        "In RecipeManagr: Enhanced recipe cards to dynamically display the latest star rating and uploaded photo from cooking history, overlaying a 'Latest' badge without overwriting the master recipe data.",
+        "In RecipeManagr: Updated the recipe detail modal header to feature the most recent cooking history photo alongside the master photo.",
+        "In RecipeManagr: Upgraded the 'Log Cook' modal with an instant live-preview window for attached photos before saving.",
+        "In RecipeManagr: Refined the Meal Planner empty states, replacing plain text with structured, dashed dropzones that highlight when a recipe is dragged over them.",
+        "In RecipeManagr: Fixed a console crash caused by the Screen Wakelock API attempting to trigger while the app was loaded in a background, hidden browser tab.",
+        "In RecipeManagr: Fixed a UI crash (TypeError) when clicking 'Cancel Selection' in multi-select mode due to a missing legacy DOM element reference.",
+        "In RecipeManagr: Implemented a 250ms Debounce on the main search bar, drastically improving UI rendering performance on large recipe datasets by waiting for the user to stop typing before filtering.",
+        "In RecipeManagr: Linked the root manifest.json file to the document head, properly enabling Progressive Web App (PWA) 'Install to Homescreen' capabilities.",
+    ]
+},
+    {
     version: "v15.119.0-alpha",
     date: "2026-06-16",
     changes: [
