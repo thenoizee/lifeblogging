@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.122.0-alpha",
+    date: "2026-06-18",
+    changes: [
+        "In TaskTrackr: Added Work/Personal Context modes allowing users to filter and isolate their active list views based on their current environment.",
+        "In TaskTrackr: Allowed editing of existing project details directly from the Project Manager, including color, parent relationships, and context mapping.",
+        "In TaskTrackr: Integrated true Trello-style Sub-Projects into the Kanban Board. Nested sub-projects now act as their own dedicated board columns.",
+        "In TaskTrackr: Added Department/Slack style grouping mode to the Kanban view for higher-level organizational sorting.",
+        "In TaskTrackr: Added roll-up visual progress bars to the Project Manager and Kanban column headers, showing how sub-tasks feed into main project completion.",
+        "In TaskTrackr: Added deep drag-and-drop hierarchy support using a native 'Right-Side Drop Zone'. Dragging a task to the right side of another task instantly highlights a drop zone to convert it into a nested sub-task.",
+        "In TaskTrackr: Added inline rendering of nested sub-tasks on the main list views. Sub-tasks can now be checked off directly from the parent card without needing to open the details pane.",
+        "In TaskTrackr: Upgraded the Calendar Day View with Left/Right navigation arrows to quickly paginate through daily schedules."
+    ]
+},
+    {
     version: "v15.121.0-alpha",
     date: "2026-06-17",
     changes: [

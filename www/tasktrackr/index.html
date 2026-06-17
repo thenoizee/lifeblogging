@@ -257,11 +257,15 @@ body {
         .timeline-line { position: absolute; left: 20px; top: 0; bottom: 0; width: 2px; background: linear-gradient(to bottom, transparent, #374151 10%, #374151 90%, transparent); z-index: 0; }
 
 /* Add this to your existing CSS */
-.prose strong { font-weight: 800; color: inherit; }
-.prose em { font-style: italic; color: inherit; }
-.prose ul { list-style-type: disc; padding-left: 1rem; margin: 0; }
-.prose ol { list-style-type: decimal; padding-left: 1rem; margin: 0; }
-.prose p { margin: 0 !important; } /* Force paragraphs to be tight */
+            .prose strong { font-weight: 800; color: inherit; }
+            .prose em { font-style: italic; color: inherit; }
+            .prose ul { list-style-type: disc; padding-left: 1rem; margin: 0; }
+            .prose ol { list-style-type: decimal; padding-left: 1rem; margin: 0; }
+            .prose p { margin: 0 !important; } /* Force paragraphs to be tight */
+            
+            /* Native Dropzone for True Nesting */
+            .nest-dropzone { display: none; }
+            body.is-dragging-task .nest-dropzone { display: block; }
 
     </style>
 </head>
@@ -321,6 +325,13 @@ body {
     </form>
 
     <div class="flex items-center gap-1 p-1 bg-[var(--card)] border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm h-[42px]">
+    
+    <div class="relative border-r border-gray-200 dark:border-gray-700 pr-1 mr-1 flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+        <button onclick="window.setContextMode('both')" id="ctx-btn-both" class="px-2 py-1 text-[10px] font-bold rounded-md transition-colors bg-white dark:bg-gray-700 text-blue-500 shadow-sm">All</button>
+        <button onclick="window.setContextMode('work')" id="ctx-btn-work" class="px-2 py-1 text-[10px] font-bold rounded-md transition-colors text-gray-500 hover:text-blue-400">Work</button>
+        <button onclick="window.setContextMode('personal')" id="ctx-btn-personal" class="px-2 py-1 text-[10px] font-bold rounded-md transition-colors text-gray-500 hover:text-blue-400">Personal</button>
+    </div>
+
     <div class="relative border-r border-gray-200 dark:border-gray-700 pr-1 mr-1 flex items-center group">
         <button class="bg-transparent text-gray-500 dark:text-gray-400 text-xs rounded-lg pl-2 pr-6 py-1.5 outline-none cursor-pointer font-bold hover:text-blue-500 transition-colors h-full max-w-[110px] truncate text-left w-full relative">
             <span id="multi-project-label">All Lists</span>
@@ -584,14 +595,24 @@ body {
             <input type="hidden" id="project-modal-id">
             <div class="space-y-4">
                 <div>
-                    <label class="text-xs font-bold text-gray-500 uppercase">Parent Project</label>
+                    <label class="text-xs font-bold text-gray-500 uppercase">Department / Parent Project</label>
                     <select id="project-parent-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm mb-4">
-                        <option value="">None (Top Level)</option>
+                        <option value="">None (Top Level Workspace)</option>
                     </select>
                 </div>
-                <div>
-                    <label class="text-xs font-bold text-gray-500 uppercase">Name</label>
-                    <input type="text" id="project-name-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm">
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Workspace Context</label>
+                        <select id="project-context-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm">
+                            <option value="both">General / Both</option>
+                            <option value="work">Work / Business</option>
+                            <option value="personal">Personal / Home</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-bold text-gray-500 uppercase">Name</label>
+                        <input type="text" id="project-name-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm">
+                    </div>
                 </div>
                 <div>
                     <label class="text-xs font-bold text-gray-500 uppercase">Color</label>
@@ -925,6 +946,7 @@ window.addEventListener('DOMContentLoaded', () => {
         let currentState = { 
             view: startingTab, 
             filter: 'inbox', 
+            contextMode: 'both', // Added context mode (Work/Personal/Both)
             projectIds: [], // Empty means 'all'
             priority: 'all', 
             tag: 'all', 
@@ -963,6 +985,26 @@ window.addEventListener('DOMContentLoaded', () => {
             currentState[key] = val; 
             saveSettingsToFirebase();
             renderApp(); 
+        };
+
+        // Switch between Work, Personal, and All contexts so users can compartmentalize their day
+        window.setContextMode = (mode) => {
+            currentState.contextMode = mode;
+            
+            // Update UI buttons visually
+            const btns = ['both', 'work', 'personal'];
+            btns.forEach(b => {
+                const el = document.getElementById('ctx-btn-' + b);
+                if (el) {
+                    if (b === mode) {
+                        el.className = 'px-2 py-1 text-[10px] font-bold rounded-md transition-colors bg-white dark:bg-gray-700 text-blue-500 shadow-sm';
+                    } else {
+                        el.className = 'px-2 py-1 text-[10px] font-bold rounded-md transition-colors text-gray-500 hover:text-blue-400';
+                    }
+                }
+            });
+            saveSettingsToFirebase();
+            renderApp();
         };
 
         window.toggleSourceVisibility = (sourceKey) => {
@@ -1455,6 +1497,8 @@ const fetchAllData = async () => {
     let hierarchyMap = {};
     let customColors = {};
     let localProjects = [];
+    let projectContexts = {}; // Store project context definitions
+    
     if (auth.currentUser) {
         try {
             const hSnaps = await getDocs(collection(db, 'users', auth.currentUser.uid, 'project_hierarchy'));
@@ -1462,6 +1506,7 @@ const fetchAllData = async () => {
                 const data = doc.data();
                 if(data.parentId) hierarchyMap[doc.id] = data.parentId; 
                 if(data.color) customColors[doc.id] = data.color;
+                if(data.contextMode) projectContexts[doc.id] = data.contextMode; // Save fetched context
                 
                 // Capture Local Fallback Projects
                 if(data.isLocal || doc.id.startsWith('local_proj_')) {
@@ -1469,7 +1514,8 @@ const fetchAllData = async () => {
                         id: doc.id,
                         name: data.name || 'Unnamed List',
                         color: data.color || '#4b5563',
-                        parentId: data.parentId || null
+                        parentId: data.parentId || null,
+                        contextMode: data.contextMode || 'both'
                     });
                 }
             });
@@ -1483,7 +1529,8 @@ const fetchAllData = async () => {
             color: customColors[p.id] || p.color, 
             kind: p.kind, 
             isInbox: p.id === inboxId, 
-            parentId: hierarchyMap[p.id] || p.groupId || p.parentId || null 
+            parentId: hierarchyMap[p.id] || p.groupId || p.parentId || null,
+            contextMode: projectContexts[p.id] || 'both' // Apply context to mapping
         }
     }), {});
 
@@ -1625,6 +1672,7 @@ const fetchAllData = async () => {
         title: task.title,
         content: task.content || '',
         projectId: task.projectId || 'inbox',
+        parentId: task.parentId || null,
         priority: parseInt(task.priority || 0),
         tags: task.tags || [],
         isAllDay: !!task.isAllDay,
@@ -1870,7 +1918,76 @@ const fetchAllData = async () => {
 
 
         /* Drag, Drop, Quick Add, Filters... (Same logic) */
-        window.handleDragStart = (e, taskId) => { 
+        
+        window.nestTaskDrop = async (e, targetTaskId) => {
+            e.preventDefault();
+            e.stopPropagation(); // VERY IMPORTANT: Stop SortableJS from intervening!
+            e.currentTarget.classList.remove('bg-blue-500/20', 'border-l-2', 'border-blue-500', 'border-dashed');
+            document.body.classList.remove('is-dragging-task');
+            
+            try {
+                const tasksDataStr = e.dataTransfer.getData('text/plain');
+                if (!tasksDataStr) return;
+                let draggedTaskIds;
+                try { draggedTaskIds = JSON.parse(tasksDataStr); } catch (err) { return; }
+                
+                if (draggedTaskIds.includes(targetTaskId)) {
+                    showToast("Cannot nest inside itself", "error");
+                    return;
+                }
+
+                showLoader();
+                let updatedCount = 0;
+                for (const dId of draggedTaskIds) {
+                    const task = taskCache.find(t => t.id === dId);
+                    if (task) {
+                        task.parentId = targetTaskId; // TRUE SUBTASK NESTING
+                        const payload = formatTaskPayload(task);
+                        
+                        if (task.source === 'local' && auth.currentUser) {
+                            await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { parentId: targetTaskId, updated: new Date() }, { merge: true });
+                        } else if (task.source !== 'local') {
+                            try { await api(`/task/${task.id}`, 'POST', payload); } catch(err) { console.error(err); }
+                        }
+                        updatedCount++;
+                    }
+                }
+                
+                if (updatedCount > 0) {
+                    showToast(`Nested ${updatedCount} task(s)`);
+                    window.clearSelection();
+                    localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
+                    renderApp();
+                }
+            } catch(e) {
+                console.error(e);
+            }
+            hideLoader();
+        };
+
+        // Shared SortableJS Configuration Wrapper
+        window.getSortableOptions = (customOnEnd) => {
+            return {
+                group: 'kanban',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag',
+                delay: 150,
+                delayOnTouchOnly: true,
+                onStart: (evt) => {
+                    // Activate native dropzones globally while dragging
+                    document.body.classList.add('is-dragging-task');
+                },
+                onEnd: async (evt) => {
+                    // Cleanup native dropzones
+                    document.body.classList.remove('is-dragging-task');
+                    if (customOnEnd) await customOnEnd(evt);
+                }
+            };
+        };
+
+        window.handleDragStart = (e, taskId) => {
+            document.body.classList.add('is-dragging-task');
             const task = taskCache.find(t => t.id === taskId);
             // Block dragging for read-only calendar events
             if (task && task.source === 'google_calendar') {
@@ -2108,6 +2225,16 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
                 tasks = tasks.filter(t => !t.hidden);
             }
 
+            // Filter out tasks that do not belong to the current Work/Personal context
+            if (currentState.contextMode !== 'both') {
+                tasks = tasks.filter(t => {
+                    const p = projectMap[t.projectId];
+                    // If project has no context or matches current context, keep it. Inbox often has no context.
+                    if (!p || p.isInbox) return true; 
+                    return p.contextMode === currentState.contextMode || p.contextMode === 'both';
+                });
+            }
+
             // --- GLOBAL FILTERS ---
             if (currentState.projectId && currentState.projectId !== 'all') {
                 tasks = tasks.filter(t => t.projectId === currentState.projectId || t.calendarId === currentState.projectId);
@@ -2122,7 +2249,7 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             }
 
             // --- SORTING ---
-            return tasks.sort((a,b) => { 
+            const sortedTasks = tasks.sort((a,b) => { 
                 if (currentState.sortMode === 'alpha') { return a.title.localeCompare(b.title); } 
                 if(currentState.filter === 'focus') { 
                     const dateA = new Date(a.dueDate || '9999'); 
@@ -2132,6 +2259,32 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
                 if (b.priority !== a.priority) return b.priority - a.priority; 
                 return new Date(a.dueDate || '9999') - new Date(b.dueDate || '9999'); 
             }); 
+
+            // --- BUILD VISUAL TREE (INDENT SUBTASKS) ---
+            const rootTasks = [];
+            const childrenMap = {};
+            
+            sortedTasks.forEach(t => {
+                // If it has a parentId AND that parent exists in the current filtered view, it's a child
+                if (t.parentId && sortedTasks.find(p => p.id === t.parentId)) {
+                    if (!childrenMap[t.parentId]) childrenMap[t.parentId] = [];
+                    childrenMap[t.parentId].push(t);
+                } else {
+                    rootTasks.push(t);
+                }
+            });
+
+            const flatTree = [];
+            const traverse = (task, depth) => {
+                task._depth = depth;
+                flatTree.push(task);
+                if (childrenMap[task.id]) {
+                    childrenMap[task.id].forEach(c => traverse(c, depth + 1));
+                }
+            };
+            
+            rootTasks.forEach(t => traverse(t, 0));
+            return flatTree;
         };
 
 
@@ -2516,8 +2669,21 @@ const renderTaskCard = (task) => {
         </div>`;
     }
     
+    // Indent style for true subtasks (dynamic depth margin)
+    const indentStyle = task._depth > 0 ? `margin-left: ${task._depth * 2.5}rem; border-left-width: 4px; border-left-color: var(--primary);` : '';
+
     // Added 'pb-1' to padding to accommodate the absolute positioned progress bar at the bottom
-    return `<div class="card p-0 rounded-2xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass} text-gray-900 dark:text-gray-100 pb-1" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="${clickHandler}" oncontextmenu="window.handleContextMenu(event, '${task.id}')"> 
+    return `<div class="card p-0 rounded-2xl border transition-all duration-200 flex group animate-fade mb-3 relative overflow-hidden ${wrapperClass} text-gray-900 dark:text-gray-100 pb-1" style="${indentStyle}" draggable="true" ondragstart="window.handleDragStart(event, '${task.id}')" data-task-id="${task.id}" onclick="${clickHandler}" oncontextmenu="window.handleContextMenu(event, '${task.id}')"> 
+        
+        <div class="nest-dropzone absolute top-0 right-0 bottom-0 w-1/3 z-50 transition-colors duration-200"
+             ondragover="event.preventDefault(); event.stopPropagation(); this.classList.add('bg-blue-500/20', 'border-l-2', 'border-blue-500', 'border-dashed');"
+             ondragleave="this.classList.remove('bg-blue-500/20', 'border-l-2', 'border-blue-500', 'border-dashed');"
+             ondrop="window.nestTaskDrop(event, '${task.id}')">
+             <div class="w-full h-full flex items-center justify-center opacity-0 hover:opacity-100 text-blue-600 drop-shadow-md bg-gradient-to-l from-blue-50/80 dark:from-blue-900/50 to-transparent">
+                <div class="bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2 animate-pulse"><i class="fa-solid fa-folder-tree"></i> Make Subtask</div>
+             </div>
+        </div>
+
         ${progressBarHtml}
         <div class="project-color-strip z-10" style="background-color: ${pColor}"></div>
         <div class="w-12 flex items-center justify-center cursor-pointer border-r border-gray-100 dark:border-white/5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0 ml-1 z-20" onclick="window.completeTask('${task.projectId}', '${task.id}', null, event)" title="Mark Completed"> ${completeIcon} </div> 
@@ -2532,6 +2698,19 @@ const renderTaskCard = (task) => {
                 </div> 
                 <div class="card-meta flex flex-wrap items-center gap-2 text-xs ml-8 mt-2 sm:ml-0 sm:mt-0"> ${dateBadgeHtml} ${projectBadge} ${subtaskBadge} ${sourceBadge} </div> 
             </div> 
+            
+            ${task.items && task.items.length > 0 ? `
+            <div class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700/50 space-y-1.5 w-full pl-8">
+                ${task.items.map((item, idx) => `
+                    <div class="flex items-start gap-2 group/subtask cursor-default" onclick="event.stopPropagation()">
+                        <div class="cursor-pointer pt-0.5" onclick="window.toggleSubtaskFromMain('${task.id}', ${idx}, event)">
+                            <i class="fa-${item.status === 1 ? 'solid fa-square-check text-green-500' : 'regular fa-square text-gray-400 dark:text-gray-500 hover:text-blue-500'} transition-colors text-sm"></i>
+                        </div>
+                        <span class="text-xs ${item.status === 1 ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300 font-medium'} leading-tight">${escapeHtml(item.title)}</span>
+                    </div>
+                `).join('')}
+            </div>` : ''}
+
         </div>
     </div>`;
 };
@@ -2778,7 +2957,7 @@ const renderTaskCard = (task) => {
         <i class="fa-solid fa-mug-hot text-4xl opacity-50 text-[var(--primary)]"></i>
     </div>
     <p class="text-lg font-bold text-gray-400">${msgs[currentState.filter] || "Nothing here."}</p>
-</div>`; return; } if (currentState.sortMode === 'alpha' || currentState.filter === 'completed') { els.content.innerHTML = `<div id="simple-list">${tasks.map(renderTaskCard).join('')}</div>`; return; } const now = new Date(); now.setHours(0,0,0,0); const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); const groups = { overdue: [], today: [], tomorrow: [], later: [], noDate: [], completed: [] }; tasks.forEach(t => { if (t.status === 2) { groups.completed.push(t); return; } if (!t.dueDate) { groups.noDate.push(t); return; } const d = new Date(t.dueDate); d.setHours(0,0,0,0); if (d < now) groups.overdue.push(t); else if (d.getTime() === now.getTime()) groups.today.push(t); else if (d.getTime() === tmrw.getTime()) groups.tomorrow.push(t); else groups.later.push(t); }); const renderSection = (key, label, customClass = '') => { const groupTasks = groups[key]; const alwaysShow = ['today', 'tomorrow', 'noDate']; if (groupTasks.length === 0 && !alwaysShow.includes(key)) return ''; const isCollapsed = window.sectionStates[key]; const icon = isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'; let headerClass = 'group-header'; if (customClass) headerClass += ` ${customClass}`; headerClass += ' cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800/50 rounded px-2 select-none transition-colors'; return ` <div class="${headerClass}" onclick="window.toggleSection('${key}')"> <div class="flex items-center gap-2"> <i class="fa-solid ${icon} text-xs w-4 text-gray-500"></i> <span>${label}</span> </div> <span>${groupTasks.length}</span> </div> <div id="group-${key}" data-section="${key}" class="task-group ${isCollapsed ? 'hidden' : ''} min-h-[10px] pb-4 transition-all"> ${groupTasks.map(renderTaskCard).join('')} ${groupTasks.length === 0 ? '<div class="text-xs text-gray-700 italic py-2 pl-4 dashed-placeholder">Drag tasks here...</div>' : ''} </div>`; }; let html = ''; html += renderSection('overdue', 'Overdue', 'overdue'); html += renderSection('today', 'Today', 'today'); html += renderSection('tomorrow', 'Tomorrow'); html += renderSection('later', 'Later'); html += renderSection('noDate', 'No Date'); html += renderSection('completed', 'Completed'); els.content.innerHTML = html; setTimeout(() => { ['overdue', 'today', 'tomorrow', 'later', 'noDate', 'completed'].forEach(key => { const el = document.getElementById(`group-${key}`); if (el) { new Sortable(el, { group: 'classic-view', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', delay: 150, delayOnTouchOnly: true, onEnd: window.handleSortableDrop }); } }); }, 50); };
+</div>`; return; } if (currentState.sortMode === 'alpha' || currentState.filter === 'completed') { els.content.innerHTML = `<div id="simple-list">${tasks.map(renderTaskCard).join('')}</div>`; return; } const now = new Date(); now.setHours(0,0,0,0); const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); const groups = { overdue: [], today: [], tomorrow: [], later: [], noDate: [], completed: [] }; tasks.forEach(t => { if (t.status === 2) { groups.completed.push(t); return; } if (!t.dueDate) { groups.noDate.push(t); return; } const d = new Date(t.dueDate); d.setHours(0,0,0,0); if (d < now) groups.overdue.push(t); else if (d.getTime() === now.getTime()) groups.today.push(t); else if (d.getTime() === tmrw.getTime()) groups.tomorrow.push(t); else groups.later.push(t); }); const renderSection = (key, label, customClass = '') => { const groupTasks = groups[key]; const alwaysShow = ['today', 'tomorrow', 'noDate']; if (groupTasks.length === 0 && !alwaysShow.includes(key)) return ''; const isCollapsed = window.sectionStates[key]; const icon = isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'; let headerClass = 'group-header'; if (customClass) headerClass += ` ${customClass}`; headerClass += ' cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800/50 rounded px-2 select-none transition-colors'; return ` <div class="${headerClass}" onclick="window.toggleSection('${key}')"> <div class="flex items-center gap-2"> <i class="fa-solid ${icon} text-xs w-4 text-gray-500"></i> <span>${label}</span> </div> <span>${groupTasks.length}</span> </div> <div id="group-${key}" data-section="${key}" class="task-group ${isCollapsed ? 'hidden' : ''} min-h-[10px] pb-4 transition-all"> ${groupTasks.map(renderTaskCard).join('')} ${groupTasks.length === 0 ? '<div class="text-xs text-gray-700 italic py-2 pl-4 dashed-placeholder">Drag tasks here...</div>' : ''} </div>`; }; let html = ''; html += renderSection('overdue', 'Overdue', 'overdue'); html += renderSection('today', 'Today', 'today'); html += renderSection('tomorrow', 'Tomorrow'); html += renderSection('later', 'Later'); html += renderSection('noDate', 'No Date'); html += renderSection('completed', 'Completed'); els.content.innerHTML = html; setTimeout(() => { ['overdue', 'today', 'tomorrow', 'later', 'noDate', 'completed'].forEach(key => { const el = document.getElementById(`group-${key}`); if (el) { const opts = window.getSortableOptions(window.handleSortableDrop); opts.group = 'classic-view'; new Sortable(el, opts); } }); }, 50); };
         
         const renderEisenhower = (tasks) => { 
             const today = new Date().toISOString().split('T')[0]; 
@@ -2822,17 +3001,44 @@ const renderProjectsManager = () => {
             html += projects.map(([id, p]) => { 
                 const color = getProjectColor(id); 
                 const parentName = (p.parentId || p.groupId) && projectMap[p.parentId || p.groupId] ? projectMap[p.parentId || p.groupId].name : '';
-                const parentBadge = parentName ? `<div class="text-[10px] text-gray-500 uppercase font-bold mt-1"><i class="fa-solid fa-folder-tree mr-1"></i> ${escapeHtml(parentName)}</div>` : '';
+                const parentBadge = parentName ? `<div class="text-[10px] text-gray-500 uppercase font-bold mt-1 mb-2"><i class="fa-solid fa-folder-tree mr-1"></i> Parent: ${escapeHtml(parentName)}</div>` : '';
                 
-                return `<div class="card p-5 rounded-xl border border-gray-800 flex justify-between items-center group shadow-md" style="border-left: 4px solid ${color};"><div><span class="font-bold text-lg">${escapeHtml(p.name)}</span>${parentBadge}</div><div class="flex gap-2 opacity-0 group-hover:opacity-100 transition"><button onclick="window.openProjectModal('${id}', '${escapeHtml(p.name)}', '${p.color}', '${p.parentId || p.groupId || ''}')" class="p-2 text-blue-400 hover:bg-blue-900/30 rounded"><i class="fa-solid fa-pen"></i></button><button onclick="window.deleteProject('${id}')" class="p-2 text-red-400 hover:bg-red-900/30 rounded"><i class="fa-solid fa-trash"></i></button></div></div>` 
+                // [Feature: Project Progress] Calculate completion rate for this project and its nested sub-projects
+                const projectTasks = taskCache.filter(t => t.projectId === id || (projectMap[t.projectId] && projectMap[t.projectId].parentId === id));
+                const total = projectTasks.length;
+                const completed = projectTasks.filter(t => t.status === 2).length;
+                const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+                return `<div class="card p-5 rounded-xl border border-gray-200 dark:border-gray-800 flex flex-col group shadow-md relative overflow-hidden" style="border-left: 4px solid ${color};">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <span class="font-bold text-lg">${escapeHtml(p.name)}</span>
+                            ${parentBadge}
+                        </div>
+                        <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg p-1">
+                            <button onclick="window.openProjectModal('${id}', '${escapeHtml(p.name)}', '${p.color}', '${p.parentId || p.groupId || ''}', '${p.contextMode || 'both'}')" class="p-1.5 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="window.deleteProject('${id}')" class="p-1.5 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                    <div class="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700/50">
+                        <div class="flex justify-between text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                            <span>Project Progress</span>
+                            <span>${completed}/${total} (${pct}%)</span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div class="bg-gradient-to-r from-blue-500 to-green-400 h-2 rounded-full transition-all duration-1000" style="width: ${pct}%"></div>
+                        </div>
+                    </div>
+                </div>` 
             }).join('');
             html += `</div>`; 
             els.content.innerHTML = html; 
         };
 
-        window.openProjectModal = (id = null, name = '', color = null, parentId = null) => { 
+        window.openProjectModal = (id = null, name = '', color = null, parentId = null, contextMode = 'both') => { 
             document.getElementById('project-modal-id').value = id || ''; 
             document.getElementById('project-name-input').value = name; 
+            document.getElementById('project-context-input').value = contextMode || 'both'; // Pre-fill context
             document.getElementById('project-modal-title').textContent = id ? 'Edit Project' : 'New Project'; 
             
             const parentSelect = document.getElementById('project-parent-input');
@@ -2903,11 +3109,13 @@ const renderProjectsManager = () => {
                 }
                 
                 // 3. Save everything to Firebase
+                const contextMode = document.getElementById('project-context-input').value; // Get selected context
                 if (auth.currentUser) {
                     await setDoc(doc(db, 'users', auth.currentUser.uid, 'project_hierarchy', actualId), {
                         name: name, // Store name locally just in case
                         parentId: parentId || null,
                         color: color || null,
+                        contextMode: contextMode, // Save context flag to cloud
                         updated: new Date(),
                         isLocal: actualId.startsWith('local_proj_')
                     }, { merge: true });
@@ -3500,7 +3708,9 @@ const renderKanban = (tasks) => {
         <div class="flex items-center gap-2 text-xs font-bold text-gray-500 ml-auto">
             <label><i class="fa-solid fa-layer-group"></i> Group By:</label>
             <select onchange="window.updateKanbanGrouping(this.value)" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 outline-none cursor-pointer shadow-sm text-gray-700 dark:text-gray-300">
-                <option value="project" ${mode === 'project' ? 'selected' : ''}>Department / Project</option>
+                <option value="subprojects" ${mode === 'subprojects' ? 'selected' : ''}>Trello Style (Sub-Projects)</option>
+                <option value="department" ${mode === 'department' ? 'selected' : ''}>Slack Style (Departments)</option>
+                <option value="project" ${mode === 'project' ? 'selected' : ''}>List / Project</option>
                 <option value="priority" ${mode === 'priority' ? 'selected' : ''}>Priority</option>
             </select>
         </div>
@@ -3508,8 +3718,184 @@ const renderKanban = (tasks) => {
 
     html += `<div class="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-230px)] px-2">`;
 
-    // --- DEPARTMENT GROUPING MODE ---
-    if (mode === 'project') {
+    // --- TRELLO STYLE (SUB-PROJECTS AS COLUMNS) ---
+    // [Feature: Deep Trello Style] Treats parent projects as the board, and sub-projects as lists/columns
+    if (mode === 'subprojects') {
+        const inboxId = Object.keys(projectMap).find(id => projectMap[id].isInbox || projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
+        
+        // Target parent is the currently filtered project (from the sidebar)
+        let targetParentId = currentState.projectId === 'all' ? null : currentState.projectId;
+        
+        Object.keys(projectMap).forEach(pid => {
+            if (pid !== 'google_calendar') {
+                const proj = projectMap[pid];
+                const colId = pid;
+                const parentId = proj.parentId;
+                
+                // Show if it's a subproject of the selected parent, OR if no parent selected show ALL projects (to allow everything to act as a column)
+                if ((targetParentId && parentId === targetParentId) || (!targetParentId)) {
+                    
+                    // [Feature: Roll-up Progress] Calculate progress for column header
+                    const colTasks = taskCache.filter(t => t.projectId === colId || (projectMap[t.projectId] && projectMap[t.projectId].parentId === colId));
+                    const total = colTasks.length;
+                    const completed = colTasks.filter(t => t.status === 2).length;
+                    const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+                    if (!cols[colId]) {
+                        cols[colId] = { 
+                            title: proj.name, 
+                            color: getProjectColor(colId), 
+                            icon: 'fa-list-check', 
+                            items: [],
+                            progress: pct,
+                            completed: completed,
+                            total: total
+                        };
+                    }
+                }
+            }
+        });
+
+        tasks.forEach(t => { 
+            const pid = t.projectId || inboxId;
+            // Place task exactly in its list/sub-project column
+            if(cols[pid]) {
+                cols[pid].items.push(t); 
+            } else {
+                // [Feature: Bubble Up] If it belongs to a sub-project not visible, bubble it to the parent column
+                const proj = projectMap[pid];
+                if (proj && proj.parentId && cols[proj.parentId]) {
+                    cols[proj.parentId].items.push(t);
+                }
+            }
+        }); 
+        
+        const visibleCols = Object.keys(cols).filter(colId => cols[colId].items.length > 0 || colId === targetParentId || (!targetParentId));
+
+        visibleCols.forEach(p => { 
+            const col = cols[p]; 
+            html += `<div class="kanban-col border-t-4 shadow-sm flex flex-col h-full max-h-full" style="border-top-color: ${col.color}">
+                <div class="kanban-header flex flex-col font-bold mb-3 border-b border-gray-200 dark:border-gray-700/50 pb-2 shrink-0">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2 min-w-0 pr-2">
+                            <i class="fa-solid ${col.icon} shrink-0" style="color: ${col.color}"></i>
+                            <span class="text-sm truncate" title="${escapeHtml(col.title)}">${escapeHtml(col.title)}</span>
+                        </div>
+                        <span class="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-md text-[10px] font-mono shrink-0">${col.items.length}</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden shrink-0" title="${col.progress}% Complete (${col.completed}/${col.total})">
+                        <div class="bg-gradient-to-r from-blue-400 to-green-400 h-1.5 rounded-full transition-all" style="width: ${col.progress}%"></div>
+                    </div>
+                </div>
+                <div class="kanban-body space-y-2 overflow-y-auto flex-grow hide-scroll min-h-[50px] pb-2" id="col-${p}" data-group="${p}">
+                    ${col.items.map(renderTaskCard).join('')}
+                </div>
+                <div class="mt-auto pt-2 space-y-1 shrink-0 bg-gray-50 dark:bg-gray-800/50 -mx-3 -mb-3 p-3 rounded-b-xl border-t border-gray-200 dark:border-gray-700">
+                    <button onclick="window.openProjectModal(null, '', null, '${p}')" class="w-full py-1.5 text-[10px] font-bold text-gray-400 hover:text-blue-500 rounded transition border border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center gap-2 bg-white dark:bg-gray-800 shadow-sm">
+                        <i class="fa-solid fa-folder-tree"></i> New Sub-Project
+                    </button>
+                    <button onclick="window.openAddTaskModal()" class="w-full py-2.5 text-xs font-bold text-gray-500 hover:text-[var(--primary)] hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition border border-dashed border-gray-300 dark:border-gray-700 shadow-sm flex items-center justify-center gap-2 group bg-white dark:bg-gray-800">
+                        <i class="fa-solid fa-plus group-hover:scale-125 transition-transform"></i> Add Task
+                    </button>
+                </div>
+            </div>`; 
+        }); 
+        html += `</div>`; 
+        els.content.innerHTML = html;
+        
+        setTimeout(() => { 
+            visibleCols.forEach(p => { 
+                new Sortable(document.getElementById(`col-${p}`), window.getSortableOptions(async (evt) => { 
+                    const taskId = evt.item.dataset.taskId; 
+                    const newVal = evt.to.dataset.group; 
+                    const oldVal = evt.from.dataset.group;
+                    if (newVal !== oldVal) { 
+                        const task = taskCache.find(t => t.id === taskId); 
+                        showLoader(); 
+                        task.projectId = newVal;
+                        try {
+                            if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { projectId: newVal, updated: new Date() }, { merge: true });
+                            else await api(`/task/${taskId}`, 'POST', { projectId: newVal }); 
+                            showToast('Moved to ' + cols[newVal].title);
+                        } catch(e) { showToast('Failed to move task', 'error'); task.projectId = oldVal; }
+                        renderApp(); hideLoader(); 
+                    } 
+                })); 
+            }); 
+        }, 100);
+
+    } else if (mode === 'department') {
+        const inboxId = Object.keys(projectMap).find(id => projectMap[id].isInbox || projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
+        
+        Object.keys(projectMap).forEach(pid => {
+            if (pid !== 'google_calendar') {
+                const proj = projectMap[pid];
+                // Determine Department ID (Use parent if it has one, otherwise it IS the department)
+                const deptId = proj.parentId || pid;
+                const deptTitle = proj.parentId && projectMap[proj.parentId] ? projectMap[proj.parentId].name : proj.name;
+                
+                if (!cols[deptId]) {
+                    cols[deptId] = { title: deptTitle, color: getProjectColor(deptId), icon: 'fa-building', items: [] };
+                }
+            }
+        });
+        if (!cols[inboxId]) cols[inboxId] = { title: 'Inbox', color: '#3b82f6', icon: 'fa-inbox', items: [] };
+
+        tasks.forEach(t => { 
+            const pid = t.projectId || inboxId;
+            const proj = projectMap[pid];
+            const deptId = (proj && proj.parentId) ? proj.parentId : pid;
+            if(cols[deptId]) cols[deptId].items.push(t); 
+            else cols[deptId] = { title: 'Other', color: '#808080', icon: 'fa-layer-group', items: [t] };
+        }); 
+        
+        const visibleCols = Object.keys(cols).filter(deptId => cols[deptId].items.length > 0 || deptId === inboxId);
+
+        visibleCols.forEach(p => { 
+            const col = cols[p]; 
+            html += `<div class="kanban-col border-t-4 shadow-sm" style="border-top-color: ${col.color}">
+                <div class="kanban-header flex items-center justify-between font-bold mb-3 border-b border-gray-200 dark:border-gray-700/50 pb-2">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid ${col.icon}" style="color: ${col.color}"></i>
+                        <span class="text-sm truncate max-w-[150px]" title="${escapeHtml(col.title)}">${escapeHtml(col.title)}</span>
+                    </div>
+                    <span class="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-md text-[10px] font-mono">${col.items.length}</span>
+                </div>
+                <div class="kanban-body space-y-2 overflow-y-auto flex-grow hide-scroll min-h-[100px]" id="col-${p}" data-group="${p}">
+                    ${col.items.map(renderTaskCard).join('')}
+                </div>
+                <button onclick="window.openAddTaskModal()" class="mt-3 w-full py-2.5 text-xs font-bold text-gray-500 hover:text-[var(--primary)] hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition border border-dashed border-gray-300 dark:border-gray-700 shadow-sm flex items-center justify-center gap-2 group">
+                    <i class="fa-solid fa-plus group-hover:scale-125 transition-transform"></i> Add Task
+                </button>
+            </div>`; 
+        }); 
+        html += `</div>`; 
+        els.content.innerHTML = html;
+        
+        setTimeout(() => { 
+            visibleCols.forEach(p => { 
+                new Sortable(document.getElementById(`col-${p}`), window.getSortableOptions(async (evt) => { 
+                    const taskId = evt.item.dataset.taskId; 
+                    const newVal = evt.to.dataset.group; 
+                    const oldVal = evt.from.dataset.group;
+                    if (newVal !== oldVal) { 
+                        const task = taskCache.find(t => t.id === taskId); 
+                        showLoader(); 
+                        // Assign to the top level of the newly dropped department
+                        task.projectId = newVal;
+                        try {
+                            if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { projectId: newVal, updated: new Date() }, { merge: true });
+                            else await api(`/task/${taskId}`, 'POST', { projectId: newVal }); 
+                            showToast('Moved to ' + cols[newVal].title);
+                        } catch(e) { showToast('Failed to move task', 'error'); task.projectId = oldVal; }
+                        renderApp(); hideLoader(); 
+                    } 
+                })); 
+            }); 
+        }, 100);
+
+    // --- STANDARD PROJECT GROUPING MODE ---
+    } else if (mode === 'project') {
         const inboxId = Object.keys(projectMap).find(id => projectMap[id].isInbox || projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
         
         Object.keys(projectMap).forEach(pid => {
@@ -3548,25 +3934,22 @@ const renderKanban = (tasks) => {
         
         setTimeout(() => { 
             visibleCols.forEach(p => { 
-                new Sortable(document.getElementById(`col-${p}`), { 
-                    group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag', 
-                    onEnd: async (evt) => { 
-                        const taskId = evt.item.dataset.taskId; 
-                        const newVal = evt.to.dataset.group; 
-                        const oldVal = evt.from.dataset.group;
-                        if (newVal !== oldVal) { 
-                            const task = taskCache.find(t => t.id === taskId); 
-                            showLoader(); 
-                            task.projectId = newVal;
-                            try {
-                                if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { projectId: newVal, updated: new Date() }, { merge: true });
-                                else await api(`/task/${taskId}`, 'POST', { projectId: newVal }); 
-                                showToast('Moved to ' + cols[newVal].title);
-                            } catch(e) { showToast('Failed to move task', 'error'); task.projectId = oldVal; }
-                            renderApp(); hideLoader(); 
-                        } 
+                new Sortable(document.getElementById(`col-${p}`), window.getSortableOptions(async (evt) => { 
+                    const taskId = evt.item.dataset.taskId; 
+                    const newVal = evt.to.dataset.group; 
+                    const oldVal = evt.from.dataset.group;
+                    if (newVal !== oldVal) { 
+                        const task = taskCache.find(t => t.id === taskId); 
+                        showLoader(); 
+                        task.projectId = newVal;
+                        try {
+                            if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { projectId: newVal, updated: new Date() }, { merge: true });
+                            else await api(`/task/${taskId}`, 'POST', { projectId: newVal }); 
+                            showToast('Moved to ' + cols[newVal].title);
+                        } catch(e) { showToast('Failed to move task', 'error'); task.projectId = oldVal; }
+                        renderApp(); hideLoader(); 
                     } 
-                }); 
+                })); 
             }); 
         }, 100); 
 
@@ -3605,25 +3988,22 @@ const renderKanban = (tasks) => {
 
         setTimeout(() => {
             [5, 3, 1, 0].forEach(p => {
-                new Sortable(document.getElementById(`col-${p}`), {
-                    group: 'kanban', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag',
-                    onEnd: async (evt) => {
-                        const taskId = evt.item.dataset.taskId;
-                        const newVal = parseInt(evt.to.dataset.group);
-                        const oldVal = parseInt(evt.from.dataset.group);
-                        if (newVal !== oldVal) {
-                            const task = taskCache.find(t => t.id === taskId);
-                            showLoader();
-                            task.priority = newVal;
-                            try {
-                                if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { priority: newVal, updated: new Date() }, { merge: true });
-                                else await api(`/task/${taskId}`, 'POST', { priority: newVal });
-                                showToast('Priority updated');
-                            } catch(e) { showToast('Failed to update priority', 'error'); task.priority = oldVal; }
-                            renderApp(); hideLoader();
-                        }
+                new Sortable(document.getElementById(`col-${p}`), window.getSortableOptions(async (evt) => {
+                    const taskId = evt.item.dataset.taskId;
+                    const newVal = parseInt(evt.to.dataset.group);
+                    const oldVal = parseInt(evt.from.dataset.group);
+                    if (newVal !== oldVal) {
+                        const task = taskCache.find(t => t.id === taskId);
+                        showLoader();
+                        task.priority = newVal;
+                        try {
+                            if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { priority: newVal, updated: new Date() }, { merge: true });
+                            else await api(`/task/${taskId}`, 'POST', { priority: newVal });
+                            showToast('Priority updated');
+                        } catch(e) { showToast('Failed to update priority', 'error'); task.priority = oldVal; }
+                        renderApp(); hideLoader();
                     }
-                });
+                }));
             });
         }, 100);
     }
@@ -3874,7 +4254,31 @@ window.renderSidePaneChecklist = (task) => {
     } 
 };
 
-        // REPLACE window.toggleSubtask
+        window.toggleSubtaskFromMain = async (taskId, itemIndex, event) => {
+    if(event) event.stopPropagation(); // prevent card opening
+    const task = taskCache.find(t => t.id === taskId);
+    if(!task || !task.items) return;
+
+    const item = task.items[itemIndex];
+    item.status = item.status === 1 ? 0 : 1;
+    
+    // Quick optimistic UI update
+    renderApp(); 
+
+    try {
+        const payload = formatTaskPayload(task);
+        if (auth.currentUser) {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { items: payload.items, updated: new Date() }, { merge: true });
+        }
+        if (task.source !== 'local') {
+            await api(`/task/${taskId}`, 'POST', { title: task.title, projectId: task.projectId, items: task.items });
+        }
+    } catch(e) {
+        console.error(e);
+        showToast('Subtask update failed', 'error');
+    }
+};
+
 window.toggleSubtask = async (taskId, itemIndex) => {
     const task = taskCache.find(t => t.id === taskId);
     if(!task || !task.items) return;
@@ -3893,9 +4297,9 @@ window.toggleSubtask = async (taskId, itemIndex) => {
         // 1. Always Update Firebase (Mirror or Local)
         if (auth.currentUser) {
             await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), {
-    items: payload.items,
-    updated: new Date()
-}, { merge: true });
+                items: payload.items,
+                updated: new Date()
+            }, { merge: true });
         }
 
         // 2. Update API (Only if NOT local)
@@ -4002,6 +4406,12 @@ window.toggleSubtask = async (taskId, itemIndex) => {
             // Parse the date (append T00:00:00 to avoid timezone offset issues pushing it to the previous day)
             const selectedDate = new Date(k + 'T00:00:00');
             
+            // Generate Previous and Next Day Keys for pagination
+            const prevDateObj = new Date(selectedDate); prevDateObj.setDate(prevDateObj.getDate() - 1);
+            const nextDateObj = new Date(selectedDate); nextDateObj.setDate(nextDateObj.getDate() + 1);
+            const prevDayKey = prevDateObj.toISOString().split('T')[0];
+            const nextDayKey = nextDateObj.toISOString().split('T')[0];
+            
             // Separate all-day tasks from time-specific tasks so they can be grouped properly
             const allDayTasks = [];
             const timeTasks = [];
@@ -4017,13 +4427,23 @@ window.toggleSubtask = async (taskId, itemIndex) => {
 
             // Build the header with a sticky top so it stays visible while scrolling through hours
             let html = `
-            <div class="flex items-center gap-4 mb-6 sticky top-0 bg-[var(--bg)] z-30 py-4 border-b border-gray-200 dark:border-gray-700/50">
-                <button onclick="window.closeDayTasks()" class="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-bold transition shadow-sm">
-                    <i class="fa-solid fa-arrow-left"></i> Back
-                </button>
-                <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-                    ${selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-                </h1>
+            <div class="flex flex-col sm:flex-row items-center gap-4 mb-6 sticky top-0 bg-[var(--bg)] z-30 py-4 border-b border-gray-200 dark:border-gray-700/50 justify-between">
+                <div class="flex items-center gap-4">
+                    <button onclick="window.closeDayTasks()" class="flex items-center gap-2 px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-bold transition shadow-sm">
+                        <i class="fa-solid fa-arrow-left"></i> Back
+                    </button>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="window.showDayTasks('${prevDayKey}')" class="p-2.5 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg transition" title="Previous Day">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <h1 class="text-lg md:text-xl font-bold text-gray-900 dark:text-white min-w-[180px] text-center">
+                        ${selectedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </h1>
+                    <button onclick="window.showDayTasks('${nextDayKey}')" class="p-2.5 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg transition" title="Next Day">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
             </div>
             <div class="w-full max-w-3xl mx-auto pb-12 space-y-6">`;
 
