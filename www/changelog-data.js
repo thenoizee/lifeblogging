@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.124.0-alpha",
+    date: "2026-06-19",
+    changes: [
+        "In WarrantyTrackr: Completely repurposed and rebranded the app to 'InventoryTrackr' to serve as a comprehensive electronics and inventory manager.",
+        "In InventoryTrackr: Added robust device metadata tracking including Brand/Make, Model Number, Serial Number, Current Status (In Use, Stored, Loaned, etc.), and Purchase Price.",
+        "In InventoryTrackr: Overhauled the Dashboard grid to highlight 'Total Devices', aggregated 'Total Value', active warranties, and devices out for repair/loan.",
+        "In InventoryTrackr: Updated item cards to feature distinct status badges and neatly organized detail containers to separate device specs from warranty data.",
+        "In InventoryTrackr: Added quick-tracking inputs for 'Room/Location' and 'Assigned To' to easily locate hardware across a house or office.",
+        "In InventoryTrackr: Added 'MAC / IP Address' and 'Condition / Battery Health' fields for deeper technical inventory management."
+    ]
+},
+    {
         version: "v15.123.0-alpha",
         date: "2026-06-19",
         changes: [
