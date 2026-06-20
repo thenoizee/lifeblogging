@@ -2,6 +2,22 @@
 
 export const changelogData = [
     {
+    version: "v15.126.0-alpha",
+    date: "2026-06-21",
+    changes: [
+        "In TaskTrackr: Fixed True Nested Tasks so they retain their parentId and metadata when dragged and dropped.",
+        "In TaskTrackr: Corrected the TickTick API payload when updating subtasks to protect parent task properties from being wiped.",
+        "In TaskTrackr: Preserved Checklist Item IDs and statuses when saving edits via the task modal.",
+        "In TaskTrackr: Updated the main list view to preview all checklist items, allowing completed ones to be un-ticked directly from the card.",
+        "In TaskTrackr: Unified the styling of dragged Nested Tasks in the Side Pane to visually match standard Checklist Items.",
+        "In TaskTrackr: Added real-time reactive updating so the Side Pane instantly refreshes when a task or subtask is modified from the main list.",
+        "In TaskTrackr: Fixed the Completed Tasks filter so completed tasks bypass the global status filter, restoring the 'Completed' accordion at the bottom of the List view.",
+        "In TaskTrackr: Optimized the Completed sidebar tab to display optimistic local cache instantly while fetching from the server in the background.",
+        "In TaskTrackr: Excluded completed tasks from cluttering the Kanban, Matrix, and Timeline views.",
+        "In TaskTrackr: Changed the primary task checkbox color to display a green tick instead of blue when completed."
+    ]
+},
+    {
     version: "v15.125.0-alpha",
     date: "2026-06-20",
     changes: [

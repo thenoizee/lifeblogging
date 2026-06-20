@@ -77,7 +77,7 @@ body {
         ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
 
         .task-checkbox { appearance: none; width: 1.25rem; height: 1.25rem; border: 2px solid #4b5563; border-radius: 4px; cursor: pointer; position: relative; transition: all 0.2s; }
-        .task-checkbox:checked { background-color: var(--primary); border-color: var(--primary); }
+        .task-checkbox:checked { background-color: #22c55e; border-color: #22c55e; }
         .task-checkbox:checked::after { content: '\f00c'; font-family: 'Font Awesome 6 Free'; font-weight: 900; color: white; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.75rem; }
 
         .color-option { box-shadow: 0 0 0 2px transparent; transition: all 0.2s; }
@@ -1498,8 +1498,33 @@ const fetchGoogleData = async () => {
         };
         // -----------------------
 
-        const fetchHistory = async () => { /* Same as previous */ 
-             if (!auth.currentUser) return; showLoader(); try { const q = query(collection(db, 'users', auth.currentUser.uid, 'task_history'), orderBy('completedAt', 'desc'), limit(100)); const querySnapshot = await getDocs(q); historyCache = querySnapshot.docs.map(doc => { const data = doc.data(); const base = data.originalData || {}; return { ...base, id: data.taskId || doc.id, title: data.title || base.title || 'Untitled', projectId: data.projectId || base.projectId || 'inbox', status: 2, completedAt: data.completedAt ? (data.completedAt.toDate ? data.completedAt.toDate() : new Date(data.completedAt)) : new Date(), isHistory: true }; }); renderApp(); } catch (e) { console.error(e); showToast('Error loading history', 'error'); } hideLoader();
+        const fetchHistory = async () => { 
+            if (!auth.currentUser) return; 
+            showLoader(); 
+            try { 
+                const q = query(collection(db, 'users', auth.currentUser.uid, 'task_history'), orderBy('completedAt', 'desc'), limit(100)); 
+                const querySnapshot = await getDocs(q); 
+                const fetchedHistory = querySnapshot.docs.map(doc => { 
+                    const data = doc.data(); 
+                    const base = data.originalData || {}; 
+                    return { ...base, id: data.taskId || doc.id, title: data.title || base.title || 'Untitled', projectId: data.projectId || base.projectId || 'inbox', status: 2, completedAt: data.completedAt ? (data.completedAt.toDate ? data.completedAt.toDate() : new Date(data.completedAt)) : new Date(), isHistory: true }; 
+                }); 
+                
+                // CRITICAL FIX: Preserve recently completed items that haven't hit the database query yet
+                const now = new Date();
+                const optimisticHistory = historyCache.filter(h => 
+                    !fetchedHistory.find(f => f.id === h.id) && 
+                    h.completedAt && 
+                    (now - new Date(h.completedAt)) < 60000 // Keep for 60 seconds to allow DB catch-up
+                );
+                
+                historyCache = [...optimisticHistory, ...fetchedHistory];
+                renderApp(); 
+            } catch (e) { 
+                console.error(e); 
+                showToast('Error loading history', 'error'); 
+            } 
+            hideLoader();
         };
 
        // ... inside <script type="module">
@@ -1676,7 +1701,18 @@ const fetchAllData = async () => {
 
     renderApp();
     window.renderProjectSidebar();
-    hideLoader(); // <--- ADD THIS LINE
+    
+    // Sync the side pane to the newly fetched data
+    if (currentSidePaneTaskId) {
+        const stillExists = taskCache.find(t => t.id === currentSidePaneTaskId);
+        if (stillExists) {
+            window.openSidePane(currentSidePaneTaskId);
+        } else {
+            window.closeSidePane();
+        }
+    }
+    
+    hideLoader(); 
 };
 
 // Helper to ensure we only send clean, API-friendly data
@@ -1986,51 +2022,29 @@ const fetchAllData = async () => {
                 
                 if (draggedTaskIds.includes(targetTaskId)) return;
 
-                const parentTask = taskCache.find(t => t.id === targetTaskId);
-                if (!parentTask) return;
-
                 showLoader();
-                if (!parentTask.items) parentTask.items = [];
 
                 for (const dId of draggedTaskIds) {
                     const task = taskCache.find(t => t.id === dId);
                     if (task) {
-                        // 1. Absorb natively into the parent's side-pane checklist array
-                        parentTask.items.push({
-                            id: 'item_' + Date.now() + Math.floor(Math.random() * 1000),
-                            title: task.title,
-                            status: task.status === 2 ? 1 : 0
-                        });
+                        task.parentId = targetTaskId;
+                        task.updated = new Date();
                         
-                        // 2. Delete the original standalone task silently (bypassing confirm popups)
-                        if (task.source === 'local' && window.auth && window.auth.currentUser) {
-                            try { await window.deleteDoc(window.doc(window.db, 'users', window.auth.currentUser.uid, 'local_tasks', task.id)); } catch(e){}
-                        } else {
-                            try { await window.api(`/project/${task.projectId}/task/${task.id}`, 'DELETE'); } catch(e){}
+                        if (task.source === 'local' && auth && auth.currentUser) {
+                            await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { parentId: targetTaskId, updated: new Date() }, { merge: true });
+                        } else if (task.source !== 'local') {
+                            const payload = formatTaskPayload(task);
+                            await api(`/task/${task.id}`, 'POST', payload);
                         }
-                        
-                        // 3. Remove from local cache immediately
-                        taskCache = taskCache.filter(t => t.id !== task.id);
                     }
                 }
                 
-                // 4. Save the updated parent task
-                parentTask.updated = new Date();
-                if (parentTask.source === 'local' && window.auth && window.auth.currentUser) {
-                    await window.setDoc(window.doc(window.db, 'users', window.auth.currentUser.uid, 'local_tasks', parentTask.id), parentTask, { merge: true });
-                } else if (parentTask.source !== 'local') {
-                    const payload = window.formatTaskPayload(parentTask);
-                    await window.api(`/task/${parentTask.id}`, 'POST', payload);
-                }
-
                 hideLoader();
                 if(window.selectedTasks) window.selectedTasks.clear();
-                if(window.updateSelectionUI) window.updateSelectionUI();
+                if(window.updateBulkToolbar) window.updateBulkToolbar();
                 
-                // Update UI immediately
                 renderApp();
                 
-                // If the user currently has the parent task open in the side pane, refresh it instantly
                 if (window.currentSidePaneTaskId === targetTaskId) {
                     window.openSidePane(targetTaskId);
                 }
@@ -2264,7 +2278,19 @@ window.toggleTheme = () => {
 
 // Add this line inside window.addEventListener('DOMContentLoaded', ...) OR at the bottom of your script
 if (localStorage.getItem('theme') === 'light') document.documentElement.classList.remove('dark');
-        window.setFilter = (filter) => { currentState.filter = filter; document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active')); const btn = document.querySelector(`button[onclick="window.setFilter('${filter}')"]`); if(btn) btn.classList.add('active'); if (filter === 'completed') fetchHistory(); else renderApp(); };
+        window.setFilter = (filter) => { 
+            currentState.filter = filter; 
+            document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active')); 
+            const btn = document.querySelector(`button[onclick="window.setFilter('${filter}')"]`); 
+            if(btn) btn.classList.add('active'); 
+            
+            if (filter === 'completed') {
+                renderApp(); // Render optimistically right away
+                fetchHistory(); // Sync with server in background
+            } else {
+                renderApp(); 
+            }
+        };
         window.handleSearch = (text) => { currentState.search = text.toLowerCase(); renderApp(); };
         window.updateFilter = (key, val) => { currentState[key] = val; renderApp(); };
         window.resetFilters = () => { currentState.projectId = 'all'; currentState.priority = 'all'; currentState.tag = 'all'; currentState.sortMode = 'date'; document.getElementById('project-filter').value = 'all'; document.getElementById('sort-filter').value = 'date'; renderApp(); };
@@ -2299,6 +2325,7 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             });
 
             // --- FILTER LOGIC ---
+            // Only show active tasks (status 0) in the main views.
             if (activeFilter === 'inbox') { 
                 const inboxId = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; 
                 tasks = tasks.filter(t => (t.projectId === inboxId || (t.projectId && t.projectId.startsWith('inbox'))) && t.status === 0); 
@@ -2314,7 +2341,7 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
                 return []; 
             } else if (activeFilter === 'all') { 
                 tasks = tasks.filter(t => t.status === 0); 
-            } 
+            }
 
             if (activeFilter === 'hidden') tasks = tasks.filter(t => t.hidden === true);
             else tasks = tasks.filter(t => !t.hidden);
@@ -2340,8 +2367,31 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
                 tasks = tasks.filter(t => t.title.toLowerCase().includes(currentState.search) || (t.content && t.content.toLowerCase().includes(currentState.search))); 
             }
 
+            // --> INJECT NESTED CHILDREN <--
+            // Ensure that if a parent task is visible, ALL its nested child tasks (even if completed or missing a due date)
+            // are pulled into the view so they can be rendered underneath it and un-completed if necessary.
+            let addedNew = true;
+            while (addedNew) {
+                addedNew = false;
+                const currentIds = new Set(tasks.map(t => t.id));
+                const extraChildren = [];
+                
+                taskCache.forEach(t => {
+                    if (t.parentId && currentIds.has(t.parentId) && !currentIds.has(t.id)) {
+                        // Do not inject hidden tasks unless we are viewing hidden tasks
+                        if (activeFilter !== 'hidden' && t.hidden) return;
+                        extraChildren.push(t);
+                        addedNew = true;
+                    }
+                });
+                
+                if (extraChildren.length > 0) {
+                    tasks = [...tasks, ...extraChildren];
+                }
+            }
+
             // --- SORTING ---
-            const sortedTasks = tasks.sort((a,b) => { 
+            const sortedTasks = tasks.sort((a,b) => {
                 if (currentState.sortMode === 'alpha') return a.title.localeCompare(b.title); 
                 if(activeFilter === 'focus') { 
                     const dateA = new Date(a.dueDate || '9999'); 
@@ -2765,6 +2815,9 @@ const renderTaskCard = (task) => {
         </div>`;
     }
     
+    // Show all items to allow un-toggling, applying strike-through to completed ones
+    const visibleItems = task.items ? task.items.map((item, index) => ({ item, index })) : [];
+
     // Indent style for true subtasks (dynamic depth margin)
     const indentStyle = task._depth > 0 ? `margin-left: ${task._depth * 2.5}rem !important; border-left-width: 4px !important; border-left-color: var(--primary) !important;` : '';
 
@@ -2795,12 +2848,12 @@ const renderTaskCard = (task) => {
                 <div class="card-meta flex flex-wrap items-center gap-2 text-xs ml-8 mt-2 sm:ml-0 sm:mt-0"> ${dateBadgeHtml} ${projectBadge} ${subtaskBadge} ${sourceBadge} </div> 
             </div> 
             
-            ${task.items && task.items.length > 0 ? `
+            ${visibleItems.length > 0 ? `
             <div class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700/50 space-y-1.5 w-full pl-8">
-                ${task.items.map((item, idx) => `
+                ${visibleItems.map(({item, index}) => `
                     <div class="flex items-start gap-2 group/subtask cursor-default" onclick="event.stopPropagation()">
-                        <div class="cursor-pointer pt-0.5" onclick="window.toggleSubtaskFromMain('${task.id}', ${idx}, event)">
-                            <i class="fa-${item.status === 1 ? 'solid fa-square-check text-green-500' : 'regular fa-square text-gray-400 dark:text-gray-500 hover:text-blue-500'} transition-colors text-sm"></i>
+                        <div class="cursor-pointer pt-0.5" onclick="window.toggleSubtaskFromMain('${task.id}', ${index}, event)">
+                            <i class="${item.status === 1 ? 'fa-solid fa-square-check text-green-500' : 'fa-regular fa-square text-gray-400 dark:text-gray-500 hover:text-blue-500'} transition-colors text-sm"></i>
                         </div>
                         <span class="text-xs ${item.status === 1 ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300 font-medium'} leading-tight">${escapeHtml(item.title)}</span>
                     </div>
@@ -2926,14 +2979,25 @@ const renderTaskCard = (task) => {
                 if (priSel) priSel.value = "";
 
                 renderApp(); 
-            } catch (e) { 
+                
+                if (currentSidePaneTaskId && tasksToUpdate.includes(currentSidePaneTaskId)) {
+                    const stillExists = taskCache.find(t => t.id === currentSidePaneTaskId);
+                    if (stillExists && action !== 'delete') {
+                        window.openSidePane(currentSidePaneTaskId);
+                    } else {
+                        window.closeSidePane();
+                    }
+                }
+            } catch (e) {
                 console.error(e); 
                 showToast('Error performing bulk action', 'error'); 
             } 
             hideLoader(); 
         };
 
-        const renderTimeline = (tasks) => { /*...*/ tasks.sort((a,b) => new Date(a.dueDate || '9999-12-31') - new Date(b.dueDate || '9999-12-31')); let html = '<div class="relative pl-8 space-y-8 min-h-[500px]">'; html += '<div class="timeline-line"></div>'; let lastDate = ''; if (tasks.length === 0) { html = `<div class="text-center p-12 text-gray-500"><p class="text-lg font-bold">No tasks to display on timeline.</p></div>`; } else { tasks.forEach(task => { let dateStr = task.dueDate ? new Date(task.dueDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'No Date'; if (dateStr !== lastDate) { const color = task.dueDate && new Date(task.dueDate) < new Date() ? 'text-red-400' : 'text-blue-400'; html += `<div class="relative mt-8"> <span class="absolute -left-[39px] mt-1.5 h-4 w-4 rounded-full border border-gray-700 bg-gray-900 z-10"></span> <h3 class="text-sm font-bold ${color} mb-4 ml-2 uppercase tracking-wider">${dateStr}</h3> </div>`; lastDate = dateStr; } html += `<div class="relative group ml-2 mb-4"> <span class="absolute -left-[45px] top-6 h-2 w-2 rounded-full bg-gray-600 group-hover:bg-[var(--primary)] transition z-10"></span> ${renderTaskCard(task)} </div>`; }); html += '</div>'; } els.content.innerHTML = html; };
+        const renderTimeline = (tasks) => { 
+            tasks = tasks.filter(t => t.status !== 2); // Exclude completed
+            tasks.sort((a,b) => new Date(a.dueDate || '9999-12-31') - new Date(b.dueDate || '9999-12-31')); let html = '<div class="relative pl-8 space-y-8 min-h-[500px]">'; html += '<div class="timeline-line"></div>'; let lastDate = ''; if (tasks.length === 0) { html = `<div class="text-center p-12 text-gray-500"><p class="text-lg font-bold">No tasks to display on timeline.</p></div>`; } else { tasks.forEach(task => { let dateStr = task.dueDate ? new Date(task.dueDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'No Date'; if (dateStr !== lastDate) { const color = task.dueDate && new Date(task.dueDate) < new Date() ? 'text-red-400' : 'text-blue-400'; html += `<div class="relative mt-8"> <span class="absolute -left-[39px] mt-1.5 h-4 w-4 rounded-full border border-gray-700 bg-gray-900 z-10"></span> <h3 class="text-sm font-bold ${color} mb-4 ml-2 uppercase tracking-wider">${dateStr}</h3> </div>`; lastDate = dateStr; } html += `<div class="relative group ml-2 mb-4"> <span class="absolute -left-[45px] top-6 h-2 w-2 rounded-full bg-gray-600 group-hover:bg-[var(--primary)] transition z-10"></span> ${renderTaskCard(task)} </div>`; }); html += '</div>'; } els.content.innerHTML = html; };
         window.handleSortableDrop = async (evt) => { /*...*/ const taskId = evt.item.getAttribute('data-task-id'); const toSection = evt.to.getAttribute('data-section'); const fromSection = evt.from.getAttribute('data-section'); if (toSection === fromSection) return; const task = taskCache.find(t => t.id === taskId); if (!task) return; let newDate = null; let removeDate = false; const now = new Date(); if (toSection === 'today' || toSection === 'overdue') { newDate = now; } else if (toSection === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDate = tmrw; } else if (toSection === 'later') { const nextWeek = new Date(now); nextWeek.setDate(nextWeek.getDate() + 7); newDate = nextWeek; } else if (toSection === 'noDate') { removeDate = true; } else if (toSection === 'completed') { window.completeTask(task.projectId, task.id, null); return; } if (newDate || removeDate) { if (removeDate) task.dueDate = null; else task.dueDate = newDate.toISOString().replace(/\.\d{3}Z$/, '+0000'); renderApp(); try { const payload = { projectId: task.projectId, title: task.title, dueDate: task.dueDate }; await api(`/task/${task.id}`, 'POST', payload); showToast(`Moved to ${toSection}`); } catch (e) { console.error(e); showToast('Failed to save changes', 'error'); } } };
 
         const renderAgenda = (tasks) => {
@@ -3096,7 +3160,8 @@ const renderTaskCard = (task) => {
                 delete: { title: 'Not Urgent & Not Important', subtitle: 'Not Urgent & Not Important', color: 'text-gray-600 dark:text-gray-400', border: 'border-gray-600/30 shadow-[0_0_15px_rgba(107,114,128,0.1)]', bg: 'bg-gradient-to-br from-gray-50/50 to-white dark:from-gray-800/10 dark:to-gray-900/50', icon: 'fa-trash-can', tasks: [] } 
             }; 
             tasks.forEach(t => { 
-                const isUrgent = t.dueDate && new Date(t.dueDate).toISOString().split('T')[0] <= today; 
+                if (t.status === 2) return; // Prevent completed tasks from showing in the matrix
+                const isUrgent = t.dueDate && new Date(t.dueDate).toISOString().split('T')[0] <= today;
                 const isImportant = t.priority >= 3; 
                 if (isUrgent && isImportant) quadrants.do.tasks.push(t); 
                 else if (!isUrgent && isImportant) quadrants.decide.tasks.push(t); 
@@ -3258,37 +3323,61 @@ const renderProjectsManager = () => {
             hideLoader(); 
         };
         
-        window.addChecklistItem = (text = '') => { 
-    const container = document.getElementById('checklist-builder'); 
-    const div = document.createElement('div'); 
-    div.className = 'flex gap-2 items-center'; 
-    div.innerHTML = `<i class="fa-regular fa-square text-gray-400 dark:text-gray-500"></i>
-    <input type="text" value="${escapeHtml(text)}" class="checklist-input w-full bg-transparent border-b border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 outline-none text-sm py-1" placeholder="Subtask...">
-    <button type="button" onclick="this.parentElement.remove()" class="text-gray-400 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>`; 
-    
-    // NEW: Listen for Enter key
-    const input = div.querySelector('input');
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            window.addChecklistItem();
-        }
-    });
+        window.addChecklistItem = (text = '', status = 0, itemId = '') => { 
+            const container = document.getElementById('checklist-builder'); 
+            const div = document.createElement('div'); 
+            div.className = 'flex gap-2 items-center checklist-row'; 
+            if (itemId) div.dataset.itemId = itemId;
+            div.dataset.status = status;
+            
+            const isDone = status === 1;
+            const icon = isDone ? 'fa-solid fa-square-check text-green-500' : 'fa-regular fa-square text-gray-400 dark:text-gray-500';
+            const textStyle = isDone ? 'line-through text-gray-500' : 'text-gray-900 dark:text-gray-100';
 
-    container.appendChild(div); 
-    input.focus(); 
-};
+            div.innerHTML = `
+            <i class="${icon} cursor-pointer transition-colors hover:text-blue-500" onclick="
+                const row = this.parentElement;
+                const isNowDone = row.dataset.status !== '1';
+                row.dataset.status = isNowDone ? '1' : '0';
+                this.className = isNowDone ? 'fa-solid fa-square-check text-green-500 cursor-pointer transition-colors' : 'fa-regular fa-square text-gray-400 dark:text-gray-500 cursor-pointer transition-colors hover:text-blue-500';
+                const input = this.nextElementSibling;
+                if(isNowDone) { input.classList.add('line-through', 'text-gray-500'); input.classList.remove('text-gray-900', 'dark:text-gray-100'); }
+                else { input.classList.remove('line-through', 'text-gray-500'); input.classList.add('text-gray-900', 'dark:text-gray-100'); }
+            "></i>
+            <input type="text" value="${escapeHtml(text)}" class="checklist-input w-full bg-transparent border-b border-gray-300 dark:border-gray-700 ${textStyle} focus:border-blue-500 outline-none text-sm py-1" placeholder="Subtask...">
+            <button type="button" onclick="this.parentElement.remove()" class="text-gray-400 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>`; 
+            
+            // NEW: Listen for Enter key
+            const input = div.querySelector('input');
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    window.addChecklistItem();
+                }
+            });
+
+            container.appendChild(div); 
+            if(!text) input.focus(); 
+        };
 
 window.submitTaskForm = async () => {
-    const id = document.getElementById('modal-task-id').value;
-    
-    // 1. Build checklist
-    const checklistItems = [];
-    document.querySelectorAll('.checklist-input').forEach(input => {
-        if(input.value.trim()) checklistItems.push({ title: input.value.trim(), status: 0 });
-    });
-    
-    // 2. Get existing task data
+            const id = document.getElementById('modal-task-id').value;
+            
+            // 1. Build checklist
+            const checklistItems = [];
+            document.querySelectorAll('.checklist-row').forEach(row => {
+                const input = row.querySelector('.checklist-input');
+                if(input && input.value.trim()) {
+                    const itemObj = { 
+                        title: input.value.trim(), 
+                        status: parseInt(row.dataset.status) || 0 
+                    };
+                    if (row.dataset.itemId) itemObj.id = row.dataset.itemId;
+                    checklistItems.push(itemObj);
+                }
+            });
+            
+            // 2. Get existing task data
     let existingTask = {};
     if (id) {
         existingTask = taskCache.find(t => t.id === id) || {};
@@ -3493,7 +3582,7 @@ window.openModal = (isEdit, taskId = null) => {
         // --- SET REPEAT UI ---
         setRepeatUI(task.repeatFlag || "");
         
-        if (task.items) task.items.forEach(item => window.addChecklistItem(item.title));
+        if (task.items) task.items.forEach(item => window.addChecklistItem(item.title, item.status, item.id || ''));
         
         const fmtDate = (iso) => iso ? new Date(new Date(iso) - (new Date(iso).getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : '';
         document.getElementById('modal-start-date').value = fmtDate(task.startDate);
@@ -3720,19 +3809,32 @@ window.completeTask = async (pid, tid, checkbox, event) => {
     const newStatus = oldStatus === 2 ? 0 : 2; // Toggle Status
 
     // Optimistic Update
-    task.status = newStatus;
+        task.status = newStatus;
 
-    if (newStatus === 0 && task.isHistory) {
-         task.isHistory = false;
-         if (!taskCache.find(t => t.id === tid)) taskCache.push(task);
-         historyCache = historyCache.filter(h => h.id !== tid);
-    }
+        if (newStatus === 0 && task.isHistory) {
+             task.isHistory = false;
+             if (!taskCache.find(t => t.id === tid)) taskCache.push(task);
+             historyCache = historyCache.filter(h => h.id !== tid);
+        } else if (newStatus === 2 && !task.isHistory) {
+             // Instantly push to local history cache so it shows in Completed tasks without refreshing
+             historyCache.unshift({ 
+                 ...task, 
+                 status: 2, 
+                 isHistory: true, 
+                 completedAt: new Date() 
+             });
+        }
 
-    localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
-    renderApp();
+        localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
+        renderApp();
+        
+        // Refresh side pane if we are viewing the task OR its parent
+        if (currentSidePaneTaskId === tid || task.parentId === currentSidePaneTaskId) {
+            window.openSidePane(currentSidePaneTaskId);
+        }
 
-    // Log history
-    if(newStatus === 2 && !task.isHistory) await logTaskCompletion(task);
+        // Log history
+        if(newStatus === 2 && !task.isHistory) await logTaskCompletion(task);
 
     // --- START ERROR HANDLING BLOCK ---
     // --- START ERROR HANDLING BLOCK ---
@@ -3829,6 +3931,7 @@ window.stopRepeating = (taskId) => {
 const renderKanban = (tasks) => { 
     const mode = currentState.kanbanGroupMode || 'project';
     const cols = {};
+    tasks = tasks.filter(t => t.status !== 2); // Exclude completed tasks from the board
     
     // --- UI Controls Bar ---
     let html = `<div class="flex justify-between items-center mb-4 px-2 shrink-0">
@@ -4378,40 +4481,40 @@ if (task.content) {
 
 
 window.renderSidePaneChecklist = (task) => { 
-    const listEl = document.getElementById('sp-checklist-items'); 
-    if(!listEl) return; 
-    
-    let html = '';
+            const listEl = document.getElementById('sp-checklist-items'); 
+            if(!listEl) return; 
             
-    // 1. Nested Child Tasks (Full tasks with parentId)
-    const childTasks = taskCache.filter(t => t.parentId === task.id);
-    if (childTasks.length > 0) {
-        childTasks.forEach(child => {
-            const icon = child.status === 2 ? 'fa-solid fa-circle-check text-green-500' : 'fa-regular fa-circle text-gray-400 hover:text-blue-500';
-            const textClass = child.status === 2 ? 'line-through text-gray-500' : 'text-gray-700 dark:text-gray-300 font-bold';
-            
-            html += `
-            <div class="flex items-center gap-3 p-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition" onclick="window.openSidePane('${child.id}')">
-                <i class="${icon}" onclick="window.completeTask('${child.projectId}', '${child.id}', null, event)"></i>
-                <span class="text-sm ${textClass} flex-grow">${escapeHtml(child.title)}</span>
-                <i class="fa-solid fa-link text-[10px] text-blue-400 opacity-50" title="Nested Task"></i>
-            </div>`;
-        });
-    }
+            let html = '';
+                        
+            // 1. Nested Child Tasks (Full tasks with parentId)
+            const childTasks = taskCache.filter(t => t.parentId === task.id);
+            if (childTasks.length > 0) {
+                childTasks.forEach(child => {
+                    const icon = child.status === 2 ? 'fa-solid fa-square-check text-green-500' : 'fa-regular fa-square text-gray-400 dark:text-gray-500 hover:text-blue-500';
+                    const textClass = child.status === 2 ? 'line-through text-gray-500 dark:text-gray-600' : 'text-gray-700 dark:text-gray-300 font-medium';
+                    
+                    html += `
+                    <div class="flex items-center gap-3 p-2 bg-gray-100 dark:bg-gray-800/40 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 transition" onclick="window.openSidePane('${child.id}')">
+                        <i class="${icon} transition-colors text-lg" onclick="window.completeTask('${child.projectId}', '${child.id}', null, event)"></i>
+                        <span class="text-sm ${textClass} flex-grow">${escapeHtml(child.title)}</span>
+                        <i class="fa-solid fa-link text-[10px] text-blue-400 opacity-50" title="Nested Task"></i>
+                    </div>`;
+                });
+            }
 
     // 2. Internal Checklist Items
-    if(task.items && task.items.length > 0) { 
-        task.items.forEach((item, idx) => { 
-            const icon = item.status === 1 ? 'fa-square-check text-green-500' : 'fa-square text-gray-400 dark:text-gray-500'; 
-            const textClass = item.status === 1 ? 'line-through text-gray-500 dark:text-gray-600' : 'text-gray-700 dark:text-gray-300'; 
-            
-            html += `
-                <div class="flex items-center gap-3 p-2 bg-gray-100 dark:bg-gray-800/40 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 transition" onclick="window.toggleSubtask('${task.id}', ${idx})">
-                    <i class="fa-regular ${icon}"></i>
-                    <span class="text-sm ${textClass}">${escapeHtml(item.title)}</span>
-                </div>`; 
-        }); 
-    }
+                if(task.items && task.items.length > 0) { 
+                    task.items.forEach((item, idx) => { 
+                        const icon = item.status === 1 ? 'fa-solid fa-square-check text-green-500' : 'fa-regular fa-square text-gray-400 dark:text-gray-500 hover:text-blue-500'; 
+                        const textClass = item.status === 1 ? 'line-through text-gray-500 dark:text-gray-600' : 'text-gray-700 dark:text-gray-300 font-medium'; 
+                        
+                        html += `
+                            <div class="flex items-center gap-3 p-2 bg-gray-100 dark:bg-gray-800/40 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 transition" onclick="window.toggleSubtask('${task.id}', ${idx})">
+                                <i class="${icon} transition-colors text-lg"></i>
+                                <span class="text-sm ${textClass}">${escapeHtml(item.title)}</span>
+                            </div>`; 
+                    }); 
+                }
     
     if (!html) {
         html = '<div class="text-xs text-gray-500 dark:text-gray-600 italic">No subtasks</div>';
@@ -4421,70 +4524,75 @@ window.renderSidePaneChecklist = (task) => {
 };
 
         window.toggleSubtaskFromMain = async (taskId, itemIndex, event) => {
-    if(event) event.stopPropagation(); // prevent card opening
-    const task = taskCache.find(t => t.id === taskId);
-    if(!task || !task.items) return;
+            if(event) event.stopPropagation(); // prevent card opening
+            const task = taskCache.find(t => t.id === taskId);
+            if(!task || !task.items) return;
 
-    const item = task.items[itemIndex];
-    item.status = item.status === 1 ? 0 : 1;
-    
-    // Quick optimistic UI update
-    renderApp(); 
+            const item = task.items[itemIndex];
+            item.status = item.status === 1 ? 0 : 1;
+            
+            // Quick optimistic UI update
+            renderApp(); 
+            if (currentSidePaneTaskId === taskId) {
+                window.openSidePane(taskId);
+            }
 
-    try {
-        const payload = formatTaskPayload(task);
-        if (auth.currentUser) {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { items: payload.items, updated: new Date() }, { merge: true });
-        }
-        if (task.source !== 'local') {
-            await api(`/task/${taskId}`, 'POST', { title: task.title, projectId: task.projectId, items: task.items });
-        }
-    } catch(e) {
-        console.error(e);
-        showToast('Subtask update failed', 'error');
-    }
-};
+            try {
+                const payload = formatTaskPayload(task);
+                if (auth.currentUser) {
+                    await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { items: payload.items, updated: new Date() }, { merge: true });
+                }
+                if (task.source !== 'local') {
+                    await api(`/task/${taskId}`, 'POST', payload);
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('Subtask update failed', 'error');
+            }
+        };
 
-window.toggleSubtask = async (taskId, itemIndex) => {
-    const task = taskCache.find(t => t.id === taskId);
-    if(!task || !task.items) return;
+        window.toggleSubtask = async (taskId, itemIndex) => {
+            const task = taskCache.find(t => t.id === taskId);
+            if(!task || !task.items) return;
 
-    const item = task.items[itemIndex];
-    const oldStatus = item.status;
-    
-    // Optimistic Update
-    item.status = oldStatus === 1 ? 0 : 1;
-    window.renderSidePaneChecklist(task);
-    renderApp();
+            const item = task.items[itemIndex];
+            const oldStatus = item.status;
+            
+            // Optimistic Update
+            item.status = oldStatus === 1 ? 0 : 1;
+            window.renderSidePaneChecklist(task);
+            renderApp();
 
-    try {
-        const payload = formatTaskPayload(task);
+            try {
+                const payload = formatTaskPayload(task);
 
-        // 1. Always Update Firebase (Mirror or Local)
-        if (auth.currentUser) {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), {
-                items: payload.items,
-                updated: new Date()
-            }, { merge: true });
-        }
+                // 1. Always Update Firebase (Mirror or Local)
+                if (auth.currentUser) {
+                    await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), {
+                        items: payload.items,
+                        updated: new Date()
+                    }, { merge: true });
+                }
 
-        // 2. Update API (Only if NOT local)
-        if (task.source !== 'local') {
-            await api(`/task/${taskId}`, 'POST', { 
-                title: task.title, 
-                projectId: task.projectId, 
-                items: task.items 
-            });
-        }
-    } catch(e) {
-        item.status = oldStatus;
-        window.renderSidePaneChecklist(task);
-        showToast('Subtask update failed', 'error');
-        console.error(e);
-    }
-};
+                // 2. Update API (Only if NOT local)
+                if (task.source !== 'local') {
+                    await api(`/task/${taskId}`, 'POST', payload);
+                }
+            } catch(e) {
+                item.status = oldStatus;
+                window.renderSidePaneChecklist(task);
+                showToast('Subtask update failed', 'error');
+                console.error(e);
+            }
+        };
         
-        window.closeSidePane = () => { const pane = document.getElementById('side-pane'); pane.classList.remove('open'); document.getElementById('side-pane-overlay').classList.add('opacity-0'); setTimeout(() => document.getElementById('side-pane-overlay').classList.add('hidden'), 300); };
+        window.closeSidePane = () => { 
+            const pane = document.getElementById('side-pane'); 
+            pane.classList.remove('open'); 
+            document.getElementById('side-pane-overlay').classList.add('opacity-0'); 
+            setTimeout(() => document.getElementById('side-pane-overlay').classList.add('hidden'), 300); 
+            currentSidePaneTaskId = null;
+        };
         window.openAddTaskModal = () => window.openModal(false); 
         
         // Helper to open the add task modal and automatically populate the specific date and hour selected from the calendar day plan
