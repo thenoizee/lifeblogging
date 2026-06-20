@@ -101,12 +101,12 @@
 
 /* --- STRUCTURAL FIX: Lock Body / Internal Scroll --- */
 html, body {
-    height: 100dvh; /* FIX: Use dynamic viewport height to account for mobile browser bars */
-    width: 100vw;
-    overflow: hidden; /* Disable window scroll */
-    margin: 0;
-    padding: 0;
-    overscroll-behavior: none;
+    height: 100dvh; /* FIX: Use dynamic viewport height to account for mobile browser bars */
+    width: 100vw;
+    overflow: hidden; /* Disable window scroll */
+    margin: 0;
+    padding: 0;
+    overscroll-behavior: none;
 }
 
 /* 1. Main App Wrapper */
@@ -152,9 +152,9 @@ html, body {
 #timeline-tab-panel {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    /* FIX: Ensure padding clears the nav bar AND the mobile safe area */
-    padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+    overflow-y: auto;
+    /* FIX: Ensure padding clears the nav bar AND the mobile safe area */
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
 }
 
 /* Touch Target Improvements for Tablets */
@@ -704,6 +704,12 @@ select, button, input {
             measurementId: "G-JT1YF2ELN3"
         };
         
+        const toLocalISOString = (date) => {
+            const d = new Date(date);
+            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+            return d.toISOString().slice(0, 16);
+        };
+
         const CONVERSIONS = {
             TSP_TO_ML: { 'us_customary': 4.92892, 'metric': 5 },
             TBSP_TO_ML: { 'us_customary': 14.7868, 'uk_metric': 15, 'au_metric': 20 },
@@ -1555,7 +1561,7 @@ window.switchTab = switchTab;
                                 </div>
                                 <div class="mt-3 text-xs text-gray-500 dark:text-gray-400 flex justify-between items-center font-medium">
                                     <span><i class="fas fa-clock mr-1"></i>${totalTime > 0 ? totalTime + ' mins' : 'N/A'}</span>
-                                    ${recipe.lastCooked ? `<span class="italic text-teal-600 dark:text-teal-400" title="Last cooked"><i class="fas fa-history mr-1"></i>${recipe.lastCooked}</span>` : ''}
+                                    ${recipe.lastCooked ? `<span class="italic text-teal-600 dark:text-teal-400" title="Last cooked"><i class="fas fa-history mr-1"></i>${new Date(recipe.lastCooked).toLocaleDateString()}</span>` : ''}
                                 </div>
                             </div>
                         `;
@@ -2539,7 +2545,7 @@ async function showHistoryModal(recipeId, recipeName) {
             
             <div class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg mb-4 border border-gray-200 dark:border-gray-600">
                 <div class="flex gap-2 mb-2">
-                    <input type="date" id="history-date" class="p-2 rounded border dark:bg-gray-700 dark:border-gray-600 text-sm" value="${new Date().toISOString().split('T')[0]}">
+                    <input type="datetime-local" id="history-date" class="p-2 rounded border dark:bg-gray-700 dark:border-gray-600 text-sm" value="${toLocalISOString(new Date())}">
                     <div class="flex items-center gap-1 bg-white dark:bg-gray-700 border dark:border-gray-600 px-2 rounded">
                         ${[1,2,3,4,5].map(i => `<i class="fas fa-star cursor-pointer text-gray-300 hover:text-yellow-400 transition-colors" data-rating="${i}"></i>`).join('')}
                     </div>
@@ -2615,7 +2621,7 @@ async function showHistoryModal(recipeId, recipeName) {
     const resetHistoryForm = () => {
         editModeLogId = null;
         currentEditImageUrl = null;
-        container.querySelector('#history-date').value = new Date().toISOString().split('T')[0];
+        container.querySelector('#history-date').value = toLocalISOString(new Date());
         container.querySelector('#history-notes').value = '';
         imgInput.value = '';
         imgLabel.textContent = 'Attach Photo';
@@ -2745,7 +2751,13 @@ async function showHistoryModal(recipeId, recipeName) {
                     editModeLogId = ds.id;
                     currentEditImageUrl = ds.image;
                     
-                    container.querySelector('#history-date').value = ds.date;
+                    let formattedDate = ds.date;
+                    if (ds.date.includes('Z') || ds.date.includes('T')) {
+                        formattedDate = toLocalISOString(new Date(ds.date));
+                    } else if (ds.date) {
+                        formattedDate = `${ds.date}T12:00`;
+                    }
+                    container.querySelector('#history-date').value = formattedDate;
                     container.querySelector('#history-notes').value = ds.notes;
                     updateFormStars(parseInt(ds.rating) || 0);
 
@@ -2804,8 +2816,9 @@ async function showHistoryModal(recipeId, recipeName) {
                 finalImageUrl = await getDownloadURL(imageRef);
             }
 
+            const isoCookedAt = new Date(dateVal).toISOString();
             const payload = {
-                cookedAt: dateVal, 
+                cookedAt: isoCookedAt, 
                 rating: selectedRating,
                 notes: notes,
                 imageUrl: finalImageUrl,
@@ -2818,7 +2831,7 @@ async function showHistoryModal(recipeId, recipeName) {
             } else {
                 await addDoc(collection(db, 'users', userId, 'recipes', recipeId, 'history'), payload);
                 await updateDoc(doc(db, 'users', userId, 'recipes', recipeId), { 
-                    lastCooked: dateVal,
+                    lastCooked: isoCookedAt,
                     latestHistoryRating: selectedRating,
                     latestHistoryImage: finalImageUrl || null
                 });
@@ -2826,7 +2839,7 @@ async function showHistoryModal(recipeId, recipeName) {
                 // Update local cache so it reflects immediately
                 const cachedRecipe = recipesCache.find(r => r.id === recipeId);
                 if (cachedRecipe) {
-                    cachedRecipe.lastCooked = dateVal;
+                    cachedRecipe.lastCooked = isoCookedAt;
                     cachedRecipe.latestHistoryRating = selectedRating;
                     cachedRecipe.latestHistoryImage = finalImageUrl || null;
                     filterRecipes(); // Re-render grid

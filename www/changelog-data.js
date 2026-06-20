@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.125.0-alpha",
+    date: "2026-06-20",
+    changes: [
+                "In HealthManagr: Standardised time recording to use ISO 8601 UTC strings across timezones for accurate dose history.",
+                "In RecipeManagr: Upgraded cooking history date tracking to use full datetime ISO strings for proper timezone conversion."
+    ]
+},
+    {
     version: "v15.124.0-alpha",
     date: "2026-06-19",
     changes: [
