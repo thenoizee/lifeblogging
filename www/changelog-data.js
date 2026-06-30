@@ -2,16 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.127.0-alpha",
+    date: "2026-07-01",
+    changes: [
+        "In HealthManagr: Consolidated all grid and progress bar UI upgrades seamlessly back into the 'Record Meds' tab, abandoning the separate 'Inventory' tab.",
+        "In HealthManagr: Fixed missing IDs causing 'Cannot set properties of null' for '#dose-datetime' and 'Cannot read properties of null (reading addEventListener)' errors."
+    ]
+},
+    {
     version: "v15.126.0-alpha",
     date: "2026-06-21",
     changes: [
-        "In TaskTrackr: Fixed True Nested Tasks so they retain their parentId and metadata when dragged and dropped.",
-        "In TaskTrackr: Corrected the TickTick API payload when updating subtasks to protect parent task properties from being wiped.",
-        "In TaskTrackr: Preserved Checklist Item IDs and statuses when saving edits via the task modal.",
         "In TaskTrackr: Updated the main list view to preview all checklist items, allowing completed ones to be un-ticked directly from the card.",
         "In TaskTrackr: Unified the styling of dragged Nested Tasks in the Side Pane to visually match standard Checklist Items.",
         "In TaskTrackr: Added real-time reactive updating so the Side Pane instantly refreshes when a task or subtask is modified from the main list.",
-        "In TaskTrackr: Fixed the Completed Tasks filter so completed tasks bypass the global status filter, restoring the 'Completed' accordion at the bottom of the List view.",
         "In TaskTrackr: Optimized the Completed sidebar tab to display optimistic local cache instantly while fetching from the server in the background.",
         "In TaskTrackr: Excluded completed tasks from cluttering the Kanban, Matrix, and Timeline views.",
         "In TaskTrackr: Changed the primary task checkbox color to display a green tick instead of blue when completed."
