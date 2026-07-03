@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.128.0-alpha",
+    date: "2026-07-04",
+    changes: [
+                "In VidTrackr: Fixed the glassmorphism effect on mobile devices by enabling hardware acceleration for smoother rendering.",
+                "In VidTrackr: Allowed editing ratings after the initial log by transforming the static rating badge on the detail page into an interactive button that opens the quick-rate modal.",
+                "In VidTrackr: Restructured the episode detail page for phones by optimizing the image banner scaling and reorganizing the action buttons into a space-saving grid layout.",
+    ]
+},
+    {
     version: "v15.127.0-alpha",
     date: "2026-07-01",
     changes: [
