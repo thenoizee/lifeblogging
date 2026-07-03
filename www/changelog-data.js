@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.129.0-alpha",
+    date: "2026-07-04",
+    changes: [
+        "In TaskTrackr: Improved Firestore mirror logic to save full task objects, preventing fragmented database entries.",
+        "In TaskTrackr: Added a Context selector (Work/Personal/General) to the Task Modal and Side Pane to allow for fine-grained filtering.",
+    ]
+},
+    {
     version: "v15.128.0-alpha",
     date: "2026-07-04",
     changes: [

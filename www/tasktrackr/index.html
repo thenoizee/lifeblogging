@@ -426,7 +426,16 @@ body {
         <div id="sp-priority-container" class="text-gray-900 dark:text-gray-300">None</div>
     </div>
 
-    <div class="bg-gray-100 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50 col-span-2">
+    <div class="bg-gray-100 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50">
+        <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Context</label>
+        <select id="sp-context" onchange="window.saveSidePaneChanges('context')" class="bg-transparent text-gray-900 dark:text-gray-300 font-medium text-sm outline-none cursor-pointer w-full appearance-none">
+            <option value="inherit">Inherit from List</option>
+            <option value="both">Both / General</option>
+            <option value="work">Work</option>
+            <option value="personal">Personal</option>
+        </select>
+    </div>
+    <div class="bg-gray-100 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50">
         <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Source</label>
         <div id="sp-source" class="text-gray-900 dark:text-gray-300 font-medium flex items-center gap-2"></div>
     </div>
@@ -554,6 +563,15 @@ body {
                 <select id="modal-project-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm"></select></div>
 
                 <div><label class="text-xs font-bold text-gray-500 uppercase">Tags</label><input type="text" id="modal-tags-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm" placeholder="tag1, tag2"></div>
+                <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase">Context</label>
+                    <select id="modal-task-context" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm appearance-none">
+                        <option value="inherit">Inherit from List</option>
+                        <option value="both">Both / General</option>
+                        <option value="work">Work</option>
+                        <option value="personal">Personal</option>
+                    </select>
+                </div>
 
                 <div class="mt-4">
     <label class="text-xs font-bold text-gray-500 uppercase">Save Location</label>
@@ -942,6 +960,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
         // Fetch Data ONLY once here
         fetchAllData();
+        fetchHistory(); // ADDED: Seed completed tasks immediately at startup
     } 
     // 2. If No Firebase User (TickTick Standalone / Local)
     else {
@@ -1480,7 +1499,11 @@ const fetchGoogleData = async () => {
 
         const logTaskCompletion = async (task) => {
             if (!auth.currentUser) return;
-            try { await addDoc(collection(db, 'users', auth.currentUser.uid, 'task_history'), { taskId: task.id, title: task.title, projectId: task.projectId, projectName: projectMap[task.projectId]?.name || 'Unknown', completedAt: new Date(), originalData: task }); } catch(e) {}
+            try { 
+                // FIX: Strip 'undefined' values (like _parentDueDate) which crash Firestore silently
+                const safeTask = JSON.parse(JSON.stringify(task));
+                await addDoc(collection(db, 'users', auth.currentUser.uid, 'task_history'), { taskId: task.id, title: task.title, projectId: task.projectId, projectName: projectMap[task.projectId]?.name || 'Unknown', completedAt: new Date(), originalData: safeTask }); 
+            } catch(e) { console.error("Error logging history:", e); }
         };
 
         // --- PASTE THIS HERE ---
@@ -1652,8 +1675,10 @@ const fetchAllData = async () => {
                 // If this task ID was already fetched from TickTick, map local states (like hidden)
                 if (apiTaskIds.has(doc.id)) {
                     const existingTask = allActiveTasks.find(t => t.id === doc.id);
-                    if (existingTask && data.hidden) {
-                        existingTask.hidden = true;
+                    if (existingTask) {
+                        if (data.hidden !== undefined) existingTask.hidden = data.hidden;
+                        // ADDED: Sync custom context to existing TickTick tasks
+                        if (data.contextMode) existingTask.contextMode = data.contextMode; 
                     }
                     return;
                 }
@@ -1663,7 +1688,7 @@ const fetchAllData = async () => {
                 allActiveTasks.push({
                     ...data,
                     id: doc.id,
-                    source: 'local', // It wasn't in the API, so it must be local
+                    source: data.source || 'local', // FIXED: Retain original source so the UI formats it correctly
                     startDate: cleanDate(data.startDate),
                     dueDate: cleanDate(data.dueDate)
                 });
@@ -1765,11 +1790,17 @@ const fetchAllData = async () => {
         if (newValue === oldValue) return;
         task.title = newValue;
     } else if (field === 'desc') {
-        newValue = document.getElementById('sp-desc').innerText;
-        oldValue = task.content || '';
-        if (newValue === oldValue) return;
-        task.content = newValue;
-    }
+            newValue = document.getElementById('sp-desc').innerText;
+            oldValue = task.content || '';
+            if (newValue === oldValue) return;
+            task.content = newValue;
+        } else if (field === 'context') {
+            // ADDED: Handle Context Dropdown Changes
+            newValue = document.getElementById('sp-context').value;
+            oldValue = task.contextMode || 'inherit';
+            if (newValue === oldValue) return;
+            task.contextMode = newValue;
+        }
 
     if (!task.editHistory) task.editHistory = [];
     task.editHistory.push({
@@ -1803,7 +1834,8 @@ const fetchAllData = async () => {
             ...payload, 
             updated: new Date(),
             source: task.source || 'ticktick',
-            editHistory: task.editHistory
+            editHistory: task.editHistory,
+            contextMode: task.contextMode || 'inherit' // ADDED: Save context to mirror
         };
         await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), firestorePayload, { merge: true });
 
@@ -2348,6 +2380,11 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
 
             if (currentState.contextMode !== 'both') {
                 tasks = tasks.filter(t => {
+                    // 1. Check if task has a specific context override
+                    if (t.contextMode && t.contextMode !== 'inherit') {
+                        return t.contextMode === currentState.contextMode || t.contextMode === 'both';
+                    }
+                    // 2. Fallback to the project's context mode
                     const p = projectMap[t.projectId];
                     if (!p || p.isInbox) return true; 
                     return p.contextMode === currentState.contextMode || p.contextMode === 'both';
@@ -2376,7 +2413,11 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
                 const currentIds = new Set(tasks.map(t => t.id));
                 const extraChildren = [];
                 
-                taskCache.forEach(t => {
+                // FIXED: Scan combined task storage so completed items are safely re-nested
+                const combinedTasks = [...taskCache, ...historyCache];
+                const uniqueTasks = Array.from(new Map(combinedTasks.map(t => [t.id, t])).values());
+                
+                uniqueTasks.forEach(t => {
                     if (t.parentId && currentIds.has(t.parentId) && !currentIds.has(t.id)) {
                         // Do not inject hidden tasks unless we are viewing hidden tasks
                         if (activeFilter !== 'hidden' && t.hidden) return;
@@ -3423,7 +3464,8 @@ window.submitTaskForm = async () => {
         repeatFlag: finalRepeatString, 
         items: checklistItems,
         dueDate: rawDueDate || null,
-        startDate: rawStartDate || null
+        startDate: rawStartDate || null,
+        contextMode: document.getElementById('modal-task-context').value // ADDED: Collect context mode
     };
 
     const mergedTask = { ...existingTask, ...rawFormData };
@@ -3474,7 +3516,8 @@ window.submitTaskForm = async () => {
                     id: savedTask.id, // Ensure we use the Google ID
                     source: 'google',
                     lastSynced: new Date(),
-                    dueDate: payload.dueDate ? new Date(payload.dueDate) : null
+                    dueDate: payload.dueDate ? new Date(payload.dueDate) : null,
+                    contextMode: mergedTask.contextMode || 'inherit' // ADDED: Save context to mirror
                 };
                 // Force save to local_tasks for record keeping
                 await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload, { merge: true });
@@ -3497,7 +3540,8 @@ window.submitTaskForm = async () => {
                      source: 'ticktick',
                      lastSynced: new Date(),
                      dueDate: payload.dueDate ? new Date(payload.dueDate) : null,
-                     startDate: payload.startDate ? new Date(payload.startDate) : null
+                     startDate: payload.startDate ? new Date(payload.startDate) : null,
+                     contextMode: mergedTask.contextMode || 'inherit' // ADDED: Save context to mirror
                  };
                  await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload);
             }
@@ -3587,6 +3631,10 @@ window.openModal = (isEdit, taskId = null) => {
         const fmtDate = (iso) => iso ? new Date(new Date(iso) - (new Date(iso).getTimezoneOffset() * 60000)).toISOString().slice(0, 16) : '';
         document.getElementById('modal-start-date').value = fmtDate(task.startDate);
         document.getElementById('modal-due-date').value = fmtDate(task.dueDate);
+        
+        // ADDED: Set context dropdown value
+        const contextInput = document.getElementById('modal-task-context');
+        if (contextInput) contextInput.value = task.contextMode || 'inherit';
 
         if (destInput) {
             if (task.source === 'local' || task.source === 'tasktrackr_only') destInput.value = 'local';
@@ -3605,6 +3653,10 @@ window.openModal = (isEdit, taskId = null) => {
         document.getElementById('modal-priority-input').value = 0;
         document.getElementById('modal-allday-input').checked = false;
         
+        // ADDED: Reset context dropdown
+        const contextInput = document.getElementById('modal-task-context');
+        if (contextInput) contextInput.value = 'inherit';
+
         // --- RESET REPEAT UI ---
         setRepeatUI("");
         
@@ -3776,115 +3828,70 @@ window.openModal = (isEdit, taskId = null) => {
 window.completeTask = async (pid, tid, checkbox, event) => {
     if(event) event.stopPropagation();
     
+    // 1. Locate the task in either cache
     let task = taskCache.find(t => t.id === tid);
-    if(!task) task = historyCache.find(t => t.id === tid);
+    let isCurrentlyInHistory = false;
+
+    if (!task) {
+        task = historyCache.find(t => t.id === tid);
+        if (task) isCurrentlyInHistory = true;
+    }
+    
     if(!task) return;
 
-    if (task.source === 'google_calendar') {
-        const oldStatus = task.status;
-        const newStatus = oldStatus === 2 ? 0 : 2;
-        task.status = newStatus;
-        
-        // Save locally to mirror so it remembers you "ticked" it
-        if (auth.currentUser) {
-            try {
-                setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid), { status: newStatus, updated: new Date() }, { merge: true });
-            } catch(e) { console.error("Mirror update failed", e); }
-        }
-        
-        renderApp();
-        showToast(newStatus === 2 ? 'Event marked as done (locally)' : 'Event restored', 'success');
-        return;
-    }
-
-    // Only fire confetti if we are actually completing it (not un-completing)
-    if(event && event.target && task.status !== 2) {
-        const rect = event.target.getBoundingClientRect();
-        const x = (rect.left + rect.width / 2) / window.innerWidth;
-        const y = (rect.top + rect.height / 2) / window.innerHeight;
-        confetti({ particleCount: 60, spread: 50, origin: { x, y }, colors: ['#3b82f6', '#10b981'] });
-    }
-
     const oldStatus = task.status;
-    const newStatus = oldStatus === 2 ? 0 : 2; // Toggle Status
+    const newStatus = oldStatus === 2 ? 0 : 2;
 
-    // Optimistic Update
-        task.status = newStatus;
+    // 2. Optimistic State Swap (The core fix)
+    task.status = newStatus;
 
-        if (newStatus === 0 && task.isHistory) {
-             task.isHistory = false;
-             if (!taskCache.find(t => t.id === tid)) taskCache.push(task);
-             historyCache = historyCache.filter(h => h.id !== tid);
-        } else if (newStatus === 2 && !task.isHistory) {
-             // Instantly push to local history cache so it shows in Completed tasks without refreshing
-             historyCache.unshift({ 
-                 ...task, 
-                 status: 2, 
-                 isHistory: true, 
-                 completedAt: new Date() 
-             });
-        }
+    if (newStatus === 0) {
+        // MOVING TO ACTIVE
+        task.isHistory = false;
+        if (!taskCache.find(t => t.id === tid)) taskCache.push(task);
+        historyCache = historyCache.filter(h => h.id !== tid);
+    } else {
+        // MOVING TO COMPLETED
+        task.isHistory = true;
+        if (!historyCache.find(h => h.id === tid)) historyCache.unshift(task);
+        taskCache = taskCache.filter(t => t.id !== tid);
+    }
 
-        localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
-        renderApp();
-        
-        // Refresh side pane if we are viewing the task OR its parent
-        if (currentSidePaneTaskId === tid || task.parentId === currentSidePaneTaskId) {
-            window.openSidePane(currentSidePaneTaskId);
-        }
+    localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
+    
+    // 3. Force re-render of the list AND the side pane
+    renderApp();
+    if (currentSidePaneTaskId === tid || task.parentId === currentSidePaneTaskId) {
+        window.openSidePane(currentSidePaneTaskId, task.isHistory);
+    }
 
-        // Log history
-        if(newStatus === 2 && !task.isHistory) await logTaskCompletion(task);
-
-    // --- START ERROR HANDLING BLOCK ---
-    // --- START ERROR HANDLING BLOCK ---
+    // 4. Update Backend
     try { 
-        // 1. ALWAYS Update Firebase Mirror (Backup)
         if (auth.currentUser) {
-            try {
-                await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid), { 
-                    status: newStatus,
-                    updated: new Date()
-                }, { merge: true });
-            } catch(e) { console.error("Mirror update failed", e); }
+            const safeTask = JSON.parse(JSON.stringify(task));
+            safeTask.status = newStatus;
+            safeTask.updated = new Date();
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid), safeTask, { merge: true });
         }
 
-        // 2. Handle Source Logic
-        if (task.source === 'local') {
-            // ... [existing local logic] ...
-             if (newStatus === 2) showToast('Task completed', 'success');
-            else showToast('Task restored', 'success');
-        } 
-        else if (task.source === 'google') {
-            // NEW: Google API Handling
-            const newStatus = task.status === 2 ? 'completed' : 'needsAction';
-            
-            // Google requires PATCH to update status
-            await googleApi(`lists/${pid}/tasks/${tid}`, 'PATCH', {
-                status: newStatus
-            });
-            
-            if (newStatus === 'completed') showToast('Completed in Google Tasks', 'success');
-            else showToast('Restored in Google Tasks', 'success');
-        }
-        else { 
-            // Cloud Task: Call TickTick API
+        if (task.source === 'google') {
+            const googleStatus = newStatus === 2 ? 'completed' : 'needsAction';
+            await googleApi(`lists/${pid}/tasks/${tid}`, 'PATCH', { status: googleStatus });
+        } else if (task.source !== 'local') {
             if (newStatus === 2) {
                 await api(`/project/${pid}/task/${tid}/complete`, 'POST');
-                // ... [existing recurrence logic] ...
             } else {
-                await api(`/task/${tid}`, 'POST', { projectId: pid, status: 0 });
-                showToast('Task restored', 'success');
+                const restorePayload = formatTaskPayload(task);
+                restorePayload.status = 0;
+                await api(`/task/${tid}`, 'POST', restorePayload);
             }
         }
-
     } catch(e) {
-        // Revert on error
-        console.error(e);
+        console.error("Sync failed, rolling back:", e);
+        // Rollback state if network fails
         task.status = oldStatus;
-        if(checkbox) checkbox.checked = oldStatus === 2;
         renderApp();
-        showToast('Action failed', 'error');
+        showToast('Sync failed, rolled back.', 'error');
     }
 };
 
@@ -4389,6 +4396,10 @@ if (task.content) {
             // Tags
             document.getElementById('sp-tags-container').innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); 
 
+            // Context
+            const spContext = document.getElementById('sp-context');
+            if (spContext) spContext.value = task.contextMode || 'inherit';
+
             // Recurrence & Action Button
             const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); 
             const compBtn = document.getElementById('sp-complete-btn'); 
@@ -4433,6 +4444,7 @@ if (task.content) {
                 if (checklistSection) checklistSection.classList.add('hidden');
             } else {
                 if (checklistSection) checklistSection.classList.remove('hidden');
+                // FIXED: Force a fresh render of checklist every time pane opens
                 window.renderSidePaneChecklist(task); 
             }
 
@@ -4485,9 +4497,13 @@ window.renderSidePaneChecklist = (task) => {
             if(!listEl) return; 
             
             let html = '';
-                        
+                                
             // 1. Nested Child Tasks (Full tasks with parentId)
-            const childTasks = taskCache.filter(t => t.parentId === task.id);
+            // FIXED: Search through both active and historical items so completed items remain visible
+            const combinedTasks = [...taskCache, ...historyCache];
+            const childTasks = Array.from(new Map(combinedTasks.map(t => [t.id, t])).values())
+                                    .filter(t => t.parentId === task.id);
+                                    
             if (childTasks.length > 0) {
                 childTasks.forEach(child => {
                     const icon = child.status === 2 ? 'fa-solid fa-square-check text-green-500' : 'fa-regular fa-square text-gray-400 dark:text-gray-500 hover:text-blue-500';
@@ -4505,14 +4521,16 @@ window.renderSidePaneChecklist = (task) => {
     // 2. Internal Checklist Items
                 if(task.items && task.items.length > 0) { 
                     task.items.forEach((item, idx) => { 
-                        const icon = item.status === 1 ? 'fa-solid fa-square-check text-green-500' : 'fa-regular fa-square text-gray-400 dark:text-gray-500 hover:text-blue-500'; 
-                        const textClass = item.status === 1 ? 'line-through text-gray-500 dark:text-gray-600' : 'text-gray-700 dark:text-gray-300 font-medium'; 
+                        // STRICT STATE MAPPING
+                        const isDone = item.status === 1;
+                        const icon = isDone ? 'fa-solid fa-square-check text-green-500' : 'fa-regular fa-square text-gray-400 dark:text-gray-500';
+                        const textClass = isDone ? 'line-through text-gray-500 dark:text-gray-600' : 'text-gray-700 dark:text-gray-300 font-medium';
                         
                         html += `
                             <div class="flex items-center gap-3 p-2 bg-gray-100 dark:bg-gray-800/40 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 transition" onclick="window.toggleSubtask('${task.id}', ${idx})">
-                                <i class="${icon} transition-colors text-lg"></i>
+                                <i class="${icon} text-lg"></i>
                                 <span class="text-sm ${textClass}">${escapeHtml(item.title)}</span>
-                            </div>`; 
+                            </div>`;
                     }); 
                 }
     
@@ -4560,8 +4578,16 @@ window.renderSidePaneChecklist = (task) => {
             
             // Optimistic Update
             item.status = oldStatus === 1 ? 0 : 1;
-            window.renderSidePaneChecklist(task);
-            renderApp();
+            
+            // Force immediate UI re-draw for the specific item to prevent UI desync
+            const listEl = document.getElementById('sp-checklist-items');
+            if (listEl) {
+                window.renderSidePaneChecklist(task);
+            }
+            // Use requestAnimationFrame to ensure renderApp happens after DOM is set
+            requestAnimationFrame(() => {
+                renderApp();
+            });
 
             try {
                 const payload = formatTaskPayload(task);
