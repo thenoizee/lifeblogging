@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.130.0-alpha",
+    date: "2026-07-10",
+    changes: [
+                "In PlantTrackr: Converted chunky grid-based dropdown filters on the Garden and Dashboard tabs into horizontally swipeable chip rows to drastically save vertical screen space on mobile.",
+                "In PlantTrackr: Implemented a smart Floating Action Button (FAB) for the Quick Log modal that automatically hides when scrolling down and reappears when scrolling up, preventing content obstruction.",
+                "In PlantTrackr: Added additional actions to bulk select options.",
+    ]
+    },
+    {
     version: "v15.129.0-alpha",
     date: "2026-07-04",
     changes: [
