@@ -413,22 +413,36 @@
     <div id="auth-container" style="display: none;">
         <div class="auth-card">
             <div class="text-indigo-600 mb-4 text-4xl"><i class="fa-solid fa-layer-group"></i></div>
-            <h1 class="text-2xl font-bold mb-2 dark:text-white">Life Hub</h1>
-            <p class="text-gray-500 mb-6 text-sm">Sign in to access your dashboard</p>
+            <h1 id="auth-title" class="text-2xl font-bold mb-2 dark:text-white">Life Hub</h1>
+            <p id="auth-subtitle" class="text-gray-500 mb-6 text-sm">Sign in to access your dashboard</p>
             
-            <div class="space-y-3">
+            <div class="space-y-4">
                 <input type="email" id="email" placeholder="Email" class="w-full rounded-lg p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-all">
-                <input type="password" id="password" placeholder="Password" class="w-full rounded-lg p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-all">
                 
-                <div class="flex gap-2">
-                    <button id="sign-in-btn" class="flex-1 bg-indigo-600 text-white font-semibold py-2.5 rounded-lg hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/30">Log In</button>
-                    <button id="sign-up-btn" class="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white font-semibold py-2.5 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition">Sign Up</button>
+                <div class="relative">
+                    <input type="password" id="password" placeholder="Password" class="w-full rounded-lg p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white transition-all pr-10">
+                    <button type="button" id="toggle-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                        <i class="fa-solid fa-eye" id="eye-icon"></i>
+                    </button>
                 </div>
                 
+                <button id="primary-auth-btn" class="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-lg hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/30">Log In</button>
+                
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
+                    <span class="flex-shrink-0 mx-4 text-gray-400 text-xs">OR</span>
+                    <div class="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
+                </div>
+
                 <button id="google-sign-in-btn" class="w-full bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-semibold py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition flex items-center justify-center gap-2">
-                    <i class="fa-brands fa-google text-red-500"></i> Google
+                    <i class="fa-brands fa-google text-red-500"></i> Continue with Google
                 </button>
                 
+                <div class="text-sm text-gray-600 dark:text-gray-400 mt-4">
+                    <span id="auth-switch-text">Don't have an account?</span> 
+                    <button id="toggle-auth-mode-btn" class="text-indigo-600 dark:text-indigo-400 font-bold hover:underline">Sign Up</button>
+                </div>
+
                 <button id="anonymous-sign-in-btn" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-2">Continue as Guest</button>
             </div>
         </div>
@@ -472,6 +486,7 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             const hasCachedUser = Object.keys(localStorage).some(key => key.startsWith('firebase:authUser'));
+            const urlParams = new URLSearchParams(window.location.search);
             const main = document.getElementById('main-app-container');
             const auth = document.getElementById('auth-container');
             
@@ -481,8 +496,28 @@
                 const nameEl = document.getElementById('user-name-display');
                 if(nameEl) nameEl.innerText = '...';
             } else {
+                // If not logged in and came directly without asking for login/register, redirect to welcome
+                if (!urlParams.get('mode') && window.location.pathname === '/' || window.location.pathname === '/index.html') {
+                    if (!urlParams.has('mode')) {
+                         window.location.href = '/landing';
+                         return;
+                    }
+                }
                 if(main) main.style.display = 'none';
                 if(auth) auth.style.display = 'flex';
+            }
+
+            // Password Toggle Logic
+            const togglePassword = document.getElementById('toggle-password');
+            const passwordInput = document.getElementById('password');
+            const eyeIcon = document.getElementById('eye-icon');
+            if(togglePassword) {
+                togglePassword.addEventListener('click', () => {
+                    const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                    passwordInput.setAttribute('type', type);
+                    eyeIcon.classList.toggle('fa-eye');
+                    eyeIcon.classList.toggle('fa-eye-slash');
+                });
             }
         });
     </script>
@@ -525,7 +560,7 @@
             onThemeChange: (theme) => {}
         });
 
-        // Explicitly catch Google Redirect on page load
+        // Explicitly catch Google Redirect on page load (if fallback was triggered)
         getRedirectResult(auth, browserPopupRedirectResolver).then((result) => {
             if (result) {
                 console.log("Redirect caught successfully!", result.user.email);
@@ -533,7 +568,10 @@
             }
         }).catch((error) => {
             console.error("Google Redirect Error:", error);
-            showMessage("Google Login Failed: " + error.message, "error");
+            // Ignore benign errors like user cancelling the redirect flow
+            if (error.code !== 'auth/redirect-cancelled-by-user') {
+                showMessage(getFriendlyErrorMessage(error), "error");
+            }
         });
 
         isSupported().then((supported) => {
@@ -689,7 +727,7 @@ if ('BroadcastChannel' in window) {
         };
 
         const setLoading = (isLoading) => {
-            const btns = [el('sign-in-btn'), el('sign-up-btn'), el('google-sign-in-btn'), el('anonymous-sign-in-btn')];
+            const btns = [el('primary-auth-btn'), el('google-sign-in-btn'), el('anonymous-sign-in-btn'), el('toggle-auth-mode-btn')];
             const inputs = [el('email'), el('password')];
 
             btns.forEach(b => {
@@ -771,18 +809,81 @@ if ('BroadcastChannel' in window) {
             }
         };
 
-        safeClick('sign-in-btn', () => handleAuthAction(() => signInWithEmailAndPassword(auth, el('email').value, el('password').value)));
-        safeClick('sign-up-btn', () => handleAuthAction(() => createUserWithEmailAndPassword(auth, el('email').value, el('password').value)));
-        // Pass the resolver directly into the redirect function to guarantee it works
-        // Switched to Redirect: PWAs (Add to Home Screen) fail with popups because standalone mode 
-        // forces the popup into a separate browser window, breaking the auth state loop.
-        safeClick('google-sign-in-btn', () => handleAuthAction(() => signInWithRedirect(auth, new GoogleAuthProvider(), browserPopupRedirectResolver)));
+        // Dynamic Auth Mode State
+        const urlParams = new URLSearchParams(window.location.search);
+        let isSignUpMode = urlParams.get('mode') === 'register';
+
+        const updateAuthUI = () => {
+            el('auth-title').textContent = isSignUpMode ? 'Create an Account' : 'Welcome Back';
+            el('auth-subtitle').textContent = isSignUpMode ? 'Sign up to start tracking your life' : 'Sign in to access your dashboard';
+            el('primary-auth-btn').textContent = isSignUpMode ? 'Sign Up' : 'Log In';
+            el('auth-switch-text').textContent = isSignUpMode ? 'Already have an account?' : 'Don\'t have an account?';
+            el('toggle-auth-mode-btn').textContent = isSignUpMode ? 'Log In' : 'Sign Up';
+        };
+        
+        // Initial setup based on URL params
+        updateAuthUI();
+
+        safeClick('toggle-auth-mode-btn', () => {
+            isSignUpMode = !isSignUpMode;
+            updateAuthUI();
+        });
+
+        safeClick('primary-auth-btn', () => handleAuthAction(() => {
+            const email = el('email').value;
+            const password = el('password').value;
+            if (isSignUpMode) {
+                return createUserWithEmailAndPassword(auth, email, password);
+            } else {
+                return signInWithEmailAndPassword(auth, email, password);
+            }
+        }));
+        // Hybrid Google Auth: Tries Popup first (best for desktop/web), falls back to Redirect (best for iOS PWAs)
+        // Google Auth: Browser trusted-click bypass with Debounce Lock
+        let isGoogleAuthPending = false;
+
+        safeClick('google-sign-in-btn', async (e) => {
+            e.preventDefault(); 
+            
+            // 1. Prevent double-clicks from firing multiple popup requests
+            if (isGoogleAuthPending) return; 
+            isGoogleAuthPending = true;
+
+            const btn = el('google-sign-in-btn');
+            const originalText = btn.innerHTML;
+            
+            // 2. Safely indicate loading without breaking the DOM trust
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...';
+            btn.classList.add('opacity-70', 'cursor-not-allowed');
+
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+            
+            try {
+                await signInWithPopup(auth, provider);
+                // Success! The onAuthStateChanged listener handles the rest.
+            } catch (error) {
+                console.warn("Google Auth Error:", error);
+                
+                if (error.code === 'auth/popup-blocked') {
+                    showMessage("Popup blocked. Redirecting...", "error");
+                    await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
+                } else if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+                    showMessage(getFriendlyErrorMessage(error), "error");
+                }
+            } finally {
+                // 3. Release the lock and restore the button if it failed or was closed
+                isGoogleAuthPending = false;
+                btn.innerHTML = originalText;
+                btn.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
+        });
         safeClick('anonymous-sign-in-btn', () => handleAuthAction(() => signInAnonymously(auth)));
 
         const handleEnterPress = (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                el('sign-in-btn').click();
+                el('primary-auth-btn').click();
             }
         };
         

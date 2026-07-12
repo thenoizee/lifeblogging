@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.132.0-alpha",
+    date: "2026-07-12",
+    changes: [
+                "All: Added a new Landing page to introduce new users to the Lifeblogging suite.",
+                "Login: Updated the authentication card in index.html to dynamically switch between Login and Sign Up modes using URL parameters.",
+                "Login: Added a password visibility toggle to the authentication form.",
+                "Login: Implemented an auto-redirect to the welcome page for unauthenticated users visiting the root URL.",
+                "Login: Fixed the Google Sign-In integration by implementing a debounce lock and bypassing the loading wrapper to prevent strict browser popup blockers.",
+    ]
+},
+    {
     version: "v15.131.0-alpha",
     date: "2026-07-12",
     changes: [
