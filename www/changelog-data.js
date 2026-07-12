@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.131.0-alpha",
+    date: "2026-07-12",
+    changes: [
+        "In LabelGenerator: Migrated Firebase initialization to Modular SDK v11.6.1 and implemented 'browserLocalPersistence' to prevent unexpected sign-outs.",
+        "In PDF Tools: Fixed critical module specifier errors in Firebase imports caused by malformed URL formatting.",
+        "In PDF Tools (Organise & SplitMultiple): Replaced restrictive full-screen CSS takeover with a robust HD Preview toggle. This injects a high-resolution canvas viewer directly into the editing flow without breaking page layouts.",
+        "In PDF Tools (Organise): Implemented two-way state syncing. HD Preview now honors rotation and deletion statuses, and these changes are reflected instantly back in the main grid thumbnail view.",
+        "In PDF Tools (All): Added 'min-height: 0' flexbox layout guards to ensure canvas elements remain responsive and visible during view mode transitions."
+    ]
+},
+    {
     version: "v15.130.0-alpha",
     date: "2026-07-10",
     changes: [

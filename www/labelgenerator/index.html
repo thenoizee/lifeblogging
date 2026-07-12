@@ -504,11 +504,11 @@
     </div>
     <div id="print-area"></div>
 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { initializeAuth, browserLocalPersistence, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    <script>
         // --- FIREBASE CONFIGURATION (NOW POPULATED) ---
         const firebaseConfig = {
             apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -520,15 +520,16 @@
             measurementId: "G-JT1YF2ELN3"
         };
 
-        // Initialize Firebase
-        if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const db = typeof firebase !== 'undefined' ? firebase.firestore() : null;
+        const app = initializeApp(firebaseConfig);
+        // This ensures the user stays logged in across app restarts just like the other tools
+        const auth = initializeAuth(app, {
+            persistence: browserLocalPersistence
+        });
+        const db = getFirestore(app);
         let currentUserId = null; 
         // --- END FIREBASE CONFIGURATION ---
 
-        document.addEventListener('DOMContentLoaded', () => {
+        const initApp = () => {
             const controls = {
                 templateType: document.getElementById('templateType'), presets: document.getElementById('presets'),
                 savePresetButton: document.getElementById('savePresetButton'),
@@ -708,19 +709,15 @@
             };
             
             // --- FIREBASE AUTH LISTENER ---
-            if (typeof firebase !== 'undefined' && firebase.auth) {
-                firebase.auth().onAuthStateChanged((user) => {
-                    if (user) {
-                        currentUserId = user.uid;
-                        populatePresets(); 
-                    } else {
-                        currentUserId = null;
-                        populatePresets(); 
-                    }
-                });
-            } else {
-                 populatePresets(); 
-            }
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUserId = user.uid;
+                    populatePresets(); 
+                } else {
+                    currentUserId = null;
+                    populatePresets(); 
+                }
+            });
             // --- END FIREBASE AUTH LISTENER ---
 
             const generateLabelContent = (data, index) => {
@@ -966,12 +963,12 @@
                     rowGap: controls.gridRowGap.value,
                     colGap: controls.gridColumnGap.value,
                     cornerRadius: controls.cornerRadius.value,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    createdAt: serverTimestamp() // Updated to modular import
                 };
                 
                 const key = name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
                 
-                db.collection(`users/${currentUserId}/labelPresets`).doc(key).set(newPreset)
+                setDoc(doc(db, `users/${currentUserId}/labelPresets`, key), newPreset)
                     .then(() => {
                         alert(`Preset "${name}" saved to your Firebase account!`);
                         populatePresets();
@@ -1073,9 +1070,9 @@
                 
                 if (!p && currentUserId && db) {
                     try {
-                        const doc = await db.collection(`users/${currentUserId}/labelPresets`).doc(key).get();
-                        if (doc.exists) {
-                            p = doc.data();
+                        const docSnap = await getDoc(doc(db, `users/${currentUserId}/labelPresets`, key));
+                        if (docSnap.exists()) {
+                            p = docSnap.data();
                             if (p.type !== type) return; 
                         }
                     } catch (error) {
@@ -1448,17 +1445,16 @@
                 
                 if (currentUserId && db) {
                     try {
-                        const snapshot = await db.collection(`users/${currentUserId}/labelPresets`)
-                                                .where('type', '==', type) 
-                                                .get();
+                        const q = query(collection(db, `users/${currentUserId}/labelPresets`), where('type', '==', type));
+                        const snapshot = await getDocs(q);
                         
                         if (!snapshot.empty) {
                             const customGroup = document.createElement('optgroup'); 
                             customGroup.label = 'Custom Saved Presets (Cloud)';
-                            snapshot.forEach(doc => {
-                                const preset = doc.data();
+                            snapshot.forEach(docSnap => {
+                                const preset = docSnap.data();
                                 const o = document.createElement('option');
-                                o.value = doc.id;
+                                o.value = docSnap.id;
                                 o.textContent = preset.name;
                                 customGroup.appendChild(o);
                             });
@@ -1478,7 +1474,14 @@
             // This runs *after* the first render, so it sets the default
             // without getting in the way of the re-render logic.
             labelGrid.querySelector('.label[data-index="0"]')?.classList.add('selected');
-        });
+        };
+
+        // Initialize the logic once DOM is fully parsed
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initApp);
+        } else {
+            initApp();
+        }
 
         // --- Keyboard Shortcuts (Undo/Redo) ---
             document.addEventListener('keydown', (e) => {
