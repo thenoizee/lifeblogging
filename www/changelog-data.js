@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.133.0-alpha",
+    date: "2026-07-20",
+    changes: [
+                "In Loggr: Added quick date and time adjustment buttons (+/- 1d, +/- 1h, +/- 1m, +/- 15m) to both the manual entry pane and the edit log modal.",
+                "In Loggr: Colorized the quick adjustment buttons (blue for days, purple for hours, amber for minutes) to improve visual distinction and at-a-glance scannability.",
+    ]
+},
+    {
     version: "v15.132.0-alpha",
     date: "2026-07-12",
     changes: [
