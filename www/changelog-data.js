@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.134.0-alpha",
+    date: "2026-07-20",
+    changes: [
+        "In Label Generator: Added multi-page support to automatically generate and print subsequent pages for large CSV or generated data.",
+        "In Label Generator: Fixed the CSS layout to properly map text horizontal and vertical alignment regardless of portrait or landscape orientation.",
+        "In Label Generator: Converted the left configuration panel to a sticky sidebar so it remains visible while scrolling down the generated label sheets.",
+        "In Label Generator: Added a new Live Label Preview box directly under the text template box.",
+        "In Label Generator: Fixed an issue where clicking on settings would inadvertently clear uploaded CSV data.",
+        "In Label Generator: Compressed the UI footprint of the Layout tab to completely eliminate inner sidebar scrolling."
+    ]
+},
+    {
     version: "v15.133.0-alpha",
     date: "2026-07-20",
     changes: [
