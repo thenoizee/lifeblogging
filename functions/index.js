@@ -28,6 +28,9 @@ const HUE_APP_ID = "lifeblogging";
 const googleClientId = defineSecret("GOOGLE_CLIENT_ID");
 const googleClientSecret = defineSecret("GOOGLE_CLIENT_SECRET");
 
+// Trakt Secrets
+const traktClientSecret = defineSecret("TRAKT_CLIENT_SECRET");
+
 // ==========================================
 // 1. TICKTICK FUNCTION
 // ==========================================
@@ -366,6 +369,39 @@ exports.traktProxy = onRequest({ cors: true }, async (req, res) => {
     res.status(error.response?.status || 500).send(error.response?.data || { error: "Trakt Proxy Failed" });
   }
 });
+
+// ==========================================
+// 5.5 TRAKT TOKEN EXCHANGE (Authorization Code Flow)
+// ==========================================
+exports.exchangeTraktToken = onRequest(
+  { secrets: [traktClientSecret], cors: true },
+  async (req, res) => {
+    // Extract the parameters sent from the frontend callback.html
+    const { code, redirect_uri, client_id } = req.body;
+
+    // Validate that we have everything we need
+    if (!code || !client_id || !redirect_uri) {
+      return res.status(400).json({ error: "Missing required auth parameters" });
+    }
+
+    try {
+      // Make the secure server-to-server POST request to Trakt to swap the code for a token
+      const response = await axios.post("https://api.trakt.tv/oauth/token", {
+        code: code,
+        client_id: client_id,
+        client_secret: traktClientSecret.value(), // Injected securely from Google Secret Manager
+        redirect_uri: redirect_uri,
+        grant_type: "authorization_code"
+      });
+
+      // Send the newly generated access_token back to the frontend
+      res.json(response.data); 
+    } catch (error) {
+      logger.error("Trakt Auth Error", error.response?.data || error.message);
+      res.status(500).json(error.response?.data || { error: "Failed to exchange Trakt token" });
+    }
+  }
+);
 
 // ==========================================
 // 6. TICKTICK (TASKTRACKR) PROXY

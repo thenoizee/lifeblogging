@@ -30,6 +30,9 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { initializeAuth, browserLocalPersistence, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // ADD THIS LINE TO IMPORT YOUR CLIENT ID
+        import { TRAKT_CLIENT_ID } from './api_keys.js';
 
         const firebaseConfig = { apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8", authDomain: "sammy-7298f.firebaseapp.com", projectId: "sammy-7298f", storageBucket: "sammy-7298f.firebasestorage.app", messagingSenderId: "963185683535", appId: "1:963185683535:web:807df8941feba46c208e3a", measurementId: "G-JT1YF2ELN3" };
         const app = initializeApp(firebaseConfig);
@@ -66,25 +69,48 @@
         };
 
         const processToken = async (user) => {
-            // Trakt Implicit Flow returns token in hash: #access_token=...&token_type=bearer...
-            const hash = window.location.hash.substring(1);
-            const params = new URLSearchParams(hash);
-            const accessToken = params.get('access_token');
-            const state = params.get('state') || '/vidtrackr/'; // Default to app, but might be account page
-
-            // Also check query params just in case (though Trakt implicit uses hash)
+            // Trakt now uses the Authorization Code Flow which returns 'code' in the standard query parameters
             const queryParams = new URLSearchParams(window.location.search);
-            const stateFromQuery = queryParams.get('state'); 
-
+            const code = queryParams.get('code');
+            
+            // Keeping the hash check as a fallback just in case legacy tokens hit this endpoint
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            let accessToken = hashParams.get('access_token');
+            
+            const state = queryParams.get('state') || hashParams.get('state') || '/vidtrackr/';
             const returnUrl = (state && state !== 'null') ? decodeURIComponent(state) : '/vidtrackr/';
             document.getElementById('return-btn').href = returnUrl;
 
-            if (!accessToken) {
-                updateStatus("Error", "No access token found in response.", "error");
-                return;
-            }
-
             try {
+                // If we got an authorization code, pass it to your Firebase Cloud Function to handle securely
+                if (code && !accessToken) {
+                    updateStatus("Authenticating...", "Securely exchanging code via server...", "loading");
+                    
+                    // Call your new Firebase Cloud Function
+                    const tokenResponse = await fetch('https://us-central1-sammy-7298f.cloudfunctions.net/exchangeTraktToken', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            code: code,
+                            client_id: TRAKT_CLIENT_ID,
+                            redirect_uri: window.location.origin + '/vidtrackr/callback.html'
+                        })
+                    });
+
+                    if (!tokenResponse.ok) {
+                        const errorData = await tokenResponse.json();
+                        throw new Error(errorData.error_description || 'Failed to exchange authentication code');
+                    }
+
+                    const tokenData = await tokenResponse.json();
+                    accessToken = tokenData.access_token; // Extract the token returned from your backend
+                }
+
+                if (!accessToken) {
+                    updateStatus("Error", "No access token or authorization code found.", "error");
+                    return;
+                }
+
                 updateStatus("Saving...", "Linking Trakt to your account...", "loading");
 
                 // Save to Firestore

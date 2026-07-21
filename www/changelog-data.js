@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.135.0-alpha",
+    date: "2026-07-22",
+    changes: [
+                "In VidTrackr: Migrated Trakt authentication from the deprecated Implicit Grant flow (response_type=token) to the secure Authorization Code Flow (response_type=code).",
+                "In VidTrackr Callback: Updated callback.html to seamlessly capture the authentication code and securely exchange it via the backend server.",
+    ]
+},
+    {
     version: "v15.134.0-alpha",
     date: "2026-07-20",
     changes: [
