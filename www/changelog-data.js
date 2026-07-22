@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.136.0-alpha",
+    date: "2026-07-23",
+    changes: [
+        "In PDF Tools: Fixed HD canvas rendering issues across editors and previews by properly utilizing Device Pixel Ratio scaling alongside pdf.js viewport transformations.",
+        "In PDF Tools: Resolved coordinate math offsets and tracking bugs during interactive Redact, Crop, and Stitch actions under high-DPI scaling.",
+        "In PDF Tools: Corrected orientation and rotation preservation bugs in the Organise and Split tools, ensuring native document landscape states and manual rotations carry over accurately upon export.",
+    ]
+},
+    {
     version: "v15.135.0-alpha",
     date: "2026-07-22",
     changes: [

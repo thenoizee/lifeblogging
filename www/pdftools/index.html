@@ -1200,10 +1200,16 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             tool.querySelector(`#${toolId}-page-indicator`).textContent = `Page ${pageNum} / ${pdfJS.numPages}`;
             const page = await pdfJS.getPage(pageNum);
             const viewport = page.getViewport({ scale: RENDER_SCALE });
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            
-            await page.render({ canvasContext: ctx, viewport }).promise;
+            const outputScale = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(viewport.width * outputScale);
+            canvas.height = Math.floor(viewport.height * outputScale);
+            canvas.style.width = Math.floor(viewport.width) + "px";
+            canvas.style.height = "auto";
+            canvas.dataset.logicalWidth = viewport.width;
+            canvas.dataset.logicalHeight = viewport.height;
+
+            const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+            await page.render({ canvasContext: ctx, transform: transform, viewport: viewport }).promise;
             
             // Tool-specific rendering on top of the page
             if (toolId === 'redact') {
@@ -1216,9 +1222,10 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
                     boxDiv.style.backgroundColor = boxData.color;
                     
                     const updateGeometry = () => {
+                        const logicalWidth = parseFloat(canvas.dataset.logicalWidth || canvas.width);
                         const canvasRect = canvas.getBoundingClientRect();
                         const containerRect = previewContainer.getBoundingClientRect();
-                        const scale = canvasRect.width / canvas.width;
+                        const scale = canvasRect.width / logicalWidth;
                         boxDiv.style.left = `${(boxData.x * scale) + (canvasRect.left - containerRect.left)}px`;
                         boxDiv.style.top = `${(boxData.y * scale) + (canvasRect.top - containerRect.top)}px`;
                         boxDiv.style.width = `${boxData.width * scale}px`;
@@ -1269,7 +1276,8 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
                         let startX = e.clientX;
                         let startY = e.clientY;
                         const onMouseMove = (moveEvent) => {
-                            const scale = canvas.getBoundingClientRect().width / canvas.width;
+                            const logicalWidth = parseFloat(canvas.dataset.logicalWidth || canvas.width);
+                            const scale = canvas.getBoundingClientRect().width / logicalWidth;
                             const dx = (moveEvent.clientX - startX) / scale;
                             const dy = (moveEvent.clientY - startY) / scale;
                             boxData.width = Math.max(5, boxData.width + dx);
@@ -1408,7 +1416,8 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
                 if (e.target.tagName !== 'CANVAS') return;
                 const rect = canvas.getBoundingClientRect();
                 const y_css = e.clientY - rect.top;
-                const effectiveScaleRatio = canvas.height / rect.height;
+                const logicalHeight = parseFloat(canvas.dataset.logicalHeight || canvas.height);
+                const effectiveScaleRatio = logicalHeight / rect.height;
                 const clickedInternalY = y_css * effectiveScaleRatio;
                 const clickThreshold = 5 * effectiveScaleRatio;
                 let lineDeleted = false;
@@ -1460,8 +1469,9 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             let cropBoxDiv = null, startCoords = null;
 
             const getCanvasCoords = (e) => {
+                const logicalWidth = parseFloat(canvas.dataset.logicalWidth || canvas.width);
                 const canvasRect = canvas.getBoundingClientRect();
-                const scale = canvas.width / canvasRect.width;
+                const scale = logicalWidth / canvasRect.width;
                 return {
                     x: (e.clientX - canvasRect.left) * scale,
                     y: (e.clientY - canvasRect.top) * scale
@@ -1486,9 +1496,10 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             previewContainer.addEventListener('mousemove', e => {
                 if (!startCoords || !cropBoxDiv) return;
                 const currentCoords = getCanvasCoords(e);
+                const logicalWidth = parseFloat(canvas.dataset.logicalWidth || canvas.width);
                 const canvasRect = canvas.getBoundingClientRect();
                 const containerRect = previewContainer.getBoundingClientRect();
-                const scale = canvasRect.width / canvas.width;
+                const scale = canvasRect.width / logicalWidth;
                 
                 const x = Math.min(startCoords.x, currentCoords.x);
                 const y = Math.min(startCoords.y, currentCoords.y);
@@ -1530,8 +1541,9 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             let boxDiv = null, startCoords = null;
             toolState.redact.boxes = {};
             const getCanvasCoords = (e) => {
+                const logicalWidth = parseFloat(canvas.dataset.logicalWidth || canvas.width);
                 const canvasRect = canvas.getBoundingClientRect();
-                const scale = canvas.width / canvasRect.width;
+                const scale = logicalWidth / canvasRect.width;
                 return {
                     x: (e.clientX - canvasRect.left) * scale,
                     y: (e.clientY - canvasRect.top) * scale
@@ -1555,9 +1567,10 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             previewContainer.addEventListener('mousemove', e => {
                 if (!startCoords || !boxDiv) return;
                 const currentCoords = getCanvasCoords(e);
+                const logicalWidth = parseFloat(canvas.dataset.logicalWidth || canvas.width);
                 const canvasRect = canvas.getBoundingClientRect();
                 const containerRect = previewContainer.getBoundingClientRect();
-                const scale = canvasRect.width / canvas.width;
+                const scale = canvasRect.width / logicalWidth;
                 
                 const x = Math.min(startCoords.x, currentCoords.x);
                 const y = Math.min(startCoords.y, currentCoords.y);
@@ -1626,9 +1639,14 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             const viewport = page.getViewport({ scale: 1.5 });
             const canvas = document.getElementById('splitmultiple-canvas-preview');
             const ctx = canvas.getContext('2d');
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            await page.render({ canvasContext: ctx, viewport }).promise;
+            const outputScale = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(viewport.width * outputScale);
+            canvas.height = Math.floor(viewport.height * outputScale);
+            canvas.style.width = Math.floor(viewport.width) + "px";
+            canvas.style.height = "auto";
+
+            const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+            await page.render({ canvasContext: ctx, transform: transform, viewport: viewport }).promise;
         };
 
         document.getElementById('splitmultiple-prev-page')?.addEventListener('click', () => renderSplitmultiplePreview((toolState.splitmultiple.currentPage || 1) - 1));
@@ -1679,18 +1697,21 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
                     const page = await pdfjsDoc.getPage(i);
                     const viewport = page.getViewport({ scale: 0.3 }); // Matched scale with Organise tool
                     const canvas = document.createElement('canvas');
-                    canvas.height = viewport.height;
-                    canvas.width = viewport.width;
                     const context = canvas.getContext('2d');
-                    await page.render({ canvasContext: context, viewport }).promise;
+                    const outputScale = window.devicePixelRatio || 1;
+                    canvas.width = Math.floor(viewport.width * outputScale);
+                    canvas.height = Math.floor(viewport.height * outputScale);
+
+                    const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+                    await page.render({ canvasContext: context, transform: transform, viewport: viewport }).promise;
                     
                     const pageWrapper = document.createElement('div');
                     pageWrapper.className = 'flex items-center shrink-0';
                     
                     const pageEl = document.createElement('div');
-                    pageEl.className = 'page-thumbnail relative shrink-0 cursor-default'; // Reused Organise thumbnail class
+                    pageEl.className = 'page-thumbnail relative shrink-0 cursor-default'; 
                     pageEl.innerHTML = `
-                        <canvas width="${canvas.width}" height="${canvas.height}" class="block"></canvas>
+                        <canvas width="${canvas.width}" height="${canvas.height}" style="width: ${Math.floor(viewport.width)}px; height: ${Math.floor(viewport.height)}px;" class="block"></canvas>
                         <div class="page-number">${i}</div>
                     `;
                     // THIS IS THE CRUCIAL MISSING LINE: Copy the rendered image to the DOM canvas
@@ -1795,12 +1816,15 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             document.getElementById('organise-page-indicator').textContent = `Page ${pageNum} / ${pdfJS.numPages}`;
             
             const page = await pdfJS.getPage(pageNum);
-            const viewport = page.getViewport({ scale: 1.5 });
+            const dpr = window.devicePixelRatio || 1;
+            const viewport = page.getViewport({ scale: 1.5 * dpr });
             const canvas = document.getElementById('organise-canvas-preview');
             const ctx = canvas.getContext('2d');
-            canvas.height = viewport.height;
             canvas.width = viewport.width;
-            await page.render({ canvasContext: ctx, viewport }).promise;
+            canvas.height = viewport.height;
+            canvas.style.width = `${viewport.width / dpr}px`;
+            canvas.style.height = 'auto';
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 
             // --- INJECT ACTION OVERLAY ---
             const container = canvas.parentElement;
@@ -1895,15 +1919,19 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
                     const page = await pdfjsDoc.getPage(i);
                     const viewport = page.getViewport({ scale: 0.3 });
                     const canvas = document.createElement('canvas');
-                    canvas.height = viewport.height;
-                    canvas.width = viewport.width;
                     const context = canvas.getContext('2d');
-                    await page.render({ canvasContext: context, viewport }).promise;
+                    const outputScale = window.devicePixelRatio || 1;
+                    canvas.width = Math.floor(viewport.width * outputScale);
+                    canvas.height = Math.floor(viewport.height * outputScale);
+                    
+                    const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+                    await page.render({ canvasContext: context, transform: transform, viewport: viewport }).promise;
+                    
                     const pageEl = document.createElement('div');
                     pageEl.className = 'page-thumbnail';
                     pageEl.dataset.originalIndex = i - 1;
                     pageEl.innerHTML = `
-                        <canvas width="${canvas.width}" height="${canvas.height}"></canvas>
+                        <canvas width="${canvas.width}" height="${canvas.height}" style="width: 100%; height: auto;"></canvas>
                         <div class="page-number">${i}</div>
                         <div class="page-actions">
                             <button class="rotate-btn text-white p-1" title="Rotate"><i class="fas fa-redo pointer-events-none"></i></button>
@@ -2010,7 +2038,11 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             copiedPages.forEach((page, i) => {
                 const originalIndex = finalIndicesInOrder[i];
                 const state = pageStates[originalIndex];
-                page.setRotation(degrees(state.rotation));
+                
+                // Get the page's existing rotation and add the user's manual rotation to it
+                const currentRotation = page.getRotation().angle || 0;
+                page.setRotation(degrees((currentRotation + state.rotation) % 360));
+                
                 newPdfDoc.addPage(page);
             });
             const newPdfBytes = await newPdfDoc.save();
@@ -2257,55 +2289,39 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
             const numScans = pdfDoc.getPageCount();
             const totalPages = numScans * 2;
-            
-            // Create the final document
             const finalPdf = await PDFDocument.create();
-            
-            // Pre-allocate array to hold pages in the correct 1..20 order
-            const orderedPages = new Array(totalPages);
+            const pagesData = new Array(totalPages);
 
             for (let k = 0; k < numScans; k++) {
-                // Copy the scan page TWICE. 
-                // This creates two distinct page objects in 'finalPdf' that we can crop independently.
-                const [pageL, pageR] = await finalPdf.copyPages(pdfDoc, [k, k]);
+                const scanPage = pdfDoc.getPage(k);
+                const { width, height } = scanPage.getSize();
+                const embed = await finalPdf.embedPage(scanPage);
+
+                const leftHalf = { width: width / 2, height, drawX: 0, embed };
+                const rightHalf = { width: width / 2, height, drawX: -(width / 2), embed };
                 
-                const { width, height } = pageL.getMediaBox();
-                
-                // Set Crop for Left Half
-                pageL.setCropBox(0, 0, width / 2, height);
-                
-                // Set Crop for Right Half
-                pageR.setCropBox(width / 2, 0, width / 2, height);
-                
-                // --- SORTING LOGIC ---
-                // Scan 0 (Even): [20 | 1]  -> Left is High (20), Right is Low (1)
-                // Scan 1 (Odd):  [2 | 19]  -> Left is Low (2), Right is High (19)
-                // Scan 2 (Even): [18 | 3]  -> Left is High (18), Right is Low (3)
-                // ...
-                
-                const lowIndex = k;                 // e.g., 0, 1, 2...
-                const highIndex = totalPages - 1 - k; // e.g., 19, 18, 17...
+                const lowIndex = k;
+                const highIndex = totalPages - 1 - k;
 
                 if (k % 2 === 0) {
-                    // Even scans: Right is Low, Left is High
-                    orderedPages[lowIndex] = pageR;
-                    orderedPages[highIndex] = pageL;
+                    pagesData[lowIndex] = rightHalf;
+                    pagesData[highIndex] = leftHalf;
                 } else {
-                    // Odd scans: Left is Low, Right is High
-                    orderedPages[lowIndex] = pageL;
-                    orderedPages[highIndex] = pageR;
+                    pagesData[lowIndex] = leftHalf;
+                    pagesData[highIndex] = rightHalf;
                 }
             }
 
-            // Add the pages to the document in the correct order
-            for (const page of orderedPages) {
-                if (page) finalPdf.addPage(page);
+            for (const data of pagesData) {
+                if (data) {
+                    const newPage = finalPdf.addPage([data.width, data.height]);
+                    newPage.drawPage(data.embed, { x: data.drawX, y: 0 });
+                }
             }
             
             const bytes = await finalPdf.save();
             createDownloadLink(tool, bytes, `recreated_${file.name}`, 'Re-created Scanned Book');
             showStatus(tool, 'Book re-created successfully!');
-            
         } catch (e) { 
             showStatus(tool, e.message, true); 
             console.error(e); 
@@ -2398,17 +2414,18 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             const file = toolState.splithalf.files[0];
             const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
             const newPdfDoc = await PDFDocument.create();
-            const copiedPages = await newPdfDoc.copyPages(pdfDoc, pdfDoc.getPageIndices());
-            for (const copiedPage of copiedPages) {
-                const { width, height } = copiedPage.getMediaBox();
-                copiedPage.setCropBox(0, 0, width / 2, height);
-                const leftEmbed = await newPdfDoc.embedPage(copiedPage);
+            const numPages = pdfDoc.getPageCount();
+
+            for (let i = 0; i < numPages; i++) {
+                const copiedPage = pdfDoc.getPage(i);
+                const { width, height } = copiedPage.getSize();
+                const embed = await newPdfDoc.embedPage(copiedPage);
+
                 const leftPage = newPdfDoc.addPage([width / 2, height]);
-                leftPage.drawPage(leftEmbed, { x: 0, y: 0, width: width / 2, height});
-                copiedPage.setCropBox(width / 2, 0, width / 2, height);
-                const rightEmbed = await newPdfDoc.embedPage(copiedPage);
+                leftPage.drawPage(embed, { x: 0, y: 0 });
+
                 const rightPage = newPdfDoc.addPage([width / 2, height]);
-                rightPage.drawPage(rightEmbed, { x: 0, y: 0, width: width / 2, height});
+                rightPage.drawPage(embed, { x: -(width / 2), y: 0 });
             }
             const bytes = await newPdfDoc.save();
             createDownloadLink(tool, bytes, `split_${file.name}`, 'Split Pages in Half');
@@ -2482,6 +2499,19 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
             if (!files || files.length === 0) throw new Error("No PDF file loaded.");
             
             const pdfDoc = await PDFDocument.load(pdfBytes);
+            
+            // Fix: Normalize all rotations to 0 before stitching so setCropBox works consistently
+            for (let i = 0; i < pdfDoc.getPageCount(); i++) {
+                const page = pdfDoc.getPage(i);
+                if (page.getRotation().angle !== 0 && page.getRotation().angle !== 360) {
+                    const { width, height } = page.getSize();
+                    const embedded = await pdfDoc.embedPage(page);
+                    const newPage = pdfDoc.insertPage(i, [width, height]);
+                    newPage.drawPage(embedded, { x: 0, y: 0 });
+                    pdfDoc.removePage(i + 1);
+                }
+            }
+
             const RENDER_SCALE = 1.5;
             const allChunks = [];
 
@@ -2603,51 +2633,48 @@ if (!currentCreator || currentCreator.toLowerCase().includes('pdf-lib') || curre
     
     window.handleCrop = async () => {
         const tool = document.getElementById('crop-tool');
-        toggleButtonLoading(tool, true);
-        showStatus(tool, 'Applying crop to PDF...');
+        toggleButtonLoading(tool, true); showStatus(tool, 'Applying crop to PDF...');
         try {
             const { pdfBytes, boxes, pdfJSDoc } = toolState.crop;
             if (!pdfBytes) throw new Error("No PDF file loaded.");
             if (Object.keys(boxes).length === 0) throw new Error("No crop areas have been defined.");
 
             const pdfDoc = await PDFDocument.load(pdfBytes);
-            const pages = pdfDoc.getPages();
+            const numPages = pdfDoc.getPageCount();
             const RENDER_SCALE = 1.5;
 
-            for (let i = 0; i < pages.length; i++) {
+            for (let i = 0; i < numPages; i++) {
                 const pageNum = i + 1;
-                const page = pages[i];
                 const box = boxes[pageNum];
+                if (!box) continue;
 
-                if (!box) continue; // Skip pages without a crop box
-
+                const page = pdfDoc.getPage(i);
                 const { width: pdfWidth, height: pdfHeight } = page.getSize();
                 const pdfjsPage = await pdfJSDoc.getPage(pageNum);
                 const viewport = pdfjsPage.getViewport({ scale: RENDER_SCALE });
-                const canvasWidth = viewport.width;
-                const canvasHeight = viewport.height;
 
-                const scaleX = pdfWidth / canvasWidth;
-                const scaleY = pdfHeight / canvasHeight;
+                const scaleX = pdfWidth / viewport.width;
+                const scaleY = pdfHeight / viewport.height;
 
-                const cropWidth = box.width * scaleX;
-                const cropHeight = box.height * scaleY;
+                const cropW = box.width * scaleX;
+                const cropH = box.height * scaleY;
                 const cropX = box.x * scaleX;
-                const cropY = pdfHeight - ((box.y + box.height) * scaleY); // Y-axis is inverted in PDF-Lib
+                const cropY = box.y * scaleY;
 
-                page.setCropBox(cropX, cropY, cropWidth, cropHeight);
+                const embedded = await pdfDoc.embedPage(page);
+                const newPage = pdfDoc.insertPage(i, [cropW, cropH]);
+                
+                newPage.drawPage(embedded, {
+                    x: -cropX,
+                    y: cropH + cropY - pdfHeight
+                });
+                pdfDoc.removePage(i + 1);
             }
             
             const newPdfBytes = await pdfDoc.save();
             createDownloadLink(tool, newPdfBytes, `cropped_${toolState.crop.files[0].name}`, 'Cropped PDF Pages');
             showStatus(tool, 'PDF cropped successfully!');
-
-        } catch (e) {
-            showStatus(tool, e.message, true);
-            console.error("Crop PDF Error:", e);
-        } finally {
-            toggleButtonLoading(tool, false);
-        }
+        } catch (e) { showStatus(tool, e.message, true); } finally { toggleButtonLoading(tool, false); }
     };
 
     window.handleAdfscanfixer = async () => {
