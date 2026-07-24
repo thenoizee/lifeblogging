@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.137.0-alpha",
+    date: "2026-07-24",
+    changes: [
+        "In LabelGenerator: Added support for Business Cards, including standard EU/UK (85x55mm) and US (3.5x2\") preset options.",
+        "In LabelGenerator: Replaced native presets select drop-down with a custom rich UI popover featuring generated CSS mini-grid layout previews.",
+        "In LabelGenerator: Integrated `AppNavigation` from `shared-nav.js` for global header navigation, account status, and notification support.",
+        "In LabelGenerator: Enabled Tailwind `darkMode: 'class'` configuration and updated sidebar controls to dynamically adapt to dark mode.",
+        "In LabelGenerator: Ensured label canvas paper and text retain dark typography on white backgrounds across both light and dark themes.",
+        "In LabelGenerator: Refactored page structure into an isolated viewport layout (`lg:h-screen lg:overflow-hidden`) so sidebar and canvas scroll independently without bleeding underneath the header.",
+        "In LabelGenerator: Updated `@media print` CSS rules to strip injected header components, modals, and viewport bounds during print and PDF export."
+    ]
+},
+    {
     version: "v15.136.0-alpha",
     date: "2026-07-23",
     changes: [
