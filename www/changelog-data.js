@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.138.0-alpha",
+    date: "2026-07-25",
+    changes: [
+        "In RecipeManagr: Redesigned the 'Add Recipe' tab to use a responsive 3-column card grid for import options, replacing stacked inputs.",
+        "In RecipeManagr: Redesigned the main Recipe Cards to feature taller images, sleek gradient overlays, group-hover scaling animations, and frosted glass rating badges.",
+        "In RecipeManagr: Implemented swipe-to-navigate touch gestures in Cook Mode, allowing users with messy hands to easily change steps by swiping horizontally anywhere on the screen.",
+        "In RecipeManagr: Overhauled Cook Mode into a premium 'Cinematic Cook Mode'. Features include a dynamic blurred background matching the recipe image, glassmorphic floating panels, and significantly improved typography for high-visibility reading across the kitchen.",
+        "In RecipeManagr: Redesigned the Cook Mode navigation controls with a sleek, pill-shaped floating action bar, providing larger touch targets and sophisticated drop shadows.",
+        "In RecipeManagr: Added a 'Recipe Integrity Check' engine that dynamically cross-references ingredients against instruction steps when viewing a recipe.",
+        "In RecipeManagr: The UI now displays an amber warning banner if it detects an ingredient listed in the ingredients tab but never used/mentioned in the instructions.",
+    ]
+},
+    {
     version: "v15.137.0-alpha",
     date: "2026-07-24",
     changes: [
