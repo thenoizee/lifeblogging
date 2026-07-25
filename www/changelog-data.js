@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.141.0-alpha",
+    date: "2026-07-25",
+    changes: [
+        "In Dashboard: Upgraded the layout to replace rigid solid-colored headers with sleek, modern headers featuring soft shadows, blurred background layers, and floating icons.",
+        "In Dashboard: Updated the dynamic generation of Medication Cards and the Contact Lenses summary card to utilize an expressive, blurred-blob styling with layered depth.",
+        "In Settings: Redesigned the Data Management section, replacing the basic fieldset with an expressive card design featuring animated background blur accents.",
+        "In Medications: Upgraded the Manage Medications list cards to inherit the expressive UI layout and smoother hover transitions.",
+        "Across App: Refined headers for All Logs Overview, Left/Right Eye, Eye Health Records, and Grooming History to replace solid color blocks with cleaner typography and floating icon accents."
+    ]
+},
+    {
     version: "v15.140.0-alpha",
     date: "2026-07-25",
     changes: [
