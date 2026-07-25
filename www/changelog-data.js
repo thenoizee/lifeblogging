@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.142.0-alpha",
+    date: "2026-07-26",
+    changes: [
+                "In FoodTrackr: Moved Insights section into the top of the Log page and permanently deleted standalone Insights tab.",
+                "In FoodTrackr: Styled Log sub-tabs into distinct, pill-shaped buttons for better clarity.",
+                "In FoodTrackr: Upgraded the Search Container UI with premium glassmorphism styling to match the rest of the application."
+    ]
+},
+    {
     version: "v15.141.0-alpha",
     date: "2026-07-25",
     changes: [
