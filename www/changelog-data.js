@@ -2,6 +2,21 @@
 
 export const changelogData = [
     {
+    version: "v15.140.0-alpha",
+    date: "2026-07-25",
+    changes: [
+                "In PlantTrackr: Standardized the UI across all tabs and modals by removing aggressive, thick colored borders.",
+                "In PlantTrackr: Updated CSS for .card and .modal-content to use soft, modern shadows, unified padding, and consistent border radii.",
+                "In PlantTrackr: Cleaned up the Dashboard elements (Infirmary, Potting Shed, Lawn, Compost) to feel unified rather than looking like separate disconnected modules.",
+                "In PlantTrackr: Unified the modal designs so Wishlist, Seeds, Compost, and QR modals follow the same clean aesthetic as the rest of the application.",
+                "In PlantTrackr: Completely overhauled the Action Required dashboard widget to fix flexbox blowout issues where buttons were misaligned.",
+                "In PlantTrackr: Upgraded action required rows to a premium card style with accent-colored left borders and circular action buttons.",
+                "In PlantTrackr: Replaced the hidden scrollbars with a custom, ultra-slim, premium mac-OS style scrollbar.",
+                "In PlantTrackr: Upgraded .input-std and .btn-primary CSS classes with softer inner shadows, modern focus rings, and better active scaling.",
+                "In PlantTrackr: Upgraded the main Floating Action Button (FAB) with a subtle gradient and a soft ambient glow."
+    ]
+},
+    {
     version: "v15.139.0-alpha",
     date: "2026-07-25",
     changes: [
