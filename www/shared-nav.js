@@ -3,6 +3,31 @@ import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/
 import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs, deleteDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { changelogData } from './changelog-data.js';
 
+// UNIVERSAL TAILWIND SAFELIST HACK
+// Tailwind CDN scans all loaded scripts for valid class strings. Because we dynamically construct
+// classes like `bg-${themeColor}-100`, the scanner misses them. Placing all permutations in this 
+// unused string forces Tailwind to compile them, making the tab animations work in every app.
+const TAILWIND_SAFELIST_HACK = `
+  bg-slate-50/95 border-slate-200 border-t-slate-500 border-slate-100 text-slate-700 text-slate-600 dark:text-slate-400 dark:text-slate-500 bg-slate-100 ring-slate-300 from-slate-50/90 dark:from-slate-900/10 hover:text-slate-600 dark:hover:text-slate-400 hover:text-slate-500 bg-slate-600 hover:bg-slate-700 hover:bg-slate-800
+  bg-lime-50/95 border-lime-200 border-t-lime-500 border-lime-100 text-lime-700 text-lime-600 dark:text-lime-400 dark:text-lime-500 bg-lime-100 ring-lime-300 from-lime-50/90 dark:from-lime-900/10 hover:text-lime-600 dark:hover:text-lime-400 hover:text-lime-500 bg-lime-600 hover:bg-lime-700 hover:bg-lime-800
+  bg-orange-50/95 border-orange-200 border-t-orange-500 border-orange-100 text-orange-700 text-orange-600 dark:text-orange-400 dark:text-orange-500 bg-orange-100 ring-orange-300 from-orange-50/90 dark:from-orange-900/10 hover:text-orange-600 dark:hover:text-orange-400 hover:text-orange-500 bg-orange-600 hover:bg-orange-700 hover:bg-orange-800
+  bg-teal-50/95 border-teal-200 border-t-teal-500 border-teal-100 text-teal-700 text-teal-600 dark:text-teal-400 dark:text-teal-500 bg-teal-100 ring-teal-300 from-teal-50/90 dark:from-teal-900/10 hover:text-teal-600 dark:hover:text-teal-400 hover:text-teal-500 bg-teal-600 hover:bg-teal-700 hover:bg-teal-800
+  bg-blue-50/95 border-blue-200 border-t-blue-500 border-blue-100 text-blue-700 text-blue-600 dark:text-blue-400 dark:text-blue-500 bg-blue-100 ring-blue-300 from-blue-50/90 dark:from-blue-900/10 hover:text-blue-600 dark:hover:text-blue-400 hover:text-blue-500 bg-blue-600 hover:bg-blue-700 hover:bg-blue-800
+  bg-red-50/95 border-red-200 border-t-red-500 border-red-100 text-red-700 text-red-600 dark:text-red-400 dark:text-red-500 bg-red-100 ring-red-300 from-red-50/90 dark:from-red-900/10 hover:text-red-600 dark:hover:text-red-400 hover:text-red-500 bg-red-600 hover:bg-red-700 hover:bg-red-800
+  bg-amber-50/95 border-amber-200 border-t-amber-500 border-amber-100 text-amber-700 text-amber-600 dark:text-amber-400 dark:text-amber-500 bg-amber-100 ring-amber-300 from-amber-50/90 dark:from-amber-900/10 hover:text-amber-600 dark:hover:text-amber-400 hover:text-amber-500 bg-amber-600 hover:bg-amber-700 hover:bg-amber-800
+  bg-pink-50/95 border-pink-200 border-t-pink-500 border-pink-100 text-pink-700 text-pink-600 dark:text-pink-400 dark:text-pink-500 bg-pink-100 ring-pink-300 from-pink-50/90 dark:from-pink-900/10 hover:text-pink-600 dark:hover:text-pink-400 hover:text-pink-500 bg-pink-600 hover:bg-pink-700 hover:bg-pink-800
+  bg-purple-50/95 border-purple-200 border-t-purple-500 border-purple-100 text-purple-700 text-purple-600 dark:text-purple-400 dark:text-purple-500 bg-purple-100 ring-purple-300 from-purple-50/90 dark:from-purple-900/10 hover:text-purple-600 dark:hover:text-purple-400 hover:text-purple-500 bg-purple-600 hover:bg-purple-700 hover:bg-purple-800
+  bg-green-50/95 border-green-200 border-t-green-500 border-green-100 text-green-700 text-green-600 dark:text-green-400 dark:text-green-500 bg-green-100 ring-green-300 from-green-50/90 dark:from-green-900/10 hover:text-green-600 dark:hover:text-green-400 hover:text-green-500 bg-green-600 hover:bg-green-700 hover:bg-green-800
+  bg-indigo-50/95 border-indigo-200 border-t-indigo-500 border-indigo-100 text-indigo-700 text-indigo-600 dark:text-indigo-400 dark:text-indigo-500 bg-indigo-100 ring-indigo-300 from-indigo-50/90 dark:from-indigo-900/10 hover:text-indigo-600 dark:hover:text-indigo-400 hover:text-indigo-500 bg-indigo-600 hover:bg-indigo-700 hover:bg-indigo-800
+  bg-cyan-50/95 border-cyan-200 border-t-cyan-500 border-cyan-100 text-cyan-700 text-cyan-600 dark:text-cyan-400 dark:text-cyan-500 bg-cyan-100 ring-cyan-300 from-cyan-50/90 dark:from-cyan-900/10 hover:text-cyan-600 dark:hover:text-cyan-400 hover:text-cyan-500 bg-cyan-600 hover:bg-cyan-700 hover:bg-cyan-800
+  bg-zinc-50/95 border-zinc-200 border-t-zinc-500 border-zinc-100 text-zinc-700 text-zinc-600 dark:text-zinc-400 dark:text-zinc-500 bg-zinc-100 ring-zinc-300 from-zinc-50/90 dark:from-zinc-900/10 hover:text-zinc-600 dark:hover:text-zinc-400 hover:text-zinc-500 bg-zinc-600 hover:bg-zinc-700 hover:bg-zinc-800
+  bg-emerald-50/95 border-emerald-200 border-t-emerald-500 border-emerald-100 text-emerald-700 text-emerald-600 dark:text-emerald-400 dark:text-emerald-500 bg-emerald-100 ring-emerald-300 from-emerald-50/90 dark:from-emerald-900/10 hover:text-emerald-600 dark:hover:text-emerald-400 hover:text-emerald-500 bg-emerald-600 hover:bg-emerald-700 hover:bg-emerald-800
+  bg-fuchsia-50/95 border-fuchsia-200 border-t-fuchsia-500 border-fuchsia-100 text-fuchsia-700 text-fuchsia-600 dark:text-fuchsia-400 dark:text-fuchsia-500 bg-fuchsia-100 ring-fuchsia-300 from-fuchsia-50/90 dark:from-fuchsia-900/10 hover:text-fuchsia-600 dark:hover:text-fuchsia-400 hover:text-fuchsia-500 bg-fuchsia-600 hover:bg-fuchsia-700 hover:bg-fuchsia-800
+  bg-rose-50/95 border-rose-200 border-t-rose-500 border-rose-100 text-rose-700 text-rose-600 dark:text-rose-400 dark:text-rose-500 bg-rose-100 ring-rose-300 from-rose-50/90 dark:from-rose-900/10 hover:text-rose-600 dark:hover:text-rose-400 hover:text-rose-500 bg-rose-600 hover:bg-rose-700 hover:bg-rose-800
+  bg-sky-50/95 border-sky-200 border-t-sky-500 border-sky-100 text-sky-700 text-sky-600 dark:text-sky-400 dark:text-sky-500 bg-sky-100 ring-sky-300 from-sky-50/90 dark:from-sky-900/10 hover:text-sky-600 dark:hover:text-sky-400 hover:text-sky-500 bg-sky-600 hover:bg-sky-700 hover:bg-sky-800
+  bg-yellow-50/95 border-yellow-200 border-t-yellow-500 border-yellow-100 text-yellow-700 text-yellow-600 dark:text-yellow-400 dark:text-yellow-500 bg-yellow-100 ring-yellow-300 from-yellow-50/90 dark:from-yellow-900/10 hover:text-yellow-600 dark:hover:text-yellow-400 hover:text-yellow-500 bg-yellow-600 hover:bg-yellow-700 hover:bg-yellow-800
+`;
+
 export class AppNavigation {
     constructor(config) {
         this.appName = config.appName || 'My App';
@@ -54,6 +79,12 @@ export class AppNavigation {
         // Store media query for system theme listener
         this.systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
         this.handleSystemThemeChange = this.handleSystemThemeChange.bind(this);
+
+        this.navVisible = true;
+        
+        // Expose universally for inline HTML onclick handlers in any app
+        window.switchTab = this.switchTab.bind(this);
+        window.toggleNavBar = this.toggleNavBar.bind(this); // Added global nav toggle
 
         this.init();
     }
@@ -108,6 +139,34 @@ export class AppNavigation {
 
         // Initialize Global Command Palette
         this.initCommandPalette();
+
+        // Render Floating Show Nav Button
+        this.renderNavRestoreButton();
+    }
+
+    renderNavRestoreButton() {
+        if (document.getElementById('nav-restore-btn')) return;
+        
+        const btnHtml = `
+            <button id="nav-restore-btn" onclick="window.toggleNavBar()" class="fixed top-2 right-2 z-[2147483647] bg-white/90 dark:bg-gray-800/90 backdrop-blur shadow-lg w-8 h-8 rounded-full text-gray-500 hover:text-${this.themeColor}-500 transition-all opacity-0 pointer-events-none border border-gray-200 dark:border-gray-700 flex items-center justify-center group">
+                <i class="fa-solid fa-eye group-hover:scale-110 transition-transform text-xs"></i>
+            </button>
+        `;
+        document.body.insertAdjacentHTML('beforeend', btnHtml);
+    }
+    toggleNavBar() {
+        this.navVisible = !this.navVisible;
+        const header = document.querySelector('header');
+        const mobileNav = document.querySelector('nav.md\\:hidden');
+        const restoreBtn = document.getElementById('nav-restore-btn');
+        
+        if (header) header.classList.toggle('nav-hidden', !this.navVisible);
+        if (mobileNav) mobileNav.classList.toggle('nav-hidden', !this.navVisible);
+        
+        if (restoreBtn) {
+            restoreBtn.style.opacity = this.navVisible ? '0' : '1';
+            restoreBtn.style.pointerEvents = this.navVisible ? 'none' : 'auto';
+        }
     }
 
     initCommandPalette() {
@@ -286,6 +345,12 @@ export class AppNavigation {
         const styleId = 'shared-nav-styles';
         if (document.getElementById(styleId)) return;
 
+        // Force Tailwind CDN to compile the dynamic theme colors used for the tab "light up" animations.
+        // We use absolute positioning instead of 'hidden' to ensure the CDN parser doesn't ignore it.
+        const safelistDiv = document.createElement('div');
+        safelistDiv.className = `absolute -top-[9999px] opacity-0 text-${this.themeColor}-700 dark:text-${this.themeColor}-400 bg-${this.themeColor}-100 dark:bg-gray-900 shadow-sm ring-1 ring-${this.themeColor}-300 dark:ring-gray-700 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:from-${this.themeColor}-900/10 border-${this.themeColor}-200 border-t-${this.themeColor}-500 text-${this.themeColor}-600 dark:text-${this.themeColor}-500 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400`;
+        document.body.appendChild(safelistDiv);
+
         const style = document.createElement('style');
         style.id = styleId;
         style.textContent = `
@@ -299,6 +364,34 @@ export class AppNavigation {
             
             /* Theme Toggle Animation */
             .rotate-360 { transform: rotate(360deg); }
+
+            /* Premium Tab Button Animations (Replicated from Analyser) */
+            .nav-tab-btn, .mobile-nav-btn {
+                transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, color 0.2s ease !important;
+            }
+            .nav-tab-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 6px 12px -2px rgba(15, 23, 42, 0.08);
+            }
+            .nav-tab-btn:active {
+                transform: translateY(1px);
+                box-shadow: 0 2px 4px -2px rgba(15, 23, 42, 0.08);
+            }
+
+            /* Nav Bar Toggle Transitions */
+            header, nav.md\\:hidden {
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease !important;
+            }
+            header.nav-hidden {
+                transform: translateY(-100%) !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+            }
+            nav.md\\:hidden.nav-hidden {
+                transform: translateY(100%) !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+            }
         `;
         document.head.appendChild(style);
     }
@@ -391,7 +484,7 @@ export class AppNavigation {
 
                     <nav class="hidden md:flex items-center gap-1 bg-white/80 shadow-inner dark:bg-gray-900/50 p-1 rounded-lg border border-${this.themeColor}-100 dark:border-transparent">
                         ${this.tabs.map(tab => `
-                            <button class="nav-tab-btn px-4 py-1.5 rounded-md text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all" data-tab="${tab.id}">
+                            <button class="nav-tab-btn px-4 py-1.5 rounded-md text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-300 ease-in-out" data-tab="${tab.id}">
                                 <i class="fa-solid ${tab.icon} mr-1.5"></i>${tab.label}
                             </button>
                         `).join('')}
@@ -449,6 +542,9 @@ export class AppNavigation {
                     </a>
                 ` : ''}
                 <span id="nav-sw-version" class="text-[9px] font-mono text-gray-300 dark:text-gray-700" title="Service Worker Version">SW: ---</span>
+                <button onclick="window.toggleNavBar()" class="mt-1 text-[10px] text-gray-400 hover:text-${this.themeColor}-500 transition-colors flex items-center group">
+                    <i class="fa-solid fa-eye-slash mr-1 group-hover:scale-110 transition-transform"></i>Hide Nav
+                </button>
             </div>
         </header>
         `;
@@ -713,6 +809,11 @@ export class AppNavigation {
         document.querySelectorAll('.nav-tab-btn').forEach(b => b.addEventListener('click', handleTabClick));
         document.querySelectorAll('.mobile-nav-btn').forEach(b => b.addEventListener('click', handleTabClick));
 
+        const hideBtn = document.getElementById('nav-hide-btn');
+        const restoreBtn = document.getElementById('nav-restore-btn');
+        if (hideBtn) hideBtn.addEventListener('click', () => this.toggleNavBar());
+        if (restoreBtn) restoreBtn.addEventListener('click', () => this.toggleNavBar());
+
         const dropBtn = document.getElementById('hub-dropdown-btn');
         const dropMenu = document.getElementById('hub-dropdown-menu');
         let hoverTimeout;
@@ -955,6 +1056,21 @@ export class AppNavigation {
                 btn.classList.add('text-gray-400');
             }
         });
+
+        // Universal Panel Handling (Automatically applies hidden class based on standard ID conventions)
+        this.tabs.forEach(tab => {
+            const panel = document.getElementById(`tab-${tab.id}`) || document.getElementById(`${tab.id}-tab-panel`);
+            if (panel) {
+                panel.style.display = ''; // Clear inline styles from old apps
+                if (tab.id === tabId) {
+                    panel.classList.remove('hidden');
+                } else {
+                    panel.classList.add('hidden');
+                }
+            }
+        });
+
+        // Fire event so individual apps can trigger data fetches/renders if needed
         window.dispatchEvent(new CustomEvent('tab-changed', { detail: { tabId } }));
     }
     

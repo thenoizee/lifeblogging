@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.139.0-alpha",
+    date: "2026-07-25",
+    changes: [
+        "In shared-nav.js: Extracted the premium button transition CSS from Analyser and injected it globally for `.nav-tab-btn` and `.mobile-nav-btn` to replicate the smooth, tactile button animations across all apps.",
+        "In shared-nav.js: Implemented a global 'Hide Nav' feature that translates the header and mobile nav off-screen. Added a floating 'Show Nav' button to restore it.",
+    ]
+},
+    {
     version: "v15.138.0-alpha",
     date: "2026-07-25",
     changes: [
