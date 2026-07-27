@@ -1216,7 +1216,7 @@
                             ` : ''}
                         </div>
                         <div class="min-w-0 flex flex-col justify-center">
-                            <p class="font-bold text-xs truncate w-full pr-1" title="${track.name}">${track.name}</p>
+                            <a href="${track.url}" target="_blank" class="font-bold text-xs truncate w-full pr-1 hover:text-red-500 transition-colors" title="${track.name}">${track.name}</a>
                             <p class="text-[10px] text-[var(--text-secondary)] truncate w-full" title="${track.artist['#text']}">${track.artist['#text']}</p>
                             <p class="text-[9px] text-[var(--text-secondary)] mt-0.5 opacity-80">
                                 ${isNowPlaying ? '<span class="text-green-500 font-bold">Scrobbling now...</span>' : 'Last played'}
@@ -1242,13 +1242,16 @@
 
         const setupListeners = (uid) => {
             const queryDate = (viewMode === 'live' || viewMode === 'latest') ? new Date() : new Date(targetDate);
-            const start = new Date(queryDate); start.setHours(0, 0, 0, 0);
+            const start = new Date(queryDate); 
+            start.setDate(start.getDate() - 1); // Expand query to catch late-night rollovers
+            start.setHours(0, 0, 0, 0);
             const end = new Date(queryDate); end.setHours(23, 59, 59, 999);
             const startTs = Timestamp.fromDate(start);
             const endTs = Timestamp.fromDate(end);
             
-            const targetDateStr = new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-            const todayStr = targetDateStr; 
+            const pureToday = new Date(queryDate); pureToday.setHours(0, 0, 0, 0);
+            const targetDateStr = new Date(pureToday.getTime() - (pureToday.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+            const todayStr = targetDateStr;
 
             if (viewMode === 'live') {
                 ui.liveToggleBtn.innerHTML = '<i class="fas fa-satellite-dish"></i> Live';
@@ -1286,12 +1289,17 @@
             let qStart, qEnd;
             if (viewMode === 'live') {
                 const now = new Date();
+                const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+                const yStr = new Date(yesterday.getTime() - (yesterday.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
                 const dStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-                qStart = dStr + " 00:00:00";
-                qEnd = dStr + " 23:59:59";
+                qStart = yStr + "T00:00:00.000Z";
+                qEnd = dStr + "T23:59:59.999Z";
             } else {
-                qStart = targetDateStr + " 00:00:00";
-                qEnd = targetDateStr + " 23:59:59";
+                const qDate = new Date(targetDate);
+                const qYesterday = new Date(qDate); qYesterday.setDate(qYesterday.getDate() - 1);
+                const yStr = new Date(qYesterday.getTime() - (qYesterday.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+                qStart = yStr + "T00:00:00.000Z";
+                qEnd = targetDateStr + "T23:59:59.999Z";
             }
 
             const dailiesQ = viewMode === 'latest'
@@ -1313,41 +1321,7 @@
                 renderLogsAndMood();
             }));
 
-            let hydroQ;
-            if (viewMode === 'latest') {
-                hydroQ = query(collection(db, `users/${uid}/hydrationtrackr`), orderBy('date', 'desc'), limit(20));
-            } else {
-                hydroQ = query(collection(db, `users/${uid}/hydrationtrackr`), where('date', '>=', startTs), where('date', '<=', endTs));
-            }
             
-            unsubscribers.push(onSnapshot(hydroQ, async (snap) => {
-                let waterTotal = 0;
-                
-                const getSafeDate = (val) => {
-                    if (!val) return new Date();
-                    return typeof val.toDate === 'function' ? val.toDate() : new Date(val);
-                };
-
-                if (viewMode === 'latest' && !snap.empty) {
-                    const firstDate = getSafeDate(snap.docs[0].data().date);
-                    const latestDateStr = new Date(firstDate.getTime() - (firstDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-                    snap.forEach(doc => {
-                        const d = getSafeDate(doc.data().date);
-                        const dStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-                        if (dStr === latestDateStr) waterTotal += parseInt(doc.data().attributeValue || doc.data().amount || 0);
-                    });
-                } else {
-                    snap.forEach(doc => waterTotal += parseInt(doc.data().attributeValue || doc.data().amount || 0));
-                }
-                
-                let waterGoal = 2000;
-                const s = await getDoc(doc(db, `users/${uid}/settings/water`));
-                if(s.exists()) waterGoal = s.data().dailyGoal || 2000;
-
-                ui.waterVal.textContent = waterTotal;
-                ui.waterGoalText.textContent = `Goal: ${waterGoal}ml`;
-                updateWaterChart(waterTotal, waterGoal);
-            }));
 
             unsubscribers.push(onSnapshot(collection(db, `users/${uid}/pets`), s => {
                 state.pets = s.docs.map(d => ({id:d.id, ...d.data()})); renderPetsWidget();
@@ -1596,53 +1570,123 @@
                 }
             }));
 
-            let foodQ;
-            if (viewMode === 'latest') {
-                foodQ = query(collection(db, `users/${uid}/foodLog`), orderBy('eatenAt', 'desc'), limit(50));
-            } else {
-                foodQ = query(collection(db, `users/${uid}/foodLog`), where('eatenAt', '>=', startTs), where('eatenAt', '<=', endTs));
-            }
-            unsubscribers.push(onSnapshot(foodQ, (snap) => {
+            // 1. Food logs (saved as Timestamps by FoodTrackr)
+            let foodQ_ts = viewMode === 'latest'
+                ? query(collection(db, `users/${uid}/foodLog`), orderBy('eatenAt', 'desc'), limit(50))
+                : query(collection(db, `users/${uid}/foodLog`), where('eatenAt', '>=', startTs), where('eatenAt', '<=', endTs));
+
+            // 2. New Water logs (saved as Strings by HydrationTrackr into foodLog)
+            let foodQ_str = viewMode === 'latest'
+                ? query(collection(db, `users/${uid}/foodLog`), orderBy('eatenAt', 'desc'), limit(50))
+                : query(collection(db, `users/${uid}/foodLog`), where('eatenAt', '>=', qStart), where('eatenAt', '<=', qEnd));
+
+            // 3. Legacy Water logs (saved as Strings in the old hydrationtrackr collection)
+            let legacyHydroQ = viewMode === 'latest'
+                ? query(collection(db, `users/${uid}/hydrationtrackr`), orderBy('date', 'desc'), limit(20))
+                : query(collection(db, `users/${uid}/hydrationtrackr`), where('date', '>=', qStart), where('date', '<=', qEnd));
+
+            let logs_ts = [];
+            let logs_str = [];
+            let logs_legacy = [];
+
+            const updateDashboardMacros = async () => {
                 let cals = { total: 0, breakfast: 0, lunch: 0, dinner: 0, other: 0 };
+                let waterTotal = 0;
                 let targetDateStrLocal = null;
-                
+
+                let waterGoal = 2000;
+                let rHour = 0, rMin = 0;
+                try {
+                    const s = await getDoc(doc(db, `users/${uid}/settings/water`));
+                    if(s.exists()) {
+                        waterGoal = s.data().dailyGoal || 2000;
+                        const resetStr = s.data().dayReset || "00:00";
+                        [rHour, rMin] = resetStr.split(':').map(Number);
+                    }
+                } catch(e) {}
+
+                // Dynamic Start/End based on user's custom Day Reset time
+                const baseDate = viewMode === 'live' ? new Date() : new Date(targetDate);
+                const resetToday = new Date(baseDate);
+                resetToday.setHours(rHour, rMin, 0, 0);
+
+                let dynamicStart, dynamicEnd;
+                if (baseDate >= resetToday) {
+                    dynamicStart = resetToday;
+                    dynamicEnd = new Date(dynamicStart);
+                    dynamicEnd.setDate(dynamicEnd.getDate() + 1);
+                } else {
+                    dynamicEnd = resetToday;
+                    dynamicStart = new Date(dynamicEnd);
+                    dynamicStart.setDate(dynamicStart.getDate() - 1);
+                }
+
                 const getSafeDate = (val) => {
                     if (!val) return new Date();
-                    return typeof val.toDate === 'function' ? val.toDate() : new Date(val);
+                    return typeof val.toDate === 'function' ? val.toDate() : new Date(val.replace(" ", "T"));
                 };
 
-                if (viewMode === 'latest' && !snap.empty) {
-                    const firstDate = getSafeDate(snap.docs[0].data().eatenAt);
+                const combined = [...logs_ts, ...logs_str, ...logs_legacy];
+                const uniqueLogs = Array.from(new Map(combined.map(item => [item.id, item])).values());
+
+                if (viewMode === 'latest' && uniqueLogs.length > 0) {
+                    uniqueLogs.sort((a, b) => getSafeDate(b.eatenAt || b.date) - getSafeDate(a.eatenAt || a.date));
+                    const firstDate = getSafeDate(uniqueLogs[0].eatenAt || uniqueLogs[0].date);
                     targetDateStrLocal = new Date(firstDate.getTime() - (firstDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
                 }
 
-                snap.forEach(d => {
-                    const data = d.data();
-                    const date = getSafeDate(data.eatenAt);
-                    
+                uniqueLogs.forEach(data => {
+                    const date = getSafeDate(data.eatenAt || data.date);
                     let include = false;
+
                     if (viewMode === 'latest') {
                         const dStr = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
                         if (dStr === targetDateStrLocal) include = true;
                     } else {
-                        if (date >= start && date <= end) include = true;
+                        if (date >= dynamicStart && date < dynamicEnd) include = true;
                     }
 
                     if (include) {
-                        const val = data.calories || 0;
-                        cals.total += val;
                         const sec = (data.section || '').toLowerCase();
-                        if (sec.includes('breakfast') || sec.includes('brunch')) cals.breakfast += val;
-                        else if (sec.includes('lunch')) cals.lunch += val;
-                        else if (sec.includes('dinner')) cals.dinner += val;
-                        else cals.other += val;
+                        if (sec === 'drinks' || data.uploadedApp === 'HydrationTrackr' || (!data.section && data.attributeName)) {
+                            waterTotal += parseInt(data.quantity || data.attributeValue || data.amount || 0);
+                        } else {
+                            const val = data.calories || 0;
+                            cals.total += val;
+                            if (sec.includes('breakfast') || sec.includes('brunch')) cals.breakfast += val;
+                            else if (sec.includes('lunch')) cals.lunch += val;
+                            else if (sec.includes('dinner')) cals.dinner += val;
+                            else cals.other += val;
+                        }
                     }
                 });
+
                 ui.calVal.textContent = Math.round(cals.total);
                 ui.calBreakdown.breakfast.textContent = Math.round(cals.breakfast);
                 ui.calBreakdown.lunch.textContent = Math.round(cals.lunch);
                 ui.calBreakdown.dinner.textContent = Math.round(cals.dinner);
                 ui.calBreakdown.snacks.textContent = Math.round(cals.other);
+                
+                ui.waterVal.textContent = waterTotal;
+                ui.waterGoalText.textContent = `Goal: ${waterGoal}ml`;
+                updateWaterChart(waterTotal, waterGoal);
+            };
+
+            unsubscribers.push(onSnapshot(foodQ_ts, (snap) => {
+                logs_ts = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                updateDashboardMacros();
+            }));
+
+            if (viewMode !== 'latest') {
+                unsubscribers.push(onSnapshot(foodQ_str, (snap) => {
+                    logs_str = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    updateDashboardMacros();
+                }));
+            }
+
+            unsubscribers.push(onSnapshot(legacyHydroQ, (snap) => {
+                logs_legacy = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                updateDashboardMacros();
             }));
 
             unsubscribers.push(onSnapshot(doc(db, `users/${uid}/settings/dailyPlan`), (snap) => {

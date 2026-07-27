@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.144.0-alpha",
+    date: "2026-07-27",
+    changes: [
+        "In Dashboard: Updated the Last.fm music widget to include a direct hyperlink to the currently playing or most recent track.",
+        "In Dashboard: Fixed a lexicographical date string comparison bug affecting the Mood, Recent Activity, and Dailies Progress widgets by standardizing ISO string query boundaries.",
+        "In Dashboard: Implemented a unified Tri-Query system to simultaneously fetch and merge food and water logs across different data types (Timestamps and ISO Strings) and legacy collections.",
+        "In Dashboard: Updated the daily macro and hydration calculations to dynamically respect the user's custom 'Day Resets At' setting, preventing late-night rollover data loss."
+    ]
+},
+    {
     version: "v15.143.0-alpha",
     date: "2026-07-27",
     changes: [
