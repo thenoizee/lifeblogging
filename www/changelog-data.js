@@ -2,6 +2,22 @@
 
 export const changelogData = [
     {
+    version: "v15.143.0-alpha",
+    date: "2026-07-27",
+    changes: [
+                "In RecipeManagr: Modified the 'Add Recipe' form into a 3-step wizard interface with clickable tabs (Basics, Times, Content) for seamless navigation.",
+                "In RecipeManagr: Added 'Enter' key listeners to ingredient inputs to quickly append new rows and shift focus.",
+                "In RecipeManagr: Integrated bulk pasting directly into ingredient and instruction inputs to auto-split multi-line lists into individual rows.",
+                "In RecipeManagr: Added 'Insert Header Below' buttons directly onto individual ingredient and instruction rows for faster structure editing.",
+                "In RecipeManagr: Fixed a race condition where Collections (Books) sometimes failed to populate in the filter sidebar on initial app load.",
+                "In RecipeManagr: Replaced the manual text-prompt for 'Select by Label' with a dynamic modal that automatically extracts and displays all existing labels to tap on.",
+                "In RecipeManagr: Changed the recipe yield quantity input from a strict number field to a text field, allowing ranged amounts (e.g., '12-14') and approximate strings.",
+                "In RecipeManagr: Moved the 'Discovered' date from the details accordion to the bottom left footer of the recipe modal, underneath the 'Updated' date.",
+                "In RecipeManagr: Enforced strict dd/mm/yyyy formatting for the Updated and Discovered dates in the recipe modal footer.",
+                "In RecipeManagr: Added an 'Approved By' filter to the main recipe list filter panel, making it easy to sort and locate recipes by the people who have approved them."
+    ]
+},
+    {
     version: "v15.142.0-alpha",
     date: "2026-07-26",
     changes: [
