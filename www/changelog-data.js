@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.145.0-alpha",
+    date: "2026-07-29",
+    changes: [
+        "In RecipeManagr: Added a basic flowchart integration inspired by the visual layout of the Cooking for Engineers website.",
+        "In RecipeManagr: Introduced a V2 recipe schema that assigns unique IDs to ingredients and instruction steps to support Directed Acyclic Graph (DAG) architecture.",
+        "In RecipeManagr: Added a 'Linked Inputs' multi-select dropdown in the instruction builder, allowing users to manually map ingredients and previous steps to new steps.",
+        "In RecipeManagr: Built a recursive, nested-table DAG renderer to dynamically generate the flowchart without triggering browser layout 'eject' bugs.",
+        "In RecipeManagr: Included an 'Upgrade to V2 Flowchart' button to smoothly transition legacy recipes to the new node-based mapping system."
+    ]
+},
+    {
     version: "v15.144.0-alpha",
     date: "2026-07-27",
     changes: [
