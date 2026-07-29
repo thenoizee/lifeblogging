@@ -2,6 +2,21 @@
 
 export const changelogData = [
     {
+    version: "v15.146.0-alpha",
+    date: "2026-07-29",
+    changes: [
+        "In FoodTrackr: Fixed an issue where custom serving sizes and units were lost when saving a log section as a meal.",
+        "In FoodTrackr: Updated the Composite Food Builder to correctly preserve and save selected serving units instead of defaulting to empty arrays.",
+        "In FoodTrackr: Patched the re-log API functionality so fetching updated nutrition data from Open Food Facts no longer erases historical custom serving units.",
+        "In FoodTrackr: Corrected the leftover split math to proportionally scale the visual display amount alongside raw macros.",
+        "In FoodTrackr: Removed the hardcoded 100g fallback in the Favorites modal, allowing it to dynamically load saved serving sizes.",
+        "In FoodTrackr: Implemented a self-healing logic block in the Smart Copy and Bulk Move tools to dynamically repair desynced historical quantities.",
+        "In FoodTrackr: Added unit resilience to the Edit Modal, enabling it to reverse-engineer and restore missing serving units from legacy data.",
+        "In FoodTrackr: Improved the Manage Foods & Meals UI by placing the Sourdough Tracker and Composite Builder in a side-by-side responsive grid and moving the builder panel outside the grid to prevent width clipping.",
+        "In FoodTrackr: Adjusted the grid layout on the Product Details modal (added items-start) to prevent the Nutrition Facts panel from stretching unnaturally to match the height of adjacent stacked content."
+    ]
+},
+    {
     version: "v15.145.0-alpha",
     date: "2026-07-29",
     changes: [
