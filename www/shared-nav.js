@@ -528,9 +528,7 @@ export class AppNavigation {
                             <i id="theme-icon-sun" class="fas fa-sun" style="display: none;"></i>
                         </button>
                         
-                        <button id="nav-logout-btn" class="bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 text-xs font-bold py-1.5 px-3 rounded-lg transition-colors">
-                            Log Out
-                        </button>
+                        <!-- Log out button removed from global nav -->
                     </div>
                 </div>
             </div>
@@ -542,8 +540,8 @@ export class AppNavigation {
                     </a>
                 ` : ''}
                 <span id="nav-sw-version" class="text-[9px] font-mono text-gray-300 dark:text-gray-700" title="Service Worker Version">SW: ---</span>
-                <button onclick="window.toggleNavBar()" class="mt-1 text-[10px] text-gray-400 hover:text-${this.themeColor}-500 transition-colors flex items-center group">
-                    <i class="fa-solid fa-eye-slash mr-1 group-hover:scale-110 transition-transform"></i>Hide Nav
+                <button onclick="window.toggleNavBar()" class="mt-2 text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-white hover:bg-${this.themeColor}-500 px-2 py-1 rounded-md shadow-sm transition-all flex items-center group active:scale-95">
+                    <i class="fa-solid fa-eye-slash mr-1.5 group-hover:scale-110 transition-transform"></i>Hide Nav
                 </button>
             </div>
         </header>
@@ -559,10 +557,7 @@ export class AppNavigation {
         const mobileHtml = `
         <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-800 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
             <div class="flex justify-around items-center h-16">
-                <a href="/" class="flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-${this.themeColor}-500 transition-colors gap-1">
-                    <i class="fa-solid fa-arrow-left text-lg"></i>
-                    <span class="text-[10px] font-medium">Hub</span>
-                </a>
+                <!-- Global back to Hub button removed for mobile to prevent duplicates -->
                 ${this.tabs.map(tab => `
                     <button class="mobile-nav-btn flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-${this.themeColor}-500 transition-colors gap-1" data-tab="${tab.id}">
                         <i class="fa-solid ${tab.icon} text-lg"></i>
@@ -977,9 +972,7 @@ export class AppNavigation {
             });
         }
         
-        document.getElementById('nav-logout-btn').addEventListener('click', () => {
-             if(window.confirm('Log out?')) window.dispatchEvent(new CustomEvent('app-logout-request'));
-        });
+        // Log out listener removed
 
         const avatarBtn = document.getElementById('nav-user-avatar');
         if (avatarBtn) {

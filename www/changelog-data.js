@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.147.0-alpha",
+    date: "2026-07-30",
+    changes: [
+        "In Shared Nav: Removed the global Log Out button from the main header navigation to prevent accidental clicks.",
+        "In Shared Nav: Enhanced the 'Hide Nav' button with a more pronounced background, rounded corners, and a smooth hover transition.",
+        "In Shared Nav: Removed the global 'Hub' back button from the mobile bottom navigation menu to eliminate redundancy with in-app back buttons.",
+        "In Hub: Added  human-readable timestamp formatting (e.g., 14:30) to the Last.fm recently played music widget.",
+        "In Account Settings: Reinstated the Log Out button, placing it securely inside a dedicated prominent 'Session' card in the General tab."
+    ]
+},
+    {
     version: "v15.146.0-alpha",
     date: "2026-07-29",
     changes: [
