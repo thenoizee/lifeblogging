@@ -133,6 +133,7 @@ export class AppNavigation {
         // Start listening to the cloud database
         this.listenToNotifications();
         this.listenToThemeSync();
+        this.listenToUserProfile();
         
         // Fetch and display Service Worker version
         this.displayServiceWorkerVersion();
@@ -519,8 +520,7 @@ export class AppNavigation {
                             </div>
                         </div>
                         
-                        <a href="#" id="nav-user-avatar" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity" title="${avatarTitle}">
-                            ${userInitial}
+<a href="#" id="nav-user-avatar" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden" title="${avatarTitle}">                            ${userInitial}
                         </a>
 
                         <button id="nav-theme-toggle" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all duration-500 ease-in-out">
@@ -655,6 +655,38 @@ export class AppNavigation {
         });
 
         batch.commit().catch(err => console.error("Error marking notifications read:", err));
+    }
+
+    listenToUserProfile() {
+        if (getApps().length === 0) {
+            setTimeout(() => this.listenToUserProfile(), 50);
+            return;
+        }
+
+        const auth = getAuth();
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                const db = getFirestore();
+                const profileRef = doc(db, 'users', user.uid, 'settings', 'profile');
+                
+                onSnapshot(profileRef, (docSnap) => {
+                    const avatarEl = document.getElementById('nav-user-avatar');
+                    if (!avatarEl) return;
+                    
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (data.profileImageUrl) {
+                            avatarEl.innerHTML = `<img src="${data.profileImageUrl}" alt="Profile" class="w-full h-full object-cover">`;
+                        } else if (data.icon) {
+                            avatarEl.innerHTML = `<i class="${data.icon}"></i>`;
+                        } else {
+                            const dName = data.displayName || this.userEmail;
+                            avatarEl.textContent = dName.charAt(0).toUpperCase();
+                        }
+                    }
+                });
+            }
+        });
     }
 
     listenToThemeSync() {
@@ -980,7 +1012,7 @@ export class AppNavigation {
                 e.preventDefault();
                 const user = getAuth().currentUser;
                 if (user) {
-                    window.location.href = `/public/index.html?id=${user.uid}`;
+                    window.location.href = `/public/?id=${user.uid}`;
                 }
             });
         }

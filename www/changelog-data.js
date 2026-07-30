@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.149.0-alpha",
+    date: "2026-07-31",
+    changes: [
+                "In Account: Implemented support for uploading a Profile Image URL instead of only FontAwesome icons across the system.",
+                "In Account & Shared Nav: Cleaned up the Public Profile URL to hide the '.html' extension.",
+                "In Public Profile: Completely redesigned the profile header layout for a banner aesthetic with improved visual contrast in light mode."
+    ]
+},
+    {
     version: "v15.148.0-alpha",
     date: "2026-07-30",
     changes: [
