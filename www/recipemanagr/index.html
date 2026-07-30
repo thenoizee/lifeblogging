@@ -234,6 +234,7 @@ select, button, input {
                     <button id="shopping-list-mode-btn" class="bg-green-600 text-white font-bold py-1.5 px-3 rounded-lg hover:bg-green-700 text-sm shadow-sm transition-colors"><i class="fas fa-shopping-cart mr-1"></i> Shopping List Mode</button>
                     <button id="manage-appliances-btn" class="bg-teal-600 text-white font-bold py-1.5 px-3 rounded-lg hover:bg-teal-700 text-sm shadow-sm transition-colors"><i class="fas fa-blender mr-1"></i> Appliances</button>
                     <button id="manage-books-btn" class="bg-orange-600 text-white font-bold py-1.5 px-3 rounded-lg hover:bg-orange-700 text-sm shadow-sm transition-colors"><i class="fas fa-book mr-1"></i> Collections & Recipe Books</button>
+                    <button id="export-data-btn" class="bg-gray-800 text-white font-bold py-1.5 px-3 rounded-lg hover:bg-gray-900 text-sm shadow-sm transition-colors dark:bg-gray-700 dark:hover:bg-gray-600"><i class="fas fa-file-export mr-1"></i> Export Data</button>
                 </div>
 
                 <div class="flex flex-col lg:flex-row gap-4 lg:items-center mb-4 border-b dark:border-gray-600 pb-4 text-sm">
@@ -2438,37 +2439,86 @@ document.getElementById('flavor-savoury').checked = flavors.includes('Savoury');
             };
 
             window.updateStepInputOptions = () => {
-                const ingredients = Array.from(document.querySelectorAll('.ingredient-row')).map(row => ({
-                    id: row.dataset.id,
-                    label: `[Ing] ` + (row.querySelector('.ing-name')?.value || 'Unnamed Ingredient')
-                }));
+                const ingredients = Array.from(document.querySelectorAll('.ingredient-row')).map(row => {
+                    // Traverse backwards to find the closest Section Header to group the ingredient
+                    let prev = row.previousElementSibling;
+                    let sectionName = '';
+                    while (prev) {
+                        if (prev.dataset.type === 'section') {
+                            sectionName = prev.querySelector('.section-title')?.value || 'Section';
+                            break;
+                        }
+                        prev = prev.previousElementSibling;
+                    }
+                    const prefix = sectionName && sectionName !== 'Ingredients' && sectionName !== 'General' ? `[${sectionName}] ` : '';
+                    return {
+                        id: row.dataset.id,
+                        label: prefix + (row.querySelector('.ing-name')?.value || 'Unnamed Ingredient')
+                    };
+                });
                 
                 const steps = Array.from(document.querySelectorAll('.instruction-row[data-type="step"]'));
+                let previousStepId = null;
                 
                 steps.forEach((stepRow, index) => {
-                    const select = stepRow.querySelector('.step-inputs');
-                    if(!select) return;
+                    const pillContainer = stepRow.querySelector('.step-inputs-pills');
+                    if(!pillContainer) return;
                     
-                    const currentlySelected = Array.from(select.selectedOptions).map(o => o.value);
-                    const savedSelected = select.dataset.selected ? select.dataset.selected.split(',') : [];
-                    const activeSelection = currentlySelected.length > 0 ? currentlySelected : savedSelected;
+                    let activeSelection = pillContainer.dataset.selected ? pillContainer.dataset.selected.split(',').filter(Boolean) : [];
                     
-                    select.innerHTML = '';
+                    // --- AUTO-CHAINING LOGIC ---
+                    // Auto-assume inputs if the user hasn't explicitly clicked/modified this step's pills
+                    if (activeSelection.length === 0 && pillContainer.dataset.userModified !== "true") {
+                        if (index === 0) {
+                            // If it's the very first step, auto-grab all ingredients by default
+                            activeSelection = ingredients.map(i => i.id);
+                        } else if (previousStepId) {
+                            // If it's a subsequent step, auto-chain to the previous step's output
+                            activeSelection = [previousStepId];
+                        }
+                        pillContainer.dataset.selected = activeSelection.join(',');
+                    }
                     
-                    ingredients.forEach(ing => {
-                        const opt = new Option(ing.label, ing.id);
-                        if(activeSelection.includes(ing.id)) opt.selected = true;
-                        select.add(opt);
-                    });
+                    pillContainer.innerHTML = ''; // Clear existing pills
+                    
+                    const renderPill = (id, label, type) => {
+                        const isSelected = activeSelection.includes(id);
+                        const pill = document.createElement('div');
+                        
+                        const colorClass = isSelected 
+                            ? (type === 'ing' ? 'bg-orange-500 text-white border-orange-600' : 'bg-blue-500 text-white border-blue-600')
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600';
+                            
+                        pill.className = `cursor-pointer text-[10px] px-2 py-1 rounded-full border shadow-sm transition-colors select-none ${colorClass}`;
+                        pill.textContent = `${type === 'ing' ? '🥕' : '🍳'} ${label.substring(0, 25)}${label.length > 25 ? '...' : ''}`;
+                        pill.dataset.val = id;
+                        
+                        pill.onclick = () => {
+                            // Explicit user action flags this step so it no longer auto-chains
+                            pillContainer.dataset.userModified = "true"; 
+                            
+                            const currentList = pillContainer.dataset.selected ? pillContainer.dataset.selected.split(',').filter(Boolean) : [];
+                            if (currentList.includes(id)) {
+                                pillContainer.dataset.selected = currentList.filter(v => v !== id).join(',');
+                            } else {
+                                currentList.push(id);
+                                pillContainer.dataset.selected = currentList.join(',');
+                            }
+                            window.updateStepInputOptions();
+                        };
+                        pillContainer.appendChild(pill);
+                    };
+                    
+                    ingredients.forEach(ing => renderPill(ing.id, ing.label, 'ing'));
                     
                     for(let i = 0; i < index; i++) {
                         const prevStep = steps[i];
                         const text = prevStep.querySelector('.step-text')?.value || 'Unnamed Step';
-                        const opt = new Option(`[Step] ${text.substring(0, 30)}...`, prevStep.dataset.id);
-                        if(activeSelection.includes(prevStep.dataset.id)) opt.selected = true;
-                        select.add(opt);
+                        renderPill(prevStep.dataset.id, text, 'step');
                     }
-                    select.dataset.selected = ''; 
+                    
+                    // Track for the next loop iteration
+                    previousStepId = stepRow.dataset.id;
                 });
             };
 
@@ -2535,6 +2585,9 @@ const createInstructionRow = (data = {}) => {
     const timeVal = data.timer ? data.timer.val : '';
     const timeUnit = data.timer ? data.timer.unit : 'm';
     const imageUrl = data.imageUrl || '';
+    
+    // Check if the user explicitly modified this step previously (or if it has saved inputs) to prevent auto-overriding intentional empty selections
+    const isModified = data.userModified ? 'true' : (data.inputs && data.inputs.length > 0 ? 'true' : 'false');
 
     row.innerHTML = `
         <div class="flex flex-col gap-1 pt-1">
@@ -2544,9 +2597,13 @@ const createInstructionRow = (data = {}) => {
         <div class="flex-grow w-full space-y-2">
             <textarea placeholder="Step instruction..." rows="2" class="step-text w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 resize-y" oninput="if(window.updateStepInputOptions) window.updateStepInputOptions()">${text}</textarea>
             ${imageUrl ? `<div class="step-image-preview relative w-fit"><img src="${imageUrl}" class="h-20 rounded border"><button type="button" class="remove-img-btn absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"><i class="fas fa-times"></i></button></div>` : ''}
-            <div class="v2-inputs-container hidden mt-1">
-                <label class="text-[10px] uppercase font-bold text-gray-500">Linked Inputs (Flowchart V2):</label>
-                <select multiple class="step-inputs w-full p-1 text-xs border border-teal-200 rounded dark:bg-gray-700 dark:border-teal-800 h-20 custom-scrollbar" data-selected="${(data.inputs || []).join(',')}"></select>
+            <div class="v2-inputs-container hidden mt-2 bg-white dark:bg-gray-800 p-2.5 rounded-lg border border-teal-100 dark:border-teal-900 shadow-sm">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="text-[10px] uppercase font-bold text-teal-600 dark:text-teal-400 block">Linked Inputs (Flowchart V2):</label>
+                    <i class="fas fa-info-circle text-gray-400 text-xs" title="Select the specific ingredients and previous steps that are combined in this step."></i>
+                </div>
+                <p class="text-[10px] text-gray-500 dark:text-gray-400 mb-2 leading-tight">Click pills below to map the exact ingredients and steps that feed into this action. Unselected ingredients assume a parallel stage.</p>
+                <div class="step-inputs-pills flex flex-wrap gap-1.5 max-h-32 overflow-y-auto custom-scrollbar" data-selected="${(data.inputs || []).join(',')}" data-user-modified="${isModified}"></div>
             </div>
         </div>
         <div class="flex flex-col gap-2 flex-shrink-0">
@@ -2727,13 +2784,18 @@ const getInstructionsFromBuilder = () => {
             const existingImg = row.querySelector('.step-image-preview');
 
             if (text || hasFile || existingImg) {
-                const inputsSelect = row.querySelector('.step-inputs');
-                const selectedInputs = inputsSelect ? Array.from(inputsSelect.selectedOptions).map(o => o.value) : [];
+                // Extract mappings from the visual pill container instead of the hidden select
+                const pillContainer = row.querySelector('.step-inputs-pills');
+                const selectedInputs = pillContainer && pillContainer.dataset.selected ? pillContainer.dataset.selected.split(',').filter(Boolean) : [];
+                
+                // Track if the user explicitly modified this, preventing the system from over-riding an intentional empty state on load
+                const userModified = pillContainer ? pillContainer.dataset.userModified === "true" : false;
                 
                 const item = { 
                     id: row.dataset.id,
                     text,
-                    inputs: selectedInputs
+                    inputs: selectedInputs,
+                    userModified: userModified // Add the flag to the saved schema
                 };
                 const timeVal = row.querySelector('.step-time').value;
                 const timeUnit = row.querySelector('.step-unit').value;
@@ -3505,9 +3567,12 @@ async function showRecipeDetailsModal(recipeId) {
                     
                     <!-- Container for the Cooking For Engineers Flowchart -->
                     <!-- Hidden by default, toggled via JavaScript -->
-                    <div id="modal-flowchart" class="hidden mt-6 overflow-x-auto border-t dark:border-gray-700 pt-4">
-                        <h5 class="font-bold text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider mb-2">Recipe Flowchart</h5>
-                        <div id="flowchart-render-area" class="min-w-max pb-2"></div>
+                    <div id="modal-flowchart" class="hidden mt-6 overflow-x-auto border-t dark:border-gray-700 pt-4 flex-col">
+                        <div class="flex justify-between items-center mb-2">
+                            <h5 class="font-bold text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wider">Recipe Flowchart</h5>
+                            <button id="flowchart-fullscreen-btn" class="text-teal-500 hover:text-teal-700 text-xs font-bold transition-colors bg-teal-50 dark:bg-teal-900/30 px-2 py-1 rounded border border-teal-200 dark:border-teal-800"><i class="fas fa-expand"></i> Fullscreen</button>
+                        </div>
+                        <div id="flowchart-render-area" class="min-w-max pb-2 flex-grow overflow-auto"></div>
                     </div>
                 </div>
             </div>
@@ -3633,88 +3698,212 @@ async function showRecipeDetailsModal(recipeId) {
             flowchartDiv.classList.remove('hidden');
             instructionsDiv.classList.add('hidden');
             
-            let tableHtml = '<table class="w-full border-collapse border-2 border-green-600 bg-white dark:bg-gray-800 text-sm">';
+            let tableHtml = '';
             
             if (recipe.version === 2) {
-                // TRUE DAG RENDERER (V2)
+                // TRUE DAG RENDERER (V2) - RIGHT-TO-LEFT ALIGNED (CFE STYLE)
                 const allIngredients = [];
-                ingredientsData.forEach(sec => allIngredients.push(...(sec.items || [])));
+                ingredientsData.forEach(sec => {
+                    (sec.items || []).forEach(item => {
+                        allIngredients.push({ ...item, sectionName: sec.section });
+                    });
+                });
                 const allSteps = [];
                 instructionsData.forEach(sec => allSteps.push(...(sec.items || [])));
                 
-                // Recursive function to build nested tables tracing backwards safely
-                const renderNode = (nodeId) => {
-                    const step = allSteps.find(s => s.id === nodeId);
-                    
-                    // Base case 1: Ingredient
-                    if (!step) {
-                        const ing = allIngredients.find(i => i.id === nodeId);
-                        const text = ing ? (ing.text || ing.name) : 'Unknown Input';
-                        return `<table class="w-full h-full border-collapse m-0 p-0"><tr><td class="p-2 border-green-600 bg-green-50 dark:bg-green-900/20 text-gray-800 dark:text-gray-200 align-middle">${text}</td></tr></table>`;
-                    }
-                    
-                    const strippedText = step.text.replace(/<[^>]*>?/gm, '');
-                    
-                    // Base case 2: Step without inputs
-                    if (!step.inputs || step.inputs.length === 0) {
-                        return `<table class="w-full h-full border-collapse m-0 p-0"><tr><td class="p-2 border-green-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 align-middle">${strippedText}</td></tr></table>`;
-                    }
-                    
-                    // Recursive case: Step with inputs
-                    let html = '<table class="w-full h-full border-collapse m-0 p-0"><tr>';
-                    html += '<td class="p-0 w-1/2 border-r border-green-600 align-top">';
-                    html += '<table class="w-full h-full border-collapse m-0 p-0">';
-                    step.inputs.forEach((inputId, index) => {
-                        const borderClass = index < step.inputs.length - 1 ? 'border-b border-green-600' : '';
-                        html += `<tr><td class="p-0 h-full ${borderClass}">${renderNode(inputId)}</td></tr>`;
+                const nodeMap = new Map();
+                allIngredients.forEach((i, idx) => nodeMap.set(i.id, { ...i, type: 'ing', order: idx, parents: [] }));
+                allSteps.forEach(s => nodeMap.set(s.id, { ...s, type: 'step', parents: [] }));
+
+                // 1. Establish dependencies (parents)
+                allSteps.forEach(step => {
+                    (step.inputs || []).forEach(inputId => {
+                        if (nodeMap.has(inputId)) nodeMap.get(inputId).parents.push(step.id);
                     });
-                    html += '</table></td>';
-                    html += `<td class="p-2 w-1/2 align-middle text-gray-800 dark:text-gray-200">${strippedText}</td>`;
-                    html += '</tr></table>';
+                });
+
+                // 2. Calculate covered ingredients (leaves) for row spans
+                const getLeaves = (nodeId, visited = new Set()) => {
+                    if (visited.has(nodeId)) return [];
+                    visited.add(nodeId);
+                    const node = nodeMap.get(nodeId);
+                    if (!node) return [];
+                    if (node.type === 'ing') return [node.order];
                     
-                    return html;
+                    let leaves = [];
+                    (node.inputs || []).forEach(inputId => leaves.push(...getLeaves(inputId, visited)));
+                    return [...new Set(leaves)].sort((a, b) => a - b);
                 };
 
-                // Identify the final step(s) that are never used as an input
-                const inputSet = new Set();
-                allSteps.forEach(s => (s.inputs || []).forEach(i => inputSet.add(i)));
-                const finalSteps = allSteps.filter(s => !inputSet.has(s.id));
+                // 3. PASS 1: Calculate Minimum Forward Depth (Left-to-Right)
+                const calcMinDepth = (nodeId, memo = new Map()) => {
+                    if (memo.has(nodeId)) return memo.get(nodeId);
+                    const node = nodeMap.get(nodeId);
+                    if (!node || node.type === 'ing') {
+                        memo.set(nodeId, 0); return 0;
+                    }
+                    let maxIn = -1;
+                    (node.inputs || []).forEach(inId => maxIn = Math.max(maxIn, calcMinDepth(inId, memo)));
+                    const d = maxIn + 1;
+                    memo.set(nodeId, d);
+                    return d;
+                };
+
+                // 4. PASS 2: Calculate Render Depth (Right-to-Left Pull)
+                const calcRenderDepth = (nodeId, memo = new Map()) => {
+                    if (memo.has(nodeId)) return memo.get(nodeId);
+                    const node = nodeMap.get(nodeId);
+                    if (!node) return 0;
+                    
+                    if (node.parents.length === 0) {
+                        // Final steps anchor at their natural minimum depth
+                        const d = calcMinDepth(nodeId);
+                        memo.set(nodeId, d); return d;
+                    }
+                    
+                    // Pull steps backward from their earliest parent
+                    let minParentRender = Infinity;
+                    node.parents.forEach(pId => minParentRender = Math.min(minParentRender, calcRenderDepth(pId, memo)));
+                    const d = minParentRender - 1;
+                    memo.set(nodeId, d);
+                    return d;
+                };
+
+                // Process all data
+                const allNodes = Array.from(nodeMap.values());
+                allNodes.forEach(n => {
+                    n.minDepth = calcMinDepth(n.id);
+                    n.renderDepth = calcRenderDepth(n.id);
+                    
+                    n.leaves = getLeaves(n.id);
+                    if (n.leaves.length > 0) {
+                        n.minRow = Math.min(...n.leaves);
+                        n.maxRow = Math.max(...n.leaves);
+                    }
+                });
+
+                const maxGlobalDepth = allNodes.length > 0 ? Math.max(...allNodes.map(n => n.renderDepth || 0)) : 0;
+                const numIngredients = allIngredients.length;
+
+                // 5. Calculate Start Columns and ColSpans
+                allNodes.forEach(node => {
+                    if (node.parents.length === 0) {
+                        node.nextDepth = maxGlobalDepth + 1;
+                    } else {
+                        node.nextDepth = Math.min(...node.parents.map(pId => nodeMap.get(pId).renderDepth));
+                    }
+                    
+                    if (node.type === 'ing') {
+                        // Ingredients sit strictly in Col 0, and DO NOT span empty space.
+                        node.startCol = 0;
+                        node.colSpan = 1; 
+                    } else {
+                        // Steps sit in their right-aligned column and span to the step that uses them
+                        node.startCol = node.renderDepth;
+                        node.colSpan = Math.max(1, node.nextDepth - node.startCol);
+                    }
+                });
+
+                // 6. Build Grid Matrix
+                const grid = Array.from({length: numIngredients}, () => new Array(maxGlobalDepth + 1).fill(null));
+                const globalSteps = []; 
+
+                allNodes.forEach(node => {
+                    if (node.type === 'step' && (!node.leaves || node.leaves.length === 0)) {
+                        globalSteps.push(node); return;
+                    }
+                    
+                    const r = node.type === 'ing' ? node.order : node.minRow;
+                    const c = node.startCol;
+                    const rSpan = node.type === 'ing' ? 1 : (node.maxRow - node.minRow + 1);
+                    const cSpan = node.colSpan;
+                    
+                    if (r >= 0 && r < numIngredients && c >= 0 && c <= maxGlobalDepth) {
+                        grid[r][c] = { node, rowSpan: rSpan, colSpan: cSpan, isNode: true };
+                        
+                        // Mark territory so we don't accidentally draw empty cells here
+                        for (let ir = r; ir < r + rSpan; ir++) {
+                            for (let ic = c; ic < c + cSpan; ic++) {
+                                if (ir === r && ic === c) continue;
+                                if (ir < numIngredients && ic <= maxGlobalDepth) {
+                                    grid[ir][ic] = { isCovered: true };
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // 7. Generate HTML
+                tableHtml = '<div class="overflow-hidden rounded border border-green-700 bg-white dark:bg-gray-800 shadow-sm">';
+                tableHtml += '<table id="flowchart-table-element" class="w-full border-collapse m-0 p-0 text-[10px] md:text-xs leading-snug">';
                 
-                // Override outer table initialization to prevent nested table ejects
-                tableHtml = '<div class="border-2 border-green-600 bg-white dark:bg-gray-800 text-sm overflow-hidden rounded-sm">';
+                globalSteps.forEach(gs => {
+                    const text = gs.text.replace(/<[^>]*>?/gm, '');
+                    tableHtml += `<tr><td colspan="${maxGlobalDepth + 1}" class="border-b border-green-700 p-1.5 md:p-2 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 align-middle italic text-center">${text}</td></tr>`;
+                });
                 
-                if (finalSteps.length > 0) {
-                    tableHtml += '<table class="w-full border-collapse m-0 p-0">';
-                    finalSteps.forEach((fs, index) => {
-                        const borderClass = index < finalSteps.length - 1 ? 'border-b-2 border-green-600' : '';
-                        tableHtml += `<tr><td class="p-0 ${borderClass}">${renderNode(fs.id)}</td></tr>`;
-                    });
-                    tableHtml += '</table>';
-                } else {
-                    tableHtml += `<div class="p-4 italic text-center text-gray-500">No valid flowchart. Please ensure inputs are linked correctly in the editor.</div>`;
+                for (let r = 0; r < numIngredients; r++) {
+                    tableHtml += '<tr>';
+                    let emptyColSpan = 0;
+                    
+                    // Helper to dump accumulated empty columns as a single merged cell
+                    const flushEmpty = () => {
+                        if (emptyColSpan > 0) {
+                            tableHtml += `<td colspan="${emptyColSpan}" class="border-r border-b border-green-700 p-1.5 md:p-2"></td>`;
+                            emptyColSpan = 0;
+                        }
+                    };
+
+                    for (let c = 0; c <= maxGlobalDepth; c++) {
+                        const cell = grid[r][c];
+                        if (!cell) {
+                            emptyColSpan++;
+                        } else {
+                            flushEmpty();
+                            if (cell.isNode) {
+                                const n = cell.node;
+                                const isIng = n.type === 'ing';
+                                const bgClass = isIng ? 'bg-green-50 dark:bg-green-900/20 font-medium min-w-[100px] max-w-[140px]' : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors min-w-[150px] max-w-[250px]';
+                                const text = n.text || n.name || '';
+                                const strippedText = text.replace(/<[^>]*>?/gm, '');
+                                
+                                const displayText = (isIng && n.sectionName && n.sectionName !== 'Ingredients' && n.sectionName !== 'General') 
+                                    ? `<span class="block text-[9px] md:text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase mb-0.5 tracking-wider">${n.sectionName}</span>${strippedText}` 
+                                    : strippedText;
+                                    
+                                tableHtml += `<td rowspan="${cell.rowSpan}" colspan="${cell.colSpan}" class="border-r border-b border-green-700 p-1.5 md:p-2 align-middle text-gray-800 dark:text-gray-200 whitespace-normal break-words ${bgClass}">${displayText}</td>`;
+                            }
+                            // if isCovered is true, it is handled naturally by HTML table rowspans from above, so we just skip it
+                        }
+                    }
+                    flushEmpty(); // Catch any trailing empty space at the end of the row
+                    tableHtml += '</tr>';
                 }
-                tableHtml += '</div>';
+                
+                tableHtml += '</table></div>';
+                if (numIngredients === 0) tableHtml = `<div class="p-4 italic text-center text-gray-500">No valid flowchart. Please connect ingredients/steps in the editor.</div>`;
 
             } else {
                 // NAIVE RENDERER (V1 Legacy Fallback)
+                tableHtml = '<table class="w-full border-collapse border border-green-700 bg-white dark:bg-gray-800 text-xs md:text-sm">';
                 ingredientsData.forEach((sec, secIdx) => {
                     const items = sec.items || [];
                     items.forEach((item, itemIdx) => {
                         tableHtml += '<tr>';
                         const ingText = typeof item === 'object' ? item.text : item;
-                        tableHtml += `<td class="border border-green-600 p-2 whitespace-nowrap bg-green-50 dark:bg-green-900/20 text-gray-800 dark:text-gray-200">${ingText}</td>`;
+                        tableHtml += `<td class="border border-green-700 p-2 md:p-3 whitespace-nowrap bg-green-50 dark:bg-green-900/20 text-gray-800 dark:text-gray-200">${ingText}</td>`;
                         
                         if (itemIdx === 0) {
                             const instSec = instructionsData[secIdx] || instructionsData[0];
                             const stepsHtml = (instSec?.items || []).map(step => `<div class="mb-1">${(typeof step === 'object' ? step.text : step).replace(/<[^>]*>?/gm, '')}</div>`).join('');
-                            tableHtml += `<td rowspan="${items.length}" class="border border-green-600 p-2 align-middle max-w-md">${stepsHtml || '<span class="italic text-gray-400">Combine ingredients...</span>'}</td>`;
+                            tableHtml += `<td rowspan="${items.length}" class="border border-green-700 p-2 md:p-3 align-middle max-w-md">${stepsHtml || '<span class="italic text-gray-400">Combine ingredients...</span>'}</td>`;
                         }
                         tableHtml += '</tr>';
                     });
                 });
                 
                 if (ingredientsData.length > 1) {
-                    tableHtml += `<tr><td colspan="2" class="border border-green-600 p-2 text-center font-bold bg-green-100 dark:bg-green-800/30 text-gray-800 dark:text-gray-200">Final Assembly: Mix all components and serve</td></tr>`;
+                    tableHtml += `<tr><td colspan="2" class="border border-green-700 p-2 md:p-3 text-center font-bold bg-green-100 dark:bg-green-800/30 text-gray-800 dark:text-gray-200">Final Assembly: Mix all components and serve</td></tr>`;
                 }
                 tableHtml += '</table>';
                 
@@ -3731,6 +3920,54 @@ async function showRecipeDetailsModal(recipeId) {
             instructionsDiv.classList.remove('hidden');
         }
     });
+
+    // Flowchart Fullscreen Toggle
+    const fsBtn = modalContainer.querySelector('#flowchart-fullscreen-btn');
+    if (fsBtn) {
+        fsBtn.addEventListener('click', () => {
+            const fcDiv = modalContainer.querySelector('#modal-flowchart');
+            
+            // Toggle classes for a better bounded 'Mostly Fullscreen' overlay appearance
+            fcDiv.classList.toggle('fixed');
+            fcDiv.classList.toggle('top-1/2');
+            fcDiv.classList.toggle('left-1/2');
+            fcDiv.classList.toggle('-translate-x-1/2');
+            fcDiv.classList.toggle('-translate-y-1/2');
+            fcDiv.classList.toggle('w-[95vw]');
+            fcDiv.classList.toggle('h-[95vh]');
+            fcDiv.classList.toggle('max-w-[1400px]'); // Prevents it from getting too large on ultrawide monitors
+            fcDiv.classList.toggle('z-[200]');
+            fcDiv.classList.toggle('bg-white');
+            fcDiv.classList.toggle('dark:bg-gray-900');
+            fcDiv.classList.toggle('p-4');
+            fcDiv.classList.toggle('md:p-6');
+            fcDiv.classList.toggle('rounded-2xl');
+            fcDiv.classList.toggle('shadow-[0_0_0_100vmax_rgba(0,0,0,0.8)]'); // Darkens the background aggressively
+            fcDiv.classList.toggle('border-4');
+            fcDiv.classList.toggle('border-teal-500');
+            
+            // Adjust the text scaling for fullscreen view to maximize visible content
+            const table = fcDiv.querySelector('#flowchart-table-element');
+            if (table) {
+                table.classList.toggle('md:text-xs');
+                table.classList.toggle('md:text-[10px]');
+            }
+            
+            if (fcDiv.classList.contains('fixed')) {
+                fsBtn.innerHTML = '<i class="fas fa-compress mr-1"></i> Exit Fullscreen View';
+                fsBtn.classList.replace('text-teal-500', 'text-red-500');
+                fsBtn.classList.replace('border-teal-200', 'border-red-200');
+                fsBtn.classList.replace('bg-teal-50', 'bg-red-50');
+                document.body.style.overflow = 'hidden'; // Lock background scroll
+            } else {
+                fsBtn.innerHTML = '<i class="fas fa-expand mr-1"></i> Fullscreen';
+                fsBtn.classList.replace('text-red-500', 'text-teal-500');
+                fsBtn.classList.replace('border-red-200', 'border-teal-200');
+                fsBtn.classList.replace('bg-red-50', 'bg-teal-50');
+                document.body.style.overflow = ''; // Unlock background scroll
+            }
+        });
+    }
 
     // Print
     modalContainer.querySelector('#modal-print-btn').addEventListener('click', () => printRecipe(recipe));
@@ -5510,6 +5747,35 @@ document.getElementById('quick-add-item-btn').addEventListener('click', () => {
 document.getElementById('quick-add-item-input').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') document.getElementById('quick-add-item-btn').click();
 });
+
+// Export All Data Logic
+const exportDataBtn = document.getElementById('export-data-btn');
+if (exportDataBtn) {
+    exportDataBtn.addEventListener('click', () => {
+        try {
+            // Bundle all caches into a single export JSON object
+            const exportData = {
+                exportDate: new Date().toISOString(),
+                recipes: recipesCache,
+                collections: booksCache,
+                appliances: appliancesCache
+            };
+            
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", `recipe_manager_backup_${new Date().toISOString().split('T')[0]}.json`);
+            document.body.appendChild(downloadAnchorNode); // Required for Firefox
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            
+            showNotification("Data exported successfully!", "success");
+        } catch (err) {
+            console.error("Export failed", err);
+            showNotification("Failed to export data.", "error");
+        }
+    });
+}
 
 // 7. Copy Text
 document.getElementById('copy-text-btn').addEventListener('click', () => {

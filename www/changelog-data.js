@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.148.0-alpha",
+    date: "2026-07-30",
+    changes: [
+        "In RecipeManagr: Added 'Export All Data' backup functionality to download recipes, collections, and appliances as a JSON file.",
+        "In RecipeManagr: Redesigned the Recipe Editor Flowchart (V2) UI by replacing the multi-select box with clickable pill-tags to map ingredients and previous steps effortlessly.",
+        "In RecipeManagr: Updated Flowchart V2 Editor UI so ingredient pills now display their associated Stage/Section (e.g., '[Cake] Butter' vs '[Icing] Butter') to disambiguate identical ingredients.",
+        "In RecipeManagr: Added descriptive helper text to the Flowchart V2 editor explaining how to link inputs.",
+        "In RecipeManagr: Updated Flowchart V2 mapping logic so steps now automatically inherit the previous step as their input by default, creating a continuous flow without manual selection, unless manually overridden.",
+        "In RecipeManagr: Updated the Flowchart grid renderer to explicitly display the Stage/Section name above ingredients if they are grouped.",
+        "In RecipeManagr: Adjusted Flowchart visual scaling by significantly reducing cell padding, column widths, and font sizes so the chart fits comfortably on standard displays.",
+        "In RecipeManagr: Added a 'Fullscreen' toggle button to the Flowchart view for better readability of complex recipes.",
+    ]
+},
+    {
     version: "v15.147.0-alpha",
     date: "2026-07-30",
     changes: [
