@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.150.0-alpha",
+    date: "2026-07-31",
+    changes: [
+                "In RecipeManagr: Added V2 flowchart compatibility badges to recipe cards in both list and tile views, as well as the details modal.",
+                "In RecipeManagr: Implemented strict ingredient and step data validation within the flowchart matrix builder to automatically heal broken dependencies and prevent rendering crashes.",
+                "In RecipeManagr: Updated the UI to automatically hide the Import Recipes section when in Edit Mode.",
+    ]
+},
+    {
     version: "v15.149.0-alpha",
     date: "2026-07-31",
     changes: [
