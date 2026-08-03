@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v15.156.0-alpha",
+    date: "2026-08-04",
+    changes: [
+        "In VidTrackr: Implemented a Time-To-Live (TTL) cache on the smart fetcher to drastically reduce background Firebase read operations.",
+        "In VidTrackr: Optimized the 'Up Next' generator by reducing the history query limit from 1500 to 500 to improve processing speed.",
+        "In VidTrackr: Replaced full collection array scans with direct document reads for list membership checks and deletions.",
+        "In VidTrackr: Refactored the Detail Page history fetcher to use targeted queries based on exact item IDs instead of scanning the entire user history.",
+        "In VidTrackr: Added a JSON importer to migrate Trakt comments directly into a new Firebase 'comments' collection.",
+        "In VidTrackr: Built a dedicated Comments tab in the Library view with full deletion and detail-routing capabilities.",
+    ]
+},
+    {
     version: "v15.155.0-alpha",
     date: "2026-08-03",
     changes: [

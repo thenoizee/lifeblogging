@@ -693,13 +693,10 @@ if (headerRight) {
                             const items = await fetchDirect(`/users/me/lists/${list.ids.trakt}/items/${type}`);
                             isMember = items.find(i => String(i[type]?.ids?.trakt) === String(traktId));
                         } else {
-                            // Check local membership
-                            const snap = await getDocs(collection(db, `users/${currentUser.uid}/lists/${list.ids.trakt}/items`));
-                            snap.forEach(d => {
-                                const data = d.data();
-                                const dId = data[type]?.ids?.trakt || data[type]?.ids?.tmdb || data[type]?.id;
-                                if (String(dId) === String(traktId)) isMember = true;
-                            });
+                            // Direct check using exact document ID logic to bypass full collection scans (1 Read instead of N Reads)
+                            const docRef = doc(db, `users/${currentUser.uid}/lists/${list.ids.trakt}/items`, `${type}_${traktId}`);
+                            const dSnap = await getDoc(docRef);
+                            if (dSnap.exists()) isMember = true;
                         }
                         
                         btn.disabled = false;
@@ -745,16 +742,8 @@ if (headerRight) {
                             listedAt: new Date().toISOString()
                         });
                     } else {
-                        const snap = await getDocs(collection(db, `users/${currentUser.uid}/lists/${listId}/items`));
-                        let docToDelete = null;
-                        snap.forEach(d => {
-                            const data = d.data();
-                            const dId = data[type]?.ids?.trakt || data[type]?.ids?.tmdb || data[type]?.id;
-                            if (String(dId) === String(traktId)) docToDelete = d.id;
-                        });
-                        if (docToDelete) {
-                            await deleteDoc(doc(db, `users/${currentUser.uid}/lists/${listId}/items`, docToDelete));
-                        }
+                        // Bypasses scanning the list, performs a direct targeted deletion to eliminate read usage
+                        await deleteDoc(doc(db, `users/${currentUser.uid}/lists/${listId}/items`, `${type}_${traktId}`));
                     }
                 }
 
@@ -936,6 +925,26 @@ if (headerRight) {
                 }
             } catch(e) {
                 showToast('Failed to delete note', 'error');
+                if(btn) btn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            }
+        };
+
+        window.deleteComment = async (docId) => {
+            if(!confirm('Delete this comment?')) return;
+            const btn = event.target.closest('button');
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            try {
+                await deleteDoc(doc(db, `users/${currentUser.uid}/comments`, docId));
+                showToast('Comment deleted');
+                const card = btn.closest('.card');
+                if(card) {
+                    card.style.transition = 'all 0.3s';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.9)';
+                    setTimeout(() => card.remove(), 300);
+                }
+            } catch(e) {
+                showToast('Failed to delete comment', 'error');
                 if(btn) btn.innerHTML = '<i class="fa-solid fa-trash"></i>';
             }
         };
@@ -1662,11 +1671,13 @@ window.removeProgress = async (playbackId) => {
 
         // Smart caching wrapper: 
 // 1. Loads from cache immediately (if available)
-// 2. Fetches fresh data in background
+// 2. Fetches fresh data in background ONLY if Time-to-Live (TTL) has expired
 // 3. Re-renders only if data changed
-async function runSmart(cacheKey, fetcherFn, rendererFn) {
+async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 minute default TTL saves huge read spikes
     const key = `vidtrackr_smart_${cacheKey}`;
+    const timeKey = `${key}_timestamp`;
     const statusEl = document.getElementById('sync-status');
+    const now = Date.now();
     
     // Helper to update the badge
     const setStatus = (state) => {
@@ -1695,6 +1706,8 @@ async function runSmart(cacheKey, fetcherFn, rendererFn) {
 
     // 1. Instant Load from Cache
     const cached = localStorage.getItem(key);
+    const lastFetch = localStorage.getItem(timeKey);
+    
     if (cached) {
         try {
             setStatus('cache'); // Show "Cached" immediately
@@ -1705,19 +1718,25 @@ async function runSmart(cacheKey, fetcherFn, rendererFn) {
         showLoader();
     }
 
-    // 2. Silent Background Fetch
+    // 2. Skip silent fetch if TTL hasn't expired yet to save Firebase reads
+    if (cached && lastFetch && (now - parseInt(lastFetch) < ttlMs)) {
+        return; 
+    }
+
+    // 3. Silent Background Fetch
     try {
         if(cached) setStatus('loading'); // Switch to "Syncing..."
         
         const freshData = await fetcherFn();
+        localStorage.setItem(timeKey, now.toString()); // Update timestamp
         
-        // 3. Compare & Update
+        // 4. Compare & Update
         if (!cached || JSON.stringify(freshData) !== cached) {
             localStorage.setItem(key, JSON.stringify(freshData));
             rendererFn(freshData, false);
             setStatus('success'); // Show "Updated" (Green)
         } else {
-            // Data was identical, just show green "Updated" briefly to reassure user
+            // Data was identical
             setStatus('success');
         }
     } catch (e) {
@@ -2159,8 +2178,8 @@ async function loadUpNext() {
 
                     try {
                         // Fetch user history from Firebase
-                        // INCREASED LIMIT to 1500 to catch older shows pushed down by binge-watching
-                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(1500));
+                        // Decreased to 500 to drastically reduce read quota and CPU processing array limits
+                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(500));
                         const snapshot = await getDocs(q);
                         if (snapshot.empty) return [];
 
@@ -2633,7 +2652,7 @@ async function renderPerson(id) {
                 
                 // Initialize variables
                 let item, notes, history = [], related = [], showInfo = null, people = null, comments = null, collectionList = [], showProgress = null;
-                let localWlSnap = null, localColSnap = null, showPeople = null;
+                let localWlSnap = null, localColSnap = null, showPeople = null, localCommentSnap = null;
 
                 const fetchCommentsSafe = (url) => {
                     if (primaryDataSource === 'tmdb') return Promise.resolve([]); // TMDB doesn't have Trakt-style comments
@@ -2642,9 +2661,6 @@ async function renderPerson(id) {
 
                 const localHistoryFetch = async () => {
                     if (!currentUser) return [];
-                    const q = query(collection(db, `users/${currentUser.uid}/history`));
-                    const snap = await getDocs(q);
-                    const items = [];
                     
                     const matchTraktId = String(item?.ids?.trakt || id || '');
                     const matchTmdbId = String(item?.ids?.tmdb || item?.id || (typeof tmdbId !== 'undefined' ? tmdbId : '') || '');
@@ -2653,40 +2669,83 @@ async function renderPerson(id) {
                     const targetEpNum = String(item?.number || item?.episode_number || (typeof epNum !== 'undefined' ? epNum : 1));
                     const currentShowTitle = String(showInfo?.title || showInfo?.name || '').toLowerCase().trim();
                     const currentShowTmdbId = String(showInfo?.ids?.tmdb || (typeof resolvedShowId !== 'undefined' ? resolvedShowId : ''));
+                    
+                    const compositeId = (type === 'episode' && currentShowTmdbId) ? `${currentShowTmdbId}-${targetSeason}-${targetEpNum}` : '';
 
-                    snap.forEach(d => {
-                        const data = d.data();
-                        if (data.type !== type) return;
+                    // Target specific IDs to prevent loading thousands of history documents into memory
+                    const rawIds = [matchTraktId, matchTmdbId, compositeId, String(id)].filter(Boolean);
+                    const idsToCheck = [...new Set(rawIds)].slice(0, 10);
+                    
+                    const items = [];
+                    let usedFallback = false;
 
-                        const media = data.media || {};
-                        const histTrakt = String(media.ids?.trakt || '');
-                        const histTmdb = String(media.ids?.tmdb || media.id || '');
-                        const histItemId = String(data.itemId || '');
-                        
-                        const isIdMatch = (histTrakt && (histTrakt === matchTraktId || histTrakt === matchTmdbId)) ||
-                                          (histTmdb && (histTmdb === matchTmdbId || histTmdb === matchTraktId)) ||
-                                          (histItemId && (histItemId === matchTraktId || histItemId === matchTmdbId || histItemId === String(id)));
-
-                        if (type === 'episode') {
-                            const hSeason = String(media.season || media.season_number || '');
-                            const hEp = String(media.number || media.episode_number || '');
-                            const hShowTitle = String(media.show?.title || media.show?.name || '').toLowerCase().trim();
-                            const hShowTmdbId = String(media.show?.ids?.tmdb || '');
+                    try {
+                        if (idsToCheck.length > 0) {
+                            // Target index directly (fast, minimal reads)
+                            const q = query(
+                                collection(db, `users/${currentUser.uid}/history`),
+                                where("itemId", "in", idsToCheck)
+                            );
+                            const snap = await getDocs(q);
                             
-                            const isShowMatch = (hShowTitle && currentShowTitle && hShowTitle === currentShowTitle) || 
-                                                (hShowTmdbId && currentShowTmdbId && hShowTmdbId === currentShowTmdbId) ||
-                                                (media.show?.ids?.trakt && String(media.show.ids.trakt) === String(showInfo?.ids?.trakt));
+                            snap.forEach(d => {
+                                const data = d.data();
+                                if (data.type !== type) return; // double check type
+                                items.push({ 
+                                    id: d.id, 
+                                    watched_at: data.watchedAt || data.loggedAt, 
+                                    rated_at: data.ratedAt, 
+                                    [type === 'episode' ? 'episode' : type]: data.media, 
+                                    rating: data.rating, 
+                                    _originalItemId: data.itemId 
+                                });
+                            });
+                        }
+                    } catch(e) {
+                        usedFallback = true;
+                    }
 
-                            if (isIdMatch || (isShowMatch && hSeason === targetSeason && hEp === targetEpNum)) {
-                                items.push({ id: d.id, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, episode: media, rating: data.rating, _originalItemId: histItemId || histTrakt || histTmdb });
-                            }
-                        } else {
-                            if (isIdMatch) {
+                    // Safety Fallback for legacy records that might be missing standard 'itemId'
+                    // Limits read depth severely compared to the old unbound code
+                    if (items.length === 0 || usedFallback) {
+                        const fallbackQ = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(200));
+                        const snap = await getDocs(fallbackQ);
+                        
+                        snap.forEach(d => {
+                            const data = d.data();
+                            if (data.type !== type) return;
+
+                            const media = data.media || {};
+                            const histTrakt = String(media.ids?.trakt || '');
+                            const histTmdb = String(media.ids?.tmdb || media.id || '');
+                            const histItemId = String(data.itemId || '');
+                            
+                            const isIdMatch = (histTrakt && (histTrakt === matchTraktId || histTrakt === matchTmdbId)) ||
+                                              (histTmdb && (histTmdb === matchTmdbId || histTmdb === matchTraktId)) ||
+                                              (histItemId && (histItemId === matchTraktId || histItemId === matchTmdbId || histItemId === String(id)));
+
+                            if (type === 'episode') {
+                                const hSeason = String(media.season || media.season_number || '');
+                                const hEp = String(media.number || media.episode_number || '');
+                                const hShowTitle = String(media.show?.title || media.show?.name || '').toLowerCase().trim();
+                                const hShowTmdbId = String(media.show?.ids?.tmdb || '');
+                                
+                                const isShowMatch = (hShowTitle && currentShowTitle && hShowTitle === currentShowTitle) || 
+                                                    (hShowTmdbId && currentShowTmdbId && hShowTmdbId === currentShowTmdbId) ||
+                                                    (media.show?.ids?.trakt && String(media.show.ids.trakt) === String(showInfo?.ids?.trakt));
+
+                                if (isIdMatch || (isShowMatch && hSeason === targetSeason && hEp === targetEpNum)) {
+                                    items.push({ id: d.id, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, episode: media, rating: data.rating, _originalItemId: histItemId || histTrakt || histTmdb });
+                                }
+                            } else if (isIdMatch) {
                                 items.push({ id: d.id, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, [type]: media, rating: data.rating, _originalItemId: histItemId || histTrakt || histTmdb });
                             }
-                        }
-                    });
-                    return items.sort((a, b) => new Date(b.watched_at) - new Date(a.watched_at));
+                        });
+                    }
+
+                    // Prevent duplicate visual entries if the same item was picked up by both query types
+                    const uniqueItems = Array.from(new Map(items.map(it => [it.id, it])).values());
+                    return uniqueItems.sort((a, b) => new Date(b.watched_at) - new Date(a.watched_at));
                 };
 
                 // --- FETCH DATA ---
@@ -2921,10 +2980,11 @@ async function renderPerson(id) {
                         return null;
                     };
 
-                    [notes, localWlSnap, localColSnap] = await Promise.all([
+                    [notes, localWlSnap, localColSnap, localCommentSnap] = await Promise.all([
                         checkDoc('notes'),
                         checkDoc('watchlist'),
-                        checkDoc('collections')
+                        checkDoc('collections'),
+                        checkDoc('comments')
                     ]);
                     
                     // Ensure noteKey always maps back to the existing document ID so updates overwrite the original note instead of duplicating it
@@ -3507,11 +3567,26 @@ async function renderPerson(id) {
                     ${related.length > 0 ? `<h2 class="text-2xl font-bold mb-6 mt-16 px-4 border-l-4 border-[var(--primary)]">You Might Also Like</h2><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6">${related.map(r => createCardHtml(r, type)).join('')}</div>` : ''}`;
                 }
 
+                // Inject Local Comment if imported
+                if (localCommentSnap && localCommentSnap.exists()) {
+                    const localComment = localCommentSnap.data();
+                    if (!comments) comments = [];
+                    // Prevent duplicates if Trakt returned the exact same comment text
+                    if (!comments.some(c => c.comment === localComment.comment)) {
+                        comments.unshift({
+                            user: { username: 'You (Imported)' },
+                            created_at: localComment.created_at || new Date().toISOString(),
+                            comment: localComment.comment,
+                            spoiler: localComment.spoiler || false
+                        });
+                    }
+                }
+
                 if (comments && comments.length > 0) {
-                      html += `<h2 class="text-2xl font-bold mb-6 mt-16 px-4 border-l-4 border-gray-500">Community Comments</h2><div class="space-y-4 max-w-4xl">${comments.map(c => `
-                        <div class="bg-[var(--card)] p-4 rounded-xl border border-gray-800">
+                      html += `<h2 class="text-2xl font-bold mb-6 mt-16 px-4 border-l-4 border-blue-500">Comments</h2><div class="space-y-4 max-w-4xl">${comments.map(c => `
+                        <div class="bg-[var(--card)] p-4 rounded-xl border ${c.user?.username?.includes('You') ? 'border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.1)]' : 'border-gray-800'}">
                             <div class="flex justify-between items-start mb-2">
-                                <span class="font-bold text-[var(--primary)] text-sm">${c.user.username}</span>
+                                <span class="font-bold ${c.user?.username?.includes('You') ? 'text-blue-400' : 'text-[var(--primary)]'} text-sm">${c.user?.username || 'User'}</span>
                                 <span class="text-xs text-gray-500">${new Date(c.created_at).toLocaleDateString()}</span>
                             </div>
                             <p class="text-gray-300 text-sm leading-relaxed">${c.comment}</p>
@@ -4286,7 +4361,8 @@ async function renderPerson(id) {
                 { id: 'lists', name: 'Lists' },
                 { id: 'hidden', name: 'Hidden' },
                 { id: 'notes', name: 'Notes' },
-                { id: 'favorites', name: 'Favorites' }
+                { id: 'favorites', name: 'Favorites' },
+                { id: 'comments', name: 'Comments' }
             ];
             const completedCount = modules.filter(m => importedModules[m.id]).length;
             const progressPct = Math.round((completedCount / modules.length) * 100);
@@ -4374,6 +4450,12 @@ async function renderPerson(id) {
                             <i class="fa-solid fa-note-sticky"></i> Import Notes
                         </button>
                         
+                        <!-- Trakt Comments Importer -->
+                        <input type="file" id="import-comments-file" accept=".json" class="hidden">
+                        <button onclick="document.getElementById('import-comments-file').click()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
+                            <i class="fa-solid fa-comments"></i> Import Comments
+                        </button>
+
                         <!-- Trakt Favorites Importer -->
                         <input type="file" id="import-favorites-file" accept=".json" class="hidden">
                         <button onclick="document.getElementById('import-favorites-file').click()" class="bg-pink-600 hover:bg-pink-500 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
@@ -4531,7 +4613,8 @@ async function renderPerson(id) {
                                     if (!mediaData || (!mediaData.ids && !mediaData.id)) continue;
 
                                     // Extract the correct date
-                                    const dateVal = item.watched_at || item.collected_at || item.listed_at || item.hidden_at || item.rated_at || item.updated_at || item.created_at || item.note?.created_at || new Date().toISOString();
+                                    // Added item.comment?.created_at to correctly parse timestamps from the Trakt comments export JSON structure
+                                    const dateVal = item.watched_at || item.collected_at || item.listed_at || item.hidden_at || item.rated_at || item.updated_at || item.created_at || item.note?.created_at || item.comment?.created_at || new Date().toISOString();
                                     
                                     // Extract the note text natively
                                     let noteText = '';
@@ -4539,6 +4622,8 @@ async function renderPerson(id) {
                                     else if (item.note && typeof item.note === 'string') noteText = item.note;
                                     else if (item.note?.notes) noteText = item.note.notes;
                                     else if (item.text) noteText = item.text;
+                                    else if (item.comment?.comment) noteText = item.comment.comment;
+                                    else if (typeof item.comment === 'string') noteText = item.comment;
 
                                     validItems.push({
                                         mediaData,
@@ -4604,8 +4689,8 @@ async function renderPerson(id) {
                                     theadTr.innerHTML = `<th class="p-3 font-bold">Title</th><th class="p-3 font-bold">Type</th><th class="p-3 font-bold text-center">Rating</th><th class="p-3 font-bold hidden md:table-cell">Rated At</th>`;
                                 } else if (category === 'lists') {
                                     theadTr.innerHTML = `<th class="p-3 font-bold">Title</th><th class="p-3 font-bold">Type</th><th class="p-3 font-bold text-center">Rank</th><th class="p-3 font-bold hidden md:table-cell">Listed At</th>`;
-                                } else if (category === 'notes') {
-                                    theadTr.innerHTML = `<th class="p-3 font-bold">Title</th><th class="p-3 font-bold">Type</th><th class="p-3 font-bold">Note Excerpt</th>`;
+                                } else if (category === 'notes' || category === 'comments') {
+                                    theadTr.innerHTML = `<th class="p-3 font-bold">Title</th><th class="p-3 font-bold">Type</th><th class="p-3 font-bold">Note/Comment Excerpt</th>`;
                                 } else if (category === 'favorites') {
                                     theadTr.innerHTML = `<th class="p-3 font-bold">Title</th><th class="p-3 font-bold">Type</th><th class="p-3 font-bold hidden md:table-cell">Favorited At</th>`;
                                 } else if (category === 'hidden') {
@@ -4630,7 +4715,7 @@ async function renderPerson(id) {
                                         extraCols = `<td class="p-3 text-center font-bold text-yellow-500"><i class="fa-solid fa-star text-xs mr-1"></i> ${v.rating}</td><td class="p-3 text-gray-400 hidden md:table-cell">${dateStr}</td>`;
                                     } else if (category === 'lists') {
                                         extraCols = `<td class="p-3 text-center font-bold text-purple-400">#${v.rank}</td><td class="p-3 text-gray-400 hidden md:table-cell">${dateStr}</td>`;
-                                    } else if (category === 'notes') {
+                                    } else if (category === 'notes' || category === 'comments') {
                                         extraCols = `<td class="p-3 text-gray-300 italic truncate max-w-xs">${v.noteText}</td>`;
                                     } else {
                                         extraCols = `<td class="p-3 text-gray-400 hidden md:table-cell">${dateStr}</td>`;
@@ -4783,6 +4868,24 @@ async function renderPerson(id) {
                                                     importedCount++;
                                                 }
                                             }
+                                        } else if (category === 'comments') {
+                                            // Comments Import
+                                            for (let i = 0; i < validItems.length; i++) {
+                                                const v = validItems[i];
+                                                statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-blue-500"></i> Saving comment ${i + 1} of ${validItems.length}...`;
+                                                const targetId = getTargetId(v);
+                                                if (targetId && v.noteText) {
+                                                    await setDoc(doc(db, `users/${currentUser.uid}/comments`, `${v.type}_${targetId}`), {
+                                                        type: v.type,
+                                                        media_type: v.type,
+                                                        [v.type]: v.mediaData,
+                                                        comment: v.noteText,
+                                                        created_at: v.dateVal,
+                                                        spoiler: v.raw?.comment?.spoiler || false
+                                                    }, { merge: true });
+                                                    importedCount++;
+                                                }
+                                            }
                                         } else if (category === 'notes') {
                                             // Private Notes Import
                                             for (let i = 0; i < validItems.length; i++) {
@@ -4840,6 +4943,7 @@ async function renderPerson(id) {
                 setupImporter('import-hidden-file', 'hidden');
                 setupImporter('import-notes-file', 'notes');
                 setupImporter('import-favorites-file', 'favorites');
+                setupImporter('import-comments-file', 'comments');
                 
                 if(clearBtn) clearBtn.onclick = () => {
                     localStorage.clear(); 
@@ -4884,6 +4988,7 @@ async function renderPerson(id) {
                         <button id="tab-collections" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'collections' ? 'bg-teal-600 text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('collections')">Collections</button>
                         <button id="tab-lists" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'lists' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('lists')">Custom Lists</button>
                         <button id="tab-notes" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'notes' ? 'bg-amber-600 text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('notes')">Private Notes</button>
+                        <button id="tab-comments" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'comments' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('comments')"><i class="fa-solid fa-comments mr-1"></i> Comments</button>
                         <button id="tab-favorites" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'favorites' ? 'bg-pink-600 text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('favorites')"><i class="fa-solid fa-heart text-pink-300 mr-1"></i> Hall of Favourites</button>
                     </div>
                 </div>
@@ -4892,12 +4997,12 @@ async function renderPerson(id) {
             
             window.switchLib = (tab) => {
                 // Reset classes
-                ['tab-wl', 'tab-local', 'tab-collections', 'tab-lists', 'tab-notes', 'tab-favorites'].forEach(id => {
+                ['tab-wl', 'tab-local', 'tab-collections', 'tab-lists', 'tab-notes', 'tab-comments', 'tab-favorites'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.className = "px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap text-gray-400 hover:text-white";
                 });
                 // Set active class safely
-                const activeColor = tab === 'notes' ? 'bg-amber-600' : (tab === 'collections' ? 'bg-teal-600' : (tab === 'favorites' ? 'bg-pink-600' : 'bg-[var(--primary)]'));
+                const activeColor = tab === 'notes' ? 'bg-amber-600' : (tab === 'comments' ? 'bg-blue-600' : (tab === 'collections' ? 'bg-teal-600' : (tab === 'favorites' ? 'bg-pink-600' : 'bg-[var(--primary)]')));
                 const targetTab = document.getElementById(`tab-${tab}`);
                 if (targetTab) targetTab.className = `px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeColor} text-white shadow`;
 
@@ -4905,6 +5010,7 @@ async function renderPerson(id) {
                 else if(tab === 'watchlist') renderWatchlist('added', 'lib-target');
                 else if(tab === 'collections') renderLocalCollections('lib-target');
                 else if(tab === 'notes') renderLocalNotes('lib-target');
+                else if(tab === 'comments') renderLocalComments('lib-target');
                 else if(tab === 'favorites') renderFavorites('lib-target');
                 else renderLists('lib-target');
             };
@@ -4913,6 +5019,7 @@ async function renderPerson(id) {
             else if(activeTab === 'watchlist') renderWatchlist('added', 'lib-target');
             else if(activeTab === 'collections') renderLocalCollections('lib-target');
             else if(activeTab === 'notes') renderLocalNotes('lib-target');
+            else if(activeTab === 'comments') renderLocalComments('lib-target');
             else if(activeTab === 'favorites') renderFavorites('lib-target');
             else renderLists('lib-target');
         }
@@ -5167,6 +5274,70 @@ async function renderPerson(id) {
             } catch(e) {
                 console.error("Notes Error: ", e);
                 container.innerHTML = `<p class="text-center text-red-500">Failed to load notes. Open console for details.</p>`;
+            }
+        }
+
+        async function renderLocalComments(containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = `<div class="text-center py-10"><div class="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent inline-block"></div></div>`;
+            if (!currentUser) return container.innerHTML = `<p class="text-center text-red-400">Please sign in to view your comments.</p>`;
+
+            try {
+                const snap = await getDocs(collection(db, `users/${currentUser.uid}/comments`));
+                if (snap.empty) return container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-comments text-6xl mb-4 opacity-50"></i><p>You have no comments.</p></div>`;
+                
+                let html = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade">`;
+                snap.forEach(docSnap => {
+                    const d = docSnap.data();
+                    
+                    const parts = docSnap.id.split('_');
+                    const type = parts.length > 1 ? parts[0] : 'item';
+                    let fallbackId = parts.length > 1 ? parts.slice(1).join('_') : parts[0];
+                    
+                    let targetId = (primaryDataSource === 'tmdb') ? d.ids?.tmdb : d.ids?.trakt;
+                    const idsStr = encodeURIComponent(JSON.stringify(d.ids || {}));
+                    let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
+                    
+                    if (targetId && type === 'episode' && primaryDataSource === 'tmdb') {
+                        const showTmdb = d.ids?.show_tmdb || d.show?.ids?.tmdb || d[type]?.show?.ids?.tmdb;
+                        const sNum = d.season || d.season_number || d[type]?.season;
+                        const eNum = d.number || d.episode_number || d[type]?.number;
+                        if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                    }
+                    
+                    const dObj = new Date(d.created_at || d.updatedAt);
+                    const dateStr = (d.created_at || d.updatedAt) && !isNaN(dObj) ? dObj.toLocaleDateString() : 'Unknown Date';
+                    
+                    let displayTitle = d.title;
+                    if (!displayTitle && d[type]) {
+                        displayTitle = d[type].title || d[type].name;
+                        if (type === 'episode' && d[type].show) {
+                             displayTitle = `${d[type].show.title}: ${displayTitle}`;
+                        }
+                    }
+                    displayTitle = displayTitle || `Item ${targetId || fallbackId}`;
+                    
+                    const safeText = d.comment ? d.comment.replace(/"/g, '&quot;').replace(/</g, '&lt;') : '';
+
+                    html += `
+                    <div class="card p-6 rounded-xl border border-gray-700 hover:border-blue-500 transition cursor-pointer relative group" onclick="${clickHandler}">
+                        <button onclick="event.stopPropagation(); window.deleteComment('${docSnap.id}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Delete Comment">
+                            <i class="fa-solid fa-trash text-xs"></i>
+                        </button>
+                        <div class="flex justify-between items-start mb-3 pr-8">
+                            <span class="text-xs font-bold text-blue-500 uppercase tracking-widest">${type}</span>
+                            <span class="text-xs text-gray-500">${dateStr}</span>
+                        </div>
+                        <h4 class="font-bold text-gray-200 mb-2 truncate" title="${displayTitle.replace(/"/g, '&quot;')}">${displayTitle}</h4>
+                        <p class="text-gray-400 text-sm line-clamp-4 italic whitespace-pre-wrap">"${safeText}"</p>
+                        ${d.spoiler ? `<span class="mt-3 inline-block bg-red-900/50 text-red-400 border border-red-800 text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider">Spoiler</span>` : ''}
+                    </div>`;
+                });
+                html += `</div>`;
+                container.innerHTML = html;
+            } catch(e) {
+                console.error("Comments Error: ", e);
+                container.innerHTML = `<p class="text-center text-red-500">Failed to load comments. Open console for details.</p>`;
             }
         }
 
