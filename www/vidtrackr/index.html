@@ -403,6 +403,7 @@ input[type=range]::-moz-range-thumb {
     let currentModalItem = null;
     let selectedDate = new Date().toISOString();
     let userRatings = new Map(); 
+    let userRatingDetails = new Map(); // <--- Added to track exact timestamps
     let userPlayback = new Map();
     let historyPage = 1;
     let isFetchingHistory = false;
@@ -1045,6 +1046,7 @@ if (headerRight) {
                     await deleteDoc(doc(db, `users/${currentUser.uid}/ratings`, String(id)));
                 }
                 userRatings.delete(parseInt(id));
+                userRatingDetails.delete(parseInt(id));
                 showToast('Rating removed');
                 
                 // Refresh UI components if active
@@ -1738,8 +1740,19 @@ async function runSmart(cacheKey, fetcherFn, rendererFn) {
                     const localRatingsSnap = await getDocs(collection(db, `users/${currentUser.uid}/ratings`));
                     localRatingsSnap.forEach(doc => {
                         const d = doc.data();
-                        userRatings.set(parseInt(doc.id), d.rating);
-                        if (d.tmdbId) userRatings.set(parseInt(d.tmdbId), d.rating);
+                        const keyStr = String(doc.id);
+                        const keyInt = parseInt(doc.id);
+                        userRatings.set(keyStr, d.rating);
+                        userRatings.set(keyInt, d.rating);
+                        userRatingDetails.set(keyStr, { rating: d.rating, ratedAt: d.ratedAt });
+                        userRatingDetails.set(keyInt, { rating: d.rating, ratedAt: d.ratedAt });
+                        
+                        if (d.tmdbId) {
+                            userRatings.set(String(d.tmdbId), d.rating);
+                            userRatings.set(parseInt(d.tmdbId), d.rating);
+                            userRatingDetails.set(String(d.tmdbId), { rating: d.rating, ratedAt: d.ratedAt });
+                            userRatingDetails.set(parseInt(d.tmdbId), { rating: d.rating, ratedAt: d.ratedAt });
+                        }
                     });
                 } catch(e) { console.warn("Could not load local ratings", e); }
             }
@@ -1752,9 +1765,21 @@ async function runSmart(cacheKey, fetcherFn, rendererFn) {
                     fetchDirect('/sync/ratings/episodes?limit=1000') 
                 ]);
                 // Merge Trakt ratings on top of local ratings
-                movies.forEach(r => userRatings.set(r.movie.ids.trakt, r.rating));
-                shows.forEach(r => userRatings.set(r.show.ids.trakt, r.rating));
-                episodes.forEach(r => userRatings.set(r.episode.ids.trakt, r.rating));
+                movies.forEach(r => { 
+                    userRatings.set(r.movie.ids.trakt, r.rating); userRatings.set(String(r.movie.ids.trakt), r.rating); 
+                    userRatingDetails.set(r.movie.ids.trakt, { rating: r.rating, ratedAt: r.rated_at }); userRatingDetails.set(String(r.movie.ids.trakt), { rating: r.rating, ratedAt: r.rated_at }); 
+                    if (r.movie.ids.tmdb) { userRatings.set(r.movie.ids.tmdb, r.rating); userRatings.set(String(r.movie.ids.tmdb), r.rating); userRatingDetails.set(r.movie.ids.tmdb, { rating: r.rating, ratedAt: r.rated_at }); userRatingDetails.set(String(r.movie.ids.tmdb), { rating: r.rating, ratedAt: r.rated_at }); }
+                });
+                shows.forEach(r => { 
+                    userRatings.set(r.show.ids.trakt, r.rating); userRatings.set(String(r.show.ids.trakt), r.rating); 
+                    userRatingDetails.set(r.show.ids.trakt, { rating: r.rating, ratedAt: r.rated_at }); userRatingDetails.set(String(r.show.ids.trakt), { rating: r.rating, ratedAt: r.rated_at }); 
+                    if (r.show.ids.tmdb) { userRatings.set(r.show.ids.tmdb, r.rating); userRatings.set(String(r.show.ids.tmdb), r.rating); userRatingDetails.set(r.show.ids.tmdb, { rating: r.rating, ratedAt: r.rated_at }); userRatingDetails.set(String(r.show.ids.tmdb), { rating: r.rating, ratedAt: r.rated_at }); }
+                });
+                episodes.forEach(r => { 
+                    userRatings.set(r.episode.ids.trakt, r.rating); userRatings.set(String(r.episode.ids.trakt), r.rating); 
+                    userRatingDetails.set(r.episode.ids.trakt, { rating: r.rating, ratedAt: r.rated_at }); userRatingDetails.set(String(r.episode.ids.trakt), { rating: r.rating, ratedAt: r.rated_at }); 
+                    if (r.episode.ids.tmdb) { userRatings.set(r.episode.ids.tmdb, r.rating); userRatings.set(String(r.episode.ids.tmdb), r.rating); userRatingDetails.set(r.episode.ids.tmdb, { rating: r.rating, ratedAt: r.rated_at }); userRatingDetails.set(String(r.episode.ids.tmdb), { rating: r.rating, ratedAt: r.rated_at }); }
+                });
             } catch(e) { console.warn("Could not sync ratings", e); }
         }
 
@@ -1920,8 +1945,23 @@ loadCalendar();
                     const dateObj = new Date(h.watched_at);
                     const dateTimeDisplay = `${dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})} @ ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
                     
-                    const myRating = h.rating || userRatings.get(parseInt(id)) || (data.ids?.tmdb ? userRatings.get(parseInt(data.ids.tmdb)) : null);
-                    const ratedTimeStr = h.rated_at ? new Date(h.rated_at).toLocaleDateString([], {month:'short', day:'numeric'}) : '';
+                    let compositeId = null;
+                    if (type === 'episode') {
+                        const s = data.season || data.season_number;
+                        const e = data.number || data.episode_number;
+                        const sTmdb = data.show?.ids?.tmdb;
+                        if (sTmdb && s !== undefined && e !== undefined) compositeId = `${sTmdb}-${s}-${e}`;
+                    }
+                    const tId = String(data.ids?.trakt || '');
+                    const tmdbId = String(data.ids?.tmdb || '');
+                    
+                    const myRating = userRatings.get(compositeId) || userRatings.get(tId) || userRatings.get(tmdbId) || userRatings.get(parseInt(tId)) || userRatings.get(parseInt(tmdbId));
+                    const rDetails = userRatingDetails.get(compositeId) || userRatingDetails.get(tId) || userRatingDetails.get(tmdbId) || userRatingDetails.get(parseInt(tId)) || userRatingDetails.get(parseInt(tmdbId));
+                    
+                    // Rely strictly on the rating details map to prevent history import pollution
+                    const trueRatedAt = rDetails ? rDetails.ratedAt : null;
+                    const ratedTimeStr = trueRatedAt ? new Date(trueRatedAt).toLocaleDateString([], {month:'short', day:'numeric'}) : '';
+                    
                     const ratingHtml = myRating ? `<div class="flex items-center ml-2 bg-black/50 px-1.5 py-0.5 rounded gap-1.5"><span class="text-green-400 font-bold flex items-center gap-1 text-[10px]"><i class="fa-solid fa-user-check"></i> ${myRating}</span>${ratedTimeStr ? `<span class="text-[8px] text-gray-400">${ratedTimeStr}</span>` : ''}</div>` : '';
 
                     return `
@@ -2088,6 +2128,7 @@ loadCalendar();
                 
                 showToast(skipLog ? `Rated ${rating}/10!` : `Rated ${rating}/10 & Logged!`);
                 userRatings.set(parseInt(id), parseInt(rating)); 
+                userRatingDetails.set(parseInt(id), { rating: parseInt(rating), ratedAt: new Date().toISOString() });
                 
                 if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) loadUpNext();
                 if (document.getElementById('last-watched-container') && !document.getElementById('last-watched-container').classList.contains('hidden')) loadLastWatched();
@@ -3028,10 +3069,24 @@ async function renderPerson(id) {
                           const epInfo = h.episode ? ` <span class="text-[var(--primary)] text-xs ml-2">S${h.episode.season}E${h.episode.number}</span>` : '';
                           const rId = h.episode ? h.episode.ids.trakt : id;
                           const rType = h.episode ? 'episode' : type;
-                          const hRating = h.rating || userRatings.get(parseInt(rId));
-                          const ratedStr = h.rated_at ? new Date(h.rated_at).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+                          let cId = null;
+                          if (h.episode) {
+                              const s = h.episode.season || h.episode.season_number;
+                              const e = h.episode.number || h.episode.episode_number;
+                              const sTmdb = showInfo?.ids?.tmdb;
+                              if (sTmdb && s !== undefined && e !== undefined) cId = `${sTmdb}-${s}-${e}`;
+                          }
+                          const tId = String(h.episode ? (h.episode.ids?.trakt || '') : (item.ids?.trakt || id));
+                          const tmdbId = String(h.episode ? (h.episode.ids?.tmdb || '') : (item.ids?.tmdb || id));
+
+                          const hRating = userRatings.get(cId) || userRatings.get(tId) || userRatings.get(tmdbId) || userRatings.get(parseInt(tId)) || userRatings.get(parseInt(tmdbId));
+                          const rDetails = userRatingDetails.get(cId) || userRatingDetails.get(tId) || userRatingDetails.get(tmdbId) || userRatingDetails.get(parseInt(tId)) || userRatingDetails.get(parseInt(tmdbId));
+                          
+                          // Rely strictly on the rating details map to prevent history import pollution
+                          const trueRatedAt = rDetails ? rDetails.ratedAt : null;
+                          const ratedStr = trueRatedAt ? new Date(trueRatedAt).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
                           const hRatingHtml = hRating ? `<div class="flex flex-col items-end mr-3"><span class="text-yellow-500 text-xs font-bold"><i class="fa-solid fa-star"></i> ${hRating}</span>${ratedStr ? `<span class="text-[9px] text-gray-500 mt-0.5">${ratedStr}</span>` : ''}</div>` : '';
-                          return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition" onclick="window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                          return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition" onclick="window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
                       }).join('')}${loadMoreBtn}</div></div>`;
                 }
 
@@ -3293,7 +3348,96 @@ async function renderPerson(id) {
                             <h1 class="text-4xl md:text-5xl font-bold mb-2 leading-tight tracking-tight">${item.title}</h1>
                             ${item.tagline ? `<p class="text-xl text-gray-400 italic mb-6">"${item.tagline}"</p>` : ''}
                             
-                            ${type === 'show' ? await (async () => { try { showProgress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=${showSpecials}&count_specials=${showSpecials}&extended=full,images`); const percent = showProgress.aired > 0 ? Math.round((showProgress.completed / showProgress.aired) * 100) : 0; let nextEpHtml = ''; if (showProgress.next_episode) { const nx = showProgress.next_episode; const nxImg = getImage({ type: 'episode', episode: nx, show: item }, null, true); nextEpHtml = `<div class="mb-6 bg-[var(--bg)] rounded-xl p-4 border border-gray-700 hover:border-[var(--primary)] flex items-center gap-4 cursor-pointer transition shadow-lg group" onclick="location.hash='#detail/episode/${nx.ids.trakt}'"><div class="w-24 h-14 md:w-32 md:h-18 flex-shrink-0 rounded-lg overflow-hidden bg-gray-900 relative"><img src="${nxImg}" class="w-full h-full object-cover group-hover:scale-110 transition duration-300" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-1 left-1 bg-[var(--primary)] text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shadow-sm">Up Next</div></div><div class="flex-grow min-w-0"><p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">Season ${nx.season} <span class="mx-1">•</span> Episode ${nx.number}</p><h4 class="font-bold text-sm md:text-base text-gray-200 truncate group-hover:text-[var(--primary)] transition">${nx.title}</h4></div><div class="hidden sm:flex items-center text-xs text-gray-500 font-bold mr-2">Continue Watching <i class="fa-solid fa-circle-play text-[var(--primary)] text-xl ml-2"></i></div></div>`; } return `<div class="mb-6 bg-gray-800 rounded-full h-4 w-full overflow-hidden border border-gray-700 relative group"><div class="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-1000" style="width: ${percent}%"></div><div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">${percent}% WATCHED</div></div>${nextEpHtml}`; } catch(e){ return ''; } })() : ''}
+                            ${type === 'show' ? await (async () => { 
+                                try { 
+                                    const targetTraktId = item.ids?.slug || item.ids?.trakt || id;
+                                    
+                                    // Prefer Trakt API if connected AND it's set as primary, otherwise compute locally to match Progress Tab
+                                    if (traktAccessToken && primaryDataSource === 'trakt') {
+                                        showProgress = await fetchDirect(`/shows/${targetTraktId}/progress/watched?hidden=false&specials=${showSpecials}&count_specials=${showSpecials}&extended=full,images`);
+                                    } else if (currentUser) {
+                                        // Local Calculation mirroring 'calculateLocalSeriesProgress'
+                                        const snap = await getDocs(collection(db, `users/${currentUser.uid}/history`));
+                                        let watchedEps = new Set();
+                                        let maxS = 0, maxE = 0;
+                                        
+                                        snap.forEach(d => {
+                                            const data = d.data();
+                                            if (data.type === 'episode' && data.media) {
+                                                const sTmdb = String(data.media.show?.ids?.tmdb || data.media.ids?.tmdb || '');
+                                                const sTrakt = String(data.media.show?.ids?.trakt || data.media.ids?.trakt || '');
+                                                const matchTmdb = String(item.ids?.tmdb);
+                                                const matchTrakt = String(item.ids?.trakt);
+                                                
+                                                if ((sTmdb && sTmdb === matchTmdb) || (sTrakt && sTrakt === matchTrakt)) {
+                                                    const s = parseInt(data.media.season || data.media.season_number || 1);
+                                                    const e = parseInt(data.media.number || data.media.episode_number || 1);
+                                                    watchedEps.add(`S${s}E${e}`);
+                                                    if (s > maxS || (s === maxS && e > maxE)) { maxS = s; maxE = e; }
+                                                }
+                                            }
+                                        });
+
+                                        const totalAired = item.number_of_episodes || item.aired_episodes || 0;
+                                        
+                                        // Simple next episode resolution for TMDB
+                                        let nextEpData = null;
+                                        if (primaryDataSource === 'tmdb') {
+                                            let nextS = maxS;
+                                            let nextE = maxE + 1;
+                                            const currentSeason = item.seasons?.find(x => x.season_number === nextS);
+                                            if (currentSeason && nextE > currentSeason.episode_count) {
+                                                nextS += 1;
+                                                nextE = 1;
+                                            }
+                                            const targetSeason = item.seasons?.find(x => x.season_number === nextS);
+                                            if (targetSeason && targetSeason.episode_count > 0) {
+                                                nextEpData = await fetchTMDB(`/tv/${item.ids?.tmdb}/season/${nextS}/episode/${nextE}`).catch(() => null);
+                                            }
+                                        }
+
+                                        showProgress = {
+                                            aired: totalAired,
+                                            completed: watchedEps.size,
+                                            next_episode: nextEpData && nextEpData.status_code !== 34 ? { 
+                                                season: nextEpData.season_number, 
+                                                number: nextEpData.episode_number, 
+                                                title: nextEpData.name, 
+                                                ids: { tmdb: nextEpData.id, trakt: `${item.ids?.tmdb}-${nextEpData.season_number}-${nextEpData.episode_number}` } 
+                                            } : null,
+                                            seasons: []
+                                        };
+                                        
+                                        // Populate season progress so the Season Grid displays it correctly
+                                        if (item.seasons) {
+                                            item.seasons.forEach(s => {
+                                                let sCompleted = 0;
+                                                watchedEps.forEach(epStr => { if (epStr.startsWith(`S${s.season_number}E`)) sCompleted++; });
+                                                showProgress.seasons.push({ number: s.season_number, aired: s.episode_count, completed: sCompleted });
+                                            });
+                                        }
+                                    }
+
+                                    if (!showProgress) return '';
+
+                                    const percent = showProgress.aired > 0 ? Math.min(100, Math.round((showProgress.completed / showProgress.aired) * 100)) : 0; 
+                                    let nextEpHtml = ''; 
+                                    if (showProgress.next_episode) { 
+                                        const nx = showProgress.next_episode; 
+                                        const nxImg = getImage({ type: 'episode', episode: nx, show: item }, null, true); 
+                                        
+                                        const targetId = (primaryDataSource === 'tmdb') ? nx.ids?.tmdb : nx.ids?.trakt;
+                                        const fallbackId = nx.ids?.trakt || nx.ids?.tmdb;
+                                        const clickHash = targetId && primaryDataSource === 'tmdb' ? `#detail/episode/${item.ids?.tmdb}-${nx.season}-${nx.number}` : `#detail/episode/${targetId || fallbackId}`;
+
+                                        nextEpHtml = `<div class="mb-6 bg-[var(--bg)] rounded-xl p-4 border border-gray-700 hover:border-[var(--primary)] flex items-center gap-4 cursor-pointer transition shadow-lg group" onclick="location.hash='${clickHash}'"><div class="w-24 h-14 md:w-32 md:h-18 flex-shrink-0 rounded-lg overflow-hidden bg-gray-900 relative"><img src="${nxImg}" class="w-full h-full object-cover group-hover:scale-110 transition duration-300" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-1 left-1 bg-[var(--primary)] text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shadow-sm">Up Next</div></div><div class="flex-grow min-w-0"><p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">Season ${nx.season} <span class="mx-1">•</span> Episode ${nx.number}</p><h4 class="font-bold text-sm md:text-base text-gray-200 truncate group-hover:text-[var(--primary)] transition">${nx.title || 'Next Episode'}</h4></div><div class="hidden sm:flex items-center text-xs text-gray-500 font-bold mr-2">Continue Watching <i class="fa-solid fa-circle-play text-[var(--primary)] text-xl ml-2"></i></div></div>`; 
+                                    } 
+                                    return `<div class="mb-6 bg-gray-800 rounded-full h-4 w-full overflow-hidden border border-gray-700 relative group"><div class="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-1000" style="width: ${percent}%"></div><div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">${percent}% WATCHED</div></div>${nextEpHtml}`; 
+                                } catch(e){ 
+                                    console.error("Local series progress computation error:", e);
+                                    return ''; 
+                                } 
+                            })() : ''}
                             
                             <!-- Metadata Row -->
                             <div class="flex flex-wrap items-center gap-4 text-gray-300 mb-4 text-sm font-medium">
@@ -3922,8 +4066,24 @@ async function renderPerson(id) {
                         
                         const displayImageObj = type === 'episode' ? item.episode : item.movie;
                         const img = getImage(displayImageObj, type, true); 
-                        const myRating = item.rating || userRatings.get(parseInt(navId)) || (displayImageObj.ids?.tmdb ? userRatings.get(parseInt(displayImageObj.ids.tmdb)) : null);
-                        const ratedStr = item.rated_at ? new Date(item.rated_at).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+                        
+                        let compositeId = null;
+                        if (type === 'episode') {
+                            const s = displayImageObj.season || displayImageObj.season_number;
+                            const e = displayImageObj.number || displayImageObj.episode_number;
+                            const sTmdb = item.show?.ids?.tmdb;
+                            if (sTmdb && s !== undefined && e !== undefined) compositeId = `${sTmdb}-${s}-${e}`;
+                        }
+                        const tId = String(displayImageObj.ids?.trakt || '');
+                        const tmdbId = String(displayImageObj.ids?.tmdb || '');
+                        
+                        const myRating = userRatings.get(compositeId) || userRatings.get(tId) || userRatings.get(tmdbId) || userRatings.get(parseInt(tId)) || userRatings.get(parseInt(tmdbId));
+                        const rDetails = userRatingDetails.get(compositeId) || userRatingDetails.get(tId) || userRatingDetails.get(tmdbId) || userRatingDetails.get(parseInt(tId)) || userRatingDetails.get(parseInt(tmdbId));
+                        
+                        // Rely strictly on the rating details map to prevent history import pollution
+                        const trueRatedAt = rDetails ? rDetails.ratedAt : null;
+                        const ratedStr = trueRatedAt ? new Date(trueRatedAt).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+                        
                         const rateDisplay = myRating ? `<div class="flex flex-col items-end ml-auto"><span class="text-green-400 font-bold text-xs bg-green-900/20 px-2 py-1 rounded-md border border-green-800/50 shadow-sm whitespace-nowrap"><i class="fa-solid fa-user-check"></i> ${myRating}</span>${ratedStr ? `<span class="text-[9px] text-gray-500 mt-1">${ratedStr}</span>` : ''}</div>` : '';
                         
                         const wDate = new Date(item.watched_at);
@@ -4054,9 +4214,53 @@ async function renderPerson(id) {
         }
 
         function renderSettings() { 
+            // Calculate the Trakt import progress out of the 7 available modules
+            const importedModules = JSON.parse(localStorage.getItem('vidtrackr_trakt_imports') || '{}');
+            const modules = [
+                { id: 'history', name: 'History' },
+                { id: 'ratings', name: 'Ratings' },
+                { id: 'collections', name: 'Collections' },
+                { id: 'lists', name: 'Lists' },
+                { id: 'hidden', name: 'Hidden' },
+                { id: 'notes', name: 'Notes' },
+                { id: 'favorites', name: 'Favorites' }
+            ];
+            const completedCount = modules.filter(m => importedModules[m.id]).length;
+            const progressPct = Math.round((completedCount / modules.length) * 100);
+
+            const checklistHtml = modules.map(m => {
+                const done = importedModules[m.id];
+                return `<div class="flex items-center gap-2 bg-gray-900/50 px-3 py-2 rounded border ${done ? 'border-green-500/50 text-green-400' : 'border-gray-700 text-gray-500'} text-xs font-bold uppercase tracking-wider">
+                            <i class="fa-solid ${done ? 'fa-circle-check' : 'fa-circle-xmark opacity-50'}"></i> ${m.name}
+                        </div>`;
+            }).join('');
+
+            // Build the onboarding progress card HTML
+            // Hide it completely if they have finished all 7 so it doesn't permanently take up space
+            const onboardingHtml = completedCount < modules.length ? `
+                <div class="card p-6 md:p-8 rounded-2xl max-w-2xl border border-[var(--primary)] bg-[var(--primary)]/5 mb-2 relative overflow-hidden">
+                    <div class="relative z-10">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-wand-magic-sparkles text-[var(--primary)]"></i> Trakt Migration Setup
+                            </h2>
+                            <span class="text-sm font-bold bg-[var(--primary)] text-white px-3 py-1 rounded-full shadow-lg">${completedCount}/7 Imported</span>
+                        </div>
+                        <p class="text-gray-400 text-sm mb-5">Complete your migration by importing your Trakt data exports below. We'll track your progress as you go!</p>
+                        <div class="flex flex-wrap gap-2 mb-6">
+                            ${checklistHtml}
+                        </div>
+                        <div class="w-full bg-gray-800 rounded-full h-3 overflow-hidden border border-gray-700 shadow-inner">
+                            <div class="bg-gradient-to-r from-red-700 to-red-400 h-full transition-all duration-1000 ease-out" style="width: ${progressPct}%"></div>
+                        </div>
+                    </div>
+                </div>
+            ` : '';
+
             els.content.innerHTML = `
             <h1 class="text-3xl font-bold mb-6">Settings</h1>
             <div class="grid gap-6 animate-fade">
+                ${onboardingHtml}
                 <div class="card p-8 rounded-2xl max-w-2xl border border-gray-800">
                     <h2 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-server mr-3 text-green-500"></i> Data Source</h2>
                     <p class="text-gray-400 mb-6">Select the primary database for searching and displaying metadata. TMDB is recommended.</p>
@@ -4228,34 +4432,36 @@ async function renderPerson(id) {
 
                                 const validItems = [];
                                 for (const item of json) {
-                                    // Account for Trakt's nested "attached_to" structure used in Notes exports
-                                    const target = item.attached_to ? item.attached_to : item;
-                                    let type = item.type || target.type;
+                                    // Properly extract type and media data, accounting for varying Trakt export structures
+                                    let type = item.type || item.attached_to?.type;
 
                                     if (!type) {
-                                        if (target.episode) type = 'episode';
-                                        else if (target.season) type = 'season';
-                                        else if (target.show) type = 'show';
-                                        else if (target.movie) type = 'movie';
+                                        if (item.episode || item.attached_to?.episode) type = 'episode';
+                                        else if (item.season || item.attached_to?.season) type = 'season';
+                                        else if (item.show || item.attached_to?.show) type = 'show';
+                                        else if (item.movie || item.attached_to?.movie) type = 'movie';
                                         else continue;
                                     }
 
                                     let mediaData = null;
                                     let displayTitle = '';
 
+                                    // Extract data, prioritizing root properties but falling back to attached_to if nested
                                     if (type === 'episode') {
-                                        mediaData = target.episode || {};
-                                        if (target.show) mediaData.show = target.show;
-                                        displayTitle = `${target.show?.title || 'Show'}: S${mediaData.season || mediaData.season_number || '?'}E${mediaData.number || mediaData.episode_number || '?'} ${mediaData.title || mediaData.name || ''}`;
+                                        mediaData = item.episode || item.attached_to?.episode || {};
+                                        const showData = item.show || item.attached_to?.show;
+                                        if (showData) mediaData.show = showData;
+                                        displayTitle = `${showData?.title || 'Show'}: S${mediaData.season || mediaData.season_number || '?'}E${mediaData.number || mediaData.episode_number || '?'} ${mediaData.title || mediaData.name || ''}`;
                                     } else if (type === 'season') {
-                                        mediaData = target.season || {};
-                                        if (target.show) mediaData.show = target.show;
-                                        displayTitle = `${target.show?.title || 'Show'}: Season ${mediaData.number || mediaData.season_number || '?'}`;
+                                        mediaData = item.season || item.attached_to?.season || {};
+                                        const showData = item.show || item.attached_to?.show;
+                                        if (showData) mediaData.show = showData;
+                                        displayTitle = `${showData?.title || 'Show'}: Season ${mediaData.number || mediaData.season_number || '?'}`;
                                     } else if (type === 'show') {
-                                        mediaData = target.show || {};
+                                        mediaData = item.show || item.attached_to?.show || {};
                                         displayTitle = mediaData.title || mediaData.name || 'Unknown Show';
                                     } else if (type === 'movie') {
-                                        mediaData = target.movie || target; // fallback if flat
+                                        mediaData = item.movie || item.attached_to?.movie || item; // fallback if flat
                                         displayTitle = mediaData.title || mediaData.name || 'Unknown Movie';
                                     }
 
@@ -4419,7 +4625,8 @@ async function renderPerson(id) {
                                             for (let i = 0; i < validItems.length; i++) {
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-[var(--primary)]"></i> Importing ${i + 1} of ${validItems.length}...`;
-                                                await window.logWatchToFirebase(v.mediaData, v.type, 100, v.dateVal, v.rating);
+                                                // Prevent the history import from passing the rating parameter to avoid injecting 'now' as the rating timestamp
+                                                await window.logWatchToFirebase(v.mediaData, v.type, 100, v.dateVal, null);
                                                 importedCount++;
                                             }
                                         } else if (category === 'ratings') {
@@ -4437,6 +4644,9 @@ async function renderPerson(id) {
                                                     }, { merge: true });
                                                     // Map keys must be strings if using composite IDs
                                                     userRatings.set(String(targetId), v.rating);
+                                                    userRatings.set(parseInt(targetId), v.rating);
+                                                    userRatingDetails.set(String(targetId), { rating: v.rating, ratedAt: v.dateVal });
+                                                    userRatingDetails.set(parseInt(targetId), { rating: v.rating, ratedAt: v.dateVal });
                                                     importedCount++;
                                                 }
                                             }
@@ -4528,8 +4738,16 @@ async function renderPerson(id) {
                                             }
                                         }
 
+                                        // Record this specific category as successfully imported in local storage
+                                        const importedState = JSON.parse(localStorage.getItem('vidtrackr_trakt_imports') || '{}');
+                                        importedState[category] = true;
+                                        localStorage.setItem('vidtrackr_trakt_imports', JSON.stringify(importedState));
+
                                         previewModal.classList.add('hidden');
                                         showToast(`Successfully imported ${importedCount} ${category}!`, 'success');
+
+                                        // Instantly re-render the settings page so the progress bar updates from 1/7 to 2/7
+                                        if (location.hash.startsWith('#settings')) renderSettings();
                                     } catch(e) {
                                         console.error("Import error:", e);
                                         showToast('An error occurred during import.', 'error');
@@ -5094,30 +5312,44 @@ async function renderPerson(id) {
 
                 const validShows = progressResults.filter(s => s !== null);
 
+                // Cache the results locally for the session
+                sessionStorage.setItem('vidtrackr_local_progress', JSON.stringify(validShows));
+
                 // 4. Render HTML
                 const container = document.getElementById('local-series-progress-container');
                 if (validShows.length > 0 && container) {
-                    container.outerHTML = `<div class="space-y-4">${validShows.map(item => {
-                        const aired = item.stats.aired;
-                        const completed = item.stats.completed;
-                        const percent = aired > 0 ? Math.min(100, Math.round((completed / aired) * 100)) : 0;
-                        const nextEp = item.stats.next_episode ? `Next: S${item.stats.next_episode.season}E${item.stats.next_episode.number}` : '<span class="text-green-500"><i class="fa-solid fa-check"></i> Up to date</span>';
-                        
-                        return `
-                        <div class="card p-4 rounded-xl border border-gray-800 hover:border-yellow-500 transition cursor-pointer group" onclick="location.hash='#detail/show/${item.show.ids?.trakt || item.show.ids?.tmdb}'">
-                            <div class="flex justify-between items-end mb-2">
-                                <h4 class="font-bold truncate text-gray-200 group-hover:text-yellow-500 transition">${item.show.title}</h4>
-                                <span class="text-xs text-gray-500">${completed} / ${aired} eps</span>
-                            </div>
-                            <div class="w-full bg-gray-900 rounded-full h-2.5 mb-2 overflow-hidden">
-                                <div class="bg-gradient-to-r from-yellow-600 to-yellow-400 h-2.5 rounded-full" style="width: ${percent}%;"></div>
-                            </div>
-                            <div class="flex justify-between items-center text-xs">
-                                <span class="text-gray-400 font-mono">${percent}% Complete</span>
-                                <span class="text-gray-500">${nextEp}</span>
-                            </div>
-                        </div>`;
-                    }).join('')}</div>`;
+                    container.outerHTML = `
+                    <div id="local-series-progress-container">
+                        <div class="space-y-4">
+                            ${validShows.map(item => {
+                                const aired = item.stats.aired || 0;
+                                const completed = item.stats.completed || 0;
+                                const percent = aired > 0 ? Math.min(100, Math.round((completed / aired) * 100)) : 0;
+                                const nextEp = item.stats.next_episode ? `Next: S${item.stats.next_episode.season}E${item.stats.next_episode.number}` : '<span class="text-green-500"><i class="fa-solid fa-check"></i> Up to date</span>';
+                                
+                                const targetId = (primaryDataSource === 'tmdb') ? item.show.ids?.tmdb : item.show.ids?.trakt;
+                                const fallbackId = item.show.ids?.trakt || item.show.ids?.tmdb || item.show.id;
+
+                                return `
+                                <div class="card p-4 rounded-xl border border-gray-800 hover:border-yellow-500 transition cursor-pointer group" onclick="location.hash='#detail/show/${targetId || fallbackId}'">
+                                    <div class="flex justify-between items-end mb-2">
+                                        <h4 class="font-bold truncate text-gray-200 group-hover:text-yellow-500 transition">${item.show.title}</h4>
+                                        <span class="text-xs text-gray-500">${completed} / ${aired} eps</span>
+                                    </div>
+                                    <div class="w-full bg-gray-900 rounded-full h-2.5 mb-2 overflow-hidden">
+                                        <div class="bg-gradient-to-r from-yellow-600 to-yellow-400 h-2.5 rounded-full" style="width: ${percent}%;"></div>
+                                    </div>
+                                    <div class="flex justify-between items-center text-xs">
+                                        <span class="text-gray-400 font-mono">${percent}% Complete</span>
+                                        <span class="text-gray-500">${nextEp}</span>
+                                    </div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                        <div class="mt-4 text-center">
+                            <button onclick="sessionStorage.removeItem('vidtrackr_local_progress'); window.calculateLocalSeriesProgress(this)" class="text-xs text-gray-500 hover:text-white bg-gray-800/50 hover:bg-gray-700 px-3 py-1.5 rounded transition border border-gray-700 shadow-md"><i class="fa-solid fa-rotate-right mr-1"></i> Refresh Progress</button>
+                        </div>
+                    </div>`;
                 } else {
                     if (container) container.innerHTML = '<p class="text-red-400">Failed to calculate or no active shows found.</p>';
                 }
@@ -5157,11 +5389,27 @@ async function renderPerson(id) {
                 await window.enrichTMDBImages(localHistory);
 
                 const uniqueShowIds = new Set();
+                
+                // --- Deep Analytics Data Structures ---
+                const daysOfWeek = [0, 0, 0, 0, 0, 0, 0];
+                const decadeCounts = {};
 
                 localHistory.forEach(item => {
                     const type = item.type;
                     const media = item.media;
                     const runtime = parseInt(media.runtime) || 0;
+
+                    // Deep Analytics: Day of Week
+                    const dDate = new Date(item.watchedAt || item.loggedAt);
+                    if (!isNaN(dDate)) daysOfWeek[dDate.getDay()]++;
+
+                    // Deep Analytics: Release Eras
+                    const yearStr = media.year || media.release_date || media.first_air_date;
+                    const parsedYear = parseInt(yearStr ? String(yearStr).substring(0,4) : 0);
+                    if (parsedYear && parsedYear >= 1900 && parsedYear <= new Date().getFullYear() + 5) {
+                        const decade = Math.floor(parsedYear / 10) * 10;
+                        decadeCounts[`${decade}s`] = (decadeCounts[`${decade}s`] || 0) + 1;
+                    }
 
                     if (type === 'movie') {
                         stats.movies.watched++;
@@ -5198,7 +5446,7 @@ async function renderPerson(id) {
                 watchedShows = watchedShows.slice(0, 12);
 
                 // 2. Fetch detailed progress for Series (Requires Trakt for Aired/Next Ep calculations)
-                if (traktAccessToken && watchedShows.length > 0) {
+                if (traktAccessToken && primaryDataSource === 'trakt' && watchedShows.length > 0) {
                     const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
                     const batches = chunk(watchedShows, 3); // Batch size of 3 is safe
 
@@ -5221,6 +5469,14 @@ async function renderPerson(id) {
                 }
                 
                 const validShows = showProgressData.filter(s => s !== null);
+
+                let localCachedShows = [];
+                try {
+                    const cached = sessionStorage.getItem('vidtrackr_local_progress');
+                    if (cached) localCachedShows = JSON.parse(cached);
+                } catch(e) {}
+
+                const showsToRender = validShows.length > 0 ? validShows : localCachedShows;
 
                 // 3. Build HTML
                 els.content.innerHTML = `
@@ -5255,44 +5511,72 @@ async function renderPerson(id) {
                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             <div class="lg:col-span-2">
                                 <h3 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-bars-progress mr-2 text-yellow-500"></i> Series Progress</h3>
-                                <div class="space-y-4">
-                                    ${validShows.length > 0 ? validShows.map(item => {
-                                        const aired = item.stats.aired;
-                                        const completed = item.stats.completed;
-                                        const percent = aired > 0 ? Math.round((completed / aired) * 100) : 0;
-                                        const nextEp = item.stats.next_episode ? `Next: S${item.stats.next_episode.season}E${item.stats.next_episode.number}` : '<span class="text-green-500"><i class="fa-solid fa-check"></i> Up to date</span>';
-                                        
-                                        return `
-                                        <div class="card p-4 rounded-xl border border-gray-800 hover:border-yellow-500 transition cursor-pointer group" onclick="location.hash='#detail/show/${item.show.ids.trakt}'">
-                                            <div class="flex justify-between items-end mb-2">
-                                                <h4 class="font-bold truncate text-gray-200 group-hover:text-yellow-500 transition">${item.show.title}</h4>
-                                                <span class="text-xs text-gray-500">${completed} / ${aired} eps</span>
-                                            </div>
-                                            <div class="w-full bg-gray-900 rounded-full h-2.5 mb-2 overflow-hidden">
-                                                <div class="bg-gradient-to-r from-yellow-600 to-yellow-400 h-2.5 rounded-full" style="width: ${percent}%"></div>
-                                            </div>
-                                            <div class="flex justify-between items-center text-xs">
-                                                <span class="text-gray-400 font-mono">${percent}% Complete</span>
-                                                <span class="text-gray-500">${nextEp}</span>
-                                            </div>
-                                        </div>`;
-                                    }).join('') : `
-                                    <div id="local-series-progress-container" class="card p-6 md:p-8 rounded-xl border border-gray-800 text-center flex flex-col items-center shadow-lg bg-gray-900/30">
-                                        <i class="fa-solid fa-server text-4xl mb-4 text-blue-500/50"></i>
-                                        <h4 class="text-lg font-bold text-gray-200 mb-2">Calculate Progress Locally</h4>
-                                        <p class="text-gray-400 mb-6 text-sm max-w-md leading-relaxed">VidTrackr can crunch your watch history against the TMDB database to determine your exact series progress. This takes multiple API requests, so it must be done manually.</p>
-                                        <button onclick="window.calculateLocalSeriesProgress(this)" class="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-600/50 px-6 py-3 rounded-lg font-bold transition flex items-center gap-2">
-                                            <i class="fa-solid fa-calculator"></i> Calculate Progress
-                                        </button>
-                                    </div>`}
+                                <div id="local-series-progress-container">
+                                    ${showsToRender.length > 0 ? `
+                                        <div class="space-y-4">
+                                            ${showsToRender.map(item => {
+                                                const aired = item.stats.aired || 0;
+                                                const completed = item.stats.completed || 0;
+                                                const percent = aired > 0 ? Math.min(100, Math.round((completed / aired) * 100)) : 0;
+                                                const nextEp = item.stats.next_episode ? `Next: S${item.stats.next_episode.season}E${item.stats.next_episode.number}` : '<span class="text-green-500"><i class="fa-solid fa-check"></i> Up to date</span>';
+                                                
+                                                const targetId = (primaryDataSource === 'tmdb') ? item.show.ids?.tmdb : item.show.ids?.trakt;
+                                                const fallbackId = item.show.ids?.trakt || item.show.ids?.tmdb || item.show.id;
+
+                                                return `
+                                                <div class="card p-4 rounded-xl border border-gray-800 hover:border-yellow-500 transition cursor-pointer group" onclick="location.hash='#detail/show/${targetId || fallbackId}'">
+                                                    <div class="flex justify-between items-end mb-2">
+                                                        <h4 class="font-bold truncate text-gray-200 group-hover:text-yellow-500 transition">${item.show.title}</h4>
+                                                        <span class="text-xs text-gray-500">${completed} / ${aired} eps</span>
+                                                    </div>
+                                                    <div class="w-full bg-gray-900 rounded-full h-2.5 mb-2 overflow-hidden">
+                                                        <div class="bg-gradient-to-r from-yellow-600 to-yellow-400 h-2.5 rounded-full" style="width: ${percent}%;"></div>
+                                                    </div>
+                                                    <div class="flex justify-between items-center text-xs">
+                                                        <span class="text-gray-400 font-mono">${percent}% Complete</span>
+                                                        <span class="text-gray-500">${nextEp}</span>
+                                                    </div>
+                                                </div>`;
+                                            }).join('')}
+                                        </div>
+                                        <div class="mt-4 text-center">
+                                            <button onclick="sessionStorage.removeItem('vidtrackr_local_progress'); window.calculateLocalSeriesProgress(this)" class="text-xs text-gray-500 hover:text-white bg-gray-800/50 hover:bg-gray-700 px-3 py-1.5 rounded transition border border-gray-700 shadow-md"><i class="fa-solid fa-rotate-right mr-1"></i> Refresh Progress</button>
+                                        </div>
+                                    ` : `
+                                        <div class="card p-6 md:p-8 rounded-xl border border-gray-800 text-center flex flex-col items-center shadow-lg bg-gray-900/30">
+                                            <i class="fa-solid fa-server text-4xl mb-4 text-blue-500/50"></i>
+                                            <h4 class="text-lg font-bold text-gray-200 mb-2">Calculate Progress Locally</h4>
+                                            <p class="text-gray-400 mb-6 text-sm max-w-md leading-relaxed">VidTrackr can crunch your watch history against the TMDB database to determine your exact series progress. This takes multiple API requests, so it must be done manually.</p>
+                                            <button onclick="window.calculateLocalSeriesProgress(this)" class="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-600/50 px-6 py-3 rounded-lg font-bold transition flex items-center gap-2">
+                                                <i class="fa-solid fa-calculator"></i> Calculate Progress
+                                            </button>
+                                        </div>
+                                    `}
                                 </div>
                             </div>
 
                             <div class="space-y-8">
                                 <div>
-                                    <h3 class="text-xl font-bold mb-4">Format Split</h3>
-                                    <div class="card p-4 rounded-xl border border-gray-800 h-64 relative">
-                                        <canvas id="progress-chart"></canvas>
+                                    <h3 class="text-xl font-bold mb-4">Deep Analytics</h3>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div class="card p-4 rounded-xl border border-gray-800 flex flex-col">
+                                            <h4 class="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Format Split</h4>
+                                            <div class="relative flex-grow min-h-[200px]">
+                                                <canvas id="progress-chart"></canvas>
+                                            </div>
+                                        </div>
+                                        <div class="card p-4 rounded-xl border border-gray-800 flex flex-col">
+                                            <h4 class="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Activity by Day</h4>
+                                            <div class="relative flex-grow min-h-[200px]">
+                                                <canvas id="day-chart"></canvas>
+                                            </div>
+                                        </div>
+                                        <div class="card p-4 rounded-xl border border-gray-800 flex flex-col md:col-span-2">
+                                            <h4 class="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Release Eras</h4>
+                                            <div class="relative flex-grow min-h-[200px]">
+                                                <canvas id="era-chart"></canvas>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -5322,12 +5606,16 @@ async function renderPerson(id) {
                         </div>
                     </div>`;
 
-                // Render Chart (Safe)
-                if (progressChartInstance) progressChartInstance.destroy();
+                // Render Charts (Safe Global Tracking to prevent memory leaks)
+                if (window.progressChartInstance) window.progressChartInstance.destroy();
+                if (window.dayChartInstance) window.dayChartInstance.destroy();
+                if (window.eraChartInstance) window.eraChartInstance.destroy();
+                
+                // 1. Format Split Doughnut
                 const chartEl = document.getElementById('progress-chart');
                 if (chartEl && stats && stats.movies && stats.episodes) {
                     const ctx = chartEl.getContext('2d');
-                    progressChartInstance = new Chart(ctx, {
+                    window.progressChartInstance = new Chart(ctx, {
                         type: 'doughnut',
                         data: {
                             labels: ['Movies', 'Episodes'],
@@ -5339,11 +5627,54 @@ async function renderPerson(id) {
                             }]
                         },
                         options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { position: 'bottom', labels: { color: '#9ca3af', font: { size: 10 } } }
-                            }
+                            responsive: true, maintainAspectRatio: false,
+                            plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', font: { size: 10 } } } }
+                        }
+                    });
+                }
+
+                // 2. Day of Week Bar Chart
+                const dayEl = document.getElementById('day-chart');
+                if (dayEl) {
+                    window.dayChartInstance = new Chart(dayEl.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+                            datasets: [{
+                                label: 'Logs',
+                                data: daysOfWeek,
+                                backgroundColor: '#3b82f6',
+                                borderRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            scales: { y: { display: false }, x: { grid: { display: false }, ticks: { color: '#9ca3af' } } },
+                            plugins: { legend: { display: false } }
+                        }
+                    });
+                }
+
+                // 3. Release Eras Bar Chart
+                const eraEl = document.getElementById('era-chart');
+                if (eraEl) {
+                    const eraLabels = Object.keys(decadeCounts).sort();
+                    const eraData = eraLabels.map(l => decadeCounts[l]);
+                    window.eraChartInstance = new Chart(eraEl.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: eraLabels,
+                            datasets: [{
+                                label: 'Logs',
+                                data: eraData,
+                                backgroundColor: '#a855f7',
+                                borderRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            scales: { y: { display: false }, x: { grid: { color: '#1f2937' }, ticks: { color: '#9ca3af' } } },
+                            plugins: { legend: { display: false } }
                         }
                     });
                 }
@@ -5494,7 +5825,17 @@ async function renderPerson(id) {
                     payload.ratedAt = new Date().toISOString();
                 }
 
-                await setDoc(doc(collection(db, `users/${currentUser.uid}/history`)), payload);
+                // Create a deterministic ID to prevent duplicates (Item ID + Exact Watch Timestamp)
+                const safeDateId = new Date(date).getTime() || Date.now();
+                const docId = targetId ? `${targetId}_${safeDateId}` : null;
+                
+                // If we have a deterministic ID, use it to safely upsert and prevent duplicate imports. 
+                // Otherwise, fallback to generating a random document ID.
+                const docRef = docId 
+                    ? doc(db, `users/${currentUser.uid}/history`, docId) 
+                    : doc(collection(db, `users/${currentUser.uid}/history`));
+
+                await setDoc(docRef, payload, { merge: true });
                 return true;
             } catch (e) {
                 console.error("Firebase Log Error:", e);
@@ -5538,6 +5879,7 @@ async function renderPerson(id) {
                         await setDoc(doc(db, `users/${currentUser.uid}/ratings`, String(traktId)), { rating: rating, ratedAt: new Date().toISOString() }, { merge: true });
                     }
                     userRatings.set(parseInt(traktId), rating); 
+                    userRatingDetails.set(parseInt(traktId), { rating: rating, ratedAt: new Date().toISOString() });
                     if(actionType === 'rate-only') showToast(`Rated ${rating}/10`);
                 }
 

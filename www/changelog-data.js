@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v15.154.0-alpha",
+    date: "2026-08-03",
+    changes: [
+                "In VidTrackr: Added a persistent Trakt Migration onboarding tracker with a detailed 7-module checklist to the Settings page.",
+                "In VidTrackr: Added Deep Analytics to the Progress tab, including 'Activity by Day' and 'Release Eras' charts.",
+                "In VidTrackr: Fixed the Trakt JSON importer to correctly extract media objects from the root level of Notes and History exports.",
+                "In VidTrackr: Implemented session caching for the 'Calculate Progress Locally' engine so results instantly reload without an API re-fetch.",
+                "In VidTrackr: Fixed the rating timestamp lookup logic on the Dashboard and History tabs by ensuring composite string IDs for episodes are correctly mapped and preserved."
+    ]
+},
+    {
     version: "v15.153.0-alpha",
     date: "2026-08-03",
     changes: [
