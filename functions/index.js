@@ -395,7 +395,7 @@ exports.exchangeTraktToken = onRequest(
       });
 
       // Send the newly generated access_token back to the frontend
-      res.json(response.data); 
+      res.json(response.data);
     } catch (error) {
       logger.error("Trakt Auth Error", error.response?.data || error.message);
       res.status(500).json(error.response?.data || { error: "Failed to exchange Trakt token" });

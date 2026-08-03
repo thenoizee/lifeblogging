@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v15.152.0-alpha",
+    date: "2026-08-03",
+    changes: [
+        "In VidTrackr: Introduced Local/Standalone Mode allowing the app to function entirely without a Trakt account by using TMDB as the primary metadata source.",
+        "In VidTrackr: Added a comprehensive Data Import/Export suite in Settings, supporting Trakt JSON imports for history, ratings, collections, custom lists, hidden items, and private notes.",
+        "In VidTrackr: Replaced the legacy Trakt search with a unified TMDB multi-search engine for faster, more accurate results.",
+        "In VidTrackr: Added new quick-filters to the History view.",
+    ]
+},
+    {
+    version: "v15.151.0-alpha",
+    date: "2026-08-01",
+    changes: [
+        "In FoodTrackr: Scoped glass-card backdrop-filter and hardware acceleration CSS specifically to touch devices to prevent VRAM inflation and rendering lag on desktop.",
+    ]
+},
+    {
     version: "v15.150.0-alpha",
     date: "2026-07-31",
     changes: [

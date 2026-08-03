@@ -76,10 +76,16 @@
         /* Premium UI additions */
         .glass-card {
             background: var(--card-bg-color);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--border-color);
             box-shadow: 0 10px 30px -10px var(--shadow-color);
+        }
+
+        /* Blur filter & hardware acceleration ONLY for touch/mobile devices */
+        @media (hover: none) and (pointer: coarse) {
+            .glass-card {
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+            }
         }
         .text-gradient {
             background-clip: text;
@@ -832,7 +838,7 @@ body.bulk-active {
                         <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30"><i class="fa-solid fa-fire text-lg"></i></div>
                     </div>
                     <div class="w-full bg-gray-100 dark:bg-gray-700 h-2.5 rounded-full overflow-hidden shadow-inner">
-                        <div id="prog-bar-cals" class="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full transition-all duration-1000 ease-out relative" style="width: 0%"><div class="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite]"></div></div>
+                        <div id="prog-bar-cals" class="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full transition-all duration-1000 ease-out relative" style="width: 0%"></div>
                     </div>
                     <p class="text-[11px] font-bold text-right mt-2 text-gray-500"><span id="rem-calories" class="text-blue-600 dark:text-blue-400">0</span> left</p>
                 </div>
@@ -3799,6 +3805,7 @@ const renderDailyLog = () => {
         }
 
         // 4. Render items with grouping logic
+        const fragment = document.createDocumentFragment();
         sectionItems.forEach((item, index) => {
             const itemDiv = document.createElement('div');
             
@@ -3910,7 +3917,7 @@ const ingredientsHTML = (item.items && item.items.length > 0) ? `
                 <div class="flex w-full items-start">
                     ${checkboxHTML}
                     <div class="flex items-start overflow-hidden flex-grow cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded p-1 transition-colors" onclick="openProductModalFromLog('${item.id}')" title="View Details">
-                        <img src="${imageUrl}" alt="${item.name}" class="log-item-image mt-1 w-12 h-12">
+                        <img src="${imageUrl}" alt="${item.name}" loading="lazy" decoding="async" class="log-item-image mt-1 w-12 h-12">
                         <div class="flex-grow min-w-0 flex flex-col justify-center gap-1 pl-3">
                                 <span class="font-semibold text-base leading-snug break-words text-gray-900 dark:text-gray-100">${item.name} ${groupedBadge} ${(!item.productCode || !item.baseNutrients) && item.source !== 'Manual Entry' && item.source !== 'Leftover' && item.uploadedApp !== 'HydrationTrackr' && !(item.source || '').startsWith('Meal:') ? `<span class="ml-1 text-[9px] text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border border-amber-200 dark:border-amber-800 align-middle shadow-sm" title="Legacy item: Missing metadata or Open Food Facts link. Re-log to update."><i class="fa-solid fa-link-slash mr-0.5"></i>Legacy</span>` : ''}</span>
                                 ${item.originalName && item.originalName !== item.name ? `<span class="block text-[10px] text-gray-400 mt-0.5 -mb-0.5 truncate opacity-75" title="${item.originalName}">Original: ${item.originalName}</span>` : ''}
@@ -3956,8 +3963,9 @@ const ingredientsHTML = (item.items && item.items.length > 0) ? `
                 </div>
             `;
 
-            sectionEl.appendChild(itemDiv);
+            fragment.appendChild(itemDiv);
         });
+        sectionEl.appendChild(fragment);
         
         // Premium Empty State Generator
         if (sectionItems.length === 0) {
@@ -4114,7 +4122,7 @@ const renderHistoryTable = () => {
 
             tr.innerHTML = `
                 <td class="p-2 sm:p-3 hidden sm:table-cell">
-                    <img src="${imageUrl}" alt="${item.name}" class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg object-contain bg-white border border-gray-100">
+                    <img src="${imageUrl}" alt="${item.name}" loading="lazy" decoding="async" class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg object-contain bg-white border border-gray-100">
                 </td>
                 
                 <td class="p-2 sm:p-3 whitespace-nowrap text-xs sm:text-sm align-middle">${dateString}</td>
@@ -7208,20 +7216,27 @@ const switchTab = (tabId) => {
               let legacyWaterLogs = [];
 
               // Function to combine, sort safely, and render
+              let isRenderPending = false;
               const mergeAndRenderFood = () => {
-                  const combined = [...mainFoodLogs, ...legacyWaterLogs];
-                  
-                  // Safely sort in memory to avoid Firestore dropping items missing 'eatenAt'
-                  foodLog = combined.sort((a, b) => {
-                      const timeA = (a.eatenAt && typeof a.eatenAt.toDate === 'function') ? a.eatenAt.toDate().getTime() : 0;
-                      const timeB = (b.eatenAt && typeof b.eatenAt.toDate === 'function') ? b.eatenAt.toDate().getTime() : 0;
-                      return timeB - timeA;
+                  if (isRenderPending) return;
+                  isRenderPending = true;
+
+                  requestAnimationFrame(() => {
+                      const combined = [...mainFoodLogs, ...legacyWaterLogs];
+                      
+                      foodLog = combined.sort((a, b) => {
+                          const timeA = (a.eatenAt && typeof a.eatenAt.toDate === 'function') ? a.eatenAt.toDate().getTime() : 0;
+                          const timeB = (b.eatenAt && typeof b.eatenAt.toDate === 'function') ? b.eatenAt.toDate().getTime() : 0;
+                          return timeB - timeA;
+                      });
+                      
+                      renderDashboard(); 
+                      renderDailyLog(); 
+                      renderHistoryTable();
+                      renderFrequentFoods();
+
+                      isRenderPending = false;
                   });
-                  
-                  renderDashboard(); 
-                  renderDailyLog(); 
-                  renderHistoryTable();
-                  renderFrequentFoods();
               };
 
               window.setupLogListeners = () => {
