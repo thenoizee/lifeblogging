@@ -262,7 +262,7 @@ input[type=range]::-moz-range-thumb {
 
 
     <footer class="bg-[var(--card)] py-6 mt-auto text-center text-gray-500 text-sm border-t border-gray-800">
-        <p>&copy; 2025 VidTrackr. Data provided by <a href="https://trakt.tv" class="text-[var(--primary)] hover:underline">Trakt.tv</a>.</p>
+        <p>&copy; 2025 VidTrackr. Data provided by <a href="https://www.themoviedb.org/" class="text-[var(--primary)] hover:underline">TMDB</a> and <a href="https://trakt.tv" class="text-[var(--primary)] hover:underline">Trakt.tv</a>.</p>
     </footer>
     <div id="loader" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 hidden transition-opacity">
         <div class="animate-spin rounded-full h-14 w-14 border-[5px] border-[var(--primary)] border-t-transparent"></div>
@@ -636,9 +636,9 @@ if (headerRight) {
         };
 
         // --- NEW: Custom List Logic ---
-        window.openAddToList = async (traktId, type) => {
-            if (!traktAccessToken || primaryDataSource !== 'trakt') {
-                return showToast("Custom Lists require an active Trakt connection.", "error");
+        window.openAddToList = async (traktId, type, dataJsonStr) => {
+            if (!currentUser && (!traktAccessToken || primaryDataSource !== 'trakt')) {
+                return showToast("Please log in to use Custom Lists.", "error");
             }
             const modal = document.getElementById('list-modal');
             const content = document.getElementById('list-modal-content');
@@ -646,89 +646,128 @@ if (headerRight) {
             content.innerHTML = '<div class="flex justify-center py-6"><div class="animate-spin rounded-full h-8 w-8 border-2 border-[var(--primary)] border-t-transparent"></div></div>';
             
             try {
-                // 1. Fetch all user lists
-                const lists = await fetchDirect(`/users/me/lists`);
-                if(lists.length === 0) {
-                    content.innerHTML = '<p class="text-gray-500 text-center">No custom lists found.</p>';
+                let allLists = [];
+                // 1. Fetch Trakt Lists
+                if (traktAccessToken && primaryDataSource === 'trakt') {
+                    try {
+                        const tLists = await fetchDirect(`/users/me/lists`);
+                        if (tLists && Array.isArray(tLists)) {
+                            allLists = allLists.concat(tLists.map(l => ({ ...l, isTrakt: true })));
+                        }
+                    } catch(e) {}
+                }
+                
+                // 2. Fetch Local Lists
+                if (currentUser) {
+                    const snap = await getDocs(collection(db, `users/${currentUser.uid}/lists`));
+                    snap.forEach(doc => {
+                        allLists.push({ ...doc.data(), ids: { trakt: doc.id }, isTrakt: false }); // doc.id is the slug
+                    });
+                }
+                
+                if (allLists.length === 0) {
+                    content.innerHTML = '<p class="text-gray-500 text-center mb-4">No custom lists found.</p><button onclick="window.createNewList()" class="w-full bg-[var(--primary)] text-white py-2 rounded font-bold">Create New List</button>';
                     return;
                 }
-
-                // 2. Render lists immediately with loading indicators
-                content.innerHTML = lists.map(l => `
+                
+                // Render List UI
+                content.innerHTML = allLists.map(l => `
                     <div class="flex items-center justify-between bg-gray-800 hover:bg-gray-700 p-3 rounded-lg mb-2 border border-gray-700 transition">
                         <div class="flex flex-col">
-                            <span class="font-bold text-sm text-white">${l.name}</span>
-                            <span class="text-xs text-gray-500">${l.item_count} items</span>
+                            <span class="font-bold text-sm text-white">${l.name} <span class="text-[10px] text-gray-500 ml-1 uppercase border border-gray-600 px-1 rounded">${l.isTrakt ? 'Trakt' : 'Local'}</span></span>
+                            <span class="text-xs text-gray-500">${l.item_count || 0} items</span>
                         </div>
-                        <button id="btn-list-${l.ids.trakt}" class="text-xs px-3 py-1.5 rounded font-bold bg-gray-900 text-gray-400 min-w-[70px]" disabled>
+                        <button id="btn-list-${l.isTrakt ? 't' : 'l'}-${l.ids.trakt}" class="text-xs px-3 py-1.5 rounded font-bold bg-gray-900 text-gray-400 min-w-[70px]">
                             <i class="fa-solid fa-spinner fa-spin"></i>
                         </button>
                     </div>
                 `).join('');
 
-                // 3. Check membership for each list in the background
-                lists.forEach(async (list) => {
-                    const btn = document.getElementById(`btn-list-${list.ids.trakt}`);
+                // Check memberships
+                allLists.forEach(async (list) => {
+                    const btn = document.getElementById(`btn-list-${list.isTrakt ? 't' : 'l'}-${list.ids.trakt}`);
                     try {
-                        // Fetch items in this list to see if our item exists
-                        // Note: Using 'type' helps narrow it down (movies/shows/episodes)
-                        const items = await fetchDirect(`/users/me/lists/${list.ids.trakt}/items/${type}`);
-                        const isMember = items.find(i => i[type].ids.trakt == traktId);
-
-                        // Update Button State
+                        let isMember = false;
+                        if (list.isTrakt) {
+                            const items = await fetchDirect(`/users/me/lists/${list.ids.trakt}/items/${type}`);
+                            isMember = items.find(i => String(i[type]?.ids?.trakt) === String(traktId));
+                        } else {
+                            // Check local membership
+                            const snap = await getDocs(collection(db, `users/${currentUser.uid}/lists/${list.ids.trakt}/items`));
+                            snap.forEach(d => {
+                                const data = d.data();
+                                const dId = data[type]?.ids?.trakt || data[type]?.ids?.tmdb || data[type]?.id;
+                                if (String(dId) === String(traktId)) isMember = true;
+                            });
+                        }
+                        
                         btn.disabled = false;
                         if (isMember) {
                             btn.innerHTML = '<i class="fa-solid fa-minus"></i> Remove';
                             btn.className = "text-xs px-3 py-1.5 rounded font-bold bg-red-900/50 text-red-400 hover:bg-red-600 hover:text-white border border-red-900 transition min-w-[70px]";
-                            btn.onclick = () => window.toggleListMembership(list.ids.trakt, traktId, type, 'remove', btn);
+                            btn.onclick = () => window.toggleListMembership(list.ids.trakt, traktId, type, 'remove', btn, list.isTrakt, dataJsonStr);
                         } else {
                             btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
                             btn.className = "text-xs px-3 py-1.5 rounded font-bold bg-green-900/50 text-green-400 hover:bg-green-600 hover:text-white border border-green-900 transition min-w-[70px]";
-                            btn.onclick = () => window.toggleListMembership(list.ids.trakt, traktId, type, 'add', btn);
+                            btn.onclick = () => window.toggleListMembership(list.ids.trakt, traktId, type, 'add', btn, list.isTrakt, dataJsonStr);
                         }
-                    } catch (e) {
-                        console.warn(`Failed to check list ${list.name}`, e);
+                    } catch(e) {
                         btn.innerHTML = '?';
                     }
                 });
 
             } catch(e) {
-                console.error(e);
                 content.innerHTML = '<p class="text-red-500 text-center">Failed to load lists.</p>';
             }
         };
 
-        window.toggleListMembership = async (listId, traktId, type, action, btn) => {
+        window.toggleListMembership = async (listId, traktId, type, action, btn, isTrakt, dataJsonStr) => {
             const originalHtml = btn.innerHTML;
             const originalClass = btn.className;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             btn.disabled = true;
 
             try {
-                const payload = {
-                    [type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies')]: [{ ids: { trakt: traktId } }]
-                };
-                
-                const endpoint = action === 'add' 
-                    ? `/users/me/lists/${listId}/items`
-                    : `/users/me/lists/${listId}/items/remove`;
+                if (isTrakt) {
+                    const payload = {
+                        [type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies')]: [{ ids: { trakt: traktId } }]
+                    };
+                    const endpoint = action === 'add' ? `/users/me/lists/${listId}/items` : `/users/me/lists/${listId}/items/remove`;
+                    await fetch(`${TRAKT_API_URL}${endpoint}`, { method: 'POST', headers: traktHeader(), body: JSON.stringify(payload) });
+                } else {
+                    if (action === 'add') {
+                        let itemData = {};
+                        try { itemData = JSON.parse(decodeURIComponent(dataJsonStr)); } catch(e){}
+                        await setDoc(doc(db, `users/${currentUser.uid}/lists/${listId}/items`, `${type}_${traktId}`), {
+                            type: type,
+                            [type]: itemData,
+                            listedAt: new Date().toISOString()
+                        });
+                    } else {
+                        const snap = await getDocs(collection(db, `users/${currentUser.uid}/lists/${listId}/items`));
+                        let docToDelete = null;
+                        snap.forEach(d => {
+                            const data = d.data();
+                            const dId = data[type]?.ids?.trakt || data[type]?.ids?.tmdb || data[type]?.id;
+                            if (String(dId) === String(traktId)) docToDelete = d.id;
+                        });
+                        if (docToDelete) {
+                            await deleteDoc(doc(db, `users/${currentUser.uid}/lists/${listId}/items`, docToDelete));
+                        }
+                    }
+                }
 
-                await fetch(`${TRAKT_API_URL}${endpoint}`, {
-                    method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
-                });
-
-                // Toggle Button State UI immediately
                 btn.disabled = false;
                 if (action === 'add') {
                     showToast('Added to list');
                     btn.innerHTML = '<i class="fa-solid fa-minus"></i> Remove';
                     btn.className = "text-xs px-3 py-1.5 rounded font-bold bg-red-900/50 text-red-400 hover:bg-red-600 hover:text-white border border-red-900 transition min-w-[70px]";
-                    btn.onclick = () => window.toggleListMembership(listId, traktId, type, 'remove', btn);
+                    btn.onclick = () => window.toggleListMembership(listId, traktId, type, 'remove', btn, isTrakt, dataJsonStr);
                 } else {
                     showToast('Removed from list');
                     btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
                     btn.className = "text-xs px-3 py-1.5 rounded font-bold bg-green-900/50 text-green-400 hover:bg-green-600 hover:text-white border border-green-900 transition min-w-[70px]";
-                    btn.onclick = () => window.toggleListMembership(listId, traktId, type, 'add', btn);
+                    btn.onclick = () => window.toggleListMembership(listId, traktId, type, 'add', btn, isTrakt, dataJsonStr);
                 }
             } catch (e) {
                 showToast('Action failed', 'error');
@@ -736,24 +775,6 @@ if (headerRight) {
                 btn.className = originalClass;
                 btn.disabled = false;
             }
-        };
-
-        window.saveToList = async (listId) => {
-            if(!currentItemForList) return;
-            showLoader();
-            document.getElementById('list-modal').classList.add('hidden');
-            try {
-                const type = currentItemForList.type;
-                const payload = {
-                    [type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies')]: [currentItemForList]
-                };
-                
-                await fetch(`${TRAKT_API_URL}/users/me/lists/${listId}/items`, {
-                    method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
-                });
-                showToast('Added to list!');
-            } catch(e) { showToast('Failed to add', 'error'); }
-            hideLoader();
         };
 
         window.removeFromWatchlist = async (traktId, type) => {
@@ -789,19 +810,98 @@ if (headerRight) {
             }
         };
 
-        window.removeListItem = async (listId, traktId, type) => {
+        window.routeToLocalItem = async (type, fallbackId, idsStr) => {
+            let ids = {};
+            try { ids = JSON.parse(decodeURIComponent(idsStr)); } catch(e){}
+            
+            let targetId = fallbackId;
+            
+            if (primaryDataSource === 'tmdb') {
+                if (type === 'episode' && !ids.tmdb) {
+                    showLoader();
+                    try {
+                        const searchId = ids.trakt || fallbackId;
+                        const res = await fetch(`${TRAKT_API_URL}/search/trakt/${searchId}?type=episode`);
+                        const data = await res.json();
+                        if (data && data[0]) {
+                            const showTmdb = data[0].show.ids.tmdb;
+                            const s = data[0].episode.season;
+                            const e = data[0].episode.number;
+                            if (showTmdb && s !== undefined) targetId = `${showTmdb}-${s}-${e}`;
+                        }
+                    } catch(e) {}
+                    hideLoader();
+                } else if (!ids.tmdb) {
+                    showLoader();
+                    try {
+                        const searchId = ids.trakt || fallbackId;
+                        const res = await fetch(`${TRAKT_API_URL}/search/trakt/${searchId}?type=${type}`);
+                        const data = await res.json();
+                        if (data && data[0]) targetId = data[0][type].ids.tmdb || fallbackId;
+                    } catch(e) {}
+                    hideLoader();
+                } else {
+                    targetId = ids.tmdb;
+                }
+            } else if (primaryDataSource === 'trakt' && !ids.trakt) {
+                showLoader();
+                try {
+                    const searchId = ids.tmdb || fallbackId;
+                    const res = await fetch(`${TRAKT_API_URL}/search/tmdb/${searchId}?type=${type}`);
+                    const data = await res.json();
+                    if (data && data[0]) targetId = data[0][type].ids.trakt || fallbackId;
+                } catch(e) {}
+                hideLoader();
+            } else if (primaryDataSource === 'trakt') {
+                targetId = ids.trakt;
+            }
+            
+            location.hash = `#detail/${type}/${targetId}`;
+        };
+
+        window.removeFromCollection = async (docId) => {
+            if (!currentUser) return;
+            if(!confirm('Remove this item from your collection?')) return;
+            
+            const btn = event.target.closest('button');
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+            try {
+                await deleteDoc(doc(db, `users/${currentUser.uid}/collections`, docId));
+                showToast('Removed from Collection');
+                
+                const card = btn.closest('.relative.card');
+                if(card) {
+                    card.style.transition = 'all 0.3s';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.9)';
+                    setTimeout(() => card.remove(), 300);
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('Failed to remove item', 'error');
+                if(btn) btn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            }
+        };
+
+        window.removeListItem = async (listId, docId, type) => {
             if(!confirm('Remove this item from the list?')) return;
             // Find the card to show loading state
             const btn = event.target.closest('button');
             if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
 
             try {
-                const payload = {
-                    [type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies')]: [{ ids: { trakt: traktId } }]
-                };
-                await fetch(`${TRAKT_API_URL}/users/me/lists/${listId}/items/remove`, {
-                    method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
-                });
+                if (listId.startsWith('local_')) {
+                    const slug = listId.replace('local_', '');
+                    await deleteDoc(doc(db, `users/${currentUser.uid}/lists/${slug}/items`, docId));
+                } else {
+                    const payload = {
+                        [type === 'episode' ? 'episodes' : (type === 'show' ? 'shows' : 'movies')]: [{ ids: { trakt: docId } }]
+                    };
+                    await fetch(`${TRAKT_API_URL}/users/me/lists/${listId}/items/remove`, {
+                        method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
+                    });
+                }
                 showToast('Item removed');
                 
                 // Remove element from DOM immediately
@@ -814,6 +914,68 @@ if (headerRight) {
                 }
             } catch(e) {
                 console.error(e);
+                showToast('Failed to remove item', 'error');
+                if(btn) btn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            }
+        };
+
+        window.deleteNote = async (docId) => {
+            if(!confirm('Delete this private note?')) return;
+            const btn = event.target.closest('button');
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            try {
+                await deleteDoc(doc(db, `users/${currentUser.uid}/notes`, docId));
+                showToast('Note deleted');
+                const card = btn.closest('.card');
+                if(card) {
+                    card.style.transition = 'all 0.3s';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.9)';
+                    setTimeout(() => card.remove(), 300);
+                }
+            } catch(e) {
+                showToast('Failed to delete note', 'error');
+                if(btn) btn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            }
+        };
+
+        window.removeFromLocalWatchlist = async (docId) => {
+            if (!currentUser) return;
+            if(!confirm('Remove this item from your VidTrackr Watchlist?')) return;
+            const btn = event.target.closest('button');
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            try {
+                await deleteDoc(doc(db, `users/${currentUser.uid}/watchlist`, docId));
+                showToast('Removed from Watchlist');
+                const card = btn.closest('.relative.card');
+                if(card) {
+                    card.style.transition = 'all 0.3s';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.9)';
+                    setTimeout(() => card.remove(), 300);
+                }
+            } catch(e) {
+                showToast('Failed to remove item', 'error');
+                if(btn) btn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            }
+        };
+
+        window.removeFromFavorites = async (docId) => {
+            if (!currentUser) return;
+            if(!confirm('Remove this item from your Hall of Favourites?')) return;
+            const btn = event.target.closest('button');
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            try {
+                await deleteDoc(doc(db, `users/${currentUser.uid}/favorites`, docId));
+                showToast('Removed from Favourites');
+                const card = btn.closest('.relative.card');
+                if(card) {
+                    card.style.transition = 'all 0.3s';
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.9)';
+                    setTimeout(() => card.remove(), 300);
+                }
+            } catch(e) {
                 showToast('Failed to remove item', 'error');
                 if(btn) btn.innerHTML = '<i class="fa-solid fa-trash"></i>';
             }
@@ -1023,6 +1185,61 @@ if (headerRight) {
                 btn.innerHTML = originalHtml;
             }
         };
+
+        window.toggleLocalCollection = async (id, type, btn, dataJson) => {
+            if (!currentUser) return showToast("Please login to use VidTrackr Collections", "error");
+            
+            const isRemoving = btn.classList.contains('bg-teal-600');
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            const docRef = doc(db, `users/${currentUser.uid}/collections`, `${type}_${id}`);
+
+            try {
+                if (isRemoving) {
+                    await deleteDoc(docRef);
+                    showToast('Removed from VidTrackr Collection');
+                    btn.classList.remove('bg-teal-600', 'hover:bg-teal-500', 'text-white');
+                    btn.classList.add('bg-gray-800', 'hover:bg-gray-700', 'text-teal-500');
+                    if (type === 'episode') {
+                        btn.innerHTML = `<i class="fa-solid fa-box-archive"></i> Collect`;
+                    } else {
+                        btn.innerHTML = `<i class="fa-solid fa-box-archive"></i> Add to Collection`;
+                    }
+                } else {
+                    const itemData = JSON.parse(decodeURIComponent(dataJson));
+                    
+                    if (!itemData.ids) itemData.ids = {};
+                    if (!itemData.ids.trakt) itemData.ids.trakt = id;
+                    if (!itemData.ids.tmdb && itemData.id) itemData.ids.tmdb = itemData.id;
+                    if (!itemData.id) itemData.id = id;
+                    itemData.media_type = type;
+                    itemData.type = type;
+
+                    const payload = {
+                        type: type,
+                        media_type: type,
+                        [type]: itemData,
+                        collectedAt: new Date().toISOString()
+                    };
+                    
+                    await setDoc(docRef, payload);
+                    showToast('Saved to VidTrackr Collection');
+                    btn.classList.remove('bg-gray-800', 'hover:bg-gray-700', 'text-teal-500');
+                    btn.classList.add('bg-teal-600', 'hover:bg-teal-500', 'text-white');
+                    if (type === 'episode') {
+                        btn.innerHTML = `<i class="fa-solid fa-box-open"></i> Collected`;
+                    } else {
+                        btn.innerHTML = `<i class="fa-solid fa-box-open"></i> In Collection`;
+                    }
+                }
+            } catch (e) {
+                console.error("VidTrackr Collection error:", e);
+                showToast('Failed to update VidTrackr Collection', 'error');
+                btn.innerHTML = originalHtml;
+            }
+        };
+
+        
 
 // 1. Standalone function to open the modal (fixes the click propagation issue)
 window.openScrobbleModal = (data) => {
@@ -1308,21 +1525,27 @@ window.removeProgress = async (playbackId) => {
             const data = item[type] || item;
             
             // Normalize IDs based on primary data source to prevent routing mismatches
-            let targetId;
-            if (primaryDataSource === 'tmdb') {
-                targetId = data.ids?.tmdb || data.id || data.ids?.trakt;
-            } else {
-                targetId = data.ids?.trakt || data.id;
-            }
+            let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+            const fallbackId = data.ids?.trakt || data.id || data.ids?.tmdb;
             
-            if (!type || !data || !targetId) {
+            if (!type || !data || !fallbackId) {
                 console.warn('Skipping invalid item:', item);
                 return ''; 
+            }
+            
+            const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
+            let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
+            
+            if (targetId && type === 'episode' && primaryDataSource === 'tmdb') {
+                const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
+                const sNum = data.season || data.season_number;
+                const eNum = data.number || data.episode_number;
+                if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
             }
 
             const img = getImage(data, type);
             const typeColor = getTypeColor(type);
-            const imgId = `card-img-${type}-${targetId}`; // Generate a targeting ID
+            const imgId = `card-img-${type}-${fallbackId}`; // Generate a targeting ID
             
             // Normalize display title and year
             const displayTitle = data.title || data.name || 'Unknown Title';
@@ -1334,13 +1557,13 @@ window.removeProgress = async (playbackId) => {
 
             // Fallback rating logic for TMDB's vote_average
             const ratingVal = data.rating || data.vote_average || 0;
-            const myRating = userRatings.get(parseInt(targetId));
+            const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
             const ratingHtml = myRating 
                 ? `<span class="text-green-400 font-bold flex items-center gap-1"><i class="fa-solid fa-user-check"></i> ${myRating}</span>`
                 : `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>`;
 
             return `
-            <div class="group relative card rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-[1.02] transition duration-300 cursor-pointer border border-gray-800" onclick="location.hash='#detail/${type}/${targetId}'">
+            <div class="group relative card rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-[1.02] transition duration-300 cursor-pointer border border-gray-800" onclick="${clickHandler}">
                 <div class="aspect-[2/3] relative bg-gray-800">
                     <img id="${imgId}" src="${img}" class="w-full h-full object-cover object-center transition duration-500 group-hover:opacity-60" loading="lazy" onerror="this.src='${PLACEHOLDER_IMG}'">
                     <div class="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
@@ -2341,7 +2564,7 @@ async function renderPerson(id) {
                 
                 // Initialize variables
                 let item, notes, history = [], related = [], showInfo = null, people = null, comments = null, collectionList = [], showProgress = null;
-                let localWlSnap = null, showPeople = null;
+                let localWlSnap = null, localColSnap = null, showPeople = null;
 
                 const fetchCommentsSafe = (url) => {
                     if (primaryDataSource === 'tmdb') return Promise.resolve([]); // TMDB doesn't have Trakt-style comments
@@ -2477,9 +2700,7 @@ async function renderPerson(id) {
                     noteKey = `${type}_${canonicalId}`;
                     localWlKey = `${type}_${canonicalId}`;
 
-                    [notes, localWlSnap, history] = await Promise.all([
-                        getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
-                        (currentUser ? getDoc(doc(db, `users/${currentUser.uid}/watchlist`, localWlKey)) : null),
+                    [history] = await Promise.all([
                         localHistoryFetch()
                     ]);
 
@@ -2544,11 +2765,9 @@ async function renderPerson(id) {
                         noteKey = `${type}_${canonicalId}`;
                         localWlKey = `${type}_${canonicalId}`;
 
-                        [history, comments, notes, localWlSnap, people, showPeople] = await Promise.all([
+                        [history, comments, people, showPeople] = await Promise.all([
                             localHistoryFetch(),
                             fetchCommentsSafe(commentUrl),
-                            getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
-                            (currentUser ? getDoc(doc(db, `users/${currentUser.uid}/watchlist`, localWlKey)) : null),
                             fetchDirect(`/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}/people?extended=images`).catch(() => null),
                             fetchDirect(`/shows/${showInfo.ids.trakt}/people?extended=images`).catch(() => null)
                         ]);
@@ -2571,14 +2790,12 @@ async function renderPerson(id) {
                         noteKey = `${type}_${canonicalId}`;
                         localWlKey = `${type}_${canonicalId}`;
 
-                        [item, notes, history, related, people, comments, localWlSnap] = await Promise.all([
+                        [item, history, related, people, comments] = await Promise.all([
                             fetchDirect(`/${type}s/${id}?extended=full,images,user_data`),
-                            getDoc(doc(db, `users/${currentUser.uid}/notes`, noteKey)),
                             localHistoryFetch(),
                             fetchDirect(`/${type}s/${id}/related?limit=5&extended=images`),
                             fetchDirect(`/${type}s/${id}/people?extended=images`),
-                            fetchCommentsSafe(commentUrl),
-                            (currentUser ? getDoc(doc(db, `users/${currentUser.uid}/watchlist`, localWlKey)) : null)
+                            fetchCommentsSafe(commentUrl)
                         ]);
 
                         if (traktAccessToken && primaryDataSource === 'trakt') {
@@ -2611,6 +2828,40 @@ async function renderPerson(id) {
                 }
                 } // FIX: Added missing closing bracket for the outer Trakt API 'else' block
 
+                // --- UNIVERSAL LOCAL DOC RESOLUTION ---
+                if (currentUser) {
+                    const checkDoc = async (col) => {
+                        const idsToCheck = new Set([canonicalId, id]);
+                        if (item && item.ids) {
+                            if (item.ids.tmdb) idsToCheck.add(String(item.ids.tmdb));
+                            if (item.ids.trakt) idsToCheck.add(String(item.ids.trakt));
+                        }
+                        if (type === 'episode') {
+                            const s = item?.season || item?.season_number;
+                            const e = item?.number || item?.episode_number;
+                            const showTmdb = showInfo?.ids?.tmdb;
+                            if (showTmdb && s !== undefined && e !== undefined) {
+                                idsToCheck.add(`${showTmdb}-${s}-${e}`);
+                            }
+                        }
+                        for (const testId of idsToCheck) {
+                            if (!testId) continue;
+                            const snap = await getDoc(doc(db, `users/${currentUser.uid}/${col}`, `${type}_${testId}`));
+                            if (snap.exists()) return snap;
+                        }
+                        return null;
+                    };
+
+                    [notes, localWlSnap, localColSnap] = await Promise.all([
+                        checkDoc('notes'),
+                        checkDoc('watchlist'),
+                        checkDoc('collections')
+                    ]);
+                    
+                    // Ensure noteKey always maps back to the existing document ID so updates overwrite the original note instead of duplicating it
+                    if (notes && notes.exists()) noteKey = notes.id;
+                }
+
                 // --- DATA PROCESSING ---
                 let navPrev = null, navNext = null;
                 if (!isEpisode && type === 'movie') {
@@ -2634,6 +2885,7 @@ async function renderPerson(id) {
                 const isSkipped = noteData.skipped === true;
                 const isTraktWl = item.user_data?.watchlist;
                 const isLocalWl = localWlSnap && localWlSnap.exists();
+                const isLocalCol = localColSnap && localColSnap.exists();
                 const safeJson = encodeURIComponent(JSON.stringify(item)).replace(/'/g, "%27");
                 
                 // Initialize titles early so payloads can access them
@@ -2931,10 +3183,14 @@ async function renderPerson(id) {
     ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> Local' : '<i class="fa-solid fa-folder-plus"></i> Local'}
 </button>
 
+                                <button onclick="window.toggleLocalCollection('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="col-span-2 sm:w-auto px-2 py-3 rounded-lg font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 ${isLocalCol ? 'bg-teal-600 hover:bg-teal-500 text-white' : 'bg-gray-800 hover:bg-gray-700 text-teal-500 border border-gray-700'}" title="VidTrackr Collection">
+    ${isLocalCol ? '<i class="fa-solid fa-box-open"></i> Collected' : '<i class="fa-solid fa-box-archive"></i> Collect'}
+</button>
+
                                 <button onclick="window.checkIn('${item.ids.trakt}', 'episode', ${item.runtime || 0}, '${checkInSafeJson}')" class="col-span-2 sm:w-auto bg-purple-600 hover:bg-purple-500 text-white px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border border-purple-500 transition flex items-center justify-center gap-1" title="Check In Now"><i class="fa-solid fa-map-pin"></i> Check In</button>
                                 <button onclick="window.skipEpisode('${item.ids.trakt}')" class="col-span-2 sm:w-auto bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border border-gray-600 transition flex items-center justify-center gap-1" title="Skip / Mark Filler"><i class="fa-solid fa-ban"></i> Skip</button>
                                 <div id="stremio-placeholder" class="hidden col-span-4 sm:w-auto"></div>
-                                <button onclick="window.openAddToList('${item.ids.trakt}', 'episode')" class="col-span-2 sm:w-auto bg-gray-700 hover:bg-gray-600 text-white px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border border-gray-600 transition flex items-center justify-center gap-1" title="Add to Custom List"><i class="fa-solid fa-list-ul"></i> List</button>
+                                <button onclick="window.openAddToList('${item.ids.trakt}', 'episode', '${safeJson}')" class="col-span-2 sm:w-auto bg-gray-700 hover:bg-gray-600 text-white px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border border-gray-600 transition flex items-center justify-center gap-1" title="Add to Custom List"><i class="fa-solid fa-list-ul"></i> List</button>
                                 <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="col-span-2 sm:w-auto bg-gray-800 hover:bg-gray-700 text-white px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border border-gray-700 transition flex items-center justify-center gap-1">Season ${item.season}</button>
                             </div>
 
@@ -2968,80 +3224,110 @@ async function renderPerson(id) {
 
                 } else {
                     // MOVIE / SHOW HTML
-                    const img = getImage(item, null, false); // FIX: Ensure we fetch the primary poster instead of landscape
+                    const img = getImage(item, null, false); 
+                    
+                    // Construct structural layout matching image_666e40.jpg
                     html += `
                     <button onclick="history.back()" class="mb-6 text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition w-fit"><i class="fa-solid fa-arrow-left"></i> Back</button>
                     <div class="flex flex-col md:flex-row gap-8 mb-12">
-                        <div class="w-full md:w-1/3 lg:w-1/4 flex-shrink-0 mx-auto max-w-[220px] sm:max-w-[260px] md:max-w-none md:mx-0">
-                            <div class="rounded-2xl overflow-hidden shadow-2xl relative group border border-gray-800">
+                        <!-- LEFT SIDEBAR -->
+                        <div class="w-full md:w-1/3 lg:w-1/4 flex-shrink-0 mx-auto max-w-[220px] sm:max-w-[280px] md:max-w-none md:mx-0">
+                            <!-- Poster -->
+                            <div class="rounded-2xl overflow-hidden shadow-2xl relative group border border-gray-800 mb-6">
                                 <img src="${img}" class="w-full object-cover aspect-[2/3]">
                                 ${type === 'movie' ? `<div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm"><button class="scrobble-btn ${getBgColor(type)} text-white px-8 py-3 rounded-full font-bold transform scale-90 group-hover:scale-100 transition shadow-xl" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime, backdrop_path: item.backdrop_path, poster_path: item.poster_path}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'} mr-2"></i> ${isWatched ? 'Log Rewatch' : 'Log Movie'}</button></div>` : ''}
                                 ${navPrev ? `<div class="nav-btn nav-prev" onclick="location.hash='#detail/movie/${navPrev.ids.trakt}'" title="Previous: ${navPrev.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-left"></i></div>` : ''}
                                 ${navNext ? `<div class="nav-btn nav-next" onclick="location.hash='#detail/movie/${navNext.ids.trakt}'" title="Next: ${navNext.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-right"></i></div>` : ''}
                             </div>
                             
-                            <div class="mt-6 flex flex-col gap-3">
-                                ${type === 'movie' ? `<button class="scrobble-btn w-full text-center bg-[var(--primary)] hover:bg-red-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime, backdrop_path: item.backdrop_path, poster_path: item.poster_path}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-calendar-plus"></i> ${isWatched ? 'Log Rewatch in Past' : 'Log / Rate in Past'}</button>` : ''}
-                                <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2"><i class="fa-solid fa-play"></i> Stream Now</a>
+                            <!-- Action Buttons Stack -->
+                            <div class="flex flex-col gap-3 mb-6">
+                                ${type === 'movie' ? `
+                                <!-- Log/Rate in Past -->
+                                <button class="scrobble-btn w-full text-center bg-[#ed2224] hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime, backdrop_path: item.backdrop_path, poster_path: item.poster_path}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-calendar-plus"></i> ${isWatched ? 'Log / Rate in Past' : 'Log / Rate in Past'}</button>` : ''}
                                 
-                                <div id="stremio-placeholder" class="hidden w-full sm:w-auto"></div>
-
-                                ${primaryDataSource === 'trakt' ? `
-                                <button onclick="window.toggleTraktWatchlist('${item.ids.trakt}', '${type}', this)" class="w-full text-center py-2 rounded-lg font-bold text-xs transition border flex items-center justify-center gap-2 ${isTraktWl ? 'bg-red-900/40 hover:bg-red-900/60 text-red-300 border-red-800' : 'bg-blue-900/40 hover:bg-blue-900/60 text-blue-300 border-blue-800'}">
-                                    ${isTraktWl ? '<i class="fa-solid fa-trash-can"></i> Trakt Watchlist' : '<i class="fa-solid fa-bookmark"></i> Trakt Watchlist'}
-                                </button>` : ''}
-
-                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', '${type}', this, '${safeJson}')" class="w-full text-center py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}">
-    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> VidTrackr Watchlist' : '<i class="fa-solid fa-folder-plus"></i> VidTrackr Watchlist'}
-</button>
-
-                                <button onclick="window.checkIn('${item.ids.trakt}', '${type}', ${item.runtime || 0}, '${checkInSafeJson}')" class="w-full text-center bg-purple-900/40 hover:bg-purple-800 text-purple-300 py-2 rounded-lg font-bold text-xs transition border border-purple-800 flex items-center justify-center gap-2"><i class="fa-solid fa-map-pin"></i> Check In Now</button>
-                                <button onclick="window.openAddToList('${item.ids.trakt}', '${type}')" class="w-full text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold text-xs transition border border-gray-600 flex items-center justify-center gap-2"><i class="fa-solid fa-list-ul"></i> Add to Custom List</button>
+                                <!-- Stream Now -->
+                                <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2"><i class="fa-solid fa-play"></i> Stream Now</a>
                                 
-                                <button onclick="window.toggleHidden('${canonicalId}', '${type}', '${fullTitle.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="w-full text-center ${isGloballyHidden ? 'bg-red-900/40 hover:bg-red-900/60 text-red-300 border-red-800' : 'bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white border-gray-600'} py-2 rounded-lg font-bold text-xs transition border flex items-center justify-center gap-2">
+                                <div id="stremio-placeholder" class="hidden w-full"></div>
+
+                                <!-- VidTrackr Watchlist -->
+                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', '${type}', this, '${safeJson}')" class="w-full text-center py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-red-900/20 text-red-500 border border-red-900/50 hover:bg-red-900/40'}">
+                                    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> VidTrackr Watchlist' : '<i class="fa-solid fa-folder-plus"></i> VidTrackr Watchlist'}
+                                </button>
+
+                                <!-- Collection -->
+                                <button onclick="window.toggleLocalCollection('${item.ids.trakt}', '${type}', this, '${safeJson}')" class="w-full text-center py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalCol ? 'bg-teal-600 hover:bg-teal-500 text-white' : 'bg-teal-900/20 text-teal-500 border border-teal-900/50 hover:bg-teal-900/40'}">
+                                    ${isLocalCol ? '<i class="fa-solid fa-box-open"></i> In Collection' : '<i class="fa-solid fa-box-archive"></i> Add to Collection'}
+                                </button>
+
+                                <!-- Check In -->
+                                <button onclick="window.checkIn('${item.ids.trakt}', '${type}', ${item.runtime || 0}, '${checkInSafeJson}')" class="w-full text-center bg-purple-900/20 hover:bg-purple-900/40 text-purple-500 py-2.5 rounded-lg font-bold text-xs transition border border-purple-900/50 flex items-center justify-center gap-2"><i class="fa-solid fa-map-pin"></i> Check In Now</button>
+                                
+                                <!-- Custom List -->
+                                <button onclick="window.openAddToList('${item.ids.trakt}', '${type}', '${safeJson}')" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-lg font-bold text-xs transition border border-gray-700 flex items-center justify-center gap-2"><i class="fa-solid fa-list-ul"></i> Add to Custom List</button>
+                                
+                                <!-- Hide -->
+                                <button onclick="window.toggleHidden('${canonicalId}', '${type}', '${fullTitle.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="w-full text-center ${isGloballyHidden ? 'bg-red-900/40 hover:bg-red-900/60 text-red-300 border-red-800' : 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border-gray-700'} py-2.5 rounded-lg font-bold text-xs transition border flex items-center justify-center gap-2">
                                     <i class="fa-solid ${isGloballyHidden ? 'fa-eye' : 'fa-eye-slash'}"></i> ${isGloballyHidden ? 'Unhide from Up Next' : 'Hide from Up Next'}
                                 </button>
-                                
-                                <div class="grid grid-cols-2 gap-2 mt-2 pt-4 border-t border-gray-800">
-                                    <a href="https://trakt.tv/${type}s/${item.ids.slug || item.ids.trakt}" target="_blank" class="col-span-2 bg-[#ed1c24] hover:bg-[#be161c] text-white py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md">
-                                        <i class="fa-solid fa-ticket"></i> Open in Trakt
-                                    </a>
-                                    
-                                    ${item.ids.imdb ? `<a href="https://www.imdb.com/title/${item.ids.imdb}" target="_blank" class="bg-[#f5c518] hover:bg-[#e2b616] text-black py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md"><i class="fa-brands fa-imdb text-lg"></i> IMDb</a>` : ''}
-                                    
-                                    ${item.ids.tmdb ? `<a href="https://www.themoviedb.org/${type === 'show' ? 'tv' : 'movie'}/${item.ids.tmdb}" target="_blank" class="bg-[#01b4e4] hover:bg-[#0d253f] text-white py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md"><i class="fa-solid fa-film"></i> TMDB</a>` : ''}
-                                    
-                                    ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="col-span-2 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition border border-gray-700 flex items-center justify-center gap-2">Official Website <i class="fa-solid fa-up-right-from-square ml-1"></i></a>` : ''}
-                                </div>
-                                ${trailerUrl ? `<button onclick="window.openTrailer('${trailerUrl}')" class="mt-2 w-full text-center bg-red-900/20 hover:bg-red-900/40 text-red-500 py-2 rounded-lg font-bold text-xs transition border border-red-900/30 flex items-center justify-center gap-2"><i class="fa-brands fa-youtube text-lg"></i> Watch Trailer</button>` : ''}
                             </div>
+                            
+                            <!-- External Links Stack -->
+                            <div class="flex flex-col gap-2 pt-4 border-t border-gray-800 mb-4">
+                                <a href="https://trakt.tv/${type}s/${item.ids.slug || item.ids.trakt}" target="_blank" class="w-full bg-[#ed1c24] hover:bg-[#be161c] text-white py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md">
+                                    <i class="fa-solid fa-ticket"></i> Open in Trakt
+                                </a>
+                                
+                                ${item.ids.tmdb ? `<a href="https://www.themoviedb.org/${type === 'show' ? 'tv' : 'movie'}/${item.ids.tmdb}" target="_blank" class="w-full bg-[#01b4e4] hover:bg-[#0d253f] text-white py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md"><i class="fa-solid fa-film"></i> TMDB</a>` : ''}
+                                
+                                ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition shadow-md flex items-center justify-center gap-2">Official Website <i class="fa-solid fa-up-right-from-square ml-1 text-[10px]"></i></a>` : ''}
+                            </div>
+                            
+                            <!-- Trailer -->
+                            ${trailerUrl ? `<button onclick="window.openTrailer('${trailerUrl}')" class="w-full text-center bg-red-900/10 hover:bg-red-900/20 text-red-500 py-2.5 rounded-lg font-bold text-xs transition border border-red-900/20 flex items-center justify-center gap-2"><i class="fa-brands fa-youtube text-lg"></i> Watch Trailer</button>` : ''}
                         </div>
+                        
+                        <!-- RIGHT MAIN CONTENT -->
                         <div class="md:w-2/3 lg:w-3/4">
-                            <h1 class="text-4xl md:text-6xl font-bold mb-2 leading-tight tracking-tight">${item.title}</h1>
-                            ${item.tagline ? `<p class="text-xl text-gray-400 italic mb-4">"${item.tagline}"</p>` : ''}
+                            <h1 class="text-4xl md:text-5xl font-bold mb-2 leading-tight tracking-tight">${item.title}</h1>
+                            ${item.tagline ? `<p class="text-xl text-gray-400 italic mb-6">"${item.tagline}"</p>` : ''}
+                            
                             ${type === 'show' ? await (async () => { try { showProgress = await fetchDirect(`/shows/${id}/progress/watched?hidden=false&specials=${showSpecials}&count_specials=${showSpecials}&extended=full,images`); const percent = showProgress.aired > 0 ? Math.round((showProgress.completed / showProgress.aired) * 100) : 0; let nextEpHtml = ''; if (showProgress.next_episode) { const nx = showProgress.next_episode; const nxImg = getImage({ type: 'episode', episode: nx, show: item }, null, true); nextEpHtml = `<div class="mb-6 bg-[var(--bg)] rounded-xl p-4 border border-gray-700 hover:border-[var(--primary)] flex items-center gap-4 cursor-pointer transition shadow-lg group" onclick="location.hash='#detail/episode/${nx.ids.trakt}'"><div class="w-24 h-14 md:w-32 md:h-18 flex-shrink-0 rounded-lg overflow-hidden bg-gray-900 relative"><img src="${nxImg}" class="w-full h-full object-cover group-hover:scale-110 transition duration-300" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-1 left-1 bg-[var(--primary)] text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shadow-sm">Up Next</div></div><div class="flex-grow min-w-0"><p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">Season ${nx.season} <span class="mx-1">•</span> Episode ${nx.number}</p><h4 class="font-bold text-sm md:text-base text-gray-200 truncate group-hover:text-[var(--primary)] transition">${nx.title}</h4></div><div class="hidden sm:flex items-center text-xs text-gray-500 font-bold mr-2">Continue Watching <i class="fa-solid fa-circle-play text-[var(--primary)] text-xl ml-2"></i></div></div>`; } return `<div class="mb-6 bg-gray-800 rounded-full h-4 w-full overflow-hidden border border-gray-700 relative group"><div class="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-1000" style="width: ${percent}%"></div><div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">${percent}% WATCHED</div></div>${nextEpHtml}`; } catch(e){ return ''; } })() : ''}
-                            <div class="flex flex-wrap items-center gap-4 text-gray-300 mb-4 text-sm md:text-base font-medium">
-                                <span class="bg-gray-800 px-3 py-1 rounded-md border border-gray-700 text-white">${item.year || 'N/A'}</span>
-                                <span class="border border-gray-600 px-2 py-0.5 rounded text-xs uppercase text-gray-400">${cert}</span>
-                                ${statusBadge} ${myRatingHtml}
-                                ${item.status ? `<span class="uppercase tracking-wider font-bold ${getTypeColor(type)} px-2 py-1 bg-gray-800 rounded text-xs">${item.status}</span>` : ''}
-                            </div>
-                            ${genresHtml ? `<div class="flex flex-wrap gap-2 mb-6">${genresHtml}</div>` : '<div class="mb-6"></div>'}
-                            <div class="mb-6 space-y-1 text-sm text-gray-400">
-                                ${director !== 'N/A' ? `<p><strong class="text-gray-300">Director:</strong> ${director}</p>` : ''}
-                                ${studios !== 'N/A' ? `<p><strong class="text-gray-300">Studio:</strong> ${studios}</p>` : ''}
-                                ${network !== 'N/A' ? `<p><strong class="text-gray-300">Network:</strong> ${network}</p>` : ''}
-                                ${language !== 'EN' ? `<p><strong class="text-gray-300">Language:</strong> ${language}</p>` : ''}
-                                ${type === 'show' ? '' : (plays > 0 ? `<p><strong class="text-gray-300">Watch Count:</strong> ${plays} play${plays > 1 ? 's' : ''}</p><p><strong class="text-gray-300">Last Watched:</strong> ${history.length > 0 ? new Date(history[0].watched_at).toLocaleDateString() : 'Unknown'}</p>` : `<p><strong class="text-gray-300">Watch Count:</strong> 0 plays</p>`)}
-                            </div>
-                            <p class="text-gray-300 text-lg leading-relaxed mb-6 max-w-3xl">${item.overview || 'No overview available.'}</p>
+                            
+                            <!-- Metadata Row -->
+                            <div class="flex flex-wrap items-center gap-4 text-gray-300 mb-4 text-sm font-medium">
+                                <span class="bg-gray-800/80 px-3 py-1 rounded-md border border-gray-700 text-white shadow-sm">${item.year || 'N/A'}</span>
+                                <span class="border border-gray-600 px-2 py-0.5 rounded text-xs uppercase text-gray-400">${cert}</span>
+                                ${statusBadge} ${myRatingHtml}
+                            </div>
+                            
+                            <!-- Status Badge -->
+                            ${item.status ? `<div class="mb-6"><span class="uppercase tracking-wider font-bold text-[10px] ${getTypeColor(type)} px-2 py-1 bg-red-500/10 border border-red-500/20 rounded shadow-sm">${item.status}</span></div>` : ''}
+                            
+                            <!-- Genres -->
+                            ${genresHtml ? `<div class="flex flex-wrap gap-2 mb-6">${genresHtml}</div>` : '<div class="mb-6"></div>'}
+                            
+                            <!-- Info Text -->
+                            <div class="mb-8 space-y-2 text-sm text-gray-400">
+                                ${director !== 'N/A' ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Director:</strong> ${director}</p>` : ''}
+                                ${studios !== 'N/A' ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Studio:</strong> ${studios}</p>` : ''}
+                                ${network !== 'N/A' ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Network:</strong> ${network}</p>` : ''}
+                                ${type === 'show' ? '' : (plays > 0 ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Watch Count:</strong> ${plays} play${plays > 1 ? 's' : ''}</p>` : `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Watch Count:</strong> 0 plays</p>`)}
+                            </div>
+                            
+                            <!-- Overview Text -->
+                            <p class="text-gray-300 text-sm md:text-base leading-relaxed mb-10 max-w-3xl">${item.overview || 'No overview available.'}</p>
+                            
                             ${castHtml}
                             ${progressHtml}
                             ${historyHtml}
-                            <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8 mt-8">
-                                <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
-                                <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-3 text-sm outline-none resize-none" rows="2" placeholder="Your thoughts...">${userNote}</textarea>
-                                <div class="flex justify-end mt-3"><button id="save-note" class="text-xs bg-gray-700 hover:bg-[var(--primary)] text-white px-5 py-2 rounded-md transition font-bold shadow">Save</button></div>
+                            
+                            <!-- Notes -->
+                            <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8 mt-10">
+                                <h3 class="font-bold mb-3 flex items-center text-gray-200"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
+                                <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-4 text-sm outline-none resize-none focus:border-[var(--primary)] transition" rows="3" placeholder="Your thoughts...">${userNote}</textarea>
+                                <div class="flex justify-end mt-3"><button id="save-note" class="text-xs bg-gray-700 hover:bg-[var(--primary)] text-white px-6 py-2 rounded-md transition font-bold shadow-md">Save</button></div>
                             </div>
                         </div>
                     </div>
@@ -3820,6 +4106,12 @@ async function renderPerson(id) {
                         <button onclick="document.getElementById('import-notes-file').click()" class="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-note-sticky"></i> Import Notes
                         </button>
+                        
+                        <!-- Trakt Favorites Importer -->
+                        <input type="file" id="import-favorites-file" accept=".json" class="hidden">
+                        <button onclick="document.getElementById('import-favorites-file').click()" class="bg-pink-600 hover:bg-pink-500 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
+                            <i class="fa-solid fa-heart"></i> Import Favorites
+                        </button>
 
                         <button id="wipe-history-btn" class="bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition border border-red-900/50 hover:border-red-600 text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Wipe History DB</button>
                     </div>
@@ -3923,6 +4215,7 @@ async function renderPerson(id) {
                                     else if (fileName.includes('list')) category = 'lists';
                                     else if (fileName.includes('hidden')) category = 'hidden';
                                     else if (fileName.includes('note')) category = 'notes';
+                                    else if (fileName.includes('favorite')) category = 'favorites';
                                     else category = 'history';
                                 }
 
@@ -4044,6 +4337,8 @@ async function renderPerson(id) {
                                     theadTr.innerHTML = `<th class="p-3 font-bold">Title</th><th class="p-3 font-bold">Type</th><th class="p-3 font-bold text-center">Rank</th><th class="p-3 font-bold hidden md:table-cell">Listed At</th>`;
                                 } else if (category === 'notes') {
                                     theadTr.innerHTML = `<th class="p-3 font-bold">Title</th><th class="p-3 font-bold">Type</th><th class="p-3 font-bold">Note Excerpt</th>`;
+                                } else if (category === 'favorites') {
+                                    theadTr.innerHTML = `<th class="p-3 font-bold">Title</th><th class="p-3 font-bold">Type</th><th class="p-3 font-bold hidden md:table-cell">Favorited At</th>`;
                                 } else if (category === 'hidden') {
                                     theadTr.innerHTML = `<th class="p-3 font-bold">Show Title</th><th class="p-3 font-bold">Type</th><th class="p-3 font-bold hidden md:table-cell">Hidden At</th>`;
                                 } else if (category === 'collections') {
@@ -4199,6 +4494,22 @@ async function renderPerson(id) {
                                             }
                                             localStorage.setItem('vidtrackr_hidden_upnext', JSON.stringify(hiddenArr));
                                             await setDoc(doc(db, `users/${currentUser.uid}/settings`, 'hidden'), { items: hiddenArr }, { merge: true });
+                                        } else if (category === 'favorites') {
+                                            // Favorites Import
+                                            for (let i = 0; i < validItems.length; i++) {
+                                                const v = validItems[i];
+                                                statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-pink-500"></i> Favoriting ${i + 1} of ${validItems.length}...`;
+                                                const targetId = getTargetId(v);
+                                                if (targetId) {
+                                                    await setDoc(doc(db, `users/${currentUser.uid}/favorites`, `${v.type}_${targetId}`), {
+                                                        type: v.type,
+                                                        media_type: v.type,
+                                                        [v.type]: v.mediaData,
+                                                        favoritedAt: v.dateVal
+                                                    }, { merge: true });
+                                                    importedCount++;
+                                                }
+                                            }
                                         } else if (category === 'notes') {
                                             // Private Notes Import
                                             for (let i = 0; i < validItems.length; i++) {
@@ -4247,6 +4558,7 @@ async function renderPerson(id) {
                 setupImporter('import-list-file', 'lists');
                 setupImporter('import-hidden-file', 'hidden');
                 setupImporter('import-notes-file', 'notes');
+                setupImporter('import-favorites-file', 'favorites');
                 
                 if(clearBtn) clearBtn.onclick = () => {
                     localStorage.clear(); 
@@ -4287,10 +4599,11 @@ async function renderPerson(id) {
                     <h2 class="text-2xl font-bold border-l-4 border-[var(--primary)] px-3">Your Library</h2>
                     <div class="flex bg-gray-900/50 p-1 rounded-lg border border-gray-700 overflow-x-auto hide-scroll">
                         <button id="tab-local" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'local' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('local')">VidTrackr Watchlist</button>
-                        <button id="tab-wl" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'watchlist' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('watchlist')">Trakt Watchlist</button>
+                        ${primaryDataSource === 'trakt' ? `<button id="tab-wl" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'watchlist' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('watchlist')">Trakt Watchlist</button>` : ''}
                         <button id="tab-collections" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'collections' ? 'bg-teal-600 text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('collections')">Collections</button>
                         <button id="tab-lists" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'lists' ? 'bg-[var(--primary)] text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('lists')">Custom Lists</button>
                         <button id="tab-notes" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'notes' ? 'bg-amber-600 text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('notes')">Private Notes</button>
+                        <button id="tab-favorites" class="px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeTab === 'favorites' ? 'bg-pink-600 text-white shadow' : 'text-gray-400 hover:text-white'}" onclick="window.switchLib('favorites')"><i class="fa-solid fa-heart text-pink-300 mr-1"></i> Hall of Favourites</button>
                     </div>
                 </div>
                 <div id="lib-target"></div>
@@ -4298,12 +4611,12 @@ async function renderPerson(id) {
             
             window.switchLib = (tab) => {
                 // Reset classes
-                ['tab-wl', 'tab-local', 'tab-collections', 'tab-lists', 'tab-notes'].forEach(id => {
+                ['tab-wl', 'tab-local', 'tab-collections', 'tab-lists', 'tab-notes', 'tab-favorites'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.className = "px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap text-gray-400 hover:text-white";
                 });
                 // Set active class safely
-                const activeColor = tab === 'notes' ? 'bg-amber-600' : (tab === 'collections' ? 'bg-teal-600' : 'bg-[var(--primary)]');
+                const activeColor = tab === 'notes' ? 'bg-amber-600' : (tab === 'collections' ? 'bg-teal-600' : (tab === 'favorites' ? 'bg-pink-600' : 'bg-[var(--primary)]'));
                 const targetTab = document.getElementById(`tab-${tab}`);
                 if (targetTab) targetTab.className = `px-4 py-2 rounded-md text-xs md:text-sm font-bold transition whitespace-nowrap ${activeColor} text-white shadow`;
 
@@ -4311,6 +4624,7 @@ async function renderPerson(id) {
                 else if(tab === 'watchlist') renderWatchlist('added', 'lib-target');
                 else if(tab === 'collections') renderLocalCollections('lib-target');
                 else if(tab === 'notes') renderLocalNotes('lib-target');
+                else if(tab === 'favorites') renderFavorites('lib-target');
                 else renderLists('lib-target');
             };
 
@@ -4318,7 +4632,107 @@ async function renderPerson(id) {
             else if(activeTab === 'watchlist') renderWatchlist('added', 'lib-target');
             else if(activeTab === 'collections') renderLocalCollections('lib-target');
             else if(activeTab === 'notes') renderLocalNotes('lib-target');
+            else if(activeTab === 'favorites') renderFavorites('lib-target');
             else renderLists('lib-target');
+        }
+
+        async function renderFavorites(containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = `<div class="text-center py-10"><div class="animate-spin rounded-full h-10 w-10 border-4 border-pink-500 border-t-transparent inline-block"></div></div>`;
+            
+            if (!currentUser) {
+                container.innerHTML = `<p class="text-center text-red-400">Please sign in to view your Hall of Favourites.</p>`;
+                return;
+            }
+
+            try {
+                const querySnapshot = await getDocs(collection(db, `users/${currentUser.uid}/favorites`));
+                if (querySnapshot.empty) {
+                    container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-heart-crack text-6xl mb-4 opacity-50 text-pink-900/50"></i><p>Your Hall of Favourites is empty.</p></div>`;
+                    return;
+                }
+
+                const items = [];
+                querySnapshot.forEach((doc) => {
+                    const d = doc.data();
+                    d._docId = doc.id;
+                    items.push(d);
+                });
+
+                // Sort by Added Date (Newest first)
+                items.sort((a, b) => new Date(b.favoritedAt || 0) - new Date(a.favoritedAt || 0));
+
+                const gridHtml = `
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 mb-8 animate-fade">
+                        ${items.map(item => {
+                            const type = item.type;
+                            const data = item[type] || item;
+                            
+                            let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+                            const fallbackId = data.id || data.ids?.trakt || data.ids?.tmdb;
+                            const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
+                            let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
+                            
+                            if (targetId && type === 'episode' && primaryDataSource === 'tmdb') {
+                                const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
+                                const sNum = data.season || data.season_number;
+                                const eNum = data.number || data.episode_number;
+                                if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                            }
+
+                            const imgId = `card-img-${type}-${fallbackId}`;
+                            const img = getImage(data, type);
+                            const displayTitle = data.title || data.name || 'Unknown Title';
+                            let displayYear = data.year;
+                            if (!displayYear) {
+                                const dateString = data.release_date || data.first_air_date;
+                                displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
+                            }
+                            const ratingVal = data.rating || data.vote_average || 0;
+                            const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
+                            const ratingHtml = myRating 
+                                ? `<span class="text-green-400 font-bold flex items-center gap-1"><i class="fa-solid fa-user-check"></i> ${myRating}</span>`
+                                : `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>`;
+
+                            return `
+                            <div class="relative card rounded-xl overflow-hidden shadow-lg border border-pink-900/30 group hover:border-pink-500 transition">
+                                <div class="aspect-[2/3] relative bg-gray-900 cursor-pointer" onclick="${clickHandler}">
+                                    <img id="${imgId}" src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:opacity-80" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                    <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
+                                    <div class="absolute bottom-0 left-0 p-3 w-full">
+                                        <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${displayTitle}</p>
+                                        <p class="text-xs text-pink-200 font-mono">${displayYear}</p>
+                                    </div>
+                                    <div class="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
+                                        ${ratingHtml}
+                                    </div>
+                                </div>
+                                <button onclick="window.removeFromFavorites('${item._docId}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-pink-900/80 hover:bg-pink-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from Favourites">
+                                    <i class="fa-solid fa-heart-crack text-xs"></i>
+                                </button>
+                            </div>`;
+                        }).join('')}
+                    </div>`;
+                
+                container.innerHTML = gridHtml;
+
+                // Lazy Hydrate TMDB Images
+                window.enrichTMDBImages(items, (itemId, enrichedData, rawItem) => {
+                    const dataObj = rawItem[rawItem.type] || rawItem;
+                    const fallbackId = dataObj.ids?.trakt || dataObj.id || dataObj.ids?.tmdb || itemId;
+                    const imgEl = document.getElementById(`card-img-${rawItem.type}-${fallbackId}`);
+                    const newImg = getImage(enrichedData, rawItem.type);
+                    
+                    if (imgEl && newImg && newImg !== PLACEHOLDER_IMG && !imgEl.src.includes(newImg)) {
+                        imgEl.style.opacity = 0;
+                        setTimeout(() => { imgEl.src = newImg; imgEl.style.opacity = ''; }, 150);
+                    }
+                });
+
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = `<p class="text-center text-red-500">Failed to load Hall of Favourites.</p>`;
+            }
         }
         
         async function renderLocalCollections(containerId) {
@@ -4338,21 +4752,71 @@ async function renderPerson(id) {
                 }
 
                 const items = [];
-                querySnapshot.forEach((doc) => items.push(doc.data()));
+                querySnapshot.forEach((doc) => {
+                    const d = doc.data();
+                    d._docId = doc.id;
+                    items.push(d);
+                });
                 items.sort((a, b) => new Date(b.collectedAt || 0) - new Date(a.collectedAt || 0));
 
                 const gridHtml = `
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 mb-8 animate-fade">
-                        ${items.map(item => createCardHtml(item)).join('')}
+                        ${items.map(item => {
+                            const type = item.type;
+                            const data = item[type] || item;
+                            
+                            let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+                            const fallbackId = data.id || data.ids?.trakt || data.ids?.tmdb;
+                            const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
+                            let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
+                            
+                            if (targetId && type === 'episode' && primaryDataSource === 'tmdb') {
+                                const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
+                                const sNum = data.season || data.season_number;
+                                const eNum = data.number || data.episode_number;
+                                if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                            }
+
+                            const imgId = `card-img-${type}-${fallbackId}`;
+                            const img = getImage(data, type);
+                            const displayTitle = data.title || data.name || 'Unknown Title';
+                            let displayYear = data.year;
+                            if (!displayYear) {
+                                const dateString = data.release_date || data.first_air_date;
+                                displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
+                            }
+                            const ratingVal = data.rating || data.vote_average || 0;
+                            const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
+                            const ratingHtml = myRating 
+                                ? `<span class="text-green-400 font-bold flex items-center gap-1"><i class="fa-solid fa-user-check"></i> ${myRating}</span>`
+                                : `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>`;
+
+                            return `
+                            <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group hover:border-[var(--primary)] transition">
+                                <div class="aspect-[2/3] relative bg-gray-900 cursor-pointer" onclick="${clickHandler}">
+                                    <img id="${imgId}" src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:opacity-80" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                    <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
+                                    <div class="absolute bottom-0 left-0 p-3 w-full">
+                                        <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${displayTitle}</p>
+                                        <p class="text-xs text-gray-400 font-mono">${displayYear}</p>
+                                    </div>
+                                    <div class="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
+                                        ${ratingHtml}
+                                    </div>
+                                </div>
+                                <button onclick="window.removeFromCollection('${item._docId}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from Collection">
+                                    <i class="fa-solid fa-trash text-xs"></i>
+                                </button>
+                            </div>`;
+                        }).join('')}
                     </div>`;
                 
                 container.innerHTML = gridHtml;
 
                 window.enrichTMDBImages(items, (itemId, enrichedData, rawItem) => {
                     const dataObj = rawItem[rawItem.type] || rawItem;
-                    // FIX: Ensure TMDB ID is grabbed first for image targeting
-                    const targetId = dataObj.ids?.tmdb || dataObj.id || dataObj.ids?.trakt || itemId;
-                    const imgEl = document.getElementById(`card-img-${rawItem.type}-${targetId}`);
+                    const fallbackId = dataObj.ids?.trakt || dataObj.id || dataObj.ids?.tmdb || itemId;
+                    const imgEl = document.getElementById(`card-img-${rawItem.type}-${fallbackId}`);
                     const newImg = getImage(enrichedData, rawItem.type);
                     
                     if (imgEl && newImg && newImg !== PLACEHOLDER_IMG && !imgEl.src.includes(newImg)) {
@@ -4382,19 +4846,33 @@ async function renderPerson(id) {
                     // Fallback splitting just in case legacy notes don't have the underscore
                     const parts = docSnap.id.split('_');
                     const type = parts.length > 1 ? parts[0] : 'item';
-                    // FIX: Re-join the rest of the parts in case the composite ID contains underscores/dashes natively
-                    const id = parts.length > 1 ? parts.slice(1).join('_') : parts[0];
+                    let fallbackId = parts.length > 1 ? parts.slice(1).join('_') : parts[0];
+                    
+                    let targetId = (primaryDataSource === 'tmdb') ? d.ids?.tmdb : d.ids?.trakt;
+                    const idsStr = encodeURIComponent(JSON.stringify(d.ids || {}));
+                    let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
+                    
+                    if (targetId && type === 'episode' && primaryDataSource === 'tmdb') {
+                        // If we have a TMDB ID, we need the composite ID
+                        const showTmdb = d.ids?.show_tmdb || d.show?.ids?.tmdb;
+                        const sNum = d.season || d.season_number;
+                        const eNum = d.number || d.episode_number;
+                        if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                    }
                     
                     const dObj = new Date(d.updatedAt);
                     const dateStr = d.updatedAt && !isNaN(dObj) ? dObj.toLocaleDateString() : 'Unknown Date';
-                    const displayTitle = d.title || `Item ${id}`;
+                    const displayTitle = d.title || `Item ${targetId || fallbackId}`;
                     
                     // Safely handle quotes in text
                     const safeText = d.text ? d.text.replace(/"/g, '&quot;').replace(/</g, '&lt;') : '';
 
                     html += `
-                    <div class="card p-6 rounded-xl border border-gray-700 hover:border-amber-500 transition cursor-pointer" onclick="location.hash='#detail/${type}/${id}'">
-                        <div class="flex justify-between items-start mb-3">
+                    <div class="card p-6 rounded-xl border border-gray-700 hover:border-amber-500 transition cursor-pointer relative group" onclick="${clickHandler}">
+                        <button onclick="event.stopPropagation(); window.deleteNote('${docSnap.id}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Delete Note">
+                            <i class="fa-solid fa-trash text-xs"></i>
+                        </button>
+                        <div class="flex justify-between items-start mb-3 pr-8">
                             <span class="text-xs font-bold text-amber-500 uppercase tracking-widest">${type}</span>
                             <span class="text-xs text-gray-500">${dateStr}</span>
                         </div>
@@ -4429,7 +4907,9 @@ async function renderPerson(id) {
 
                 const items = [];
                 querySnapshot.forEach((doc) => {
-                    items.push(doc.data());
+                    const d = doc.data();
+                    d._docId = doc.id;
+                    items.push(d);
                 });
 
                 // Sort by Added Date (Newest first)
@@ -4437,7 +4917,54 @@ async function renderPerson(id) {
 
                 const gridHtml = `
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 mb-8 animate-fade">
-                        ${items.map(item => createCardHtml(item)).join('')}
+                        ${items.map(item => {
+                            const type = item.type;
+                            const data = item[type] || item;
+                            
+                            let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+                            const fallbackId = data.id || data.ids?.trakt || data.ids?.tmdb;
+                            const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
+                            let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
+                            
+                            if (targetId && type === 'episode' && primaryDataSource === 'tmdb') {
+                                const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
+                                const sNum = data.season || data.season_number;
+                                const eNum = data.number || data.episode_number;
+                                if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                            }
+
+                            const imgId = `card-img-${type}-${fallbackId}`;
+                            const img = getImage(data, type);
+                            const displayTitle = data.title || data.name || 'Unknown Title';
+                            let displayYear = data.year;
+                            if (!displayYear) {
+                                const dateString = data.release_date || data.first_air_date;
+                                displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
+                            }
+                            const ratingVal = data.rating || data.vote_average || 0;
+                            const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
+                            const ratingHtml = myRating 
+                                ? `<span class="text-green-400 font-bold flex items-center gap-1"><i class="fa-solid fa-user-check"></i> ${myRating}</span>`
+                                : `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>`;
+
+                            return `
+                            <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group hover:border-[var(--primary)] transition">
+                                <div class="aspect-[2/3] relative bg-gray-900 cursor-pointer" onclick="${clickHandler}">
+                                    <img id="${imgId}" src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:opacity-80" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                    <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
+                                    <div class="absolute bottom-0 left-0 p-3 w-full">
+                                        <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${displayTitle}</p>
+                                        <p class="text-xs text-gray-400 font-mono">${displayYear}</p>
+                                    </div>
+                                    <div class="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
+                                        ${ratingHtml}
+                                    </div>
+                                </div>
+                                <button onclick="window.removeFromLocalWatchlist('${item._docId}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from Watchlist">
+                                    <i class="fa-solid fa-trash text-xs"></i>
+                                </button>
+                            </div>`;
+                        }).join('')}
                     </div>`;
                 
                 container.innerHTML = gridHtml;
@@ -5113,7 +5640,9 @@ async function renderPerson(id) {
                     
                     const itemsSnap = await getDocs(collection(db, `users/${currentUser.uid}/lists/${slug}/items`));
                     itemsSnap.forEach(doc => {
-                        items.push(doc.data());
+                        const data = doc.data();
+                        data._docId = doc.id;
+                        items.push(data);
                     });
                 } else {
                     [listInfo, items] = await Promise.all([
@@ -5153,16 +5682,16 @@ async function renderPerson(id) {
                         const data = item[type];
                         const img = getImage(data, type); 
                         
-                        // TMDB-Aware Routing
-                        let navId = (primaryDataSource === 'tmdb') ? (data.ids?.tmdb || data.ids?.trakt) : data.ids?.trakt;
-                        let navHash = `#detail/${type}/${navId}`;
-                        if (type === 'episode') {
-                            const showId = data.show?.ids?.tmdb || data.show?.ids?.trakt || item.show?.ids?.tmdb || item.show?.ids?.trakt || navId;
+                        let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+                        const fallbackId = data.ids?.trakt || data.ids?.tmdb || data.id;
+                        const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
+                        let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
+                        
+                        if (targetId && type === 'episode' && primaryDataSource === 'tmdb') {
+                            const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
                             const sNum = data.season || data.season_number || item.episode?.season;
                             const eNum = data.number || data.episode_number || item.episode?.number;
-                            if (sNum !== undefined && eNum !== undefined) {
-                                navHash = `#detail/episode/${showId}-${sNum}-${eNum}`;
-                            }
+                            if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
                         }
 
                         const title = type === 'person' ? data.name : data.title;
@@ -5172,10 +5701,10 @@ async function renderPerson(id) {
                         const listedDate = item.listedAt || item.listed_at || item.collected_at || item.addedAt;
                         const dateAdded = listedDate ? new Date(listedDate).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' }) : 'Unknown';
                         
-                        const fallbackId = data.ids?.trakt || data.ids?.tmdb || data.id;
+                        const deleteId = item._docId || fallbackId;
                         return `
                         <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group hover:border-gray-600 transition">
-                             <div class="aspect-[2/3] relative bg-gray-900 cursor-pointer" onclick="location.hash='${navHash}'">
+                             <div class="aspect-[2/3] relative bg-gray-900 cursor-pointer" onclick="${clickHandler}">
                                 <img id="list-img-${type}-${fallbackId}" src="${img}" class="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition" loading="lazy" onerror="this.src='${PLACEHOLDER_IMG}'">
                                 <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
                                 <div class="absolute bottom-0 left-0 p-3 w-full">
@@ -5185,7 +5714,7 @@ async function renderPerson(id) {
                                 </div>
                                 <div class="absolute top-2 left-2 bg-black/60 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-gray-300 border border-white/10">#${item.rank}</div>
                              </div>
-                             <button onclick="window.removeListItem('${listId}', '${fallbackId}', '${type}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from List">
+                             <button onclick="window.removeListItem('${listId}', '${deleteId}', '${type}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from List">
                                 <i class="fa-solid fa-trash text-xs"></i>
                              </button>
                         </div>`;

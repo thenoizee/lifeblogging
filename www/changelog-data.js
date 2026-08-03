@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v15.153.0-alpha",
+    date: "2026-08-03",
+    changes: [
+        "In VidTrackr: Consolidated all action buttons, external links, and the trailer button into a sticky left-hand sidebar under the main poster.",
+        "In VidTrackr: Refined the typography and layout in the main right-hand content area, including styled metadata pills, separated genre tags, and uppercase tracking for information lists.",
+        "In VidTrackr: Added direct 'Add to Collection' & 'Remove from Collection' controls to movie, show, and episode detail pages.",
+        "In VidTrackr: Implemented collection management directly inside the Library -> Collections tab, allowing users to hover and quickly remove items with the trash icon.",
+        "In VidTrackr: Updated footer attribution to include TMDB alongside Trakt.tv.",
+        "In VidTrackr: The Trakt Watchlist library tab is now dynamically hidden when using TMDB mode as the primary data source.",
+        "In VidTrackr: Added direct deletion functionality for Private Notes from within the Library interface.",
+        "In VidTrackr: VidTrackr Watchlist entries now feature a hover-enabled delete button for quick local removal.",
+        "In VidTrackr: Custom Lists support is now unlocked globally, allowing additions and modifications even when operating in TMDB standalone mode.",
+        "In VidTrackr: Introduced the 'Hall of Favourites' tab to the Library.",
+        "In VidTrackr: Integrated an importer tool in Settings to ingest Trakt's 'List-favorites' JSON exports directly into the Hall of Favourites."
+    ]
+},
+    {
     version: "v15.152.0-alpha",
     date: "2026-08-03",
     changes: [
