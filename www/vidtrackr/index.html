@@ -369,7 +369,7 @@ input[type=range]::-moz-range-thumb {
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { initializeAuth, browserLocalPersistence, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     // FIX: Added query, orderBy, and limit for fetching from Firebase History
-    import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     // Globally import the TMDB key so all functions can use it
     import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI, TMDB_API_KEY } from './api_keys.js';
 
@@ -1811,6 +1811,18 @@ async function runSmart(cacheKey, fetcherFn, rendererFn) {
             }
         }
 
+        // --- Sync Hidden Items ---
+        async function syncHiddenItems() {
+            if (!currentUser) return;
+            try {
+                const snap = await getDoc(doc(db, `users/${currentUser.uid}/settings`, 'hidden'));
+                if (snap.exists() && snap.data().items) {
+                    localStorage.setItem('vidtrackr_hidden_upnext', JSON.stringify(snap.data().items));
+                    if (typeof renderHiddenItems === 'function') renderHiddenItems();
+                }
+            } catch (e) { console.warn("Could not sync hidden items", e); }
+        }
+
         // --- Renderers ---
         function renderGrid(title, items, append = false, containerId = 'content') {
             const gridHtml = `${!append && title ? `<h2 class="text-2xl font-bold mb-6 mt-8 px-2 border-l-4 border-[var(--primary)] animate-fade">${title}</h2>` : ''}<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 mb-8 animate-fade">${items.map(item => createCardHtml(item)).join('')}</div>`;
@@ -2138,135 +2150,151 @@ loadCalendar();
         }
         
 async function loadUpNext() {
-    await runSmart(
-        'up_next_local_v4', // Cache Key
-        
-        // --- FETCHER: Builds Up Next from local Firebase history ---
-        async () => {
-            if (!currentUser) return [];
-
-            try {
-                // Fetch user history from Firebase
-                const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(400));
-                const snapshot = await getDocs(q);
-                if (snapshot.empty) return [];
-
-                const historyItems = [];
-                snapshot.forEach(docSnap => historyItems.push(docSnap.data()));
-
-                // 1. Group episodes by Show to find the latest watched position
-                const showMap = new Map();
-
-                historyItems.forEach(item => {
-                    if (item.type !== 'episode') return;
-                    
-                    const media = item.media || item.episode;
-                    if (!media) return;
-                    
-                    const showObj = media.show || item.show;
-                    if (!showObj) return;
-
-                    const tmdbId = showObj.ids?.tmdb || media.ids?.tmdb;
-                    const identifier = tmdbId || showObj.title;
-
-                    if (!identifier) return;
-
-                    // Because the list is sorted by date descending, the first match is the most recently watched
-                    if (!showMap.has(identifier)) {
-                        showMap.set(identifier, {
-                            showTmdbId: tmdbId,
-                            showTitle: showObj.title,
-                            showObj: showObj,
-                            s: parseInt(media.season || media.season_number || 1),
-                            e: parseInt(media.number || media.episode_number || 1),
-                            watchedAt: item.watchedAt || item.loggedAt
-                        });
-                    }
-                });
-
-                // 2. Query TMDB to check if the show is completed, and if not, grab the next episode
-                const activeShows = Array.from(showMap.values()).slice(0, 12);
+            await runSmart(
+                'up_next_local_v5', // Cache Key bumped to flush old data
                 
-                const nextEpisodesPromises = activeShows.map(async (entry) => {
+                // --- FETCHER: Builds Up Next from local Firebase history ---
+                async () => {
+                    if (!currentUser) return [];
+
                     try {
-                        let tmdbId = entry.showTmdbId;
+                        // Fetch user history from Firebase
+                        // INCREASED LIMIT to 1500 to catch older shows pushed down by binge-watching
+                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(1500));
+                        const snapshot = await getDocs(q);
+                        if (snapshot.empty) return [];
+
+                        const historyItems = [];
+                        snapshot.forEach(docSnap => historyItems.push(docSnap.data()));
+
+                        // 1. Group episodes by Show to find the latest watched position
+                        const showMap = new Map();
+
+                        historyItems.forEach(item => {
+                            if (item.type !== 'episode') return;
+                            
+                            const media = item.media || item.episode;
+                            if (!media) return;
+                            
+                            const showObj = media.show || item.show;
+                            if (!showObj) return;
+
+                            const tmdbId = showObj.ids?.tmdb || media.ids?.tmdb;
+                            const identifier = tmdbId || showObj.title;
+
+                            if (!identifier) return;
+
+                            // Because the list is sorted by date descending, the first match is the most recently watched
+                            if (!showMap.has(identifier)) {
+                                showMap.set(identifier, {
+                                    showTmdbId: tmdbId,
+                                    showTitle: showObj.title,
+                                    showObj: showObj,
+                                    s: parseInt(media.season || media.season_number || 1),
+                                    e: parseInt(media.number || media.episode_number || 1),
+                                    watchedAt: item.watchedAt || item.loggedAt
+                                });
+                            }
+                        });
+
+                        // 2. Query TMDB to check if the show is completed, and if not, grab the next episode
+                        // INCREASED SLICE to 40 so completed shows don't suffocate active shows
+                        const activeShows = Array.from(showMap.values()).slice(0, 40);
                         
-                        // If no TMDB ID, fallback to searching TMDB by title
-                        if (!tmdbId && entry.showTitle) {
-                            const searchRes = await fetchTMDB(`/search/tv?query=${encodeURIComponent(entry.showTitle)}`);
-                            if (searchRes.results && searchRes.results.length > 0) {
-                                tmdbId = searchRes.results[0].id;
-                                entry.showObj.ids = entry.showObj.ids || {};
-                                entry.showObj.ids.tmdb = tmdbId;
+                        // Chunk requests to avoid TMDB 429 Rate Limits
+                        const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
+                        const batches = chunk(activeShows, 8); // 8 shows per batch = max 16 TMDB requests per batch
+                        
+                        const nextEpisodes = [];
+                        for (const batch of batches) {
+                            const batchResults = await Promise.all(batch.map(async (entry) => {
+                                try {
+                                    let tmdbId = entry.showTmdbId;
+                                    
+                                    // If no TMDB ID, fallback to searching TMDB by title
+                                    if (!tmdbId && entry.showTitle) {
+                                        const searchRes = await fetchTMDB(`/search/tv?query=${encodeURIComponent(entry.showTitle)}`);
+                                        if (searchRes.results && searchRes.results.length > 0) {
+                                            tmdbId = searchRes.results[0].id;
+                                            entry.showObj.ids = entry.showObj.ids || {};
+                                            entry.showObj.ids.tmdb = tmdbId;
+                                        }
+                                    }
+                                    if (!tmdbId) return null;
+
+                                    // Fetch show details to get season counts and episode limits
+                                    const showDetails = await fetchTMDB(`/tv/${tmdbId}`);
+                                    if (!showDetails || !showDetails.seasons) return null;
+
+                                    let nextS = entry.s;
+                                    let nextE = entry.e + 1;
+
+                                    // Check current season
+                                    const currentSeason = showDetails.seasons.find(x => x.season_number === nextS);
+                                    
+                                    if (currentSeason) {
+                                        // If the next episode exceeds the current season's episode count, bump to next season
+                                        if (nextE > currentSeason.episode_count) {
+                                            nextS += 1;
+                                            nextE = 1;
+                                        }
+                                    }
+
+                                    // Verify the target season exists and has episodes
+                                    const targetSeason = showDetails.seasons.find(x => x.season_number === nextS);
+                                    if (!targetSeason || targetSeason.episode_count === 0) {
+                                        // Show is completed / caught up!
+                                        return null; 
+                                    }
+
+                                    // Fetch the exact next episode data
+                                    const nextEpData = await fetchTMDB(`/tv/${tmdbId}/season/${nextS}/episode/${nextE}`);
+                                    if (!nextEpData || nextEpData.status_code === 34) return null; // 34 = Not Found
+
+                                    return {
+                                        type: 'episode',
+                                        isResume: false,
+                                        show: entry.showObj,
+                                        episode: {
+                                            ...nextEpData,
+                                            title: nextEpData.name,
+                                            season: nextS,
+                                            number: nextE,
+                                            // Map to a combined string ID so the router can load it correctly
+                                            ids: { trakt: `${tmdbId}-${nextS}-${nextE}`, tmdb: nextEpData.id }
+                                        },
+                                        ids: { trakt: `${tmdbId}-${nextS}-${nextE}`, tmdb: nextEpData.id },
+                                        title: nextEpData.name,
+                                        watched_at: entry.watchedAt
+                                    };
+                                } catch(err) {
+                                    return null;
+                                }
+                            }));
+                            
+                            nextEpisodes.push(...batchResults.filter(i => i !== null));
+                            
+                            // Respect TMDB rate limits between batches
+                            if (batches.indexOf(batch) < batches.length - 1) {
+                                await new Promise(r => setTimeout(r, 250));
                             }
                         }
-                        if (!tmdbId) return null;
-
-                        // Fetch show details to get season counts and episode limits
-                        const showDetails = await fetchTMDB(`/tv/${tmdbId}`);
-                        if (!showDetails || !showDetails.seasons) return null;
-
-                        let nextS = entry.s;
-                        let nextE = entry.e + 1;
-
-                        // Check current season
-                        const currentSeason = showDetails.seasons.find(x => x.season_number === nextS);
                         
-                        if (currentSeason) {
-                            // If the next episode exceeds the current season's episode count, bump to next season
-                            if (nextE > currentSeason.episode_count) {
-                                nextS += 1;
-                                nextE = 1;
-                            }
-                        }
+                        // Incorporate partial watch (resume) items if available
+                        const resumeItems = Array.from(userPlayback.values()).map(p => ({
+                            ...p,
+                            isResume: true,
+                            playbackId: p.id,
+                            type: p.type || (p.movie ? 'movie' : 'episode')
+                        })).sort((a, b) => new Date(b.paused_at) - new Date(a.paused_at));
 
-                        // Verify the target season exists and has episodes
-                        const targetSeason = showDetails.seasons.find(x => x.season_number === nextS);
-                        if (!targetSeason || targetSeason.episode_count === 0) {
-                            // Show is completed / caught up!
-                            return null; 
-                        }
+                        // Sort nextEpisodes by when they were last watched so the most recently engaged shows are first
+                        nextEpisodes.sort((a, b) => new Date(b.watched_at) - new Date(a.watched_at));
 
-                        // Fetch the exact next episode data
-                        const nextEpData = await fetchTMDB(`/tv/${tmdbId}/season/${nextS}/episode/${nextE}`);
-                        if (!nextEpData || nextEpData.status_code === 34) return null; // 34 = Not Found
-
-                        return {
-                            type: 'episode',
-                            isResume: false,
-                            show: entry.showObj,
-                            episode: {
-                                ...nextEpData,
-                                title: nextEpData.name,
-                                season: nextS,
-                                number: nextE,
-                                // Map to a combined string ID so the router can load it correctly
-                                ids: { trakt: `${tmdbId}-${nextS}-${nextE}`, tmdb: nextEpData.id }
-                            },
-                            ids: { trakt: `${tmdbId}-${nextS}-${nextE}`, tmdb: nextEpData.id },
-                            title: nextEpData.name,
-                            watched_at: entry.watchedAt
-                        };
-                    } catch(err) {
-                        return null;
-                    }
-                });
-
-                const results = await Promise.all(nextEpisodesPromises);
-                const nextEpisodes = results.filter(i => i !== null);
-                
-                // Incorporate partial watch (resume) items if available
-                const resumeItems = Array.from(userPlayback.values()).map(p => ({
-                    ...p,
-                    isResume: true,
-                    playbackId: p.id,
-                    type: p.type || (p.movie ? 'movie' : 'episode')
-                })).sort((a, b) => new Date(b.paused_at) - new Date(a.paused_at));
-
-                const finalItems = [...resumeItems, ...nextEpisodes].slice(0, 18);
-                
-                await window.enrichTMDBImages(finalItems);
-                return finalItems;
+                        const finalItems = [...resumeItems, ...nextEpisodes].slice(0, 18);
+                        
+                        await window.enrichTMDBImages(finalItems);
+                        return finalItems;
             } catch(e) {
                 console.error("Local Up Next calculation error:", e);
                 return [];
@@ -3667,9 +3695,15 @@ async function renderPerson(id) {
         } //
 
         let currentHistoryFilter = 'all'; 
+        let currentHistoryPeriod = ''; 
 
         window.setHistoryFilter = (filter) => {
             currentHistoryFilter = filter;
+            renderHistory(1);
+        };
+
+        window.setHistoryPeriodFilter = (period) => {
+            currentHistoryPeriod = period;
             renderHistory(1);
         };
 
@@ -3873,14 +3907,21 @@ async function renderPerson(id) {
         function renderHistory(page = 1) {
             if (page === 1) { 
     els.content.innerHTML = `
-    <div class="flex flex-col md:flex-row justify-between items-center mb-6 mt-4 gap-4">
+    <div class="flex flex-col xl:flex-row justify-between items-center mb-6 mt-4 gap-4">
         <h2 class="text-2xl font-bold flex items-center gap-3"><i class="fa-solid fa-clock-rotate-left text-[var(--primary)] opacity-80"></i> Watch History</h2>
-        <div class="flex bg-gray-900 p-1 rounded-xl border border-gray-700 shadow-inner overflow-x-auto w-full md:w-auto hide-scroll">
-            <button onclick="window.setHistoryFilter('all')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'all' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}">All History</button>
-            <button onclick="window.setHistoryFilter('movies')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'movies' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"><i class="fa-solid fa-film mr-1"></i> Movies</button>
-            <button onclick="window.setHistoryFilter('episodes')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'episodes' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"><i class="fa-solid fa-tv mr-1"></i> Episodes</button>
-            <button onclick="window.setHistoryFilter('unrated')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'unrated' ? 'bg-gray-700 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"><i class="fa-solid fa-star-half-stroke mr-1"></i> Unrated</button>
-            <button onclick="window.setHistoryFilter('rated')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'rated' ? 'bg-green-600 text-white shadow-md' : 'text-gray-400 hover:text-green-500 hover:bg-gray-800'}"><i class="fa-solid fa-star mr-1"></i> Rated</button>
+        <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
+            <div class="flex items-center bg-gray-900 border border-gray-700 rounded-xl px-3 py-1 shadow-inner relative min-w-[150px] flex-shrink-0">
+                <i class="fa-solid fa-calendar-days text-gray-500 absolute left-3"></i>
+                <input type="month" value="${currentHistoryPeriod}" onchange="window.setHistoryPeriodFilter(this.value)" class="bg-transparent text-sm font-bold outline-none text-gray-300 w-full pl-6 pr-4 py-1.5 cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer" title="Filter by Month">
+                ${currentHistoryPeriod ? `<button onclick="window.setHistoryPeriodFilter('')" class="absolute right-3 text-gray-500 hover:text-red-500 bg-gray-900 z-10"><i class="fa-solid fa-xmark"></i></button>` : ''}
+            </div>
+            <div class="flex bg-gray-900 p-1 rounded-xl border border-gray-700 shadow-inner overflow-x-auto w-full md:w-auto hide-scroll">
+                <button onclick="window.setHistoryFilter('all')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'all' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}">All History</button>
+                <button onclick="window.setHistoryFilter('movies')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'movies' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"><i class="fa-solid fa-film mr-1"></i> Movies</button>
+                <button onclick="window.setHistoryFilter('episodes')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'episodes' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"><i class="fa-solid fa-tv mr-1"></i> Episodes</button>
+                <button onclick="window.setHistoryFilter('unrated')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'unrated' ? 'bg-gray-700 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}"><i class="fa-solid fa-star-half-stroke mr-1"></i> Unrated</button>
+                <button onclick="window.setHistoryFilter('rated')" class="px-5 py-2.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${currentHistoryFilter === 'rated' ? 'bg-green-600 text-white shadow-md' : 'text-gray-400 hover:text-green-500 hover:bg-gray-800'}"><i class="fa-solid fa-star mr-1"></i> Rated</button>
+            </div>
         </div>
     </div>
     
@@ -3940,7 +3981,22 @@ async function renderPerson(id) {
                     
                     if (page === 1) historyPage = 1; // Reset tracker when starting fresh
                     // 1. Fetch History from Firebase
-                    const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(page * 100));
+                    let q;
+                    if (currentHistoryPeriod) {
+                        const [year, month] = currentHistoryPeriod.split('-');
+                        const start = new Date(Date.UTC(year, parseInt(month) - 1, 1)).toISOString();
+                        const end = new Date(Date.UTC(year, parseInt(month), 1)).toISOString(); // 1st day of next month
+                        
+                        q = query(
+                            collection(db, `users/${currentUser.uid}/history`), 
+                            where("watchedAt", ">=", start),
+                            where("watchedAt", "<", end),
+                            orderBy("watchedAt", "desc"),
+                            limit(page * 100)
+                        );
+                    } else {
+                        q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(page * 100));
+                    }
                     const snapshot = await getDocs(q);
                     
                     let data = [];
@@ -3966,7 +4022,14 @@ async function renderPerson(id) {
                     // 2. Trakt Fallback: If Firebase history is empty and user has Trakt connected, fetch from Trakt API
                     if (data.length === 0 && traktAccessToken) {
                         try {
-                            const traktHistory = await fetchDirect(`/users/me/history?limit=100&extended=images`);
+                            let traktEndpoint = `/users/me/history?limit=100&extended=images`;
+                            if (currentHistoryPeriod) {
+                                const [year, month] = currentHistoryPeriod.split('-');
+                                const start = new Date(Date.UTC(year, parseInt(month) - 1, 1)).toISOString();
+                                const end = new Date(Date.UTC(year, parseInt(month), 1)).toISOString();
+                                traktEndpoint += `&start_at=${start}&end_at=${end}`;
+                            }
+                            const traktHistory = await fetchDirect(traktEndpoint);
                             if (traktHistory && traktHistory.length > 0) {
                                 data = traktHistory.map(th => ({
                                     id: th.id,
@@ -6299,9 +6362,11 @@ document.getElementById('modal-title').innerText = data.title;
             if (traktAccessToken) { 
                 await Promise.all([syncUserRatings(), syncPlayback()]);
             }
+            await syncHiddenItems();
+            
             checkActiveWatching();
             handleRoute();
-        } else { 
+        } else {
             // Render Login Form (No changes needed here)
             els.content.innerHTML = `<div class="max-w-md mx-auto card p-10 rounded-2xl shadow-2xl mt-12 text-center animate-fade"><div class="mb-6 inline-block p-4 rounded-full bg-[var(--primary)]/10"><i class="fa-solid fa-ticket text-5xl text-[var(--primary)]"></i></div><h1 class="text-4xl font-bold mb-2 text-[var(--primary)]">VidTrackr</h1><p class="text-gray-400 mb-8">Sign in to track your movies and shows.</p><button class="w-full bg-white text-gray-900 font-bold py-3 rounded-lg hover:bg-gray-200 transition mb-4 shadow-lg" onclick="document.getElementById('email-login').classList.remove('hidden'); this.classList.add('hidden');">Sign In / Sign Up</button><form id="email-login" class="space-y-4 hidden animate-fade"><input type="email" id="email" placeholder="Email" class="w-full p-4 rounded-lg bg-[var(--bg)] border border-gray-700 focus:border-[var(--primary)] outline-none transition" required><input type="password" id="password" placeholder="Password" class="w-full p-4 rounded-lg bg-[var(--bg)] border border-gray-700 focus:border-[var(--primary)] outline-none transition" required><div class="flex gap-3"><button type="submit" name="login" class="flex-1 btn-primary py-3 rounded-lg font-bold">Login</button><button type="submit" name="signup" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-bold transition">Sign Up</button></div></form></div>`; 
             

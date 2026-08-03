@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.155.0-alpha",
+    date: "2026-08-03",
+    changes: [
+        "In VidTrackr: Added a Month/Year period filter to the Watch History tab, allowing users to query and verify historical logs natively from their Firebase database.",
+        "In VidTrackr: Fixed an issue where hidden items were not syncing across different devices or sessions by pulling the hidden list from Firebase into local storage on authentication.",
+        "In VidTrackr: Dramatically improved the 'Up Next' engine by widening the history scan to 1,500 items and validating up to 40 unique shows simultaneously.",
+        "In VidTrackr: Added batching to the TMDB API requests within the 'Up Next' builder to prevent rate limiting errors when processing deeper history pools."
+    ]
+},
+    {
     version: "v15.154.0-alpha",
     date: "2026-08-03",
     changes: [
