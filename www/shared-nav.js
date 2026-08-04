@@ -940,10 +940,12 @@ export class AppNavigation {
                 const notifRef = collection(db, 'users', user.uid, 'notifications');
                 
                 try {
-                    const snapshot = await getDocs(notifRef);
-                    snapshot.docs.forEach(docSnap => {
-                        if (docSnap.data().priority !== true) {
-                            batch.delete(docSnap.ref);
+                    // Iterate through the notifications already loaded in memory
+                    // rather than executing a boundless database read.
+                    this.notifications.forEach(notif => {
+                        if (notif.priority !== true) {
+                            const ref = doc(db, 'users', user.uid, 'notifications', notif.id);
+                            batch.delete(ref);
                         }
                     });
                     await batch.commit();

@@ -1368,7 +1368,8 @@ details.premium-accordion[open] > div.mt-2 { animation: accordionSlideDown 0.4s 
 import { AppNavigation } from '/shared-nav.js'; // Add this line
       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
       import { initializeAuth, browserLocalPersistence, signInWithEmailAndPassword, onAuthStateChanged, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-      import { getFirestore, collection, addDoc, Timestamp, doc, deleteDoc, updateDoc, getDocs, setDoc, writeBatch, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+      // Added initializeFirestore, persistentLocalCache, persistentMultipleTabManager, and where for limiting queries
+      import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, Timestamp, doc, deleteDoc, updateDoc, getDocs, setDoc, writeBatch, query, orderBy, onSnapshot, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
       // --- Firebase Config ---
       const firebaseConfig = {
@@ -1386,7 +1387,10 @@ import { AppNavigation } from '/shared-nav.js'; // Add this line
       const auth = initializeAuth(app, {
           persistence: browserLocalPersistence
       });
-      const db = getFirestore(app);
+      // Initialize Firestore with offline persistence to drastically reduce read calls
+      const db = initializeFirestore(app, {
+          localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+      });
       
       // --- Constants ---
       const LOW_STOCK_THRESHOLD = 10;
@@ -3780,7 +3784,15 @@ document.getElementById('modal-save-grooming-btn').addEventListener('click', han
               renderAll();
           }, (err) => { console.error("Medication listener error:", err); });
 
-          const dosesQuery = query(collection(db, `users/${userId}/doses`), orderBy('date', 'desc'));
+          // Create a timestamp for 3 months ago to limit the initial read volume
+          const threeMonthsAgo = new Date();
+          threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+          
+          const dosesQuery = query(
+              collection(db, `users/${userId}/doses`), 
+              where("date", ">=", threeMonthsAgo.toISOString()), // Only fetch the last 3 months by default
+              orderBy('date', 'desc')
+          );
           appState.unsubscribe.doses = onSnapshot(dosesQuery, (snapshot) => {
               appState.doses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
               renderAll();
@@ -3795,15 +3807,28 @@ document.getElementById('modal-save-grooming-btn').addEventListener('click', han
               }
           });
 
-          // Grooming Listener
-          const groomingQuery = query(collection(db, `users/${userId}/grooming_logs`), orderBy('date', 'desc'));
+          // Create a generic 3-month cutoff for logs to prevent massive reads
+          const logCutoff = new Date();
+          logCutoff.setMonth(logCutoff.getMonth() - 3);
+          const logCutoffTimestamp = Timestamp.fromDate(logCutoff);
+
+          // Grooming Listener - Capped to 3 months
+          const groomingQuery = query(
+              collection(db, `users/${userId}/grooming_logs`), 
+              where("date", ">=", logCutoffTimestamp), 
+              orderBy('date', 'desc')
+          );
           appState.unsubscribe.grooming = onSnapshot(groomingQuery, (snapshot) => {
               appState.groomingLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
               renderAll();
           });
 
-          // NEW: Lens Logs Listener
-          const lensLogsQuery = query(collection(db, `users/${userId}/lenses_logs`), orderBy('date', 'desc'));
+          // NEW: Lens Logs Listener - Capped to 3 months
+          const lensLogsQuery = query(
+              collection(db, `users/${userId}/lenses_logs`), 
+              where("date", ">=", logCutoffTimestamp), 
+              orderBy('date', 'desc')
+          );
           appState.unsubscribe.lensLogs = onSnapshot(lensLogsQuery, (snapshot) => {
               appState.lensLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
               renderAll();

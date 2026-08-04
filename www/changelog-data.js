@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.161.0-alpha",
+    date: "2026-08-05",
+    changes: [
+        "In HealthManagr: Enabled Firestore offline persistence to load data from the browser's local cache and reduce read calls.",
+        "In HealthManagr: Capped unbounded queries for doses, grooming, and lenses_logs to fetch only the last 3 months of data.",
+        "In FoodTrackr: Enabled Firestore offline persistence to reduce database reads on load.",
+        "In Shared Navigation: Refactored the 'Clear All' notifications function to perform zero-read deletions using in-memory state."
+    ]
+},
+    {
     version: "v15.160.0-alpha",
     date: "2026-08-04",
     changes: [
