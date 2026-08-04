@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.158.0-alpha",
+    date: "2026-08-04",
+    changes: [
+                "In VidTrackr: Fixed the 'jumping tab' UI bug where delayed asynchronous data fetches would incorrectly overwrite the active screen if the user navigated to a different tab.",
+                "In VidTrackr: Improved the Data Importer UX by converting the 'Cancel' button to a 'Stop Import' button during active processing to properly communicate that data commits sequentially.",
+    ]
+},
+    {
     version: "v15.157.0-alpha",
     date: "2026-08-04",
     changes: [

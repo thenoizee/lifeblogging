@@ -1845,8 +1845,10 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
         // --- Renderers ---
         function renderGrid(title, items, append = false, containerId = 'content') {
             const gridHtml = `${!append && title ? `<h2 class="text-2xl font-bold mb-6 mt-8 px-2 border-l-4 border-[var(--primary)] animate-fade">${title}</h2>` : ''}<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 mb-8 animate-fade">${items.map(item => createCardHtml(item)).join('')}</div>`;
-            const container = document.getElementById(containerId) || els.content;
-            if (append) container.insertAdjacentHTML('beforeend', gridHtml); else container.innerHTML = gridHtml;
+            const container = document.getElementById(containerId);
+            if (containerId !== 'content' && !container) return; // Prevent overwriting if user navigated away and container was destroyed
+            const target = container || els.content;
+            if (append) target.insertAdjacentHTML('beforeend', gridHtml); else target.innerHTML = gridHtml;
         }
 
 async function renderDashboard() {
@@ -1918,6 +1920,9 @@ loadCalendar();
                 // FIX: Rerouting feed to pull from the new Firebase History collection
                 const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(12));
                 const snapshot = await getDocs(q);
+                
+                const containerAfter = document.getElementById('last-watched-container');
+                if (!containerAfter) return; // Abort if user navigated away
                 
                 if (snapshot.empty) {
                     container.classList.add('hidden');
@@ -2048,9 +2053,14 @@ loadCalendar();
 
         async function loadCalendar() {
             const container = document.getElementById('calendar-container');
+            if (!container) return;
             try {
                 const today = new Date().toISOString().split('T')[0];
                 const calendar = await fetchDirect(`/calendars/my/shows/${today}/7?extended=images`);
+                
+                const containerAfter = document.getElementById('calendar-container');
+                if (!containerAfter) return; // Abort if user navigated away
+
                 if(calendar.length > 0) {
                     container.innerHTML = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-green-500">Airing This Week</h2><div class="flex gap-4 overflow-x-auto pb-4 hide-scroll">${calendar.map(item => `<div class="flex-shrink-0 w-64 card p-4 rounded-xl border border-gray-700 hover:border-green-500 transition cursor-pointer" onclick="location.hash='#detail/episode/${item.episode.ids.trakt}'"><div class="flex gap-3 mb-3"><img src="${getImage(item.show)}" class="w-12 h-16 object-cover rounded shadow"><div><p class="font-bold text-sm text-green-400">${new Date(item.first_aired).toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'})}</p><p class="font-bold text-sm leading-tight line-clamp-2 w-40 mb-1">${item.show.title}</p><p class="text-xs text-gray-500">S${item.episode.season}E${item.episode.number}</p></div></div><p class="text-xs text-gray-300 truncate">${item.episode.title}</p></div>`).join('')}</div>`;
                     container.classList.remove('hidden');
@@ -2483,6 +2493,9 @@ async function loadFriendsFeed() {
 
         const results = await Promise.all(feedPromises);
         
+        const containerAfter = document.getElementById('friends-feed-container');
+        if (!containerAfter) return; // Abort if user navigated away
+        
         // Step 3: Filter out nulls and sort by "watched_at" date (newest first)
         const feed = results.filter(item => item !== null)
                             .sort((a, b) => new Date(b.watched_at) - new Date(a.watched_at));
@@ -2534,9 +2547,11 @@ async function loadFriendsFeed() {
 }
 
 async function renderPerson(id) {
+            const currentHash = location.hash;
             showLoader();
             els.content.innerHTML = '';
             try {
+                if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
                 // FIX: Fetch person details and combined credits directly from TMDB
                 let person, allWorks = [];
                 
@@ -2643,8 +2658,10 @@ async function renderPerson(id) {
             if (type === 'tv') type = 'show'; // Intercept any cached 'tv' routes and force them to 'show'
             window.renderDetail = renderDetail; // Expose globally for inline onclick
             const historyLimit = forceAllHistory ? 10000 : 100;
+            const currentHash = location.hash;
             showLoader(); els.content.innerHTML = '';
             try {
+                if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
                 const isEpisode = type === 'episode';
                 let canonicalId = id; // Will be resolved to TMDB or Trakt ID dynamically to fix note linking
                 let noteKey = `${type}_${id}`;
@@ -4559,12 +4576,13 @@ async function renderPerson(id) {
 
                     inputEl.onchange = async (e) => {
                         const files = Array.from(e.target.files);
-                        if (!files.length) return;
+                if (!files.length) return;
 
-                        showLoader();
-                        let validItems = [];
-                        let category = importCategory;
-                        let listName = '';
+                let isCancelled = false; // FLAG TO ABORT THE IMPORT
+                showLoader();
+                let validItems = [];
+                let category = importCategory;
+                let listName = '';
 
                         try {
                             for (const file of files) {
@@ -4749,9 +4767,20 @@ async function renderPerson(id) {
                                 previewModal.classList.remove('hidden');
 
                                 // Cancel Action
-                                document.getElementById('import-cancel-btn').onclick = () => {
+                                const cancelBtn = document.getElementById('import-cancel-btn');
+                                cancelBtn.onclick = () => {
+                                    isCancelled = true; // Tell loops to stop
                                     previewModal.classList.add('hidden');
-                                    e.target.value = '';
+                                    inputEl.value = '';
+                                    
+                                    // Reset the buttons visually if they cancel
+                                    const confirmBtn = document.getElementById('import-confirm-btn');
+                                    if(confirmBtn) {
+                                        confirmBtn.innerHTML = 'Confirm Import';
+                                        confirmBtn.disabled = false;
+                                    }
+                                    cancelBtn.innerHTML = 'Cancel';
+                                    cancelBtn.className = 'bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-bold transition';
                                 };
 
                                 // Confirm Import Action
@@ -4759,6 +4788,13 @@ async function renderPerson(id) {
                                     const btn = btnEvent.target;
                                     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
                                     btn.disabled = true;
+                                    
+                                    const cancelBtn = document.getElementById('import-cancel-btn');
+                                    if (cancelBtn) {
+                                        cancelBtn.innerHTML = '<i class="fa-solid fa-stop"></i> Stop Import';
+                                        cancelBtn.className = 'bg-red-900/80 hover:bg-red-600 text-white py-3 rounded-lg font-bold transition border border-red-500/50';
+                                    }
+
                                     const statsEl = document.getElementById('import-preview-stats');
 
                                     try {
@@ -4788,6 +4824,7 @@ async function renderPerson(id) {
                                             // History Import
                                             let skippedCount = 0; // Track skipped duplicates to alert the user
                                             for (let i = 0; i < validItems.length; i++) {
+                                                if (isCancelled) break; // <--- ABORT CHECK
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-[var(--primary)]"></i> Importing ${i + 1} of ${validItems.length}...`;
                                                 // Prevent the history import from passing the rating parameter to avoid injecting 'now' as the rating timestamp
@@ -4800,12 +4837,13 @@ async function renderPerson(id) {
                                                 }
                                             }
                                             // Wait a tiny bit so it doesn't get overridden by the main success toast immediately
-                                            if (skippedCount > 0) {
+                                            if (!isCancelled && skippedCount > 0) {
                                                 setTimeout(() => showToast(`Skipped ${skippedCount} duplicate history entries.`, 'success'), 3500);
                                             }
                                         } else if (category === 'ratings') {
                                             // Ratings Import
                                             for (let i = 0; i < validItems.length; i++) {
+                                                if (isCancelled) break; // <--- ABORT CHECK
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-yellow-500"></i> Saving rating ${i + 1} of ${validItems.length}...`;
                                                 
@@ -4827,6 +4865,7 @@ async function renderPerson(id) {
                                         } else if (category === 'collections') {
                                             // Collection Import
                                             for (let i = 0; i < validItems.length; i++) {
+                                                if (isCancelled) break; // <--- ABORT CHECK
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-teal-500"></i> Collecting ${i + 1} of ${validItems.length}...`;
                                                 const targetId = getTargetId(v);
@@ -4852,6 +4891,7 @@ async function renderPerson(id) {
                                             }, { merge: true });
 
                                             for (let i = 0; i < validItems.length; i++) {
+                                                if (isCancelled) break; // <--- ABORT CHECK
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-purple-500"></i> Adding to list ${i + 1} of ${validItems.length}...`;
                                                 const targetId = getTargetId(v);
@@ -4869,6 +4909,7 @@ async function renderPerson(id) {
                                             // Hidden Shows Import
                                             let hiddenArr = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
                                             for (let i = 0; i < validItems.length; i++) {
+                                                if (isCancelled) break; // <--- ABORT CHECK
                                                 const v = validItems[i];
                                                 const targetId = getTargetId(v);
                                                 if (targetId && !hiddenArr.some(h => String(h.id) === String(targetId))) {
@@ -4876,11 +4917,14 @@ async function renderPerson(id) {
                                                     importedCount++;
                                                 }
                                             }
-                                            localStorage.setItem('vidtrackr_hidden_upnext', JSON.stringify(hiddenArr));
-                                            await setDoc(doc(db, `users/${currentUser.uid}/settings`, 'hidden'), { items: hiddenArr }, { merge: true });
+                                            if (!isCancelled) {
+                                                localStorage.setItem('vidtrackr_hidden_upnext', JSON.stringify(hiddenArr));
+                                                await setDoc(doc(db, `users/${currentUser.uid}/settings`, 'hidden'), { items: hiddenArr }, { merge: true });
+                                            }
                                         } else if (category === 'favorites') {
                                             // Favorites Import
                                             for (let i = 0; i < validItems.length; i++) {
+                                                if (isCancelled) break; // <--- ABORT CHECK
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-pink-500"></i> Favoriting ${i + 1} of ${validItems.length}...`;
                                                 const targetId = getTargetId(v);
@@ -4897,6 +4941,7 @@ async function renderPerson(id) {
                                         } else if (category === 'comments') {
                                             // Comments Import
                                             for (let i = 0; i < validItems.length; i++) {
+                                                if (isCancelled) break; // <--- ABORT CHECK
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-blue-500"></i> Saving comment ${i + 1} of ${validItems.length}...`;
                                                 const targetId = getTargetId(v);
@@ -4915,6 +4960,7 @@ async function renderPerson(id) {
                                         } else if (category === 'notes') {
                                             // Private Notes Import
                                             for (let i = 0; i < validItems.length; i++) {
+                                                if (isCancelled) break; // <--- ABORT CHECK
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-amber-500"></i> Saving note ${i + 1} of ${validItems.length}...`;
                                                 const targetId = getTargetId(v);
@@ -4930,22 +4976,33 @@ async function renderPerson(id) {
                                             }
                                         }
 
-                                        // Record this specific category as successfully imported in local storage
-                                        const importedState = JSON.parse(localStorage.getItem('vidtrackr_trakt_imports') || '{}');
-                                        importedState[category] = true;
-                                        localStorage.setItem('vidtrackr_trakt_imports', JSON.stringify(importedState));
+                                        if (!isCancelled) {
+                                            // Record this specific category as successfully imported in local storage
+                                            const importedState = JSON.parse(localStorage.getItem('vidtrackr_trakt_imports') || '{}');
+                                            importedState[category] = true;
+                                            localStorage.setItem('vidtrackr_trakt_imports', JSON.stringify(importedState));
 
-                                        previewModal.classList.add('hidden');
-                                        showToast(`Successfully imported ${importedCount} ${category}!`, 'success');
+                                            previewModal.classList.add('hidden');
+                                            showToast(`Successfully imported ${importedCount} ${category}!`, 'success');
 
-                                        // Instantly re-render the settings page so the progress bar updates from 1/7 to 2/7
-                                        if (location.hash.startsWith('#settings')) renderSettings();
+                                            // Instantly re-render the settings page so the progress bar updates from 1/7 to 2/7
+                                            if (location.hash.startsWith('#settings')) renderSettings();
+                                        } else {
+                                            showToast(`Import stopped early. ${importedCount} items were saved.`, 'success');
+                                        }
                                     } catch(e) {
                                         console.error("Import error:", e);
                                         showToast('An error occurred during import.', 'error');
                                     } finally {
                                         btn.innerHTML = 'Confirm Import';
                                         btn.disabled = false;
+                                        
+                                        const cancelBtn = document.getElementById('import-cancel-btn');
+                                        if (cancelBtn) {
+                                            cancelBtn.innerHTML = 'Cancel';
+                                            cancelBtn.className = 'bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-bold transition';
+                                        }
+
                                         e.target.value = '';
                                     }
                                 };
@@ -5049,7 +5106,9 @@ async function renderPerson(id) {
         }
 
         async function renderFavorites(containerId) {
+            const currentHash = location.hash;
             const container = document.getElementById(containerId);
+            if (!container) return;
             container.innerHTML = `<div class="text-center py-10"><div class="animate-spin rounded-full h-10 w-10 border-4 border-pink-500 border-t-transparent inline-block"></div></div>`;
             
             if (!currentUser) {
@@ -5059,6 +5118,7 @@ async function renderPerson(id) {
 
             try {
                 const querySnapshot = await getDocs(collection(db, `users/${currentUser.uid}/favorites`));
+                if (location.hash !== currentHash) return; // Abort if navigated away
                 if (querySnapshot.empty) {
                     container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-heart-crack text-6xl mb-4 opacity-50 text-pink-900/50"></i><p>Your Hall of Favourites is empty.</p></div>`;
                     return;
@@ -5148,7 +5208,9 @@ async function renderPerson(id) {
         }
         
         async function renderLocalCollections(containerId) {
+            const currentHash = location.hash;
             const container = document.getElementById(containerId);
+            if (!container) return;
             container.innerHTML = `<div class="text-center py-10"><div class="animate-spin rounded-full h-10 w-10 border-4 border-teal-500 border-t-transparent inline-block"></div></div>`;
             
             if (!currentUser) {
@@ -5158,6 +5220,7 @@ async function renderPerson(id) {
 
             try {
                 const querySnapshot = await getDocs(collection(db, `users/${currentUser.uid}/collections`));
+                if (location.hash !== currentHash) return; // Abort if navigated away
                 if (querySnapshot.empty) {
                     container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-box-archive text-6xl mb-4 opacity-50"></i><p>Your Collection is empty.</p></div>`;
                     return;
@@ -5243,12 +5306,15 @@ async function renderPerson(id) {
         }
 
         async function renderLocalNotes(containerId) {
+            const currentHash = location.hash;
             const container = document.getElementById(containerId);
+            if (!container) return;
             container.innerHTML = `<div class="text-center py-10"><div class="animate-spin rounded-full h-10 w-10 border-4 border-[var(--primary)] border-t-transparent inline-block"></div></div>`;
             if (!currentUser) return container.innerHTML = `<p class="text-center text-red-400">Please sign in to view your notes.</p>`;
 
             try {
                 const snap = await getDocs(collection(db, `users/${currentUser.uid}/notes`));
+                if (location.hash !== currentHash) return; // Abort if navigated away
                 if (snap.empty) return container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-note-sticky text-6xl mb-4 opacity-50"></i><p>You have no private notes.</p></div>`;
                 
                 let html = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade">`;
@@ -5302,12 +5368,15 @@ async function renderPerson(id) {
         }
 
         async function renderLocalComments(containerId) {
+            const currentHash = location.hash;
             const container = document.getElementById(containerId);
+            if (!container) return;
             container.innerHTML = `<div class="text-center py-10"><div class="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent inline-block"></div></div>`;
             if (!currentUser) return container.innerHTML = `<p class="text-center text-red-400">Please sign in to view your comments.</p>`;
 
             try {
                 const snap = await getDocs(collection(db, `users/${currentUser.uid}/comments`));
+                if (location.hash !== currentHash) return; // Abort if navigated away
                 if (snap.empty) return container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-comments text-6xl mb-4 opacity-50"></i><p>You have no comments.</p></div>`;
                 
                 let html = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade">`;
@@ -5366,7 +5435,9 @@ async function renderPerson(id) {
         }
 
         async function renderLocalWatchlist(containerId) {
+            const currentHash = location.hash;
             const container = document.getElementById(containerId);
+            if (!container) return;
             container.innerHTML = `<div class="text-center py-10"><div class="animate-spin rounded-full h-10 w-10 border-4 border-[var(--primary)] border-t-transparent inline-block"></div></div>`;
             
             if (!currentUser) {
@@ -5376,6 +5447,7 @@ async function renderPerson(id) {
 
             try {
                 const querySnapshot = await getDocs(collection(db, `users/${currentUser.uid}/watchlist`));
+                if (location.hash !== currentHash) return; // Abort if navigated away
                 if (querySnapshot.empty) {
                     container.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-folder-open text-6xl mb-4 opacity-50"></i><p>Your VidTrackr watchlist is empty.</p><p class="text-xs mt-2 text-gray-600">Items added here do not sync to Trakt.</p></div>`;
                     return;
@@ -5620,10 +5692,12 @@ async function renderPerson(id) {
         };
 
         async function renderProgress() {
+            const currentHash = location.hash;
             showLoader();
             els.content.innerHTML = '';
             
             try {
+                if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
                 // Safety Guard
                 if (!currentUser) {
                     els.content.innerHTML = `<div class="text-center p-10 text-gray-500">Please sign in to view your progress and stats.</div>`;
@@ -5996,10 +6070,12 @@ async function renderPerson(id) {
         }
 
         async function renderLists(containerId = 'content') { 
+            const currentHash = location.hash;
             const container = document.getElementById(containerId) || els.content;
             container.innerHTML = ''; 
             showLoader(); 
             try { 
+                if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
                 let lists = [];
                 if (traktAccessToken && primaryDataSource === 'trakt') {
                     lists = await fetchDirect(`/users/me/lists?extended=full`).catch(()=>[]); 
@@ -6212,6 +6288,7 @@ async function renderPerson(id) {
 
         async function loadSearch(rawQuery) {
             if (!rawQuery) return;
+            const currentHash = location.hash;
             showLoader();
             els.content.innerHTML = '';
             
@@ -6219,6 +6296,7 @@ async function renderPerson(id) {
             const query = decodeURIComponent(rawQuery);
 
             try {
+                if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
                 // Use TMDB multi search endpoint to get movies, tv, and people
                 const searchParams = new URLSearchParams({ 
                     api_key: TMDB_API_KEY, 
@@ -6248,9 +6326,11 @@ async function renderPerson(id) {
             hideLoader();
         }
         async function renderListItems(listId) { 
+            const currentHash = location.hash;
             els.content.innerHTML = ''; 
             showLoader(); 
             try { 
+                if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
                 let listInfo, items = [];
                 
                 if (listId.startsWith('local_')) {
