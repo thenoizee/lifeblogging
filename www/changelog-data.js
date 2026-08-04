@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v15.159.0-alpha",
+    date: "2026-08-04",
+    changes: [
+        "In MediManagr: Added 'Dental Health Records' to track upcoming Dentist and Orthodontist appointments, including one-click visit logging functionality.",
+        "In Account Settings: Migrated 'Profile Information' and 'Social Links' out of the General tab and directly into the Public Profile tab for better organization.",
+        "In Account Settings: Added official API & Data Provider credits for TMDB (including required legal logo) and Open Library to the Credits tab.",
+        "In BookTrackr: Added required Open Library data attribution notice to the Import tab.",
+    ]
+},
+    {
     version: "v15.158.0-alpha",
     date: "2026-08-04",
     changes: [
