@@ -3683,13 +3683,21 @@ async function renderPerson(id) {
                             
                             mount.innerHTML = `<div class="flex items-center justify-between mb-6"><h2 class="text-2xl font-bold border-l-4 border-yellow-500 px-4">Season ${seasonNum}</h2><button onclick="window.renderSeasonsGrid()" class="text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition"><i class="fa-solid fa-arrow-left"></i> Back to Seasons</button></div><div class="space-y-4">${episodes.map(ep => {
                                 
-                                const epLink = primaryDataSource === 'tmdb' ? `#detail/episode/${item.ids.tmdb || id}-${seasonNum}-${ep.number}` : `#detail/episode/${ep.ids.trakt}`;
-                                const epRating = ep.user_rating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded">You: ${ep.user_rating}</span>` : '';
+                                const tmdbShowId = item.ids.tmdb || id;
+                                const epLink = primaryDataSource === 'tmdb' ? `#detail/episode/${tmdbShowId}-${seasonNum}-${ep.number}` : `#detail/episode/${ep.ids.trakt}`;
+                                
+                                // Resolving local ratings natively so they appear even if an episode wasn't logged as watched
+                                const cId = `${tmdbShowId}-${seasonNum}-${ep.number}`;
+                                const tId = String(ep.ids?.trakt || '');
+                                const epTmdbId = String(ep.ids?.tmdb || '');
+                                const localRating = userRatings.get(cId) || userRatings.get(tId) || userRatings.get(epTmdbId) || userRatings.get(parseInt(tId)) || userRatings.get(parseInt(epTmdbId));
+                                const finalRating = localRating || ep.user_rating;
+                                
+                                const epRating = finalRating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded shadow-sm">You: ${finalRating}</span>` : '';
                                 const epPlayback = userPlayback.get(parseInt(ep.ids.trakt));
                                 const pbHtml = epPlayback ? `<div class="mt-2 w-full bg-gray-800 rounded-full h-1"><div class="bg-blue-500 h-1 rounded-full" style="width: ${epPlayback.progress}%"></div></div><p class="text-[10px] text-blue-400 mt-1">${Math.round(epPlayback.progress)}% resumed</p>` : '';
                                 
                                 // Calculate Canonical ID for Episode Hide Action
-                                const tmdbShowId = item.ids.tmdb || id;
                                 const epCanonicalId = (primaryDataSource === 'tmdb') ? `${tmdbShowId}-${seasonNum}-${ep.number}` : ep.ids.trakt;
                                 
                                 const epHiddenArr = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
@@ -3708,7 +3716,12 @@ async function renderPerson(id) {
                                 }
 
                                 // FIX: Passed true to getImage so it uses still_path landscape ratio for episode thumbnails
-                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition ${epHiddenClass}"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='${epLink}'"><img src="${getImage(ep, 'episode', true)}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><div class="flex items-center"><h4 class="font-bold text-lg text-gray-100 truncate hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='${epLink}'">${ep.title || 'Episode ' + ep.number}</h4>${typeBadge}${hiddenBadge}</div><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}</div><div class="flex gap-2"><button class="text-xs ${isEpHidden ? 'bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white border-red-900/50 hover:border-red-600' : 'bg-gray-800 text-gray-400 hover:bg-gray-600 hover:text-white border-gray-700 hover:border-gray-500'} px-3 py-2 rounded-lg transition shadow-md border flex items-center justify-center" onclick="event.stopPropagation(); window.toggleHidden('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="${isEpHidden ? 'Unhide Episode' : 'Hide Episode'}"><i class="fa-solid ${isEpHidden ? 'fa-eye' : 'fa-eye-slash'}"></i></button><button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, name: ep.title, type: 'episode', runtime: item.runtime, season: seasonNum, number: ep.number, still_path: ep.still_path, show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-check mr-2"></i> Log</button></div></div></div></div>`;
+                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition ${epHiddenClass}"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='${epLink}'"><img src="${getImage(ep, 'episode', true)}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><div class="flex items-center"><h4 class="font-bold text-lg text-gray-100 truncate hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='${epLink}'">${ep.title || 'Episode ' + ep.number}</h4>${typeBadge}${hiddenBadge}</div><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}</div>
+                                <div class="flex gap-2">
+                                    <button class="text-xs ${isEpHidden ? 'bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white border-red-900/50 hover:border-red-600' : 'bg-gray-800 text-gray-400 hover:bg-gray-600 hover:text-white border-gray-700 hover:border-gray-500'} px-3 py-2 rounded-lg transition shadow-md border flex items-center justify-center" onclick="event.stopPropagation(); window.toggleHidden('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="${isEpHidden ? 'Unhide Episode' : 'Hide Episode'}"><i class="fa-solid ${isEpHidden ? 'fa-eye' : 'fa-eye-slash'}"></i></button>
+                                    <button class="text-xs bg-yellow-900/30 text-yellow-500 hover:bg-yellow-500 hover:text-black border border-yellow-900/50 hover:border-yellow-500 px-3 py-2 rounded-lg transition shadow-md flex items-center justify-center" onclick="event.stopPropagation(); window.openQuickRate('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}', true)" title="Rate Episode"><i class="fa-solid fa-star"></i></button>
+                                    <button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, name: ep.title, type: 'episode', runtime: item.runtime, season: seasonNum, number: ep.number, still_path: ep.still_path, show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-check mr-2"></i> Log</button>
+                                </div></div></div></div>`;
                             }).join('')}</div>`;
                             mount.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         };
@@ -4415,49 +4428,49 @@ async function renderPerson(id) {
                         <button id="export-btn" class="btn-primary px-4 py-2.5 rounded-lg font-bold shadow-lg hover:shadow-[var(--primary)]/30 transition text-xs">Export CSV</button>
                         
                         <!-- Trakt History Importer -->
-                        <input type="file" id="import-history-file" accept=".json" class="hidden">
+                        <input type="file" id="import-history-file" accept=".json" multiple class="hidden">
                         <button onclick="document.getElementById('import-history-file').click()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-clock-rotate-left"></i> Import History
                         </button>
 
                         <!-- Trakt Ratings Importer (Movies, Shows, Seasons, Episodes) -->
-                        <input type="file" id="import-ratings-file" accept=".json" class="hidden">
+                        <input type="file" id="import-ratings-file" accept=".json" multiple class="hidden">
                         <button onclick="document.getElementById('import-ratings-file').click()" class="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-star"></i> Import Ratings
                         </button>
 
                         <!-- Trakt Collections Importer -->
-                        <input type="file" id="import-collection-file" accept=".json" class="hidden">
+                        <input type="file" id="import-collection-file" accept=".json" multiple class="hidden">
                         <button onclick="document.getElementById('import-collection-file').click()" class="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-box-archive"></i> Import Collection
                         </button>
 
                         <!-- Trakt Custom Lists Importer -->
-                        <input type="file" id="import-list-file" accept=".json" class="hidden">
+                        <input type="file" id="import-list-file" accept=".json" multiple class="hidden">
                         <button onclick="document.getElementById('import-list-file').click()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-list-check"></i> Import Custom List
                         </button>
 
                         <!-- Trakt Hidden Items Importer -->
-                        <input type="file" id="import-hidden-file" accept=".json" class="hidden">
+                        <input type="file" id="import-hidden-file" accept=".json" multiple class="hidden">
                         <button onclick="document.getElementById('import-hidden-file').click()" class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-eye-slash"></i> Import Hidden Items
                         </button>
 
                         <!-- Trakt Private Notes Importer -->
-                        <input type="file" id="import-notes-file" accept=".json" class="hidden">
+                        <input type="file" id="import-notes-file" accept=".json" multiple class="hidden">
                         <button onclick="document.getElementById('import-notes-file').click()" class="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-note-sticky"></i> Import Notes
                         </button>
                         
                         <!-- Trakt Comments Importer -->
-                        <input type="file" id="import-comments-file" accept=".json" class="hidden">
+                        <input type="file" id="import-comments-file" accept=".json" multiple class="hidden">
                         <button onclick="document.getElementById('import-comments-file').click()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-comments"></i> Import Comments
                         </button>
 
                         <!-- Trakt Favorites Importer -->
-                        <input type="file" id="import-favorites-file" accept=".json" class="hidden">
+                        <input type="file" id="import-favorites-file" accept=".json" multiple class="hidden">
                         <button onclick="document.getElementById('import-favorites-file').click()" class="bg-pink-600 hover:bg-pink-500 text-white px-4 py-2.5 rounded-lg font-bold shadow-lg transition flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-heart"></i> Import Favorites
                         </button>
@@ -4545,19 +4558,23 @@ async function renderPerson(id) {
                     if (!inputEl) return;
 
                     inputEl.onchange = async (e) => {
-                        const file = e.target.files[0];
-                        if (!file) return;
+                        const files = Array.from(e.target.files);
+                        if (!files.length) return;
 
                         showLoader();
-                        const fileName = file.name;
-                        const reader = new FileReader();
-                        reader.onload = async (event) => {
-                            try {
-                                const json = JSON.parse(event.target.result);
+                        let validItems = [];
+                        let category = importCategory;
+                        let listName = '';
+
+                        try {
+                            for (const file of files) {
+                                const fileName = file.name;
+                                const text = await file.text();
+                                const json = JSON.parse(text);
+                                
                                 if (!Array.isArray(json)) throw new Error("Invalid format. Expected JSON array.");
 
                                 // Auto-detect import category from filename or contents if not specified
-                                let category = importCategory;
                                 if (!category) {
                                     if (fileName.includes('rating')) category = 'ratings';
                                     else if (fileName.includes('collection')) category = 'collections';
@@ -4569,13 +4586,11 @@ async function renderPerson(id) {
                                 }
 
                                 // Clean and derive list name from custom list exports (e.g. lists-list-25570272-partially-watched.json -> Partially Watched)
-                                let listName = '';
-                                if (category === 'lists') {
+                                if (category === 'lists' && !listName) {
                                     const cleanName = fileName.replace(/\.json$/i, '').replace(/^lists-list-\d+-/i, '').replace(/^lists-/i, '').replace(/[-_]/g, ' ');
                                     listName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
                                 }
 
-                                const validItems = [];
                                 for (const item of json) {
                                     // Properly extract type and media data, accounting for varying Trakt export structures
                                     let type = item.type || item.attached_to?.type;
@@ -4613,8 +4628,8 @@ async function renderPerson(id) {
                                     if (!mediaData || (!mediaData.ids && !mediaData.id)) continue;
 
                                     // Extract the correct date
-                                    // Added item.comment?.created_at to correctly parse timestamps from the Trakt comments export JSON structure
-                                    const dateVal = item.watched_at || item.collected_at || item.listed_at || item.hidden_at || item.rated_at || item.updated_at || item.created_at || item.note?.created_at || item.comment?.created_at || new Date().toISOString();
+                                    // Added item.last_watched_at to correctly parse timestamps from Trakt "watched" JSON exports (vs history exports)
+                                    const dateVal = item.watched_at || item.last_watched_at || item.collected_at || item.listed_at || item.hidden_at || item.rated_at || item.updated_at || item.created_at || item.note?.created_at || item.comment?.created_at || new Date().toISOString();
                                     
                                     // Extract the note text natively
                                     let noteText = '';
@@ -4635,14 +4650,15 @@ async function renderPerson(id) {
                                         noteText
                                     });
                                 }
+                            } // End of multiple files loop
 
-                                hideLoader();
-                                if (validItems.length === 0) {
-                                    showToast('No valid items found in file.', 'error');
-                                    return;
-                                }
+                            hideLoader();
+                            if (validItems.length === 0) {
+                                showToast('No valid items found in file(s).', 'error');
+                                return;
+                            }
 
-                                // Inject or reuse preview modal
+                            // Inject or reuse preview modal
                                 let previewModal = document.getElementById('import-preview-modal');
                                 if (!previewModal) {
                                     document.body.insertAdjacentHTML('beforeend', `
@@ -4770,12 +4786,22 @@ async function renderPerson(id) {
 
                                         if (category === 'history') {
                                             // History Import
+                                            let skippedCount = 0; // Track skipped duplicates to alert the user
                                             for (let i = 0; i < validItems.length; i++) {
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-[var(--primary)]"></i> Importing ${i + 1} of ${validItems.length}...`;
                                                 // Prevent the history import from passing the rating parameter to avoid injecting 'now' as the rating timestamp
-                                                await window.logWatchToFirebase(v.mediaData, v.type, 100, v.dateVal, null);
-                                                importedCount++;
+                                                const result = await window.logWatchToFirebase(v.mediaData, v.type, 100, v.dateVal, null);
+                                                
+                                                if (result === 'duplicate') {
+                                                    skippedCount++;
+                                                } else if (result === true) {
+                                                    importedCount++;
+                                                }
+                                            }
+                                            // Wait a tiny bit so it doesn't get overridden by the main success toast immediately
+                                            if (skippedCount > 0) {
+                                                setTimeout(() => showToast(`Skipped ${skippedCount} duplicate history entries.`, 'success'), 3500);
                                             }
                                         } else if (category === 'ratings') {
                                             // Ratings Import
@@ -4924,14 +4950,12 @@ async function renderPerson(id) {
                                     }
                                 };
 
-                            } catch(err) {
-                                console.error(err);
-                                showToast('Import failed. Check file format.', 'error');
-                                hideLoader();
-                                e.target.value = '';
-                            }
-                        };
-                        reader.readAsText(file);
+                        } catch(err) {
+                            console.error(err);
+                            showToast('Import failed. Check file format.', 'error');
+                            hideLoader();
+                            e.target.value = '';
+                        }
                     };
                 };
 
@@ -6040,9 +6064,21 @@ async function renderPerson(id) {
             try {
                 // Robust ID extraction for movies, shows, and episodes
                 let targetId = item.ids?.trakt || item.ids?.tmdb || item.id;
-                if (!targetId && type === 'episode') {
-                    // Fallback for custom formatted episode hashes
-                    targetId = item.show?.ids?.tmdb || item.show?.ids?.trakt;
+                
+                // For episodes, prefer the TMDB composite ID so it natively matches the TMDB router 
+                // and correctly loads older history from the DB without hitting the 200-item fallback limit.
+                if (type === 'episode') {
+                    const sTmdb = item.show?.ids?.tmdb;
+                    const s = item.season || item.season_number;
+                    const e = item.number || item.episode_number;
+                    if (sTmdb && s !== undefined && e !== undefined) {
+                        targetId = `${sTmdb}-${s}-${e}`;
+                    } else if (!targetId) {
+                        targetId = item.show?.ids?.tmdb || item.show?.ids?.trakt;
+                    }
+                } else if (item.ids?.tmdb) {
+                    // Prefer TMDB ID for movies/shows for cross-platform consistency
+                    targetId = item.ids.tmdb;
                 }
 
                 const payload = {
@@ -6068,6 +6104,14 @@ async function renderPerson(id) {
                 const docRef = docId 
                     ? doc(db, `users/${currentUser.uid}/history`, docId) 
                     : doc(collection(db, `users/${currentUser.uid}/history`));
+
+                // Read from DB first to accurately detect and skip duplicate exact-timestamp entries
+                if (docId) {
+                    const existingSnap = await getDoc(docRef);
+                    if (existingSnap.exists()) {
+                        return 'duplicate'; // Return special flag so importer knows to skip
+                    }
+                }
 
                 await setDoc(docRef, payload, { merge: true });
                 return true;

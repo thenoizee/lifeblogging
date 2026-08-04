@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v15.157.0-alpha",
+    date: "2026-08-04",
+    changes: [
+                "In VidTrackr: Fixed an issue where the importer failed to detect duplicate exact-timestamp history entries by updating 'logWatchToFirebase' to natively generate TMDB composite IDs and explicitly check for existing documents.",
+                "In VidTrackr: Updated the Trakt importer to gracefully skip duplicate exact-timestamp history entries and display a summary toast to the user.",
+                "In VidTrackr: Enabled multiple file selections at once for Trakt JSON export uploads, allowing users to batch import files simultaneously.",
+                "In VidTrackr: Added local ratings resolution to the Season episode grid so ratings are visible even if the episode hasn't been explicitly logged as watched.",
+                "In VidTrackr: Added a dedicated 'Quick Rate' button directly to the Episode list UI.",
+                "In VidTrackr: Fixed a SyntaxError caused by a duplicate 'tmdbShowId' constant declaration in the episode rendering loop.",
+                "In VidTrackr: Fixed an issue where importing 'watched' JSON files assigned today's date to history logs by adding support for the 'last_watched_at' timestamp key.",
+    ]
+},
+    {
     version: "v15.156.0-alpha",
     date: "2026-08-04",
     changes: [
