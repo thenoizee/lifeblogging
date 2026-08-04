@@ -1102,6 +1102,10 @@ if (headerRight) {
                     });
                 }
                 
+                // Force invalidate Up Next cache
+                localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
+                localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
+                
                 showToast('Log removed successfully');
                 const row = btn.closest('.card') || btn.closest('.history-row');
                 if(row) { 
@@ -1362,6 +1366,8 @@ window.removeProgress = async (playbackId) => {
                 userPlayback.delete(parseInt(playbackId));
                 showToast('Item dropped successfully');
                 
+                localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
+                localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
                 loadUpNext(); 
                 if(document.getElementById('history-resume-section')) renderHistory(1);
             } catch(e) {
@@ -1535,8 +1541,8 @@ window.removeProgress = async (playbackId) => {
             if (type === 'tv') type = 'show'; // Prevent TMDB 'tv' type from bleeding into the router
             const data = item[type] || item;
             
-            // Normalize IDs based on primary data source to prevent routing mismatches
-            let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+            // Normalize IDs based on primary data source to prevent routing mismatches. Ensure we fallback to data.id to prevent undefined target IDs that break loading.
+            let targetId = (primaryDataSource === 'tmdb') ? (data.ids?.tmdb || data.id) : (data.ids?.trakt || data.id);
             const fallbackId = data.ids?.trakt || data.id || data.ids?.tmdb;
             
             if (!type || !data || !fallbackId) {
@@ -1568,8 +1574,22 @@ window.removeProgress = async (playbackId) => {
 
             // Fallback rating logic for TMDB's vote_average
             const ratingVal = data.rating || data.vote_average || 0;
-            const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
-            const ratingHtml = myRating 
+            
+            let compositeId = null;
+            if (type === 'episode') {
+                const sTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
+                const sNum = data.season || data.season_number;
+                const eNum = data.number || data.episode_number;
+                if (sTmdb && sNum !== undefined && eNum !== undefined) compositeId = `${sTmdb}-${sNum}-${eNum}`;
+            }
+
+            // Prevent Episode TMDB IDs from colliding with Movie TMDB IDs by only allowing compositeId or Trakt ID for episodes
+            const myRating = (compositeId ? userRatings.get(compositeId) : null)
+                || userRatings.get(String(fallbackId)) 
+                || (!isNaN(Number(fallbackId)) ? userRatings.get(parseInt(fallbackId)) : null) 
+                || (type !== 'episode' ? userRatings.get(String(targetId)) : null)
+                || (type !== 'episode' && !isNaN(Number(targetId)) ? userRatings.get(parseInt(targetId)) : null);
+            const ratingHtml = myRating
                 ? `<span class="text-green-400 font-bold flex items-center gap-1"><i class="fa-solid fa-user-check"></i> ${myRating}</span>`
                 : `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>`;
 
@@ -1907,7 +1927,9 @@ loadCalendar();
     
     try {
         const stats = await fetchDirect('/users/me/stats');
-        document.getElementById('quick-stats').innerHTML = `<div><p class="text-2xl font-bold">${stats.movies.watched}</p><p class="text-xs uppercase opacity-75">Movies</p></div><div><p class="text-2xl font-bold">${stats.episodes.watched}</p><p class="text-xs uppercase opacity-75">Episodes</p></div><div><p class="text-2xl font-bold">${Math.round(stats.network.friends)}</p><p class="text-xs uppercase opacity-75">Mutuals</p></div>`;
+        // If Trakt is the primary source, show mutuals. Otherwise, hide the mutuals stat in TMDB only mode.
+        const mutualsHtml = primaryDataSource === 'trakt' ? `<div><p class="text-2xl font-bold">${Math.round(stats.network.friends)}</p><p class="text-xs uppercase opacity-75">Mutuals</p></div>` : '';
+        document.getElementById('quick-stats').innerHTML = `<div><p class="text-2xl font-bold">${stats.movies.watched}</p><p class="text-xs uppercase opacity-75">Movies</p></div><div><p class="text-2xl font-bold">${stats.episodes.watched}</p><p class="text-xs uppercase opacity-75">Episodes</p></div>${mutualsHtml}`;
     } catch(e){}
 }
 
@@ -1991,8 +2013,9 @@ loadCalendar();
                     const tId = String(data.ids?.trakt || '');
                     const tmdbId = String(data.ids?.tmdb || '');
                     
-                    const myRating = userRatings.get(compositeId) || userRatings.get(tId) || userRatings.get(tmdbId) || userRatings.get(parseInt(tId)) || userRatings.get(parseInt(tmdbId));
-                    const rDetails = userRatingDetails.get(compositeId) || userRatingDetails.get(tId) || userRatingDetails.get(tmdbId) || userRatingDetails.get(parseInt(tId)) || userRatingDetails.get(parseInt(tmdbId));
+                    // Prevent Episode TMDB ID collisions
+                    const myRating = userRatings.get(compositeId) || userRatings.get(tId) || (tId && !isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null) || (type !== 'episode' ? userRatings.get(tmdbId) : null) || (type !== 'episode' && tmdbId && !isNaN(Number(tmdbId)) ? userRatings.get(parseInt(tmdbId)) : null);
+                    const rDetails = userRatingDetails.get(compositeId) || userRatingDetails.get(tId) || (tId && !isNaN(Number(tId)) ? userRatingDetails.get(parseInt(tId)) : null) || (type !== 'episode' ? userRatingDetails.get(tmdbId) : null) || (type !== 'episode' && tmdbId && !isNaN(Number(tmdbId)) ? userRatingDetails.get(parseInt(tmdbId)) : null);
                     
                     // Rely strictly on the rating details map to prevent history import pollution
                     const trueRatedAt = rDetails ? rDetails.ratedAt : null;
@@ -2188,15 +2211,15 @@ async function loadUpNext() {
 
                     try {
                         // Fetch user history from Firebase
-                        // Decreased to 500 to drastically reduce read quota and CPU processing array limits
-                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(500));
+                        // Increased limit to 1000 to catch older shows and accurately calculate maximum progress.
+                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(1000));
                         const snapshot = await getDocs(q);
                         if (snapshot.empty) return [];
 
                         const historyItems = [];
                         snapshot.forEach(docSnap => historyItems.push(docSnap.data()));
 
-                        // 1. Group episodes by Show to find the latest watched position
+                        // 1. Group episodes by Show to find the absolute highest watched position
                         const showMap = new Map();
 
                         historyItems.forEach(item => {
@@ -2213,16 +2236,26 @@ async function loadUpNext() {
 
                             if (!identifier) return;
 
-                            // Because the list is sorted by date descending, the first match is the most recently watched
+                            const currentS = parseInt(media.season || media.season_number || 1);
+                            const currentE = parseInt(media.number || media.episode_number || 1);
+
                             if (!showMap.has(identifier)) {
+                                // Initialize with the most recently watched date to order the queue correctly
                                 showMap.set(identifier, {
                                     showTmdbId: tmdbId,
                                     showTitle: showObj.title,
                                     showObj: showObj,
-                                    s: parseInt(media.season || media.season_number || 1),
-                                    e: parseInt(media.number || media.episode_number || 1),
+                                    s: currentS,
+                                    e: currentE,
                                     watchedAt: item.watchedAt || item.loggedAt
                                 });
+                            } else {
+                                // Check if we found a later episode watched further back in time, and update the max limits
+                                const entry = showMap.get(identifier);
+                                if (currentS > entry.s || (currentS === entry.s && currentE > entry.e)) {
+                                    entry.s = currentS;
+                                    entry.e = currentE;
+                                }
                             }
                         });
 
@@ -2798,35 +2831,36 @@ async function renderPerson(id) {
                             epSeason = parts[1];
                             epNum = parts[2];
                         }
-                        tmdbEndpoint = `/tv/${resolvedShowId}/season/${epSeason}/episode/${epNum}?append_to_response=credits,videos,images`;
+                        // Request external_ids to capture IMDB IDs for episodes
+                        tmdbEndpoint = `/tv/${resolvedShowId}/season/${epSeason}/episode/${epNum}?append_to_response=credits,videos,images,external_ids`;
                         
-                        // Fetch Show Info for UI context (breadcrumb navigation)
-                        showInfo = await fetchTMDB(`/tv/${resolvedShowId}`);
+                        // Fetch Show Info with external_ids for Stremio series ID resolution
+                        showInfo = await fetchTMDB(`/tv/${resolvedShowId}?append_to_response=external_ids`);
                         showInfo.title = showInfo.name;
-                        showInfo.ids = { tmdb: resolvedShowId, trakt: resolvedShowId }; 
+                        showInfo.ids = { tmdb: resolvedShowId, trakt: resolvedShowId, imdb: showInfo.external_ids?.imdb_id }; 
                     } else {
-                        tmdbEndpoint = `/${tmdbType}/${id}?append_to_response=credits,videos,recommendations`;
+                        // Request external_ids to capture IMDB IDs for movies and shows
+                        tmdbEndpoint = `/${tmdbType}/${id}?append_to_response=credits,videos,recommendations,external_ids`;
                     }
                     
                     try {
                         item = await fetchTMDB(tmdbEndpoint);
                     } catch (e) {
-                        // If TMDB 404s on a movie/show, it is likely a Trakt ID from history. Translate it using Trakt's public search.
+                        // If TMDB 404s on a movie/show, translate Trakt ID to TMDB ID
                         if (type !== 'episode') {
                             const searchRes = await fetch(`${TRAKT_API_URL}/search/trakt/${id}?type=${type}`, { headers: { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': TRAKT_CLIENT_ID } });
                             const searchData = await searchRes.json();
                             if (searchData && searchData[0]) {
                                 tmdbId = searchData[0][type].ids.tmdb;
-                                tmdbEndpoint = `/${tmdbType}/${tmdbId}?append_to_response=credits,videos,recommendations`;
+                                tmdbEndpoint = `/${tmdbType}/${tmdbId}?append_to_response=credits,videos,recommendations,external_ids`;
                                 item = await fetchTMDB(tmdbEndpoint);
                             } else { throw e; }
                         } else { throw e; }
                     }
 
-                    // Map TMDB response to expected Trakt structure for the UI
-                    // Pre-map properties BEFORE localHistoryFetch to ensure correct IDs and season numbers are used
+                    // Map TMDB response and store the resolved IMDB ID inside item.ids
                     const realTmdbId = item.id;
-                    item.ids = { trakt: id, tmdb: realTmdbId || tmdbId };
+                    item.ids = { trakt: id, tmdb: realTmdbId || tmdbId, imdb: item.imdb_id || item.external_ids?.imdb_id };
                     
                     if (type === 'episode') {
                         item.title = item.name;
@@ -3096,8 +3130,15 @@ async function renderPerson(id) {
                 }
 
                 // General Metadata
-                // Prioritize checking if the most recent history log has a rating attached, then check the maps
-                const myRating = item.user_rating || (history.length > 0 ? history.find(h => h.rating)?.rating : null) || userRatings.get(parseInt(id)) || (item.ids?.tmdb ? userRatings.get(parseInt(item.ids.tmdb)) : null); 
+                // Safely resolve episode ratings: CRITICAL - Do NOT lookup episodes by flat TMDB ID to prevent cross-type collisions
+                let myRating = item.user_rating || (history.length > 0 ? history.find(h => h.rating)?.rating : null);
+                if (!myRating) {
+                    if (type === 'episode') {
+                        myRating = userRatings.get(canonicalId) || userRatings.get(String(item.ids?.trakt)) || (!isNaN(Number(item.ids?.trakt)) ? userRatings.get(parseInt(item.ids?.trakt)) : null);
+                    } else {
+                        myRating = userRatings.get(String(id)) || (!isNaN(Number(id)) ? userRatings.get(parseInt(id)) : null) || (item.ids?.tmdb ? userRatings.get(String(item.ids.tmdb)) : null) || (item.ids?.tmdb ? userRatings.get(parseInt(item.ids.tmdb)) : null);
+                    }
+                }
                 const isWatched = (item.user_data?.plays > 0) || (history.length > 0);
 
                 let epTypeBadgeHtml = '';
@@ -3184,8 +3225,9 @@ async function renderPerson(id) {
                           const tId = String(h.episode ? (h.episode.ids?.trakt || '') : (item.ids?.trakt || id));
                           const tmdbId = String(h.episode ? (h.episode.ids?.tmdb || '') : (item.ids?.tmdb || id));
 
-                          const hRating = userRatings.get(cId) || userRatings.get(tId) || userRatings.get(tmdbId) || userRatings.get(parseInt(tId)) || userRatings.get(parseInt(tmdbId));
-                          const rDetails = userRatingDetails.get(cId) || userRatingDetails.get(tId) || userRatingDetails.get(tmdbId) || userRatingDetails.get(parseInt(tId)) || userRatingDetails.get(parseInt(tmdbId));
+                          // Fix Episode ID collisions by forbidding naked TMDB ID lookups for episodes
+                          const hRating = userRatings.get(cId) || userRatings.get(tId) || (tId && !isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null) || (!h.episode ? userRatings.get(tmdbId) : null) || (!h.episode && tmdbId && !isNaN(Number(tmdbId)) ? userRatings.get(parseInt(tmdbId)) : null);
+                          const rDetails = userRatingDetails.get(cId) || userRatingDetails.get(tId) || (tId && !isNaN(Number(tId)) ? userRatingDetails.get(parseInt(tId)) : null) || (!h.episode ? userRatingDetails.get(tmdbId) : null) || (!h.episode && tmdbId && !isNaN(Number(tmdbId)) ? userRatingDetails.get(parseInt(tmdbId)) : null);
                           
                           // Rely strictly on the rating details map to prevent history import pollution
                           const trueRatedAt = rDetails ? rDetails.ratedAt : null;
@@ -3438,6 +3480,8 @@ async function renderPerson(id) {
                                 <a href="https://trakt.tv/${type}s/${item.ids.slug || item.ids.trakt}" target="_blank" class="w-full bg-[#ed1c24] hover:bg-[#be161c] text-white py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md">
                                     <i class="fa-solid fa-ticket"></i> Open in Trakt
                                 </a>
+                                
+                                ${item.ids.imdb ? `<a href="https://www.imdb.com/title/${item.ids.imdb}" target="_blank" class="w-full bg-[#f5c518] hover:bg-[#e2b616] text-black py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md"><i class="fa-brands fa-imdb text-lg"></i> IMDb</a>` : ''}
                                 
                                 ${item.ids.tmdb ? `<a href="https://www.themoviedb.org/${type === 'show' ? 'tv' : 'movie'}/${item.ids.tmdb}" target="_blank" class="w-full bg-[#01b4e4] hover:bg-[#0d253f] text-white py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md"><i class="fa-solid fa-film"></i> TMDB</a>` : ''}
                                 
@@ -3706,8 +3750,8 @@ async function renderPerson(id) {
                                 // Resolving local ratings natively so they appear even if an episode wasn't logged as watched
                                 const cId = `${tmdbShowId}-${seasonNum}-${ep.number}`;
                                 const tId = String(ep.ids?.trakt || '');
-                                const epTmdbId = String(ep.ids?.tmdb || '');
-                                const localRating = userRatings.get(cId) || userRatings.get(tId) || userRatings.get(epTmdbId) || userRatings.get(parseInt(tId)) || userRatings.get(parseInt(epTmdbId));
+                                // CRITICAL FIX: Remove flat epTmdbId lookup to prevent collisions with Movie IDs
+                                const localRating = userRatings.get(cId) || userRatings.get(tId) || (tId && !isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null);
                                 const finalRating = localRating || ep.user_rating;
                                 
                                 const epRating = finalRating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded shadow-sm">You: ${finalRating}</span>` : '';
@@ -3754,30 +3798,39 @@ async function renderPerson(id) {
                 const placeholder = document.getElementById('stremio-placeholder');
                 if (!placeholder) return;
 
-                // 1. Attempt to fetch ID if missing (for Episodes)
-                if (type === 'episode' && showInfo && showInfo.ids && !showInfo.ids.imdb) {
-                    try {
-                        // Skip if using TMDB only, as Trakt IDs may be mocked
-                        if (primaryDataSource !== 'tmdb') {
+                // 1. Attempt to fetch missing IMDB ID for Episodes/Shows/Movies in both TMDB & Trakt modes
+                try {
+                    if (type === 'episode' && showInfo && showInfo.ids && !showInfo.ids.imdb) {
+                        if (primaryDataSource === 'tmdb') {
+                            // Query TMDB external_ids if missing
+                            const showExt = await fetchTMDB(`/tv/${showInfo.ids.tmdb}/external_ids`);
+                            if (showExt?.imdb_id) showInfo.ids.imdb = showExt.imdb_id;
+                        } else {
                             const fullShow = await fetchDirect(`/shows/${showInfo.ids.trakt}`);
-                            if (fullShow && fullShow.ids && fullShow.ids.imdb) {
-                                showInfo.ids.imdb = fullShow.ids.imdb;
-                            }
+                            if (fullShow?.ids?.imdb) showInfo.ids.imdb = fullShow.ids.imdb;
                         }
-                    } catch (e) { console.log("ID fetch failed", e); }
-                }
+                    } else if (item && item.ids && !item.ids.imdb) {
+                        if (primaryDataSource === 'tmdb') {
+                            const tmdbType = type === 'show' ? 'tv' : type;
+                            const ext = await fetchTMDB(`/${tmdbType}/${item.ids.tmdb}/external_ids`);
+                            if (ext?.imdb_id) item.ids.imdb = ext.imdb_id;
+                        }
+                    }
+                } catch (e) { console.log("Stremio IMDB ID fetch failed", e); }
 
-                // 2. Build the correct URL
+                // 2. Build the correct Stremio URL
                 let targetUrl = '';
                 const baseStremioUrl = 'stremio:///detail';
 
-                if (type === 'episode' && showInfo && showInfo.ids.imdb) {
-                    targetUrl = `${baseStremioUrl}/series/${showInfo.ids.imdb}/${showInfo.ids.imdb}:${item.season}:${item.number}`;
-                } else if (item.ids.imdb) {
+                if (type === 'episode' && showInfo && showInfo.ids && showInfo.ids.imdb) {
+                    const seasonNum = item.season || item.season_number;
+                    const epNum = item.number || item.episode_number;
+                    targetUrl = `${baseStremioUrl}/series/${showInfo.ids.imdb}/${showInfo.ids.imdb}:${seasonNum}:${epNum}`;
+                } else if (item && item.ids && item.ids.imdb) {
                     targetUrl = `${baseStremioUrl}/${type === 'movie' ? 'movie' : 'series'}/${item.ids.imdb}`;
                 }
 
-                // 3. Show Button
+                // 3. Render Button
                 if (targetUrl) {
                     placeholder.innerHTML = `<a href="${targetUrl}" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-3 rounded-lg font-bold border border-indigo-500 transition flex items-center justify-center w-full shadow-lg gap-2 animate-fade"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open in Stremio</a>`;
                     placeholder.classList.remove('hidden');
@@ -4158,27 +4211,49 @@ async function renderPerson(id) {
                     if (currentHistoryFilter === 'unrated') {
                         data = data.filter(item => {
                             const mediaObj = item.type === 'episode' ? item.episode : item.movie;
-                            const traktId = mediaObj.ids?.trakt || mediaObj.id;
-                            const tmdbId = mediaObj.ids?.tmdb;
+                            const traktId = String(mediaObj.ids?.trakt || mediaObj.id || '');
+                            const tmdbId = String(mediaObj.ids?.tmdb || '');
+                            
+                            // Construct composite ID for episodes so we can lookup accurate ratings
+                            let compositeId = '';
+                            if (item.type === 'episode') {
+                                const sTmdb = item.show?.ids?.tmdb || mediaObj.show?.ids?.tmdb;
+                                const s = mediaObj.season || mediaObj.season_number;
+                                const e = mediaObj.number || mediaObj.episode_number;
+                                if (sTmdb && s !== undefined && e !== undefined) compositeId = `${sTmdb}-${s}-${e}`;
+                            }
                             
                             const hasDirectRating = item.rating !== undefined && item.rating !== null;
-                            const hasTraktMapRating = traktId ? userRatings.has(parseInt(traktId)) : false;
-                            const hasTmdbMapRating = tmdbId ? userRatings.has(parseInt(tmdbId)) : false;
+                            // Checking both string and integer lookups to safeguard against parsed composite IDs losing their season/ep strings
+                            const hasTraktMapRating = traktId ? (userRatings.has(traktId) || userRatings.has(parseInt(traktId))) : false;
+                            const hasTmdbMapRating = tmdbId ? (userRatings.has(tmdbId) || userRatings.has(parseInt(tmdbId))) : false;
+                            const hasCompositeMapRating = compositeId ? userRatings.has(compositeId) : false;
                             
-                            return !hasDirectRating && !hasTraktMapRating && !hasTmdbMapRating;
+                            return !hasDirectRating && !hasTraktMapRating && !hasTmdbMapRating && !hasCompositeMapRating;
                         });
                     }
                     if (currentHistoryFilter === 'rated') {
                         data = data.filter(item => {
                             const mediaObj = item.type === 'episode' ? item.episode : item.movie;
-                            const traktId = mediaObj.ids?.trakt || mediaObj.id;
-                            const tmdbId = mediaObj.ids?.tmdb;
+                            const traktId = String(mediaObj.ids?.trakt || mediaObj.id || '');
+                            const tmdbId = String(mediaObj.ids?.tmdb || '');
+                            
+                            // Construct composite ID for episodes so we can lookup accurate ratings
+                            let compositeId = '';
+                            if (item.type === 'episode') {
+                                const sTmdb = item.show?.ids?.tmdb || mediaObj.show?.ids?.tmdb;
+                                const s = mediaObj.season || mediaObj.season_number;
+                                const e = mediaObj.number || mediaObj.episode_number;
+                                if (sTmdb && s !== undefined && e !== undefined) compositeId = `${sTmdb}-${s}-${e}`;
+                            }
                             
                             const hasDirectRating = item.rating !== undefined && item.rating !== null;
-                            const hasTraktMapRating = traktId ? userRatings.has(parseInt(traktId)) : false;
-                            const hasTmdbMapRating = tmdbId ? userRatings.has(parseInt(tmdbId)) : false;
+                            // Checking both string and integer lookups to safeguard against parsed composite IDs losing their season/ep strings
+                            const hasTraktMapRating = traktId ? (userRatings.has(traktId) || userRatings.has(parseInt(traktId))) : false;
+                            const hasTmdbMapRating = tmdbId ? (userRatings.has(tmdbId) || userRatings.has(parseInt(tmdbId))) : false;
+                            const hasCompositeMapRating = compositeId ? userRatings.has(compositeId) : false;
                             
-                            return hasDirectRating || hasTraktMapRating || hasTmdbMapRating;
+                            return hasDirectRating || hasTraktMapRating || hasTmdbMapRating || hasCompositeMapRating;
                         });
                     }
 
@@ -6190,6 +6265,11 @@ async function renderPerson(id) {
                 }
 
                 await setDoc(docRef, payload, { merge: true });
+                
+                // Force invalidate Up Next cache so it recalculates with the manual entry
+                localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
+                localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
+                
                 return true;
             } catch (e) {
                 console.error("Firebase Log Error:", e);
@@ -6252,6 +6332,9 @@ async function renderPerson(id) {
                         const pbPayload = { id: traktId, progress: progress, type: type, paused_at: new Date().toISOString(), [type === 'episode' ? 'episode' : 'movie']: currentModalItem.item, show: currentModalItem.item.show || null };
                         await setDoc(doc(db, `users/${currentUser.uid}/playback`, String(traktId)), pbPayload);
                         userPlayback.set(parseInt(traktId), pbPayload);
+                        
+                        localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
+                        localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
                     } else if (progress >= 100) {
                         // Log full watch and clear partial progress
                         await window.logWatchToFirebase(currentModalItem.item, type, progress, date, passedRating);

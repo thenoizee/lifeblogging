@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v15.160.0-alpha",
+    date: "2026-08-04",
+    changes: [
+        "In VidTrackr: Added Stremio deep link generation when using TMDB as the primary data source by dynamically fetching required external IDs.",
+        "In VidTrackr: Added missing IMDb outbound links to the external links stack on Movie and TV Show detail pages when operating in TMDB mode.",
+        "In VidTrackr: Fixed an issue where the 'Up Next' queue would not recalculate after manual data entries by instantly invalidating the local cache upon logging a watch or dropping progress.",
+    ]
+},
+    {
     version: "v15.159.0-alpha",
     date: "2026-08-04",
     changes: [
