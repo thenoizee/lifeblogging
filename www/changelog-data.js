@@ -5,6 +5,15 @@ export const changelogData = [
     version: "v16.1.0-alpha",
     date: "2026-08-05",
     changes: [
+                "In Dashboard: Updated the VidTrackr widget to natively query the local Firebase 'history' collection when TMDB/Local is set as the primary data source.",
+                "In Dashboard: Added explicit listen date and time timestamps to the PodTrackr widget.",
+                "In Dashboard: Updated text truncation across some dashboard widgets to wrap gracefully instead of cutting off.",
+    ]
+},
+    {
+    version: "v16.1.0-alpha",
+    date: "2026-08-05",
+    changes: [
                 "In MoneyManagr: Added a new 'Split Bill' button to the main dashboard replacing the previous two-button Import/Export row.",
                 "In MoneyManagr: Introduced a comprehensive Split Modal supporting 5 calculation modes: Split Equally (=), Exact Amounts ($), Percentages (%), Shares (x), and Adjustments (+/-).",
                 "In MoneyManagr: Enabled splitting of existing logged transactions directly from the Transaction Details and Inbox Action modals, locking original amounts and payer sources to prevent duplicate deductions.",

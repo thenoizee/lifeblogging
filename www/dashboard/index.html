@@ -756,36 +756,62 @@
             }
         };
 
-        async function updateVidTrackrWidget(token) {
+        async function updateVidTrackrWidget(uid, token) {
             try {
-                const headers = { 
-                    'Content-Type': 'application/json', 
-                    'trakt-api-version': '2', 
-                    'trakt-api-key': TRAKT_CLIENT_ID, 
-                    'Authorization': `Bearer ${token}` 
-                };
+                const primaryDataSource = localStorage.getItem('vidtrackr_primary_source') || 'tmdb';
+                let historyItem = null;
+                let userRating = null;
 
-                const [historyRes, ratingsRes] = await Promise.all([
-                    fetch(`${TRAKT_API_URL}/sync/history?limit=1&extended=images`, { headers }),
-                    fetch(`${TRAKT_API_URL}/sync/ratings?limit=50`, { headers }) 
-                ]);
+                if (primaryDataSource !== 'trakt') {
+                    // Fetch directly from Local Firebase History
+                    const { getDocs } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                    const q = query(collection(db, `users/${uid}/history`), orderBy('watchedAt', 'desc'), limit(1));
+                    const snap = await getDocs(q);
+                    
+                    if (!snap.empty) {
+                        const fbData = snap.docs[0].data();
+                        historyItem = {
+                            type: fbData.type,
+                            [fbData.type]: fbData.media,
+                            show: fbData.media.show || fbData.show,
+                            watched_at: fbData.watchedAt || fbData.loggedAt
+                        };
+                        userRating = fbData.rating ? { rating: fbData.rating } : null;
+                    }
+                } else if (token) {
+                    const headers = { 
+                        'Content-Type': 'application/json', 
+                        'trakt-api-version': '2', 
+                        'trakt-api-key': TRAKT_CLIENT_ID, 
+                        'Authorization': `Bearer ${token}` 
+                    };
 
-                const history = await historyRes.json();
-                const ratings = await ratingsRes.json();
+                    const [historyRes, ratingsRes] = await Promise.all([
+                        fetch(`${TRAKT_API_URL}/sync/history?limit=1&extended=images`, { headers }),
+                        fetch(`${TRAKT_API_URL}/sync/ratings?limit=50`, { headers }) 
+                    ]);
 
-                if (history.length > 0) {
-                    const item = history[0];
+                    const history = await historyRes.json();
+                    const ratings = await ratingsRes.json();
+
+                    if (history.length > 0) {
+                        historyItem = history[0];
+                        userRating = ratings.find(r => r[historyItem.type] && r[historyItem.type].ids.trakt === historyItem[historyItem.type].ids.trakt);
+                    }
+                }
+
+                if (historyItem) {
+                    const item = historyItem;
                     const type = item.type;
                     const data = item[type];
-                    const id = data.ids.trakt;
                     
-                    const userRating = ratings.find(r => r[type] && r[type].ids.trakt === id);
                     const ratingBadge = userRating 
                         ? `<span class="absolute top-[-4px] right-[-4px] bg-green-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm border border-white dark:border-gray-800">${userRating.rating}</span>` 
                         : '';
 
                     const media = data; 
                     const get = (path, obj) => {
+                        if (!obj) return null;
                         const val = path.split('.').reduce((acc, part) => acc && acc[part], obj);
                         let final = Array.isArray(val) ? val[0] : val;
                         if (typeof final === 'string') {
@@ -805,14 +831,23 @@
                     }
                     
                     if (imgUrl.includes('placehold.co') || !imgUrl) {
-                         if (type === 'episode' && item.show) {
+                        if (media.backdrop_path) {
+                            imgUrl = `https://image.tmdb.org/t/p/w780${media.backdrop_path}`;
+                        } else if (media.still_path) {
+                            imgUrl = `https://image.tmdb.org/t/p/w780${media.still_path}`;
+                        } else if (item.show && item.show.backdrop_path) {
+                            imgUrl = `https://image.tmdb.org/t/p/w780${item.show.backdrop_path}`;
+                        } else if (type === 'episode' && item.show) {
                             imgUrl = get('images.poster.medium', item.show) || get('images.poster.full', item.show) || get('images.poster', item.show) || imgUrl;
-                         } else {
+                        } else {
                             imgUrl = get('images.poster.medium', media) || get('images.poster.full', media) || get('images.poster', media) || imgUrl;
                          }
                     }
 
-                    const title = type === 'episode' ? `${item.show.title}: ${data.title}` : data.title;
+                    const showTitle = item.show?.title || 'Unknown Show';
+                    const rawTitle = data.title || data.name || 'Episode';
+                    const title = type === 'episode' ? (rawTitle.includes(showTitle) ? rawTitle : `${showTitle}: ${rawTitle}`) : rawTitle;
+                    
                     const watchedDate = new Date(item.watched_at);
                     const dateStr = watchedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
                     const timeStr = watchedDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -824,9 +859,9 @@
                                 ${ratingBadge}
                             </div>
                             <div class="min-w-0 flex-1">
-                                <p class="font-bold truncate text-xs text-[var(--text-primary)]" title="${title}">${title}</p>
-                                <p class="text-[10px] text-[var(--text-secondary)] truncate">
-                                    ${type === 'episode' ? `S${data.season}E${data.number}` : data.year} 
+                                <p class="font-bold text-xs text-[var(--text-primary)] leading-tight mb-1" title="${title}">${title}</p>
+                                <p class="text-[10px] text-[var(--text-secondary)] leading-tight">
+                                    ${type === 'episode' ? `S${data.season || data.season_number || '?'}E${data.number || data.episode_number || '?'}` : (data.year || (data.release_date ? data.release_date.substring(0,4) : ''))} 
                                     <span class="mx-1">•</span> 
                                     <span class="text-[9px] opacity-80">Watched ${dateStr} at ${timeStr}</span>
                                 </p>
@@ -1216,8 +1251,8 @@
                             ` : ''}
                         </div>
                         <div class="min-w-0 flex flex-col justify-center">
-                            <a href="${track.url}" target="_blank" class="font-bold text-xs truncate w-full pr-1 hover:text-red-500 transition-colors" title="${track.name}">${track.name}</a>
-                            <p class="text-[10px] text-[var(--text-secondary)] truncate w-full" title="${track.artist['#text']}">${track.artist['#text']}</p>
+                            <a href="${track.url}" target="_blank" class="font-bold text-xs leading-tight w-full pr-1 hover:text-red-500 transition-colors block mb-1" title="${track.name}">${track.name}</a>
+                            <p class="text-[10px] text-[var(--text-secondary)] leading-tight w-full" title="${track.artist['#text']}">${track.artist['#text']}</p>
                             <p class="text-[9px] text-[var(--text-secondary)] mt-0.5 opacity-80">
                                 ${isNowPlaying ? '<span class="text-green-500 font-bold">Scrobbling now...</span>' : `Last played at ${new Date(track.date.uts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
                             </p>
@@ -1508,24 +1543,30 @@
                 }
             }));
 
-            const podQ = query(collection(db, `users/${uid}/history`), orderBy('listenedAt', 'desc'), limit(1));
+            const podQ = query(collection(db, `users/${uid}/podtrackr_history`), orderBy('listenedAt', 'desc'), limit(1));
             unsubscribers.push(onSnapshot(podQ, (snap) => {
                 if (!snap.empty) {
                     const data = snap.docs[0].data();
                     const rating = data.rating || 0;
                     
-                    let starsHtml = '';
-                    for (let i = 1; i <= 5; i++) {
-                        starsHtml += `<i class="fas fa-star text-[10px] ${i <= rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}"></i>`;
-                    }
+                    const listDate = data.listenedAt && typeof data.listenedAt.toDate === 'function' ? data.listenedAt.toDate() : new Date(data.listenedAt || Date.now());
+                    const dateStr = listDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                    const timeStr = listDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+                    const ratingBadge = rating > 0 
+                        ? `<span class="absolute top-[-4px] right-[-4px] bg-purple-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm border border-[var(--card-bg)]">${rating}</span>` 
+                        : '';
 
                     ui.podcastContainer.innerHTML = `
-                        <div class="flex items-center gap-3 h-full px-1 w-full text-left">
-                            <img src="${data.podcastArtwork}" class="w-12 h-12 rounded-md object-cover shadow-sm bg-gray-100 flex-shrink-0">
-                            <div class="min-w-0 flex-1">
-                                <p class="font-bold truncate text-xs text-[var(--text-primary)]" title="${data.episodeTitle}">${data.episodeTitle}</p>
-                                <p class="text-[10px] text-[var(--text-secondary)] truncate mb-0.5">${data.podcastTitle}</p>
-                                <div class="flex gap-0.5">${starsHtml}</div>
+                        <div class="flex items-center gap-3 h-full px-1 w-full text-left relative">
+                            <div class="relative flex-shrink-0">
+                                <img src="${data.podcastArtwork}" class="w-12 h-12 rounded-md object-cover shadow-sm bg-gray-800">
+                                ${ratingBadge}
+                            </div>
+                            <div class="min-w-0 flex-1 py-1">
+                                <p class="font-bold text-xs text-[var(--text-primary)] leading-tight mb-1" title="${data.episodeTitle}">${data.episodeTitle}</p>
+                                <p class="text-[10px] text-[var(--text-secondary)] leading-tight mb-0.5">${data.podcastTitle}</p>
+                                <p class="text-[9px] text-[var(--text-secondary)] opacity-80 leading-tight">Listened ${dateStr} at ${timeStr}</p>
                             </div>
                         </div>`;
                 } else {
@@ -1812,8 +1853,10 @@
                 });
 
                 getDoc(doc(db, 'users', user.uid, 'services', 'trakt')).then(snap => {
-                    if (snap.exists() && snap.data().accessToken) {
-                        updateVidTrackrWidget(snap.data().accessToken); 
+                    const token = (snap.exists() && snap.data().accessToken) ? snap.data().accessToken : null;
+                    const primarySource = localStorage.getItem('vidtrackr_primary_source') || 'tmdb';
+                    if (primarySource !== 'trakt' || token) {
+                        updateVidTrackrWidget(user.uid, token); 
                     } else {
                         ui.videoContainer.innerHTML = `<div class="w-full text-center text-sm text-[var(--text-secondary)]">VidTrackr not connected.</div>`;
                     }
