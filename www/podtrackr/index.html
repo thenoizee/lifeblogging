@@ -294,6 +294,14 @@ window.addEventListener('app-logout-request', () => {
         const showLoading = () => loadingSpinnerEl.classList.remove('hidden');
         const hideLoading = () => loadingSpinnerEl.classList.add('hidden');
 
+        // Robust date parser for Firestore Timestamps, native Dates, and nulls
+        function getValidDate(dateVal) {
+            if (!dateVal) return null;
+            if (typeof dateVal.toDate === 'function') return dateVal.toDate();
+            if (dateVal instanceof Date) return dateVal;
+            return new Date(dateVal);
+        }
+
         function showConfirmModal(message, callback) {
             confirmModalTextEl.textContent = message;
             confirmCallback = callback;
@@ -453,9 +461,9 @@ window.addEventListener('app-logout-request', () => {
     showLoading();
     
     // 1. Prepare References
-    const podcastsRef = collection(db, `users/${currentUser.uid}/podcasts`);
+    const podcastsRef = collection(db, `users/${currentUser.uid}/podtrackr_podcasts`);
     // Fetch more history items to get a better total count estimate, or create a specific stats doc later
-    const historyRef = query(collection(db, `users/${currentUser.uid}/history`), orderBy('listenedAt', 'desc')); 
+    const historyRef = query(collection(db, `users/${currentUser.uid}/podtrackr_history`), orderBy('listenedAt', 'desc')); 
     const profileRef = doc(db, `users/${currentUser.uid}/settings/profile`);
 
     // 2. Fetch All Data in Parallel
@@ -541,7 +549,7 @@ window.addEventListener('app-logout-request', () => {
                                 </div>
                                 <p class="text-sm text-[var(--text-secondary)] truncate">${h.podcastTitle ?? 'Unknown Podcast'}</p>
                                 <p class="text-xs text-[var(--text-secondary)] mt-1 flex items-center gap-1">
-                                    <i class="fa-regular fa-clock"></i> ${formatDateWithRelativeTime(h.listenedAt?.toDate())}
+                                    <i class="fa-regular fa-clock"></i> ${formatDateWithRelativeTime(getValidDate(h.listenedAt))}
                                 </p>
                             </div>
                         </div>
@@ -586,10 +594,10 @@ window.addEventListener('app-logout-request', () => {
 
         async function renderFeedView() {
             showLoading();
-            const podcastsRef = collection(db, `users/${currentUser.uid}/podcasts`);
+            const podcastsRef = collection(db, `users/${currentUser.uid}/podtrackr_podcasts`);
             const [podcastsSnap, historySnap] = await Promise.all([
                 getDocs(podcastsRef),
-                getDocs(collection(db, `users/${currentUser.uid}/history`))
+                getDocs(collection(db, `users/${currentUser.uid}/podtrackr_history`))
             ]).catch(err => {
                 console.error("Firestore error:", err);
                 contentEl.innerHTML = `<div class="card p-8 text-center"><h2 class="text-2xl font-bold mb-4">Error</h2><p>Could not load your feed. This might be caused by a browser extension (like an ad blocker) blocking the connection to the database.</p></div>`;
@@ -677,7 +685,7 @@ window.addEventListener('app-logout-request', () => {
         
         async function renderStatsView() {
             showLoading();
-            const historyRef = collection(db, `users/${currentUser.uid}/history`);
+            const historyRef = collection(db, `users/${currentUser.uid}/podtrackr_history`);
             const historySnap = await getDocs(historyRef).catch(err => {
                 console.error("Firestore error:", err);
                 contentEl.innerHTML = `<div class="card p-8 text-center"><h2 class="text-2xl font-bold mb-4">Error</h2><p>Could not load your stats. This might be caused by a browser extension (like an ad blocker) blocking the connection to the database.</p></div>`;
@@ -800,12 +808,12 @@ window.addEventListener('app-logout-request', () => {
         
         async function renderHistoryView(filter = null) {
             showLoading();
-            const historyCollection = collection(db, `users/${currentUser.uid}/history`);
+            const historyCollection = collection(db, `users/${currentUser.uid}/podtrackr_history`);
             let title = "Listening History";
 
             const [historySnap, notesSnap] = await Promise.all([
                 getDocs(query(historyCollection, orderBy('listenedAt', 'desc'))),
-                getDocs(collection(db, `users/${currentUser.uid}/notes`))
+                getDocs(collection(db, `users/${currentUser.uid}/podtrackr_notes`))
             ]).catch(err => {
                 console.error("Firestore error:", err);
                 contentEl.innerHTML = `<div class="card p-8 text-center"><h2 class="text-2xl font-bold mb-4">Error</h2><p>Could not load your history. This might be caused by a browser extension (like an ad blocker) blocking the connection to the database.</p></div>`;
@@ -828,7 +836,7 @@ window.addEventListener('app-logout-request', () => {
                     title = `No History for: ${currentEpisodeContext.episodeTitle}`;
                 }
             } else if (filter && filter.podcastId) {
-                const podcastDetails = await getDoc(doc(db, `users/${currentUser.uid}/podcasts`, filter.podcastId));
+                const podcastDetails = await getDoc(doc(db, `users/${currentUser.uid}/podtrackr_podcasts`, filter.podcastId));
                 const podcastTitle = podcastDetails.exists() ? podcastDetails.data().title : "a podcast";
 
                 history = history.filter(h => h.podcastId === filter.podcastId);
@@ -879,7 +887,7 @@ window.addEventListener('app-logout-request', () => {
                                                 <i class="ph ${noteExists ? 'ph-fill ph-note text-white' : 'ph-note-pencil'} text-xl"></i>
                                             </button>
                                         </td>
-                                        <td class="p-2">${formatDateWithRelativeTime(h.listenedAt?.toDate())}</td>
+                                        <td class="p-2">${formatDateWithRelativeTime(getValidDate(h.listenedAt))}</td>
                                         <td class="p-2">
                                             <button class="edit-history-btn p-2 rounded-full hover:bg-[var(--background)]" title="Edit Entry" data-history-id="${h.id}">
                                                 <i class="ph ph-pencil-simple text-xl"></i>
@@ -945,15 +953,15 @@ window.addEventListener('app-logout-request', () => {
     // ----------------------
 
     showLoading();
-            const podcastDocRef = doc(db, `users/${currentUser.uid}/podcasts`, podcastId);
-            const podcastListenlistDocRef = doc(db, `users/${currentUser.uid}/podcastListenlist`, podcastId);
+            const podcastDocRef = doc(db, `users/${currentUser.uid}/podtrackr_podcasts`, podcastId);
+            const podcastListenlistDocRef = doc(db, `users/${currentUser.uid}/podtrackr_podcastListenlist`, podcastId);
 
             const [podcastDoc, podcastListenlistDoc, podcastDetailsData, episodesData, historySnap, recommendationsData] = await Promise.all([
                 getDoc(podcastDocRef),
                 getDoc(podcastListenlistDocRef),
                 fetchFromPodcastIndex('/podcasts/byfeedid', { id: podcastId }),
                 fetchFromPodcastIndex('/episodes/byfeedid', { id: podcastId, max: 1000 }),
-                getDocs(collection(db, `users/${currentUser.uid}/history`)),
+                getDocs(collection(db, `users/${currentUser.uid}/podtrackr_history`)),
                 fetchFromPodcastIndex('/podcasts/byfeedid', { id: podcastId }).then(data => {
                     if (data?.feed?.categories) {
                         const categories = Object.values(data.feed.categories).join(',');
@@ -1109,8 +1117,8 @@ window.addEventListener('app-logout-request', () => {
     
     const [apiEpisodeData, noteSnap, historyQuerySnap] = await Promise.all([
         fetchFromPodcastIndex('/episodes/byid', { id: episodeId }),
-        getDoc(doc(db, `users/${currentUser.uid}/notes`, episodeId)),
-        getDocs(query(collection(db, `users/${currentUser.uid}/history`), where("episodeId", "==", episodeId)))
+        getDoc(doc(db, `users/${currentUser.uid}/podtrackr_notes`, episodeId)),
+        getDocs(query(collection(db, `users/${currentUser.uid}/podtrackr_history`), where("episodeId", "==", episodeId)))
     ]);
 
     const episode = apiEpisodeData?.episode;
@@ -1249,7 +1257,7 @@ window.addEventListener('app-logout-request', () => {
         
         saveBtn.innerText = 'Saving...';
         
-        await setDoc(doc(db, `users/${currentUser.uid}/notes`, episodeId), {
+        await setDoc(doc(db, `users/${currentUser.uid}/podtrackr_notes`, episodeId), {
             text: notesText,
             updatedAt: new Date(),
             episodeId: episode.id,
@@ -1288,8 +1296,8 @@ window.addEventListener('app-logout-request', () => {
         async function renderListenlistView() {
             showLoading();
             const [podcastListenlistSnap, episodeListenlistSnap] = await Promise.all([
-                getDocs(query(collection(db, `users/${currentUser.uid}/podcastListenlist`), orderBy('addedAt', 'desc'))),
-                getDocs(query(collection(db, `users/${currentUser.uid}/listenlist`), orderBy('addedAt', 'asc')))
+                getDocs(query(collection(db, `users/${currentUser.uid}/podtrackr_podcastListenlist`), orderBy('addedAt', 'desc'))),
+                getDocs(query(collection(db, `users/${currentUser.uid}/podtrackr_listenlist`), orderBy('addedAt', 'asc')))
             ]).catch(err => {
                 console.error("Firestore error:", err);
                 contentEl.innerHTML = `<div class="card p-8 text-center"><h2 class="text-2xl font-bold mb-4">Error</h2><p>Could not load your listenlist. This might be caused by a browser extension (like an ad blocker) blocking the connection to the database.</p></div>`;
@@ -1359,7 +1367,7 @@ window.addEventListener('app-logout-request', () => {
         async function exportHistoryToCsv() {
             showLoading();
             try {
-                const historyRef = collection(db, `users/${currentUser.uid}/history`);
+                const historyRef = collection(db, `users/${currentUser.uid}/podtrackr_history`);
                 const historySnap = await getDocs(historyRef);
                 const history = historySnap.docs.map(doc => ({ historyId: doc.id, ...doc.data() }));
 
@@ -1437,7 +1445,7 @@ window.addEventListener('app-logout-request', () => {
 
                 if(button.id === 'add-podcast-from-detail-btn') {
                     const { podcastId, podcastTitle, podcastArtwork, podcastFeedurl, podcastAuthor } = button.dataset;
-                    await setDoc(doc(db, `users/${currentUser.uid}/podcasts`, podcastId), {
+                    await setDoc(doc(db, `users/${currentUser.uid}/podtrackr_podcasts`, podcastId), {
                         title: podcastTitle,
                         author: podcastAuthor,
                         artwork: podcastArtwork,
@@ -1453,12 +1461,12 @@ window.addEventListener('app-logout-request', () => {
 
                 if(button.classList.contains('edit-history-btn')) {
                     const historyId = button.dataset.historyId;
-                    const historyDocRef = doc(db, `users/${currentUser.uid}/history`, historyId);
+                    const historyDocRef = doc(db, `users/${currentUser.uid}/podtrackr_history`, historyId);
                     const historyDoc = await getDoc(historyDocRef);
                     if (historyDoc.exists()) {
                         editingHistoryItem = { id: historyDoc.id, ...historyDoc.data() };
                         editHistoryTitleEl.textContent = editingHistoryItem.episodeTitle;
-                        editDateInputEl.value = toLocalISOString(editingHistoryItem.listenedAt?.toDate());
+                        editDateInputEl.value = toLocalISOString(getValidDate(editingHistoryItem.listenedAt));
                         
                         editModalRatingStarsEl.innerHTML = renderStars(editingHistoryItem.rating || 0, true);
                         editModalRatingStarsEl.dataset.currentRating = editingHistoryItem.rating || 0;
@@ -1475,7 +1483,7 @@ window.addEventListener('app-logout-request', () => {
 
                 if (button.classList.contains('add-podcast-to-listenlist-btn')) {
                     const { podcastId, podcastTitle, podcastArtwork } = button.dataset;
-                    await setDoc(doc(db, `users/${currentUser.uid}/podcastListenlist`, podcastId), {
+                    await setDoc(doc(db, `users/${currentUser.uid}/podtrackr_podcastListenlist`, podcastId), {
                         title: podcastTitle,
                         artwork: podcastArtwork,
                         addedAt: new Date()
@@ -1485,7 +1493,7 @@ window.addEventListener('app-logout-request', () => {
 
                 if (button.classList.contains('remove-podcast-from-listenlist-btn')) {
                     const { podcastId } = button.dataset;
-                    await deleteDoc(doc(db, `users/${currentUser.uid}/podcastListenlist`, podcastId));
+                    await deleteDoc(doc(db, `users/${currentUser.uid}/podtrackr_podcastListenlist`, podcastId));
                     render();
                 }
 
@@ -1494,17 +1502,16 @@ window.addEventListener('app-logout-request', () => {
                     showLoading();
 
                     const historyQuery = query(
-                        collection(db, `users/${currentUser.uid}/history`),
+                        collection(db, `users/${currentUser.uid}/podtrackr_history`),
                         where("episodeId", "==", episodeToLog.episodeId),
-                        where("rating", ">", 0),
-                        orderBy("listenedAt", "desc"),
-                        limit(1)
+                        orderBy("listenedAt", "desc")
                     );
                     const querySnapshot = await getDocs(historyQuery);
                     
                     let existingRating = 0;
-                    if (!querySnapshot.empty) {
-                        existingRating = querySnapshot.docs[0].data().rating;
+                    const ratedDoc = querySnapshot.docs.find(doc => doc.data().rating > 0);
+                    if (ratedDoc) {
+                        existingRating = ratedDoc.data().rating;
                     }
 
                     logEpisodeTitleEl.textContent = episodeToLog.episodeTitle;
@@ -1530,7 +1537,7 @@ window.addEventListener('app-logout-request', () => {
                 
                 if (button.classList.contains('add-to-listenlist-btn')) {
                     const { episodeId, episodeTitle, podcastId, podcastTitle, podcastArtwork, episodeDuration } = button.dataset;
-                    await setDoc(doc(db, `users/${currentUser.uid}/listenlist`, episodeId), {
+                    await setDoc(doc(db, `users/${currentUser.uid}/podtrackr_listenlist`, episodeId), {
                         episodeTitle,
                         podcastId,
                         podcastTitle,
@@ -1542,14 +1549,14 @@ window.addEventListener('app-logout-request', () => {
                 
                 if (button.classList.contains('remove-from-listenlist-btn')) {
                     const { episodeId } = button.dataset;
-                    await deleteDoc(doc(db, `users/${currentUser.uid}/listenlist`, episodeId));
+                    await deleteDoc(doc(db, `users/${currentUser.uid}/podtrackr_listenlist`, episodeId));
                     renderListenlistView();
                 }
                 
                 if (button.classList.contains('notes-btn')) {
                     episodeForNotes = button.dataset;
                     notesEpisodeTitleEl.textContent = episodeForNotes.episodeTitle;
-                    const noteDoc = await getDoc(doc(db, `users/${currentUser.uid}/notes`, episodeForNotes.episodeId));
+                    const noteDoc = await getDoc(doc(db, `users/${currentUser.uid}/podtrackr_notes`, episodeForNotes.episodeId));
                     notesTextareaEl.value = noteDoc.exists() ? noteDoc.data().text : '';
                     notesModalEl.classList.remove('hidden');
                 }
@@ -1558,7 +1565,7 @@ window.addEventListener('app-logout-request', () => {
                     const { podcastId, podcastTitle } = button.dataset;
                     showConfirmModal(`Are you sure you want to remove ${podcastTitle} from your library?`, async (confirmed) => {
                         if (confirmed) {
-                            await deleteDoc(doc(db, `users/${currentUser.uid}/podcasts`, podcastId));
+                            await deleteDoc(doc(db, `users/${currentUser.uid}/podtrackr_podcasts`, podcastId));
                             window.location.hash = '#dashboard';
                         }
                     });
@@ -1578,7 +1585,7 @@ window.addEventListener('app-logout-request', () => {
                 }
             }
 
-            await addDoc(collection(db, `users/${currentUser.uid}/history`), {
+            await addDoc(collection(db, `users/${currentUser.uid}/podtrackr_history`), {
                 episodeId,
                 episodeTitle,
                 podcastId,
@@ -1657,7 +1664,7 @@ window.addEventListener('app-logout-request', () => {
             const newDate = editDateInputEl.value ? new Date(editDateInputEl.value) : null;
             const newRating = parseInt(editModalRatingStarsEl.dataset.currentRating);
 
-            const historyDocRef = doc(db, `users/${currentUser.uid}/history`, editingHistoryItem.id);
+            const historyDocRef = doc(db, `users/${currentUser.uid}/podtrackr_history`, editingHistoryItem.id);
             await updateDoc(historyDocRef, {
                 listenedAt: newDate,
                 rating: newRating
@@ -1670,7 +1677,7 @@ window.addEventListener('app-logout-request', () => {
             if (!editingHistoryItem) return;
             showConfirmModal(`Are you sure you want to delete this listen entry for "${editingHistoryItem.episodeTitle}"?`, async (confirmed) => {
                 if (confirmed) {
-                    const historyDocRef = doc(db, `users/${currentUser.uid}/history`, editingHistoryItem.id);
+                    const historyDocRef = doc(db, `users/${currentUser.uid}/podtrackr_history`, editingHistoryItem.id);
                     await deleteDoc(historyDocRef);
                     editHistoryModalEl.classList.add('hidden');
                     render();
@@ -1683,7 +1690,7 @@ window.addEventListener('app-logout-request', () => {
         saveNotesBtnEl.addEventListener('click', async () => {
             if (!episodeForNotes) return;
             const { episodeId, episodeTitle, podcastId, podcastTitle, podcastArtwork, episodeDuration } = episodeForNotes;
-            await setDoc(doc(db, `users/${currentUser.uid}/notes`, episodeId), {
+            await setDoc(doc(db, `users/${currentUser.uid}/podtrackr_notes`, episodeId), {
                 text: notesTextareaEl.value,
                 updatedAt: new Date(),
                 episodeId: episodeId,

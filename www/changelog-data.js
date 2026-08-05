@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v16.0.0-alpha",
+    date: "2026-08-05",
+    changes: [
+        "In PodTrackr: Namespaced all database collections (e.g., history to podtrackr_history, notes to podtrackr_notes) to permanently prevent data collisions and accidental wipes caused by shared paths with VidTrackr."
+    ]
+},
+    {
     version: "v15.162.0-alpha",
     date: "2026-08-05",
     changes: [
