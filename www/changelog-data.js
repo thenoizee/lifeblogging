@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v15.162.0-alpha",
+    date: "2026-08-05",
+    changes: [
+        "In Shared Navigation: Injected a dynamic, theme-colored background gradient (ellipse) across all apps that automatically stretches to fit the document height, with subtle opacities for light and dark modes.",
+        "In various: Updated background colour to use #1A202C for dark mode instead of #111827 to improve contrast and reduce eye strain.",
+    ]
+},
+    {
     version: "v15.161.0-alpha",
     date: "2026-08-05",
     changes: [

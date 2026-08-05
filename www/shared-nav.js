@@ -346,15 +346,35 @@ export class AppNavigation {
         const styleId = 'shared-nav-styles';
         if (document.getElementById(styleId)) return;
 
-        // Force Tailwind CDN to compile the dynamic theme colors used for the tab "light up" animations.
-        // We use absolute positioning instead of 'hidden' to ensure the CDN parser doesn't ignore it.
+        // Force Tailwind CDN to compile the dynamic theme colors
         const safelistDiv = document.createElement('div');
         safelistDiv.className = `absolute -top-[9999px] opacity-0 text-${this.themeColor}-700 dark:text-${this.themeColor}-400 bg-${this.themeColor}-100 dark:bg-gray-900 shadow-sm ring-1 ring-${this.themeColor}-300 dark:ring-gray-700 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:from-${this.themeColor}-900/10 border-${this.themeColor}-200 border-t-${this.themeColor}-500 text-${this.themeColor}-600 dark:text-${this.themeColor}-500 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400`;
         document.body.appendChild(safelistDiv);
 
+        // Map Tailwind color names to RGB values for the dynamic radial gradient
+        const rgbMap = {
+            slate: '100, 116, 139', lime: '132, 204, 22', orange: '249, 115, 22',
+            teal: '20, 184, 166', blue: '59, 130, 246', red: '239, 68, 68',
+            amber: '245, 158, 11', pink: '236, 72, 153', purple: '168, 85, 247',
+            green: '34, 197, 94', indigo: '99, 102, 241', cyan: '6, 182, 212',
+            zinc: '113, 113, 122', emerald: '16, 185, 129', fuchsia: '217, 70, 239',
+            rose: '244, 63, 94', sky: '14, 165, 233', yellow: '234, 179, 8'
+        };
+        const rgb = rgbMap[this.themeColor] || '99, 102, 241'; // Fallback to indigo
+
         const style = document.createElement('style');
         style.id = styleId;
         style.textContent = `
+            /* Dynamic App-Specific Background Gradient (Stretches with content) */
+            body {
+                background-image: radial-gradient(ellipse at top, rgba(${rgb}, 0.03) 0%, transparent 80%);
+                background-repeat: no-repeat;
+                /* background-attachment: fixed removed so it scales with document height */
+            }
+            .dark body, body.dark-mode {
+                background-image: radial-gradient(ellipse at top, rgba(${rgb}, 0.08) 0%, transparent 80%);
+            }
+
             /* Custom Scrollbar */
             ::-webkit-scrollbar { width: 8px; height: 8px; }
             ::-webkit-scrollbar-track { background: transparent; }
@@ -366,7 +386,7 @@ export class AppNavigation {
             /* Theme Toggle Animation */
             .rotate-360 { transform: rotate(360deg); }
 
-            /* Premium Tab Button Animations (Replicated from Analyser) */
+            /* Premium Tab Button Animations */
             .nav-tab-btn, .mobile-nav-btn {
                 transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, color 0.2s ease !important;
             }
