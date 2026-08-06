@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v16.4.0-alpha",
+    date: "2026-08-07",
+    changes: [
+        "In PodTrackr: Updated the episode rating UI to support and display a 1-10 star scale instead of the previous 1-5 scale.",
+    ]
+},
+    {
     "version": "v16.3.0-alpha",
     "date": "2026-08-07",
     "changes": [
