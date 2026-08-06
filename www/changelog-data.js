@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.5.0-alpha",
+    date: "2026-08-07",
+    changes: [
+        "In Palette Generator: Integrated shared AppNavigation for consistent cross-app header, mobile navigation, and theme handling.",
+        "In Palette Generator: Implemented Firebase Authentication and Firestore persistence to securely save and sync custom palettes across all devices.",
+        "In Palette Generator: Introduced an Export Engine allowing users to instantly copy generated palettes as CSS Variables, Tailwind configurations, or JSON.",
+        "In Palette Generator: Added a Real-time UI Simulator to preview how generated colors contrast and display on standard interface elements (backgrounds, text, primary/secondary buttons).",
+        "In Palette Generator: Added an Accessibility Color Blindness Simulator to test palettes against Protanopia, Deuteranopia, Tritanopia, and Achromatopsia.",
+    ]
+},
+    {
     version: "v16.4.0-alpha",
     date: "2026-08-07",
     changes: [
