@@ -2,7 +2,16 @@
 
 export const changelogData = [
     {
-    version: "v16.1.0-alpha",
+    "version": "v16.3.0-alpha",
+    "date": "2026-08-07",
+    "changes": [
+        "In RecipeManagr: Updated filterRecipes() to traverse ingredient arrays, allowing the search bar to find recipes containing specific ingredients.",
+        "In RecipeManagr: Added a Print button directly inside the Flowchart view inside the Recipe Details modal.",
+        "In RecipeManagr: Updated CSS print styles with `-webkit-print-color-adjust: exact` so flowchart coloring and borders render correctly on paper.",
+    ]
+},
+    {
+    version: "v16.2.0-alpha",
     date: "2026-08-05",
     changes: [
                 "In Dashboard: Updated the VidTrackr widget to natively query the local Firebase 'history' collection when TMDB/Local is set as the primary data source.",
