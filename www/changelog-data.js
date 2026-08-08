@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.6.0-alpha",
+    date: "2026-08-08",
+    changes: [
+                "In Converter: Removed 'To CSV' and 'To JSON' buttons and implemented live bidirectional synchronization between CSV and JSON inputs.",
+                "In Converter: Added 'Format' and 'Minify' features to instantly beautify or compress JSON data.",
+                "In Converter: Removed the manual 'Convert' button and implemented reactive, live conversion as the user types or changes the conversion mode.",
+                "In Converter: Introduced an active string statistics counter tracking both character and word count in real-time.",
+                "In Converter: Added case conversion modes including UPPERCASE, lowercase, camelCase, snake_case, and kebab-case.",
+                "In Converter: Added a persistent Global Status Banner at the top of the interface to show active CSV data loads, maintaining context across tabs."
+    ]
+},
+    {
     version: "v16.5.0-alpha",
     date: "2026-08-07",
     changes: [
