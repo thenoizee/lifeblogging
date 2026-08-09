@@ -390,9 +390,12 @@ export class AppNavigation {
             .nav-tab-btn, .mobile-nav-btn {
                 transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, color 0.2s ease !important;
             }
-            .nav-tab-btn:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 6px 12px -2px rgba(15, 23, 42, 0.08);
+            /* Only apply hover effects on devices with a pointing device to prevent mobile double-tap issues */
+            @media (hover: hover) {
+                .nav-tab-btn:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 6px 12px -2px rgba(15, 23, 42, 0.08);
+                }
             }
             .nav-tab-btn:active {
                 transform: translateY(1px);

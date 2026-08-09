@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.9.0-alpha",
+    date: "2026-08-10",
+    changes: [
+        "In SharedNav: Wrapped '.nav-tab-btn' hover effects in a '@media (hover: hover)' query to prevent double-tap issues on mobile devices.",
+        "In TaskTrackr: Added the 'flex' utility class to '#project-sidebar' to fix scrolling issues on the mobile sidepane.",
+        "In TaskTrackr: Configured Tailwind CSS with 'future: { hoverOnlyWhenSupported: true }' to automatically strip hover variants on touch devices.",
+        "In TaskTrackr: Wrapped custom CSS hover states (e.g., '.btn-primary', '.color-option', '.calendar-day', '.fab-add') in '@media (hover: hover)' queries to prevent sticky hover states and double-taps on mobile."
+    ]
+},
+    {
     version: "v16.8.0-alpha",
     date: "2026-08-10",
     changes: [
@@ -12,7 +22,7 @@ export const changelogData = [
     ]
 },
     {
-        version: "v16.7.0-beta",
+        version: "v16.7.0-alpha",
         date: "2026-08-09",
         changes: [
             "In TaskTrackr: Hid the default Quick Add text input bar on mobile completely, deferring strictly to the Floating Action Button to reclaim screen space.",
