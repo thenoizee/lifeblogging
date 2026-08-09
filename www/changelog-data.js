@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+        version: "v16.7.0-beta",
+        date: "2026-08-09",
+        changes: [
+            "In TaskTrackr: Hid the default Quick Add text input bar on mobile completely, deferring strictly to the Floating Action Button to reclaim screen space.",
+            "In TaskTrackr: Adjusted the mobile sidebar Z-Index inline to maximum values (2147483647) to perfectly overlap the shared navigation wrapper.",
+            "In TaskTrackr: Resolved title string truncation in compact mode, refactoring the wrapper to organically wrap the font inside the element constraint.",
+            "In VidTrackr: Implemented a ghost-cache flush to instantly erase isolated partial-watch artifacts when an episode is marked as 100% finished via UI bypass.",
+            "In VidTrackr: Added an interactive 'Edit Description' hook for internally created Custom Lists.",
+        ]
+    },
+    {
     version: "v16.6.0-alpha",
     date: "2026-08-08",
     changes: [

@@ -991,6 +991,16 @@ if (headerRight) {
             }
         };
 
+        window.editListDesc = async (slug) => {
+            const desc = prompt("Enter new description:");
+            if (desc === null) return;
+            if (currentUser) {
+                await setDoc(doc(db, `users/${currentUser.uid}/lists`, slug), { description: desc }, { merge: true });
+                showToast("Description updated");
+                renderListItems(`local_${slug}`);
+            }
+        };
+
         window.createNewList = async () => {
             const name = prompt("Enter list name:");
             if(!name) return;
@@ -2350,10 +2360,48 @@ async function loadUpNext() {
                             type: p.type || (p.movie ? 'movie' : 'episode')
                         })).sort((a, b) => new Date(b.paused_at) - new Date(a.paused_at));
 
-                        // Sort nextEpisodes by when they were last watched so the most recently engaged shows are first
-                        nextEpisodes.sort((a, b) => new Date(b.watched_at) - new Date(a.watched_at));
+                        // Create a set of IDs currently in resume to prevent duplicates
+                        const resumeCompositeIds = new Set();
+                        resumeItems.forEach(p => {
+                            if (p.type === 'episode') {
+                                const sTmdb = p.show?.ids?.tmdb || p.episode?.show?.ids?.tmdb;
+                                const s = p.season || p.episode?.season;
+                                const e = p.number || p.episode?.number;
+                                if (sTmdb && s !== undefined && e !== undefined) resumeCompositeIds.add(`${sTmdb}-${s}-${e}`);
+                            }
+                            if (p.id) resumeCompositeIds.add(String(p.id));
+                            if (p.playbackId) resumeCompositeIds.add(String(p.playbackId));
+                        });
 
-                        const finalItems = [...resumeItems, ...nextEpisodes].slice(0, 18);
+                        // Create a set of ALL watched episodes to prevent old shows from suggesting already watched episodes
+                        const watchedCompositeIds = new Set();
+                        historyItems.forEach(item => {
+                            if (item.type === 'episode') {
+                                const media = item.media || item.episode;
+                                const showObj = media?.show || item.show;
+                                const sTmdb = showObj?.ids?.tmdb || media?.ids?.tmdb;
+                                const s = media?.season || media?.season_number;
+                                const e = media?.number || media?.episode_number;
+                                if (sTmdb && s !== undefined && e !== undefined) watchedCompositeIds.add(`${sTmdb}-${s}-${e}`);
+                            }
+                        });
+
+                        // Filter out nextEpisodes that are already partially watched OR fully watched
+                        const uniqueNextEpisodes = nextEpisodes.filter(nx => {
+                            const sTmdb = nx.show?.ids?.tmdb;
+                            const s = nx.episode?.season;
+                            const e = nx.episode?.number;
+                            if (sTmdb && s !== undefined && e !== undefined) {
+                                const composite = `${sTmdb}-${s}-${e}`;
+                                return !resumeCompositeIds.has(composite) && !watchedCompositeIds.has(composite);
+                            }
+                            return true;
+                        });
+
+                        // Sort uniqueNextEpisodes by when they were last watched so the most recently engaged shows are first
+                        uniqueNextEpisodes.sort((a, b) => new Date(b.watched_at) - new Date(a.watched_at));
+
+                        const finalItems = [...resumeItems, ...uniqueNextEpisodes].slice(0, 18);
                         
                         await window.enrichTMDBImages(finalItems);
                         return finalItems;
@@ -5229,7 +5277,9 @@ async function renderPerson(id) {
 
                             const imgId = `card-img-${type}-${fallbackId}`;
                             const img = getImage(data, type);
-                            const displayTitle = data.title || data.name || 'Unknown Title';
+                            let displayTitle = data.title || data.name || 'Unknown Title';
+                            if (type === 'episode' && data.show) displayTitle = `${data.show.title}: ${displayTitle}`;
+                            else if (type === 'episode' && item.show) displayTitle = `${item.show.title}: ${displayTitle}`;
                             let displayYear = data.year;
                             if (!displayYear) {
                                 const dateString = data.release_date || data.first_air_date;
@@ -5329,7 +5379,9 @@ async function renderPerson(id) {
 
                             const imgId = `card-img-${type}-${fallbackId}`;
                             const img = getImage(data, type);
-                            const displayTitle = data.title || data.name || 'Unknown Title';
+                            let displayTitle = data.title || data.name || 'Unknown Title';
+                            if (type === 'episode' && data.show) displayTitle = `${data.show.title}: ${displayTitle}`;
+                            else if (type === 'episode' && item.show) displayTitle = `${item.show.title}: ${displayTitle}`;
                             let displayYear = data.year;
                             if (!displayYear) {
                                 const dateString = data.release_date || data.first_air_date;
@@ -5558,7 +5610,9 @@ async function renderPerson(id) {
 
                             const imgId = `card-img-${type}-${fallbackId}`;
                             const img = getImage(data, type);
-                            const displayTitle = data.title || data.name || 'Unknown Title';
+                            let displayTitle = data.title || data.name || 'Unknown Title';
+                            if (type === 'episode' && data.show) displayTitle = `${data.show.title}: ${displayTitle}`;
+                            else if (type === 'episode' && item.show) displayTitle = `${item.show.title}: ${displayTitle}`;
                             let displayYear = data.year;
                             if (!displayYear) {
                                 const dateString = data.release_date || data.first_air_date;
@@ -6528,7 +6582,10 @@ async function renderPerson(id) {
                             </div>
                             <div class="flex-grow">
                                 <h1 class="text-3xl md:text-5xl font-bold mb-2">${listInfo.name}</h1>
-                                <p class="text-gray-400 text-sm md:text-base max-w-2xl leading-relaxed mb-4">${listInfo.description || 'No description provided.'}</p>
+                                <div class="group relative inline-block max-w-2xl w-full mb-4">
+                                    <p class="text-gray-400 text-sm md:text-base leading-relaxed pr-8 min-h-[1.5rem]">${listInfo.description || 'No description provided.'}</p>
+                                    ${listId.startsWith('local_') ? `<button onclick="window.editListDesc('${listId.replace('local_', '')}')" class="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition text-gray-500 hover:text-[var(--primary)] bg-[var(--bg)] px-2 py-1 rounded shadow-sm border border-gray-700" title="Edit Description"><i class="fa-solid fa-pen"></i></button>` : ''}
+                                </div>
                                 <div class="flex flex-wrap gap-4 text-xs font-bold uppercase tracking-wider text-gray-500">
                                     <span class="flex items-center gap-2 bg-gray-800 px-3 py-1 rounded border border-gray-700"><i class="fa-solid fa-layer-group text-[var(--primary)]"></i> ${listInfo.item_count} Items</span>
                                     <span class="flex items-center gap-2 bg-gray-800 px-3 py-1 rounded border border-gray-700"><i class="fa-solid fa-heart text-red-500"></i> ${listInfo.likes} Likes</span>
