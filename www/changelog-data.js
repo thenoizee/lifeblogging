@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.8.0-alpha",
+    date: "2026-08-10",
+    changes: [
+        "In FoodTrackr: Added bulk 'Select All' buttons to each meal section in the Daily Log.",
+        "In SharedNav: Updated the mobile bottom navigation UI with a pill-style active state and improved hitboxes for better clickability.",
+        "In SharedNav: Reorganized the mobile top header to align action icons (notifications, theme toggle, and user profile) next to the Hub button.",
+        "In SharedNav: Fixed an issue where the user profile avatar was incorrectly hidden on mobile devices and optimized its sizing."
+    ]
+},
+    {
         version: "v16.7.0-beta",
         date: "2026-08-09",
         changes: [

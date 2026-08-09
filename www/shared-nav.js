@@ -451,10 +451,10 @@ export class AppNavigation {
 
 <header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 2147483646; isolation: isolate;">
             <div class="container mx-auto px-4 py-2">
-                <div class="flex items-center justify-between h-12">
-                    
-                    <div class="flex items-center gap-3">
-                        <div id="hub-container" class="relative group" style="position: relative;">
+                <div class="flex items-center justify-start md:justify-between h-12 gap-3 md:gap-0 w-full">
+                        
+                        <div class="flex items-center gap-3 shrink-0">
+                            <div id="hub-container" class="relative group" style="position: relative;">
                             <div class="flex rounded-lg shadow-sm overflow-hidden">
                                 <a href="/" class="bg-${this.themeColor}-600 hover:bg-${this.themeColor}-700 text-white text-xs font-bold py-2 px-3 flex items-center gap-1 transition-colors">
                                     <i class="fa-solid fa-arrow-left"></i> Hub
@@ -511,45 +511,46 @@ export class AppNavigation {
                         `).join('')}
                     </nav>
 
-                    <div class="flex items-center gap-3">
-                        ${this.search ? `
-                        <div class="hidden md:block relative mx-2">
-                             <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                             <input type="search" id="${this.search.id}" placeholder="${this.search.placeholder || 'Search...'}" 
-                                class="bg-gray-100 dark:bg-gray-900/50 border-none text-gray-600 dark:text-gray-300 text-xs rounded-lg py-1.5 pl-8 pr-4 w-40 lg:w-48 focus:ring-2 focus:ring-${this.themeColor}-500 focus:outline-none transition-all">
-                        </div>
-                        ` : ''}
+                    <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+                            ${this.search ? `
+                            <div class="hidden md:block relative mx-2">
+                                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                                 <input type="search" id="${this.search.id}" placeholder="${this.search.placeholder || 'Search...'}" 
+                                    class="bg-gray-100 dark:bg-gray-900/50 border-none text-gray-600 dark:text-gray-300 text-xs rounded-lg py-1.5 pl-8 pr-4 w-40 lg:w-48 focus:ring-2 focus:ring-${this.themeColor}-500 focus:outline-none transition-all">
+                            </div>
+                            ` : ''}
 
-                        <div class="relative group" id="nav-notifications-container" style="position: relative;">
-                            <button id="nav-bell-btn" class="relative w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all">
-                                <i class="fa-regular fa-bell"></i>
-                                <span id="nav-bell-badge" class="hidden absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></span>
-                            </button>
-                            
-                            <div id="nav-notifications-menu" class="hidden absolute top-full right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden transform origin-top-right transition-all duration-200" style="position: absolute; z-index: 2147483647;">
-                                <div class="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/80">
-                                    <h3 class="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Notifications</h3>
-                                    <div class="flex items-center gap-3">
-                                        <button id="nav-expand-notifications" class="text-[10px] text-gray-500 hover:text-${this.themeColor}-500 dark:hover:text-${this.themeColor}-400 transition-colors" title="Open Full Screen"><i class="fa-solid fa-expand"></i></button>
-                                        <button id="nav-clear-notifications" class="text-[10px] text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline">Clear All</button>
+                            <div class="relative group" id="nav-notifications-container" style="position: relative;">
+                                <button id="nav-bell-btn" class="relative w-10 h-10 md:w-8 md:h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all">
+                                    <i class="fa-regular fa-bell"></i>
+                                    <span id="nav-bell-badge" class="hidden absolute top-1 md:top-0 right-1 md:right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></span>
+                                </button>
+                                
+                                <div id="nav-notifications-menu" class="hidden absolute top-full left-0 md:left-auto md:right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden transform origin-top-left md:origin-top-right transition-all duration-200" style="position: absolute; z-index: 2147483647;">
+                                    <div class="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/80">
+                                        <h3 class="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wider">Notifications</h3>
+                                        <div class="flex items-center gap-3">
+                                            <button id="nav-expand-notifications" class="text-[10px] text-gray-500 hover:text-${this.themeColor}-500 dark:hover:text-${this.themeColor}-400 transition-colors" title="Open Full Screen"><i class="fa-solid fa-expand"></i></button>
+                                            <button id="nav-clear-notifications" class="text-[10px] text-${this.themeColor}-600 dark:text-${this.themeColor}-400 hover:underline">Clear All</button>
+                                        </div>
+                                    </div>
+                                    <div id="nav-notifications-list" class="max-h-64 overflow-y-auto p-2 flex flex-col gap-1">
+                                        <div class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">No new notifications</div>
                                     </div>
                                 </div>
-                                <div id="nav-notifications-list" class="max-h-64 overflow-y-auto p-2 flex flex-col gap-1">
-                                    <div class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">No new notifications</div>
-                                </div>
                             </div>
-                        </div>
-                        
-<a href="#" id="nav-user-avatar" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden" title="${avatarTitle}">                            ${userInitial}
-                        </a>
+                            
+<a href="#" id="nav-user-avatar" class="flex items-center justify-center w-10 h-10 md:w-8 md:h-8 shrink-0 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-sm md:text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden" title="${avatarTitle}">                            
+                                ${userInitial}
+                            </a>
 
-                        <button id="nav-theme-toggle" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all duration-500 ease-in-out">
-                            <i id="theme-icon-moon" class="fas fa-moon"></i>
-                            <i id="theme-icon-sun" class="fas fa-sun" style="display: none;"></i>
-                        </button>
-                        
-                        <!-- Log out button removed from global nav -->
-                    </div>
+                            <button id="nav-theme-toggle" class="w-10 h-10 md:w-8 md:h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all duration-500 ease-in-out">
+                                <i id="theme-icon-moon" class="fas fa-moon"></i>
+                                <i id="theme-icon-sun" class="fas fa-sun" style="display: none;"></i>
+                            </button>
+                            
+                            <!-- Log out button removed from global nav -->
+                        </div>
                 </div>
             </div>
             
@@ -575,13 +576,14 @@ export class AppNavigation {
     renderMobileNav() {
         if (!this.tabs.length) return;
         const mobileHtml = `
-        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-800 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
-            <div class="flex justify-around items-center h-16">
-                <!-- Global back to Hub button removed for mobile to prevent duplicates -->
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-800 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
+            <div class="flex justify-around items-center h-16 px-2">
                 ${this.tabs.map(tab => `
-                    <button class="mobile-nav-btn flex flex-col items-center justify-center w-full h-full text-gray-400 hover:text-${this.themeColor}-500 transition-colors gap-1" data-tab="${tab.id}">
-                        <i class="fa-solid ${tab.icon} text-lg"></i>
-                        <span class="text-[10px] font-medium">${tab.label}</span>
+                    <button class="mobile-nav-btn flex flex-col items-center justify-center flex-1 h-full text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 transition-colors active:scale-95" data-tab="${tab.id}">
+                        <div class="icon-wrapper flex items-center justify-center w-14 h-8 rounded-full transition-colors pointer-events-none mb-0.5">
+                            <i class="fa-solid ${tab.icon} text-lg"></i>
+                        </div>
+                        <span class="text-[10px] font-semibold pointer-events-none leading-none tracking-wide">${tab.label}</span>
                     </button>
                 `).join('')}
             </div>
@@ -1094,13 +1096,16 @@ export class AppNavigation {
             else btn.className = `nav-tab-btn px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${inactiveClassDesktop}`;
         });
 
-        document.querySelectorAll('.mobile-nav-btn').forEach(btn => {
+       document.querySelectorAll('.mobile-nav-btn').forEach(btn => {
+            const iconWrapper = btn.querySelector('.icon-wrapper');
             if (btn.dataset.tab === tabId) {
                 btn.classList.add(`text-${this.themeColor}-600`, `dark:text-${this.themeColor}-400`);
-                btn.classList.remove('text-gray-400');
+                btn.classList.remove('text-gray-500', 'dark:text-gray-400');
+                if(iconWrapper) iconWrapper.classList.add(`bg-${this.themeColor}-100`, `dark:bg-${this.themeColor}-900/40`);
             } else {
                 btn.classList.remove(`text-${this.themeColor}-600`, `dark:text-${this.themeColor}-400`);
-                btn.classList.add('text-gray-400');
+                btn.classList.add('text-gray-500', 'dark:text-gray-400');
+                if(iconWrapper) iconWrapper.classList.remove(`bg-${this.themeColor}-100`, `dark:bg-${this.themeColor}-900/40`);
             }
         });
 
