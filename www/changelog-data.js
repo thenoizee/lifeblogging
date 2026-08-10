@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.10.0-alpha",
+    date: "2026-08-10",
+    changes: [
+        "In VidTrackr: Updated TV Show cards to display the total number of aired episodes.",
+        "In VidTrackr: Fixed TMDB episode routing from custom lists, watchlists, and collections by utilizing composite IDs (showId-season-episode).",
+        "In VidTrackr: Made card action and delete buttons visible by default on mobile devices to bypass hover-state limitations.",
+    ]
+},
+    {
     version: "v16.9.0-alpha",
     date: "2026-08-10",
     changes: [

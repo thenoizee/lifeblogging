@@ -1575,12 +1575,23 @@ window.removeProgress = async (playbackId) => {
             const imgId = `card-img-${type}-${fallbackId}`; // Generate a targeting ID
             
             // Normalize display title and year
-            const displayTitle = data.title || data.name || 'Unknown Title';
+            let displayTitle = data.title || data.name || 'Unknown Title';
+            let displaySub = '';
+            
+            if (type === 'episode') {
+                const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name;
+                if (showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
+                const sNum = data.season !== undefined ? data.season : (data.season_number !== undefined ? data.season_number : '?');
+                const eNum = data.number !== undefined ? data.number : (data.episode_number !== undefined ? data.episode_number : '?');
+                displaySub = `S${sNum}E${eNum}`;
+            }
+
             let displayYear = data.year;
             if (!displayYear) {
                 const dateString = data.release_date || data.first_air_date;
                 displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
             }
+            if (!displaySub) displaySub = displayYear;
 
             // Fallback rating logic for TMDB's vote_average
             const ratingVal = data.rating || data.vote_average || 0;
@@ -1599,15 +1610,16 @@ window.removeProgress = async (playbackId) => {
                 || (!isNaN(Number(fallbackId)) ? userRatings.get(parseInt(fallbackId)) : null) 
                 || (type !== 'episode' ? userRatings.get(String(targetId)) : null)
                 || (type !== 'episode' && !isNaN(Number(targetId)) ? userRatings.get(parseInt(targetId)) : null);
-            const ratingHtml = myRating
-                ? `<span class="text-green-400 font-bold flex items-center gap-1"><i class="fa-solid fa-user-check"></i> ${myRating}</span>`
-                : `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>`;
+            
+            const tmdbRatingHtml = ratingVal > 0 ? `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>` : '';
+            const myRatingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 ${ratingVal > 0 ? 'ml-2 border-l border-white/20 pl-2' : ''}"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
+            const ratingHtml = `<div class="flex items-center">${tmdbRatingHtml}${myRatingHtml}</div>`;
 
             return `
             <div class="group relative card rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-[1.02] transition duration-300 cursor-pointer border border-gray-800" onclick="${clickHandler}">
                 <div class="aspect-[2/3] relative bg-gray-800">
                     <img id="${imgId}" src="${img}" class="w-full h-full object-cover object-center transition duration-500 group-hover:opacity-60" loading="lazy" onerror="this.src='${PLACEHOLDER_IMG}'">
-                    <div class="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
+                    <div class="absolute inset-0 flex flex-col items-center justify-center opacity-0 md:group-hover:opacity-100 transition duration-300 hidden md:flex">
                         <span class="${getBgColor(type)} text-white px-4 py-2 rounded-full font-bold text-sm shadow-lg mb-2 transform translate-y-4 group-hover:translate-y-0 transition">View Details</span>
                     </div>
                     <div class="absolute top-2 right-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
@@ -1615,9 +1627,9 @@ window.removeProgress = async (playbackId) => {
                     </div>
                 </div>
                 <div class="p-4 border-t border-gray-800">
-                    <h3 class="font-bold text-sm truncate text-gray-100 group-hover:${typeColor} transition-colors" title="${displayTitle}">${displayTitle}</h3>
+                    <h3 class="font-bold text-sm truncate text-gray-100 group-hover:${typeColor} transition-colors" title="${displayTitle.replace(/"/g, '&quot;')}">${displayTitle}</h3>
                     <div class="flex justify-between items-center mt-2">
-                        <p class="text-xs text-gray-400 font-medium">${displayYear}</p>
+                        <p class="text-xs text-gray-400 font-medium">${displaySub}</p>
                         <p class="text-[10px] ${typeColor} border ${getBorderColor(type)} px-1.5 py-0.5 rounded uppercase font-bold tracking-wide opacity-70">${type}</p>
                     </div>
                 </div>
@@ -3280,9 +3292,9 @@ async function renderPerson(id) {
                           // Rely strictly on the rating details map to prevent history import pollution
                           const trueRatedAt = rDetails ? rDetails.ratedAt : null;
                           const ratedStr = trueRatedAt ? new Date(trueRatedAt).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
-                          const hRatingHtml = hRating ? `<div class="flex flex-col items-end mr-3"><span class="text-yellow-500 text-xs font-bold"><i class="fa-solid fa-star"></i> ${hRating}</span>${ratedStr ? `<span class="text-[9px] text-gray-500 mt-0.5">${ratedStr}</span>` : ''}</div>` : '';
-                          return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition" onclick="window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition" onclick="window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
-                      }).join('')}${loadMoreBtn}</div></div>`;
+                                  const hRatingHtml = hRating ? `<div class="flex flex-col items-end mr-3"><span class="text-yellow-500 text-xs font-bold"><i class="fa-solid fa-star"></i> ${hRating}</span>${ratedStr ? `<span class="text-[9px] text-gray-500 mt-0.5">${ratedStr}</span>` : ''}</div>` : '';
+                                  return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition group"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition opacity-100 md:opacity-0 md:group-hover:opacity-100" onclick="window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition opacity-100 md:opacity-0 md:group-hover:opacity-100" onclick="window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                              }).join('')}${loadMoreBtn}</div></div>`;
                 }
 
                 // Cast & Guest HTML
@@ -3378,9 +3390,9 @@ async function renderPerson(id) {
                     }
 
                     html += `
-                    <button onclick="history.back()" class="absolute top-24 left-4 z-20 text-sm bg-black/50 hover:bg-black/80 text-white px-4 py-2 rounded-full backdrop-blur-md transition"><i class="fa-solid fa-arrow-left"></i></button>
-                    <div class="relative w-full aspect-video md:min-h-[200px] md:h-auto rounded-3xl overflow-hidden shadow-2xl border border-gray-800 group mb-4 md:mb-8 bg-black">
-                                                <img src="${bgImg}" class="w-full h-full md:h-auto md:max-h-[50vh] object-cover md:object-contain mx-auto">
+                    <div class="relative w-full aspect-video md:min-h-[200px] md:h-auto rounded-3xl overflow-hidden shadow-2xl border border-gray-800 group mb-6 bg-black">
+                        <button onclick="history.back()" class="absolute top-4 left-4 z-20 text-sm bg-black/50 hover:bg-black/80 text-white w-10 h-10 flex items-center justify-center rounded-full backdrop-blur-md transition border border-white/10"><i class="fa-solid fa-arrow-left"></i></button>
+                        <img src="${bgImg}" class="w-full h-full md:h-auto md:max-h-[50vh] object-cover md:object-contain mx-auto">
                         <div class="absolute inset-0 bg-gradient-to-t from-[var(--bg)] via-black/40 to-transparent pointer-events-none md:via-transparent"></div>
                         <div class="nav-btn nav-prev" onclick="window.navigateEpisode('${showInfo.ids.trakt}', ${item.season}, ${item.number - 1})"><i class="fa-solid fa-chevron-left"></i></div>
                         <div class="nav-btn nav-next" onclick="window.navigateEpisode('${showInfo.ids.trakt}', ${item.season}, ${item.number + 1})"><i class="fa-solid fa-chevron-right"></i></div>
@@ -3422,26 +3434,23 @@ async function renderPerson(id) {
                             ${progressHtml}
                             ${historyHtml}
                             
-                            <div class="grid grid-cols-4 sm:flex sm:flex-row gap-2 sm:gap-4 mb-8">
-<button class="col-span-4 sm:flex-1 scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-4 py-3 rounded-lg font-bold shadow-lg flex items-center gap-2 justify-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, name: item.title, type: 'episode', runtime: item.runtime, season: item.season, number: item.number, still_path: item.still_path, show: { title: showInfo.title, ids: showInfo.ids, poster_path: showInfo.poster_path, backdrop_path: showInfo.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'}"></i> ${isWatched ? 'Log Rewatch' : 'Log Watch'}</button>                                
+                            <div class="flex flex-wrap items-stretch gap-2 sm:gap-3 mb-8">
+                                <button class="flex-grow sm:flex-grow-0 scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-6 py-2.5 rounded-lg font-bold shadow-lg flex items-center gap-2 justify-center transition text-sm" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, name: item.title, type: 'episode', runtime: item.runtime, season: item.season, number: item.number, still_path: item.still_path, show: { title: showInfo.title, ids: showInfo.ids, poster_path: showInfo.poster_path, backdrop_path: showInfo.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'}"></i> ${isWatched ? 'Log Rewatch' : 'Log Watch'}</button>                                
                                 ${primaryDataSource === 'trakt' ? `
-                                <button onclick="window.toggleTraktWatchlist('${item.ids.trakt}', 'episode', this)" class="col-span-2 sm:w-auto px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border transition flex items-center justify-center gap-2 ${isTraktWl ? 'bg-red-900/40 text-red-300 border-red-800' : 'bg-blue-900/40 text-blue-300 border-blue-800'}" title="Trakt Watchlist">
+                                <button onclick="window.toggleTraktWatchlist('${item.ids.trakt}', 'episode', this)" class="px-4 py-2.5 rounded-lg font-bold text-xs border transition flex items-center justify-center gap-2 ${isTraktWl ? 'bg-red-900/40 text-red-300 border-red-800' : 'bg-blue-900/40 text-blue-300 border-blue-800'}" title="Trakt Watchlist">
                                     ${isTraktWl ? '<i class="fa-solid fa-trash-can"></i> Trakt' : '<i class="fa-solid fa-bookmark"></i> Trakt'}
                                 </button>` : ''}
-
-                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="col-span-2 sm:w-auto px-2 py-3 rounded-lg font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}" title="VidTrackr Watchlist">
-    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> Local' : '<i class="fa-solid fa-folder-plus"></i> Local'}
-</button>
-
-                                <button onclick="window.toggleLocalCollection('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="col-span-2 sm:w-auto px-2 py-3 rounded-lg font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 ${isLocalCol ? 'bg-teal-600 hover:bg-teal-500 text-white' : 'bg-gray-800 hover:bg-gray-700 text-teal-500 border border-gray-700'}" title="VidTrackr Collection">
-    ${isLocalCol ? '<i class="fa-solid fa-box-open"></i> Collected' : '<i class="fa-solid fa-box-archive"></i> Collect'}
-</button>
-
-                                <button onclick="window.checkIn('${item.ids.trakt}', 'episode', ${item.runtime || 0}, '${checkInSafeJson}')" class="col-span-2 sm:w-auto bg-purple-600 hover:bg-purple-500 text-white px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border border-purple-500 transition flex items-center justify-center gap-1" title="Check In Now"><i class="fa-solid fa-map-pin"></i> Check In</button>
-                                <button onclick="window.skipEpisode('${item.ids.trakt}')" class="col-span-2 sm:w-auto bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border border-gray-600 transition flex items-center justify-center gap-1" title="Skip / Mark Filler"><i class="fa-solid fa-ban"></i> Skip</button>
-                                <div id="stremio-placeholder" class="hidden col-span-4 sm:w-auto"></div>
-                                <button onclick="window.openAddToList('${item.ids.trakt}', 'episode', '${safeJson}')" class="col-span-2 sm:w-auto bg-gray-700 hover:bg-gray-600 text-white px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border border-gray-600 transition flex items-center justify-center gap-1" title="Add to Custom List"><i class="fa-solid fa-list-ul"></i> List</button>
-                                <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="col-span-2 sm:w-auto bg-gray-800 hover:bg-gray-700 text-white px-2 py-3 rounded-lg font-bold text-xs sm:text-sm border border-gray-700 transition flex items-center justify-center gap-1">Season ${item.season}</button>
+                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="px-4 py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}" title="VidTrackr Watchlist">
+                                    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> Local' : '<i class="fa-solid fa-folder-plus"></i> Local'}
+                                </button>
+                                <button onclick="window.toggleLocalCollection('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="px-4 py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalCol ? 'bg-teal-600 hover:bg-teal-500 text-white' : 'bg-gray-800 hover:bg-gray-700 text-teal-500 border border-gray-700'}" title="VidTrackr Collection">
+                                    ${isLocalCol ? '<i class="fa-solid fa-box-open"></i> Collect' : '<i class="fa-solid fa-box-archive"></i> Collect'}
+                                </button>
+                                <button onclick="window.checkIn('${item.ids.trakt}', 'episode', ${item.runtime || 0}, '${checkInSafeJson}')" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-lg font-bold text-xs border border-purple-500 transition flex items-center justify-center gap-1" title="Check In Now"><i class="fa-solid fa-map-pin"></i> Check In</button>
+                                <button onclick="window.skipEpisode('${item.ids.trakt}')" class="bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white px-4 py-2.5 rounded-lg font-bold text-xs border border-gray-600 transition flex items-center justify-center gap-1" title="Skip / Mark Filler"><i class="fa-solid fa-ban"></i> Skip</button>
+                                <div id="stremio-placeholder" class="hidden"></div>
+                                <button onclick="window.openAddToList('${item.ids.trakt}', 'episode', '${safeJson}')" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2.5 rounded-lg font-bold text-xs border border-gray-600 transition flex items-center justify-center gap-1" title="Add to Custom List"><i class="fa-solid fa-list-ul"></i> List</button>
+                                <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg font-bold text-xs border border-gray-700 transition flex items-center justify-center gap-1">Season ${item.season}</button>
                             </div>
 
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
@@ -3803,6 +3812,13 @@ async function renderPerson(id) {
                                 const finalRating = localRating || ep.user_rating;
                                 
                                 const epRating = finalRating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded shadow-sm">You: ${finalRating}</span>` : '';
+                                
+                                const epHist = history.find(h => {
+                                    if (h.episode) return (h.episode.season === seasonNum || h.episode.season_number === seasonNum) && (h.episode.number === ep.number || h.episode.episode_number === ep.number);
+                                    return false;
+                                });
+                                const watchedDateStr = epHist ? `<span class="text-xs text-green-500 ml-3"><i class="fa-solid fa-calendar-check mr-1"></i> ${new Date(epHist.watched_at).toLocaleDateString()}</span>` : '';
+
                                 const epPlayback = userPlayback.get(parseInt(ep.ids.trakt));
                                 const pbHtml = epPlayback ? `<div class="mt-2 w-full bg-gray-800 rounded-full h-1"><div class="bg-blue-500 h-1 rounded-full" style="width: ${epPlayback.progress}%"></div></div><p class="text-[10px] text-blue-400 mt-1">${Math.round(epPlayback.progress)}% resumed</p>` : '';
                                 
@@ -3825,7 +3841,7 @@ async function renderPerson(id) {
                                 }
 
                                 // FIX: Passed true to getImage so it uses still_path landscape ratio for episode thumbnails
-                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition ${epHiddenClass}"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='${epLink}'"><img src="${getImage(ep, 'episode', true)}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><div class="flex items-center"><h4 class="font-bold text-lg text-gray-100 truncate hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='${epLink}'">${ep.title || 'Episode ' + ep.number}</h4>${typeBadge}${hiddenBadge}</div><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}</div>
+                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition ${epHiddenClass}"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='${epLink}'"><img src="${getImage(ep, 'episode', true)}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><div class="flex items-center"><h4 class="font-bold text-lg text-gray-100 truncate hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='${epLink}'">${ep.title || 'Episode ' + ep.number}</h4>${typeBadge}${hiddenBadge}</div><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}${watchedDateStr}</div>
                                 <div class="flex gap-2">
                                     <button class="text-xs ${isEpHidden ? 'bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white border-red-900/50 hover:border-red-600' : 'bg-gray-800 text-gray-400 hover:bg-gray-600 hover:text-white border-gray-700 hover:border-gray-500'} px-3 py-2 rounded-lg transition shadow-md border flex items-center justify-center" onclick="event.stopPropagation(); window.toggleHidden('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="${isEpHidden ? 'Unhide Episode' : 'Hide Episode'}"><i class="fa-solid ${isEpHidden ? 'fa-eye' : 'fa-eye-slash'}"></i></button>
                                     <button class="text-xs bg-yellow-900/30 text-yellow-500 hover:bg-yellow-500 hover:text-black border border-yellow-900/50 hover:border-yellow-500 px-3 py-2 rounded-lg transition shadow-md flex items-center justify-center" onclick="event.stopPropagation(); window.openQuickRate('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}', true)" title="Rate Episode"><i class="fa-solid fa-star"></i></button>
@@ -3880,7 +3896,8 @@ async function renderPerson(id) {
 
                 // 3. Render Button
                 if (targetUrl) {
-                    placeholder.innerHTML = `<a href="${targetUrl}" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-3 rounded-lg font-bold border border-indigo-500 transition flex items-center justify-center w-full shadow-lg gap-2 animate-fade"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open in Stremio</a>`;
+                    const btnClass = type === 'episode' ? "bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-lg font-bold text-xs border border-indigo-500 transition flex items-center justify-center shadow-lg gap-2 animate-fade" : "bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-3 rounded-lg font-bold border border-indigo-500 transition flex items-center justify-center w-full shadow-lg gap-2 animate-fade";
+                    placeholder.innerHTML = `<a href="${targetUrl}" class="${btnClass}"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open in Stremio</a>`;
                     placeholder.classList.remove('hidden');
                 }
             }, 600);
@@ -4433,7 +4450,7 @@ async function renderPerson(id) {
                                     ${actionBadge}
                                 </div>
                             </div>
-                            <div class="flex flex-col md:flex-row gap-2 opacity-0 group-hover:opacity-100 transition px-1 md:px-2 absolute right-2 md:static bg-[var(--card)]/80 md:bg-transparent backdrop-blur-sm p-2 md:p-0 rounded-lg">
+                            <div class="flex flex-col md:flex-row gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition px-1 md:px-2 absolute right-2 md:static bg-[var(--card)]/80 md:bg-transparent backdrop-blur-sm p-2 md:p-0 rounded-lg">
                                  <button class="text-xs bg-gray-800 text-yellow-400 p-2.5 md:px-3 md:py-2 rounded-lg hover:bg-yellow-500 hover:text-black transition shadow-lg border border-gray-700 hover:border-yellow-500 flex items-center justify-center" onclick="event.stopPropagation(); window.openQuickRate('${navId}', '${type}', '${(type === 'episode' ? item.show.title + ': ' + epTitle : movieTitle).replace(/'/g, "\\'").replace(/"/g, '&quot;')}', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button>
                                  <button class="text-xs bg-red-900/20 text-red-400 p-2.5 md:px-3 md:py-2 rounded-lg hover:bg-red-600 hover:text-white transition shadow-lg border border-red-900/30 hover:border-red-600 flex items-center justify-center" onclick="event.stopPropagation(); window.deleteHistoryItem('${item.id}', '${navId}', '${type}', this)" title="Delete"><i class="fa-solid fa-trash"></i></button>
                             </div>
@@ -5264,6 +5281,10 @@ async function renderPerson(id) {
                             const data = item[type] || item;
                             
                             let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+                            if (type === 'episode' && primaryDataSource === 'tmdb' && data.ids?.trakt?.includes('-')) {
+                                targetId = data.ids.trakt; // Use composite ID for TMDB episodes
+                            }
+                            
                             const fallbackId = data.id || data.ids?.trakt || data.ids?.tmdb;
                             const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
                             let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
@@ -5272,18 +5293,32 @@ async function renderPerson(id) {
                                 const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
                                 const sNum = data.season || data.season_number;
                                 const eNum = data.number || data.episode_number;
-                                if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                                if (showTmdb && sNum !== undefined && eNum !== undefined && !String(targetId).includes('-')) {
+                                    clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                                }
                             }
 
                             const imgId = `card-img-${type}-${fallbackId}`;
                             const img = getImage(data, type);
+                            
+                            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name;
                             let displayTitle = data.title || data.name || 'Unknown Title';
-                            if (type === 'episode' && data.show) displayTitle = `${data.show.title}: ${displayTitle}`;
-                            else if (type === 'episode' && item.show) displayTitle = `${item.show.title}: ${displayTitle}`;
+                            if (type === 'episode' && showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
+                            
                             let displayYear = data.year;
                             if (!displayYear) {
                                 const dateString = data.release_date || data.first_air_date;
                                 displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
+                            }
+                            
+                            let displaySub = displayYear;
+                            if (type === 'show') {
+                                const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
+                                if (epCount) displaySub += ` • ${epCount} Eps`;
+                            } else if (type === 'episode') {
+                                const sNum = data.season || data.season_number || '?';
+                                const eNum = data.number || data.episode_number || '?';
+                                displaySub = `S${sNum}E${eNum}`;
                             }
                             const ratingVal = data.rating || data.vote_average || 0;
                             const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
@@ -5298,13 +5333,13 @@ async function renderPerson(id) {
                                     <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
                                     <div class="absolute bottom-0 left-0 p-3 w-full">
                                         <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${displayTitle}</p>
-                                        <p class="text-xs text-pink-200 font-mono">${displayYear}</p>
+                                        <p class="text-xs text-pink-200 font-mono">${displaySub}</p>
                                     </div>
                                     <div class="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
                                         ${ratingHtml}
                                     </div>
                                 </div>
-                                <button onclick="window.removeFromFavorites('${item._docId}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-pink-900/80 hover:bg-pink-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from Favourites">
+                                <button onclick="event.stopPropagation(); window.removeFromFavorites('${item._docId}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-pink-900/80 hover:bg-pink-600 text-white flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from Favourites">
                                     <i class="fa-solid fa-heart-crack text-xs"></i>
                                 </button>
                             </div>`;
@@ -5366,6 +5401,10 @@ async function renderPerson(id) {
                             const data = item[type] || item;
                             
                             let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+                            if (type === 'episode' && primaryDataSource === 'tmdb' && data.ids?.trakt?.includes('-')) {
+                                targetId = data.ids.trakt;
+                            }
+                            
                             const fallbackId = data.id || data.ids?.trakt || data.ids?.tmdb;
                             const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
                             let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
@@ -5374,18 +5413,32 @@ async function renderPerson(id) {
                                 const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
                                 const sNum = data.season || data.season_number;
                                 const eNum = data.number || data.episode_number;
-                                if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                                if (showTmdb && sNum !== undefined && eNum !== undefined && !String(targetId).includes('-')) {
+                                    clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                                }
                             }
 
                             const imgId = `card-img-${type}-${fallbackId}`;
                             const img = getImage(data, type);
+                            
+                            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name;
                             let displayTitle = data.title || data.name || 'Unknown Title';
-                            if (type === 'episode' && data.show) displayTitle = `${data.show.title}: ${displayTitle}`;
-                            else if (type === 'episode' && item.show) displayTitle = `${item.show.title}: ${displayTitle}`;
+                            if (type === 'episode' && showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
+                            
                             let displayYear = data.year;
                             if (!displayYear) {
                                 const dateString = data.release_date || data.first_air_date;
                                 displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
+                            }
+                            
+                            let displaySub = displayYear;
+                            if (type === 'show') {
+                                const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
+                                if (epCount) displaySub += ` • ${epCount} Eps`;
+                            } else if (type === 'episode') {
+                                const sNum = data.season || data.season_number || '?';
+                                const eNum = data.number || data.episode_number || '?';
+                                displaySub = `S${sNum}E${eNum}`;
                             }
                             const ratingVal = data.rating || data.vote_average || 0;
                             const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
@@ -5400,13 +5453,13 @@ async function renderPerson(id) {
                                     <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
                                     <div class="absolute bottom-0 left-0 p-3 w-full">
                                         <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${displayTitle}</p>
-                                        <p class="text-xs text-gray-400 font-mono">${displayYear}</p>
+                                        <p class="text-xs text-gray-400 font-mono">${displaySub}</p>
                                     </div>
                                     <div class="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
                                         ${ratingHtml}
                                     </div>
                                 </div>
-                                <button onclick="window.removeFromCollection('${item._docId}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from Collection">
+                                <button onclick="event.stopPropagation(); window.removeFromCollection('${item._docId}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from Collection">
                                     <i class="fa-solid fa-trash text-xs"></i>
                                 </button>
                             </div>`;
@@ -5597,6 +5650,10 @@ async function renderPerson(id) {
                             const data = item[type] || item;
                             
                             let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+                            if (type === 'episode' && primaryDataSource === 'tmdb' && data.ids?.trakt?.includes('-')) {
+                                targetId = data.ids.trakt;
+                            }
+                            
                             const fallbackId = data.id || data.ids?.trakt || data.ids?.tmdb;
                             const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
                             let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
@@ -5605,18 +5662,32 @@ async function renderPerson(id) {
                                 const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
                                 const sNum = data.season || data.season_number;
                                 const eNum = data.number || data.episode_number;
-                                if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                                if (showTmdb && sNum !== undefined && eNum !== undefined && !String(targetId).includes('-')) {
+                                    clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                                }
                             }
 
                             const imgId = `card-img-${type}-${fallbackId}`;
                             const img = getImage(data, type);
+                            
+                            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name;
                             let displayTitle = data.title || data.name || 'Unknown Title';
-                            if (type === 'episode' && data.show) displayTitle = `${data.show.title}: ${displayTitle}`;
-                            else if (type === 'episode' && item.show) displayTitle = `${item.show.title}: ${displayTitle}`;
+                            if (type === 'episode' && showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
+                            
                             let displayYear = data.year;
                             if (!displayYear) {
                                 const dateString = data.release_date || data.first_air_date;
                                 displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
+                            }
+                            
+                            let displaySub = displayYear;
+                            if (type === 'show') {
+                                const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
+                                if (epCount) displaySub += ` • ${epCount} Eps`;
+                            } else if (type === 'episode') {
+                                const sNum = data.season || data.season_number || '?';
+                                const eNum = data.number || data.episode_number || '?';
+                                displaySub = `S${sNum}E${eNum}`;
                             }
                             const ratingVal = data.rating || data.vote_average || 0;
                             const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
@@ -5631,13 +5702,13 @@ async function renderPerson(id) {
                                     <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
                                     <div class="absolute bottom-0 left-0 p-3 w-full">
                                         <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${displayTitle}</p>
-                                        <p class="text-xs text-gray-400 font-mono">${displayYear}</p>
+                                        <p class="text-xs text-gray-400 font-mono">${displaySub}</p>
                                     </div>
                                     <div class="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
                                         ${ratingHtml}
                                     </div>
                                 </div>
-                                <button onclick="window.removeFromLocalWatchlist('${item._docId}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from Watchlist">
+                                <button onclick="event.stopPropagation(); window.removeFromLocalWatchlist('${item._docId}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from Watchlist">
                                     <i class="fa-solid fa-trash text-xs"></i>
                                 </button>
                             </div>`;
@@ -6520,6 +6591,10 @@ async function renderPerson(id) {
                         const img = getImage(data, type); 
                         
                         let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
+                        if (type === 'episode' && primaryDataSource === 'tmdb' && data.ids?.trakt?.includes('-')) {
+                            targetId = data.ids.trakt; // Composite ID support
+                        }
+                        
                         const fallbackId = data.ids?.trakt || data.ids?.tmdb || data.id;
                         const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
                         let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
@@ -6528,7 +6603,9 @@ async function renderPerson(id) {
                             const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
                             const sNum = data.season || data.season_number || item.episode?.season;
                             const eNum = data.number || data.episode_number || item.episode?.number;
-                            if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                            if (showTmdb && sNum !== undefined && eNum !== undefined && !String(targetId).includes('-')) {
+                                clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                            }
                         }
 
                         const title = type === 'person' ? data.name : data.title;
@@ -6551,7 +6628,7 @@ async function renderPerson(id) {
                                 </div>
                                 <div class="absolute top-2 left-2 bg-black/60 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-gray-300 border border-white/10">#${item.rank}</div>
                              </div>
-                             <button onclick="window.removeListItem('${listId}', '${deleteId}', '${type}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from List">
+                             <button onclick="event.stopPropagation(); window.removeListItem('${listId}', '${deleteId}', '${type}')" class="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-red-900/80 hover:bg-red-600 text-white flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition backdrop-blur shadow-lg border border-white/10" title="Remove from List">
                                 <i class="fa-solid fa-trash text-xs"></i>
                              </button>
                         </div>`;
