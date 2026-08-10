@@ -116,10 +116,13 @@ body {
                 opacity: 0; 
                 overflow: hidden; 
                 border-left: 0; 
-                transform: none !important; 
+                transform: none !important;
+                flex-shrink: 0; 
             } 
             .side-pane-desktop.open { 
-                width: 600px; 
+                width: 500px;
+                max-width: 40vw;
+                flex-shrink: 0; 
                 opacity: 1; 
                 border-left: 1px solid #374151; 
             } 
@@ -324,7 +327,7 @@ body {
     <main class="flex-grow container mx-auto px-4 pt-4 pb-3 relative flex items-stretch gap-4 overflow-hidden h-full">
     
     <div id="project-sidebar" style="z-index: 2147483647 !important;"
-         class="fixed inset-y-0 left-0 w-64 flex flex-col transition-all duration-300 transform -translate-x-full
+         class="fixed inset-y-0 left-0 w-64 shrink-0 flex flex-col transition-all duration-300 transform -translate-x-full
                 bg-white dark:bg-[#1f2937]
                 border-r border-gray-200 dark:border-gray-700
                 lg:translate-x-0 lg:static lg:z-0 lg:flex lg:h-full 
@@ -565,6 +568,9 @@ body {
         <form id="quick-add-popup-form" class="bg-[var(--bg)] border border-gray-300 dark:border-gray-700 w-full max-w-2xl rounded-2xl shadow-2xl p-2 transform scale-95 transition-transform duration-200 flex items-center gap-3" onsubmit="window.handleQuickAddSubmit(event, true)">
             <i class="fa-solid fa-plus text-[var(--primary)] text-xl pl-4"></i>
             <input type="text" id="quick-add-popup-input" class="w-full bg-transparent text-gray-900 dark:text-gray-100 text-lg outline-none py-3 placeholder-gray-400" placeholder="Type your task here..." autocomplete="off">
+            <button type="button" onclick="window.closeQuickAddPopup(event); window.openAddTaskModal();" class="text-gray-400 hover:text-blue-500 px-2 transition-colors" title="Full Task Details">
+                <i class="fa-solid fa-expand text-lg"></i>
+            </button>
             <button type="submit" class="bg-[var(--primary)] hover:bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold transition shadow-md">Add Task</button>
         </form>
     </div>
@@ -796,7 +802,7 @@ body {
     <div id="loader" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 hidden transition-opacity">
         <div class="animate-spin rounded-full h-14 w-14 border-[5px] border-[var(--primary)] border-t-transparent"></div>
     </div>
-    <div id="toast-container" class="fixed bottom-24 md:bottom-6 right-6 z-50 flex flex-col gap-3"></div>
+    <div id="toast-container" class="fixed bottom-24 md:bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none"></div>
 
     <div id="review-modal" class="fixed inset-0 bg-black/90 z-[60] hidden flex flex-col items-center justify-center p-4 backdrop-blur-md">
     <div class="w-full max-w-2xl flex flex-col h-full md:h-auto md:max-h-[80vh]">
@@ -1019,8 +1025,18 @@ window.addEventListener('DOMContentLoaded', () => {
         let selectedTasks = new Set();
         let isSelectionMode = false;
         let lastSelectedId = null;
-        let isCompactMode = localStorage.getItem('compactMode') === 'true';
-        let currentState = { 
+        
+        let savedCompact = localStorage.getItem('compactMode');
+        let isCompactMode = false;
+        if (savedCompact !== null) {
+            isCompactMode = savedCompact === 'true';
+        } else {
+            // Default to true on mobile devices initially
+            isCompactMode = window.innerWidth <= 768;
+            if (isCompactMode) localStorage.setItem('compactMode', 'true');
+        }
+
+        let currentState = {
             view: startingTab, 
             filter: 'inbox', 
             contextMode: 'both', // Added context mode (Work/Personal/Both)
@@ -2294,6 +2310,7 @@ const fetchAllData = async () => {
             const input = document.getElementById('quick-add-popup-input');
             overlay.classList.remove('hidden');
             overlay.classList.add('flex');
+            overlay.style.pointerEvents = 'auto';
             setTimeout(() => {
                 overlay.classList.remove('opacity-0');
                 form.classList.remove('scale-95');
@@ -2304,16 +2321,17 @@ const fetchAllData = async () => {
         window.closeQuickAddPopup = (e) => {
             const overlay = document.getElementById('quick-add-popup-overlay');
             const form = document.getElementById('quick-add-popup-form');
-            if (!e || e.target === overlay || e.key === 'Escape') {
+            if (!e || e.target === overlay || e.key === 'Escape' || (e.target && e.target.closest('button'))) {
                 overlay.classList.add('opacity-0');
+                overlay.style.pointerEvents = 'none'; // Prevent eating clicks during fade
                 form.classList.add('scale-95');
                 setTimeout(() => {
                     overlay.classList.add('hidden');
                     overlay.classList.remove('flex');
+                    overlay.style.pointerEvents = '';
                 }, 200);
             }
         };
-
 
         window.setView = (view) => { 
             currentState.view = view; 
@@ -4537,6 +4555,7 @@ if (task.content) {
         pane.classList.add('open'); 
     } else { 
         overlay.classList.remove('hidden'); 
+        overlay.style.pointerEvents = 'auto'; // Ensure clicks work
         void overlay.offsetWidth; 
         overlay.classList.remove('opacity-0'); 
         pane.classList.add('open'); 
@@ -4674,8 +4693,13 @@ window.renderSidePaneChecklist = (task) => {
         window.closeSidePane = () => { 
             const pane = document.getElementById('side-pane'); 
             pane.classList.remove('open'); 
-            document.getElementById('side-pane-overlay').classList.add('opacity-0'); 
-            setTimeout(() => document.getElementById('side-pane-overlay').classList.add('hidden'), 300); 
+            const overlay = document.getElementById('side-pane-overlay');
+            overlay.classList.add('opacity-0'); 
+            overlay.style.pointerEvents = 'none'; // Prevent eating clicks during fade
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                overlay.style.pointerEvents = '';
+            }, 300); 
             currentSidePaneTaskId = null;
         };
         window.openAddTaskModal = () => window.openModal(false); 

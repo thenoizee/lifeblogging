@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.11.0-alpha",
+    date: "2026-08-10",
+    changes: [
+        "In TaskTrackr: Set Compact Mode as the default view on mobile devices.",
+        "In TaskTrackr: Added an Expand button to the Quick Add form to easily access the full task logging menu.",
+        "In TaskTrackr: Fixed an issue where invisible fading overlays (Quick Add, Side Pane, and Toasts) were unintentionally blocking screen clicks.",
+        "In TaskTrackr: Fixed a layout bug where extremely long task titles would crush the left sidebar and right side pane by applying rigid flex-shrink boundaries.",
+    ]
+},
+    {
     version: "v16.10.0-alpha",
     date: "2026-08-10",
     changes: [
