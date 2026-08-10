@@ -2232,46 +2232,69 @@ const fetchAllData = async () => {
             e.dataTransfer.setData('text/plain', tasksData); 
         };
         window.handleQuickAddSubmit = async (e, isPopup = false) => {
-    e.preventDefault();
-    const inputId = isPopup ? 'quick-add-popup-input' : 'quick-add-input';
-    const input = document.getElementById(inputId);
-    const title = input.value.trim();
-    if (!title) return;
-    
-    input.disabled = true;
-    // ... (existing project ID logic) ...
-    let pid = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; 
-    if (currentState.projectId !== 'all') { pid = currentState.projectId; } 
-    
-    // ... (existing date logic) ...
-    let newDateISO = null; 
-    const now = new Date(); 
-    if (currentState.filter === 'today' || currentState.filter === 'focus') { newDateISO = now.toISOString(); } 
-    else if (currentState.filter === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
-    
-    const payload = { title: title, projectId: pid, priority: 0 }; 
-    if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } 
-    
-    try {
-        // 1. Create in TickTick
-        const newTask = await api('/task', 'POST', payload);
-        
-        // 2. Save Origin to Firebase (if successful)
-        if (newTask && newTask.id) {
-            await saveTaskOrigin(newTask.id, 'tasktrackr');
-        }
+            e.preventDefault();
+            const inputId = isPopup ? 'quick-add-popup-input' : 'quick-add-input';
+            const input = document.getElementById(inputId);
+            const title = input.value.trim();
+            if (!title) return;
+            
+            input.disabled = true;
+            // ... (existing project ID logic) ...
+            let pid = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; 
+            if (currentState.projectId !== 'all') { pid = currentState.projectId; } 
+            
+            // ... (existing date logic) ...
+            let newDateISO = null; 
+            const now = new Date(); 
+            if (currentState.filter === 'today' || currentState.filter === 'focus') { newDateISO = now.toISOString(); } 
+            else if (currentState.filter === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
+            
+            // --- NEW: OPTIMISTIC UI INJECTION ---
+            const tempId = 'temp_' + Date.now();
+            const tempTask = {
+                id: tempId,
+                title: title,
+                projectId: pid,
+                priority: 0,
+                status: 0,
+                dueDate: newDateISO ? newDateISO.replace(/\.\d{3}Z$/, '+0000') : null,
+                isAllDay: !!newDateISO,
+                source: 'tasktrackr',
+                _depth: 0,
+                tags: []
+            };
+            taskCache.unshift(tempTask); // Inject instantly into view
+            renderApp(); // Draw UI instantly
+            // -----------------------------------
+            
+            const payload = { title: title, projectId: pid, priority: 0 }; 
+            if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } 
+            
+            try {
+                // 1. Create in TickTick
+                const newTask = await api('/task', 'POST', payload);
+                
+                // 2. Save Origin to Firebase (if successful)
+                if (newTask && newTask.id) {
+                    await saveTaskOrigin(newTask.id, 'tasktrackr');
+                    // Replace temp ID with the verified Cloud ID
+                    const idx = taskCache.findIndex(t => t.id === tempId);
+                    if(idx > -1) taskCache[idx] = { ...tempTask, ...newTask, id: newTask.id };
+                }
 
-        input.value = '';
-        showToast('Task added');
-        fetchAllData();
-        if (isPopup) window.closeQuickAddPopup();
-    } catch (err) {
-        showToast('Failed to add task', 'error');
-    } finally {
-        input.disabled = false;
-        input.focus();
-    }
-};
+                input.value = '';
+                showToast('Task added');
+                fetchAllData(); // Fetch in background safely
+                if (isPopup) window.closeQuickAddPopup();
+            } catch (err) {
+                showToast('Failed to add task', 'error');
+                taskCache = taskCache.filter(t => t.id !== tempId); // Cleanup fail safely
+                renderApp();
+            } finally {
+                input.disabled = false;
+                input.focus();
+            }
+        };
         const initDropZones = () => { /*...*/ const filters = document.querySelectorAll('.filter-chip'); filters.forEach(btn => { let action = btn.getAttribute('data-drop-action'); if(!action) { const text = btn.innerText.toLowerCase(); if (text.includes('today') || text.includes('focus')) action = 'today'; else if (text.includes('tomorrow')) action = 'tomorrow'; else if (text.includes('inbox')) action = 'inbox'; } if (!action) return; btn.setAttribute('data-drop-action', action); btn.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; btn.classList.add('drag-over'); }); btn.addEventListener('dragleave', (e) => { btn.classList.remove('drag-over'); }); btn.addEventListener('drop', (e) => { e.preventDefault(); btn.classList.remove('drag-over'); const actionType = btn.getAttribute('data-drop-action'); document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging')); if (actionType) { window.bulkAction(actionType); } }); }); };
         document.addEventListener('dragend', () => { document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging')); });
 
@@ -2413,8 +2436,6 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
                     activeFilter = 'all';
                 }
             }
-
-            if (activeFilter === 'completed') { return historyCache; } 
             
             const now = new Date(); 
             const todayStr = now.toISOString().split('T')[0]; 
@@ -2422,7 +2443,17 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             tmrw.setDate(tmrw.getDate() + 1); 
             const tmrwStr = tmrw.toISOString().split('T')[0]; 
             
-            let tasks = taskCache; 
+            // Map the base cache array
+            let tasks = activeFilter === 'completed' ? [...historyCache] : taskCache; 
+            
+            if (activeFilter === 'completed') {
+                // Synthesize the view by extracting active tasks that contain at least one completed subtask
+                const activeWithCompletedSubtasks = taskCache.filter(t => t.items && t.items.some(i => i.status === 1));
+                tasks = [...tasks, ...activeWithCompletedSubtasks];
+                
+                // Deduplicate to ensure no UI cloning conflicts
+                tasks = Array.from(new Map(tasks.map(t => [t.id, t])).values());
+            }
 
             // --- SOURCE FILTERING ---
             tasks = tasks.filter(t => {
@@ -2510,15 +2541,34 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
 
             // --- SORTING ---
             const sortedTasks = tasks.sort((a,b) => {
-                if (currentState.sortMode === 'alpha') return a.title.localeCompare(b.title); 
-                if(activeFilter === 'focus') { 
-                    const dateA = new Date(a.dueDate || '9999'); 
-                    const dateB = new Date(b.dueDate || '9999'); 
+                if (currentState.sortMode === 'alpha') return (a.title || '').localeCompare(b.title || ''); 
+                if (activeFilter === 'focus') { 
+                    const dateA = new Date(a.dueDate || '9999-12-31').getTime(); 
+                    const dateB = new Date(b.dueDate || '9999-12-31').getTime(); 
                     return dateA - dateB; 
                 } 
-                if (b.priority !== a.priority) return b.priority - a.priority; 
-                return new Date(a.dueDate || '9999') - new Date(b.dueDate || '9999'); 
-            }); 
+                if (currentState.sortMode === 'date') {
+                    if (activeFilter === 'completed') {
+                        const dateA = new Date(a.completedAt || a.updated || 0).getTime();
+                        const dateB = new Date(b.completedAt || b.updated || 0).getTime();
+                        return dateB - dateA;
+                    }
+                    const dateA = new Date(a.dueDate || '9999-12-31').getTime();
+                    const dateB = new Date(b.dueDate || '9999-12-31').getTime();
+                    if (dateA !== dateB) return dateA - dateB;
+                    return (b.priority || 0) - (a.priority || 0); // fallback to priority if dates match
+                }
+                
+                // Default (Priority takes precedence)
+                if (activeFilter === 'completed') {
+                    const dateA = new Date(a.completedAt || a.updated || 0).getTime();
+                    const dateB = new Date(b.completedAt || b.updated || 0).getTime();
+                    return dateB - dateA;
+                }
+
+                if (b.priority !== a.priority) return (b.priority || 0) - (a.priority || 0); 
+                return new Date(a.dueDate || '9999-12-31').getTime() - new Date(b.dueDate || '9999-12-31').getTime(); 
+            });
 
             // --- BUILD VISUAL TREE (INDENT SUBTASKS) ---
             const rootTasks = [];
@@ -2534,17 +2584,19 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             });
 
             const flatTree = [];
-            const traverse = (task, depth, parentDate) => {
+            const traverse = (task, depth, parentDate, parentCompleted) => {
                 task._depth = depth;
                 // Assign _parentDueDate so renderClassic groups children identically with parents 
                 task._parentDueDate = depth === 0 ? task.dueDate : parentDate;
+                // Assign _parentCompletedAt so renderClassic clusters completed children under parents accurately
+                task._parentCompletedAt = depth === 0 ? (task.completedAt || task.updated) : parentCompleted;
                 flatTree.push(task);
                 if (childrenMap[task.id]) {
-                    childrenMap[task.id].forEach(c => traverse(c, depth + 1, task._parentDueDate));
+                    childrenMap[task.id].forEach(c => traverse(c, depth + 1, task._parentDueDate, task._parentCompletedAt));
                 }
             };
             
-            rootTasks.forEach(t => traverse(t, 0, t.dueDate));
+            rootTasks.forEach(t => traverse(t, 0, t.dueDate, t.completedAt || t.updated));
             return flatTree;
         };
 
@@ -2963,7 +3015,10 @@ const renderTaskCard = (task) => {
                         ${task.content ? `<div class="desc-preview text-xs text-gray-600 dark:text-gray-400 line-clamp-1 mb-2 prose prose-sm dark:prose-invert [&>*]:m-0 [&>*]:leading-normal">${marked.parse(task.content, { breaks: true })}</div>` : ''}
                     </div> 
                 </div> 
-                <div class="card-meta flex flex-wrap items-center gap-2 text-xs ml-8 mt-2 sm:ml-0 sm:mt-0"> ${dateBadgeHtml} ${projectBadge} ${subtaskBadge} ${sourceBadge} </div> 
+                <div class="card-meta flex flex-wrap items-center gap-2 text-xs ml-8 mt-2 sm:ml-0 sm:mt-0"> 
+                    ${dateBadgeHtml} ${projectBadge} ${subtaskBadge} ${sourceBadge} 
+                    <input type="text" placeholder="+ Subtask" class="w-20 bg-transparent text-[10px] text-gray-400 dark:text-gray-500 outline-none opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" onkeydown="window.addInlineSubtask(event, '${task.id}')" onclick="event.stopPropagation()">
+                </div> 
             </div> 
             
             ${visibleItems.length > 0 ? `
@@ -2977,7 +3032,6 @@ const renderTaskCard = (task) => {
                     </div>
                 `).join('')}
             </div>` : ''}
-
         </div>
     </div>`;
 };
@@ -3239,9 +3293,56 @@ const renderTaskCard = (task) => {
                 </div>`; 
                 return; 
             } 
-            if (currentState.sortMode === 'alpha' || currentState.filter === 'completed') { els.content.innerHTML = `<div id="simple-list">${tasks.map(renderTaskCard).join('')}</div>`; return; } 
+            
+            if (currentState.filter === 'completed') {
+                if (currentState.sortMode === 'alpha') {
+                    els.content.innerHTML = `<div id="simple-list" class="space-y-2 pb-8">${tasks.map(renderTaskCard).join('')}</div>`;
+                    return;
+                }
+                const groups = {};
+                tasks.forEach(t => {
+                    let d = new Date();
+                    // Fallback to parent's completion date if it's a child task to ensure UI clustering
+                    const refDate = t._depth > 0 ? t._parentCompletedAt : (t.completedAt || t.updated);
+                    if (refDate) d = new Date(refDate);
+                    
+                    const dateKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    if (!groups[dateKey]) groups[dateKey] = [];
+                    groups[dateKey].push(t);
+                });
+
+                const sortedDates = Object.keys(groups).sort((a,b) => new Date(b) - new Date(a));
+                
+                let html = '';
+                sortedDates.forEach(dateKey => {
+                    const dateObj = new Date(dateKey + 'T00:00:00');
+                    const diffTime = new Date().setHours(0,0,0,0) - dateObj.getTime();
+                    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    let label = dateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                    if (diffDays === 0) label = 'Today';
+                    else if (diffDays === 1) label = 'Yesterday';
+
+                    html += `
+                    <div class="group-header text-gray-500 font-bold uppercase tracking-widest text-[10px] mb-2 mt-6 border-b border-gray-200 dark:border-gray-700 pb-1 flex justify-between">
+                        <span>${label}</span> <span class="bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-md text-gray-600 dark:text-gray-300 font-mono">${groups[dateKey].length}</span>
+                    </div>
+                    <div class="space-y-2 opacity-80 hover:opacity-100 transition-opacity">
+                        ${groups[dateKey].map(renderTaskCard).join('')}
+                    </div>`;
+                });
+                
+                els.content.innerHTML = `<div id="completed-list" class="pb-8">${html}</div>`;
+                return;
+            }
+            
+            if (currentState.sortMode === 'alpha') { 
+                els.content.innerHTML = `<div id="simple-list" class="space-y-2 pb-8">${tasks.map(renderTaskCard).join('')}</div>`; 
+                return; 
+            } 
+            
             const now = new Date(); now.setHours(0,0,0,0); const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); 
-            const groups = { overdue: [], today: [], tomorrow: [], later: [], noDate: [], completed: [] }; 
+            const groups = { overdue: [], today: [], tomorrow: [], later: [], noDate: [], completed: [] };
             
             tasks.forEach(t => { 
                 if (t.status === 2) { groups.completed.push(t); return; } 
@@ -3925,13 +4026,18 @@ window.completeTask = async (pid, tid, checkbox, event) => {
     if (newStatus === 0) {
         // MOVING TO ACTIVE
         task.isHistory = false;
+        task.completedAt = null;
         if (!taskCache.find(t => t.id === tid)) taskCache.push(task);
         historyCache = historyCache.filter(h => h.id !== tid);
     } else {
         // MOVING TO COMPLETED
         task.isHistory = true;
+        task.completedAt = new Date().toISOString();
         if (!historyCache.find(h => h.id === tid)) historyCache.unshift(task);
         taskCache = taskCache.filter(t => t.id !== tid);
+        
+        // Log directly to Firebase task_history collection
+        logTaskCompletion(task);
     }
 
     localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
@@ -4561,11 +4667,19 @@ if (task.content) {
         pane.classList.add('open'); 
     }
 
-    // UPDATED FIX: Wait 350ms (slightly longer than the 300ms transition)
-    setTimeout(() => {
-        titleEl.style.height = 'auto'; 
-        titleEl.style.height = (titleEl.scrollHeight) + 'px'; 
-    }, 350); 
+    // UPDATED FIX: Dynamically adjust height over the duration of the slide-in animation
+    // to prevent the text from wrapping tightly and locking in a massive height, as seen in image_42487a.png.
+    const adjustTitleHeight = () => {
+        if (titleEl) {
+            titleEl.style.height = 'auto';
+            titleEl.style.height = (titleEl.scrollHeight) + 'px';
+        }
+    };
+    
+    adjustTitleHeight(); // Initial check
+    
+    // Poll the height as the CSS transition completes
+    [100, 200, 300, 400, 500].forEach(ms => setTimeout(adjustTitleHeight, ms));
 };
         
 
@@ -4618,6 +4732,52 @@ window.renderSidePaneChecklist = (task) => {
 
     listEl.innerHTML = html; 
 };
+
+        window.addInlineSubtask = async (e, taskId) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const input = e.target;
+                const title = input.value.trim();
+                if (!title) return;
+                
+                input.disabled = true;
+                const task = taskCache.find(t => t.id === taskId);
+                if (!task) {
+                    input.disabled = false;
+                    return;
+                }
+                
+                if (!task.items) task.items = [];
+                task.items.push({ title: title, status: 0 });
+                
+                // Optimistic UI
+                input.value = '';
+                input.disabled = false;
+                renderApp();
+                
+                // Refocus the input after render (since renderApp recreates DOM elements)
+                setTimeout(() => {
+                    const newTaskCard = document.querySelector(`[data-task-id="${taskId}"]`);
+                    if (newTaskCard) {
+                        const newInput = newTaskCard.querySelector('input[placeholder*="Subtask"]');
+                        if (newInput) newInput.focus();
+                    }
+                }, 50);
+
+                try {
+                    const payload = formatTaskPayload(task);
+                    if (auth.currentUser) {
+                        await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { items: payload.items, updated: new Date() }, { merge: true });
+                    }
+                    if (task.source !== 'local') {
+                        await api(`/task/${taskId}`, 'POST', payload);
+                    }
+                } catch(err) {
+                    console.error(err);
+                    showToast('Failed to save subtask', 'error');
+                }
+            }
+        };
 
         window.toggleSubtaskFromMain = async (taskId, itemIndex, event) => {
             if(event) event.stopPropagation(); // prevent card opening

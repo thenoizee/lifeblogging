@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.13.0-alpha",
+    date: "2026-08-10",
+    changes: [
+                "In TaskTrackr: Fixed task completion syncing to correctly save immediately to the Firebase 'task_history' collection instead of dropping out of cache.",
+                "In TaskTrackr: Revamped the 'Completed' view to group tasks properly by completion date.",
+                "In TaskTrackr: Corrected task sorting logic to ensure A-Z and Date sorting take precedence over Priority.",
+                "In TaskTrackr: Unlocked search, tag filtering, and A-Z sorting directly within the Completed tasks tab.",
+                "In TaskTrackr: Added optimistic UI rendering for quick-added tasks on mobile, allowing instant visibility without waiting for the network.",
+                "In TaskTrackr: Implemented an inline quick-add input for subtasks directly on the task cards.",
+                "In TaskTrackr: Modified inline subtask input styling to collapse to 0 height when not hovered to preserve list density.",
+    ]
+},
+    {
     version: "v16.12.0-alpha",
     date: "2026-08-10",
     changes: [
