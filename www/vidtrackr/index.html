@@ -1535,9 +1535,15 @@ window.removeProgress = async (playbackId) => {
             
             // --- 3. EPISODE FALLBACK TO SHOW ---
             // If it is an episode and absolutely no image exists, steal the poster/backdrop from the parent show
-            if (!url && type === 'episode' && item.show && item.show.images) {
-                if (preferLandscape) url = extract(item.show.images.fanart?.medium) || extract(item.show.images.fanart?.full);
-                if (!url) url = extract(item.show.images.poster?.medium) || extract(item.show.images.poster?.full);
+            if (!url && type === 'episode' && item.show) {
+                if (preferLandscape) {
+                    if (item.show.backdrop_path) url = `https://image.tmdb.org/t/p/w780${item.show.backdrop_path}`;
+                    else if (item.show.images) url = extract(item.show.images.fanart?.medium) || extract(item.show.images.fanart?.full);
+                }
+                if (!url) {
+                    if (item.show.poster_path) url = `https://image.tmdb.org/t/p/w500${item.show.poster_path}`;
+                    else if (item.show.images) url = extract(item.show.images.poster?.medium) || extract(item.show.images.poster?.full);
+                }
             }
 
             if (!url) return PLACEHOLDER_IMG;
@@ -1604,12 +1610,12 @@ window.removeProgress = async (playbackId) => {
                 if (sTmdb && sNum !== undefined && eNum !== undefined) compositeId = `${sTmdb}-${sNum}-${eNum}`;
             }
 
-            // Prevent Episode TMDB IDs from colliding with Movie TMDB IDs by only allowing compositeId or Trakt ID for episodes
+            // Improved Rating Logic globally referencing all known map keys
             const myRating = (compositeId ? userRatings.get(compositeId) : null)
-                || userRatings.get(String(fallbackId)) 
-                || (!isNaN(Number(fallbackId)) ? userRatings.get(parseInt(fallbackId)) : null) 
-                || (type !== 'episode' ? userRatings.get(String(targetId)) : null)
-                || (type !== 'episode' && !isNaN(Number(targetId)) ? userRatings.get(parseInt(targetId)) : null);
+                || userRatings.get(String(data.ids?.trakt)) 
+                || (!isNaN(Number(data.ids?.trakt)) ? userRatings.get(parseInt(data.ids?.trakt)) : null) 
+                || (type !== 'episode' ? userRatings.get(String(data.ids?.tmdb || targetId)) : null)
+                || (type !== 'episode' && !isNaN(Number(data.ids?.tmdb || targetId)) ? userRatings.get(parseInt(data.ids?.tmdb || targetId)) : null);
             
             const tmdbRatingHtml = ratingVal > 0 ? `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>` : '';
             const myRatingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 ${ratingVal > 0 ? 'ml-2 border-l border-white/20 pl-2' : ''}"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
@@ -2478,6 +2484,18 @@ async function loadUpNext() {
 
                 const showTitle = !isMovie ? item.show.title : null;
                 const title = isMovie ? (item.movie?.title || item.title) : data.title;
+
+                let cId = null;
+                if (!isMovie) {
+                    const sTmdb = item.show?.ids?.tmdb;
+                    const s = data.season || data.season_number;
+                    const e = data.number || data.episode_number;
+                    if (sTmdb && s !== undefined && e !== undefined) cId = `${sTmdb}-${s}-${e}`;
+                }
+                const tId = String(data.ids?.trakt || '');
+                const tmdbId = String(data.ids?.tmdb || data.id || '');
+                const myRating = (cId ? userRatings.get(cId) : null) || userRatings.get(tId) || (!isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null) || (isMovie ? userRatings.get(tmdbId) || (!isNaN(Number(tmdbId)) ? userRatings.get(parseInt(tmdbId)) : null) : null);
+                const ratingBadgeHtml = myRating ? `<span class="text-green-400 font-bold ml-2 text-[10px] border border-green-500/30 px-1 rounded bg-green-900/20 shadow-sm inline-flex items-center"><i class="fa-solid fa-user-check mr-1"></i> ${myRating}</span>` : '';
                 const sub = isMovie ? (item.movie?.year || item.year) : `S${data.season} E${data.number}`;
                 const img = getImage(item, null, true);
                 const progress = item.progress || 0;
@@ -2538,7 +2556,7 @@ async function loadUpNext() {
                     
                     <div class="w-[60%] sm:w-2/3 p-3 flex flex-col bg-[var(--card)] relative">
                         ${showTitle ? `<h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5 truncate">${showTitle}</h4>` : ''}
-                        <h3 class="font-bold text-sm leading-tight mb-1 line-clamp-1 text-gray-200 group-hover:text-white transition flex items-center">${title} ${typeBadge}</h3>
+                        <h3 class="font-bold text-sm leading-tight mb-1 line-clamp-1 text-gray-200 group-hover:text-white transition flex items-center flex-wrap gap-y-1">${title} ${typeBadge} ${ratingBadgeHtml}</h3>
                         <p class="text-gray-500 text-xs mb-3">${sub} ${item.isResume ? `<span class="text-blue-400 ml-1">(${Math.round(progress)}%)</span>` : ''}</p>
                         
                         <div class="mt-auto relative z-10 pt-2 border-t border-gray-800/50">
@@ -2646,11 +2664,13 @@ async function renderPerson(id) {
             try {
                 if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
                 // FIX: Fetch person details and combined credits directly from TMDB
-                let person, allWorks = [];
-                
-                if (primaryDataSource === 'tmdb') {
-                    const data = await fetchTMDB(`/person/${id}?append_to_response=combined_credits`);
-                    person = {
+            let person, allWorks = [];
+            let imdbId = null;
+            
+            if (primaryDataSource === 'tmdb') {
+                const data = await fetchTMDB(`/person/${id}?append_to_response=combined_credits,external_ids`);
+                imdbId = data.external_ids?.imdb_id || data.imdb_id;
+                person = {
                         name: data.name,
                         birthday: data.birthday,
                         birthplace: data.place_of_birth,
@@ -2678,7 +2698,8 @@ async function renderPerson(id) {
                         fetchDirect(`/people/${id}/shows?extended=images`)
                     ]);
                     person = traktPerson;
-                    const movies = (movieCredits.cast || []).map(c => ({ ...c.movie, type: 'movie', character: c.character }));
+                imdbId = person.ids?.imdb;
+                const movies = (movieCredits.cast || []).map(c => ({ ...c.movie, type: 'movie', character: c.character }));
                     const shows = (showCredits.cast || []).map(c => ({ ...c.show, type: 'show', character: c.character, episode_count: c.episode_count }));
                     allWorks = [...movies, ...shows];
                 }
@@ -2698,6 +2719,7 @@ async function renderPerson(id) {
                                 <img src="${img}" class="w-full object-cover aspect-[2/3]" onerror="this.src='${PLACEHOLDER_IMG}'">
                             </div>
                             <h1 class="text-3xl font-bold mb-2 md:hidden">${person.name}</h1>
+                            ${imdbId ? `<div class="mb-4 text-center md:text-left"><a href="https://www.imdb.com/name/${imdbId}" target="_blank" class="inline-block bg-[#f5c518] hover:bg-[#e2b616] text-black px-3 py-1.5 rounded-md font-bold text-xs transition shadow"><i class="fa-brands fa-imdb text-sm mr-1"></i> IMDb Profile</a></div>` : ''}
                             <div class="space-y-2 text-sm text-gray-400 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
                                 ${person.birthday ? `<div><span class="block text-xs uppercase font-bold text-gray-600">Born</span> <span class="text-gray-200">${new Date(person.birthday).toLocaleDateString()}</span></div>` : ''}
                                 ${person.birthplace ? `<div><span class="block text-xs uppercase font-bold text-gray-600">Place</span> <span class="text-gray-200">${person.birthplace}</span></div>` : ''}
@@ -2945,9 +2967,12 @@ async function renderPerson(id) {
 
                     // Map Credits (Episodes use guest_stars)
                     people = {
-                        cast: item.credits?.cast || item.guest_stars || [],
+                        cast: [...(item.credits?.cast || []), ...(item.guest_stars || [])],
                         crew: item.credits?.crew || []
                     };
+                    // Remove duplicates by ID
+                    const seenCast = new Set();
+                    people.cast = people.cast.filter(c => { const pid = c.id || c.person?.ids?.trakt; if(seenCast.has(pid)) return false; seenCast.add(pid); return true; });
                     
                     // Map Related/Recommendations
                     related = item.recommendations?.results?.map(r => ({ ...r, type: tmdbType === 'tv' ? 'show' : 'movie' })) || [];
@@ -3246,18 +3271,17 @@ async function renderPerson(id) {
                     stremioUrl = `${stremioBase}/${type === 'movie' ? 'movie' : 'series'}/${item.ids.imdb}`;
                 }
 
-                // Badge Logic (Watched / Skipped / Rewatched)
+                // Badge Logic (Watched / Skipped / Partially Watched)
                 const plays = item.user_data?.plays || history.length || 0;
+                const hasPartial = userPlayback.has(parseInt(id));
                 let statusBadge = '';
 
                 if (isSkipped) {
                     statusBadge = `<span class="bg-gray-700 text-gray-300 border border-gray-500 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_10px_rgba(255,255,255,0.1)]"><i class="fa-solid fa-forward-step mr-2"></i> SKIPPED / FILLER</span>`;
-                } else if (plays > 1 && type !== 'show') {
-                    const rewatchCount = plays - 1;
-                    const ordinal = (n) => { const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
-                    statusBadge = `<span class="bg-purple-500/20 text-purple-300 border border-purple-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(168,85,247,0.2)]" title="Total Plays: ${plays}"><i class="fa-solid fa-rotate-right mr-2"></i> ${ordinal(rewatchCount)} Rewatch</span>`;
-                } else if (isWatched) {
-                    statusBadge = `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> ${type === 'show' ? 'Started / Watched' : 'Full Watch'}</span>`;
+                } else if (plays > 0) {
+                    statusBadge = `<span class="bg-green-500/20 text-green-400 border border-green-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(74,222,128,0.2)]"><i class="fa-solid fa-circle-check mr-2"></i> ${type === 'show' ? 'Started / Watched' : `Fully Watched (${plays} time${plays > 1 ? 's' : ''})`}</span>`;
+                } else if (hasPartial) {
+                    statusBadge = `<span class="bg-blue-500/20 text-blue-400 border border-blue-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center shadow-[0_0_15px_rgba(59,130,246,0.2)]"><i class="fa-solid fa-circle-half-stroke mr-2"></i> Partially Watched</span>`;
                 } else {
                     statusBadge = `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
                 }
@@ -3333,15 +3357,20 @@ async function renderPerson(id) {
                             const { id, obj } = getP(p);
                             if (id && !seenIds.has(id)) {
                                 seenIds.add(id);
-                                let role = 'Regular';
-                                if (isEpisode && trueRegularIds.size > 0 && !trueRegularIds.has(id)) role = 'Guest'; 
+                                let role = isEpisode ? 'Series Regular' : 'Main Cast';
+                                if (isEpisode && trueRegularIds.size > 0 && !trueRegularIds.has(id)) role = 'Guest Star'; 
                                 combinedMembers.push({ ...p, role_type: role, normPerson: obj, normId: id });
                             }
                         });
                     }
 
                     if (isEpisode) {
-                        combinedMembers.sort((a, b) => (a.role_type === 'Guest' ? -1 : 1));
+                        // Sort Series Regulars to the front, then Guests
+                        combinedMembers.sort((a, b) => {
+                            if (a.role_type === 'Series Regular' && b.role_type !== 'Series Regular') return -1;
+                            if (b.role_type === 'Series Regular' && a.role_type !== 'Series Regular') return 1;
+                            return 0;
+                        });
                     }
 
                     if (combinedMembers.length > 0) {
@@ -3351,17 +3380,17 @@ async function renderPerson(id) {
                             ${combinedMembers.slice(0, 20).map(person => {
                                  const pImg = getImage(person.normPerson, 'person'); 
                                  const charName = person.character || (person.characters ? person.characters[0] : 'Unknown');
-                                 const roleColor = person.role_type === 'Guest' ? 'text-amber-400' : 'text-[var(--primary)]';
+                                 const roleStyle = person.role_type.includes('Guest') ? 'text-amber-400 bg-amber-900/20 border border-amber-500/30' : 'text-[var(--primary)] bg-[var(--primary)]/10 border border-[var(--primary)]/30';
 
                                  return `
                                  <div class="flex-shrink-0 w-28 group relative cursor-pointer" onclick="location.hash='#detail/person/${person.normId}'" title="View Filmography">
                                     <div class="w-24 h-24 mx-auto rounded-full bg-gray-800 border-2 border-gray-700 overflow-hidden mb-3 shadow-lg group-hover:border-[var(--primary)] transition transform group-hover:scale-105">
                                          <img src="${pImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">
                                     </div>
-                                    <div class="text-center">
-                                        <p class="font-bold text-xs truncate text-white group-hover:text-[var(--primary)] transition">${person.normPerson.name}</p>
-                                        <p class="text-[10px] uppercase font-bold ${roleColor} mt-0.5">${person.role_type}</p>
-                                        <p class="text-xs text-gray-500 truncate" title="${charName}">${charName}</p>
+                                    <div class="text-center flex flex-col items-center">
+                                        <p class="font-bold text-xs truncate w-full text-white group-hover:text-[var(--primary)] transition">${person.normPerson.name}</p>
+                                        <span class="text-[9px] uppercase font-bold ${roleStyle} px-1.5 py-0.5 rounded-full mt-1 mb-0.5">${person.role_type}</span>
+                                        <p class="text-xs text-gray-500 truncate w-full" title="${charName}">${charName}</p>
                                     </div>
                                  </div>`
                             }).join('')}
@@ -3434,35 +3463,52 @@ async function renderPerson(id) {
                             ${progressHtml}
                             ${historyHtml}
                             
-                            <div class="flex flex-wrap items-stretch gap-2 sm:gap-3 mb-8">
-                                <button class="flex-grow sm:flex-grow-0 scrobble-btn bg-[var(--primary)] hover:bg-red-700 text-white px-6 py-2.5 rounded-lg font-bold shadow-lg flex items-center gap-2 justify-center transition text-sm" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, name: item.title, type: 'episode', runtime: item.runtime, season: item.season, number: item.number, still_path: item.still_path, show: { title: showInfo.title, ids: showInfo.ids, poster_path: showInfo.poster_path, backdrop_path: showInfo.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'}"></i> ${isWatched ? 'Log Rewatch' : 'Log Watch'}</button>                                
-                                ${primaryDataSource === 'trakt' ? `
-                                <button onclick="window.toggleTraktWatchlist('${item.ids.trakt}', 'episode', this)" class="px-4 py-2.5 rounded-lg font-bold text-xs border transition flex items-center justify-center gap-2 ${isTraktWl ? 'bg-red-900/40 text-red-300 border-red-800' : 'bg-blue-900/40 text-blue-300 border-blue-800'}" title="Trakt Watchlist">
-                                    ${isTraktWl ? '<i class="fa-solid fa-trash-can"></i> Trakt' : '<i class="fa-solid fa-bookmark"></i> Trakt'}
-                                </button>` : ''}
-                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="px-4 py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-green-600 hover:bg-green-500 text-white'}" title="VidTrackr Watchlist">
-                                    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> Local' : '<i class="fa-solid fa-folder-plus"></i> Local'}
-                                </button>
-                                <button onclick="window.toggleLocalCollection('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="px-4 py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalCol ? 'bg-teal-600 hover:bg-teal-500 text-white' : 'bg-gray-800 hover:bg-gray-700 text-teal-500 border border-gray-700'}" title="VidTrackr Collection">
-                                    ${isLocalCol ? '<i class="fa-solid fa-box-open"></i> Collect' : '<i class="fa-solid fa-box-archive"></i> Collect'}
-                                </button>
-                                <button onclick="window.checkIn('${item.ids.trakt}', 'episode', ${item.runtime || 0}, '${checkInSafeJson}')" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-lg font-bold text-xs border border-purple-500 transition flex items-center justify-center gap-1" title="Check In Now"><i class="fa-solid fa-map-pin"></i> Check In</button>
-                                <button onclick="window.skipEpisode('${item.ids.trakt}')" class="bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white px-4 py-2.5 rounded-lg font-bold text-xs border border-gray-600 transition flex items-center justify-center gap-1" title="Skip / Mark Filler"><i class="fa-solid fa-ban"></i> Skip</button>
-                                <div id="stremio-placeholder" class="hidden"></div>
-                                <button onclick="window.openAddToList('${item.ids.trakt}', 'episode', '${safeJson}')" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2.5 rounded-lg font-bold text-xs border border-gray-600 transition flex items-center justify-center gap-1" title="Add to Custom List"><i class="fa-solid fa-list-ul"></i> List</button>
-                                <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg font-bold text-xs border border-gray-700 transition flex items-center justify-center gap-1">Season ${item.season}</button>
-                            </div>
+                            <!-- Action Buttons Groups (Episode) -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+                                <!-- Group 1: Tracking -->
+                                <div class="bg-[var(--card)] shadow-lg rounded-2xl p-4 border border-gray-700">
+                                    <h4 class="text-[10px] uppercase font-bold text-gray-400 mb-3"><i class="fa-solid fa-clipboard-check mr-1 text-[var(--primary)]"></i> Tracking</h4>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <button class="col-span-2 scrobble-btn bg-[#ed2224] hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-md flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, name: item.title, type: 'episode', runtime: item.runtime, season: item.season, number: item.number, still_path: item.still_path, show: { title: showInfo.title, ids: showInfo.ids, poster_path: showInfo.poster_path, backdrop_path: showInfo.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'}"></i> ${isWatched ? 'Log Rewatch' : 'Log Watch'}</button>
+                                        
+                                        <button onclick="window.checkIn('${item.ids.trakt}', 'episode', ${item.runtime || 0}, '${checkInSafeJson}')" class="col-span-2 bg-purple-900/20 hover:bg-purple-900/40 text-purple-400 py-2.5 rounded-lg font-bold text-xs transition border border-purple-900/50 flex items-center justify-center gap-1.5"><i class="fa-solid fa-map-pin"></i> Check In</button>
+                                        
+                                        <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 border ${isLocalWl ? 'bg-red-600 border-red-600 text-white hover:bg-red-500' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white'}">
+                                            <i class="fa-solid ${isLocalWl ? 'fa-folder-minus' : 'fa-folder-plus'}"></i> Watchlist
+                                        </button>
 
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-                                <a href="https://trakt.tv/shows/${showInfo.ids.slug || showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}" target="_blank" class="bg-[#ed1c24] hover:bg-[#be161c] text-white py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-lg">
-                                    <i class="fa-solid fa-ticket"></i> Trakt
-                                </a>
-                                
-                                ${item.ids.imdb ? `<a href="https://www.imdb.com/title/${item.ids.imdb}" target="_blank" class="bg-[#f5c518] hover:bg-[#e2b616] text-black py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-lg"><i class="fa-brands fa-imdb text-lg"></i> IMDb</a>` : ''}
-                                
-                                ${showInfo.ids.tmdb ? `<a href="https://www.themoviedb.org/tv/${showInfo.ids.tmdb}/season/${item.season}/episode/${item.number}" target="_blank" class="bg-[#01b4e4] hover:bg-[#0d253f] text-white py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-lg"><i class="fa-solid fa-film"></i> TMDB</a>` : ''}
-                                
-                                ${item.ids.tvdb ? `<a href="https://thetvdb.com/dereferrer/episode/${item.ids.tvdb}" target="_blank" class="bg-[#3da35a] hover:bg-[#2c7a42] text-white py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-lg"><i class="fa-solid fa-tv"></i> TVDB</a>` : ''}
+                                        <button onclick="window.toggleLocalCollection('${item.ids.trakt}', 'episode', this, '${safeJson}')" class="py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 border ${isLocalCol ? 'bg-teal-600 border-teal-600 text-white hover:bg-teal-500' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white'}">
+                                            <i class="fa-solid ${isLocalCol ? 'fa-box-open' : 'fa-box-archive'}"></i> Collect
+                                        </button>
+
+                                        <button onclick="window.openAddToList('${item.ids.trakt}', 'episode', '${safeJson}')" class="py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700"><i class="fa-solid fa-list-ul"></i> List</button>
+
+                                        <button onclick="window.skipEpisode('${item.ids.trakt}')" class="py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700" title="Skip / Mark Filler"><i class="fa-solid fa-ban"></i> Skip</button>
+                                    </div>
+                                </div>
+
+                                <!-- Group 2: Watch -->
+                                <div class="bg-[var(--card)] shadow-lg rounded-2xl p-4 border border-gray-700 flex flex-col">
+                                    <h4 class="text-[10px] uppercase font-bold text-gray-400 mb-3"><i class="fa-solid fa-play mr-1 text-blue-500"></i> Watch</h4>
+                                    <div class="flex flex-col gap-2 flex-grow">
+                                        <div id="stremio-placeholder" class="hidden w-full mb-2"></div>
+                                        <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="w-full mt-auto bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-lg font-bold text-xs border border-gray-700 transition flex items-center justify-center gap-1.5"><i class="fa-solid fa-layer-group"></i> View Season ${item.season}</button>
+                                    </div>
+                                </div>
+
+                                <!-- Group 3: External -->
+                                <div class="bg-[var(--card)] shadow-lg rounded-2xl p-4 border border-gray-700 flex flex-col">
+                                    <h4 class="text-[10px] uppercase font-bold text-gray-400 mb-3"><i class="fa-solid fa-link mr-1 text-gray-400"></i> External</h4>
+                                    <div class="grid grid-cols-2 gap-2 mt-auto">
+                                        <a href="https://trakt.tv/shows/${showInfo.ids.slug || showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}" target="_blank" class="bg-[#ed1c24]/10 hover:bg-[#ed1c24]/20 text-[#ed1c24] py-2 rounded-md font-bold text-[10px] transition border border-[#ed1c24]/20 flex items-center justify-center gap-1.5"><i class="fa-solid fa-ticket"></i> Trakt</a>
+                                        
+                                        ${item.ids.imdb ? `<a href="https://www.imdb.com/title/${item.ids.imdb}" target="_blank" class="bg-[#f5c518]/10 hover:bg-[#f5c518]/20 text-[#f5c518] py-2 rounded-md font-bold text-[10px] transition border border-[#f5c518]/20 flex items-center justify-center gap-1.5"><i class="fa-brands fa-imdb text-sm"></i> IMDb</a>` : ''}
+                                        
+                                        ${showInfo.ids.tmdb ? `<a href="https://www.themoviedb.org/tv/${showInfo.ids.tmdb}/season/${item.season}/episode/${item.number}" target="_blank" class="bg-[#01b4e4]/10 hover:bg-[#01b4e4]/20 text-[#01b4e4] py-2 rounded-md font-bold text-[10px] transition border border-[#01b4e4]/20 flex items-center justify-center gap-1.5"><i class="fa-solid fa-film"></i> TMDB</a>` : ''}
+                                        
+                                        ${item.ids.tvdb ? `<a href="https://thetvdb.com/dereferrer/episode/${item.ids.tvdb}" target="_blank" class="bg-[#3da35a]/10 hover:bg-[#3da35a]/20 text-[#3da35a] py-2 rounded-md font-bold text-[10px] transition border border-[#3da35a]/20 flex items-center justify-center gap-1.5"><i class="fa-solid fa-tv"></i> TVDB</a>` : ''}
+                                    </div>
+                                </div>
                             </div>
                             
                             <div class="mb-6 space-y-1 text-sm text-gray-400">
@@ -3499,54 +3545,54 @@ async function renderPerson(id) {
                                 ${navNext ? `<div class="nav-btn nav-next" onclick="location.hash='#detail/movie/${navNext.ids.trakt}'" title="Next: ${navNext.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-right"></i></div>` : ''}
                             </div>
                             
-                            <!-- Action Buttons Stack -->
-                            <div class="flex flex-col gap-3 mb-6">
-                                ${type === 'movie' ? `
-                                <!-- Log/Rate in Past -->
-                                <button class="scrobble-btn w-full text-center bg-[#ed2224] hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime, backdrop_path: item.backdrop_path, poster_path: item.poster_path}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-calendar-plus"></i> ${isWatched ? 'Log / Rate in Past' : 'Log / Rate in Past'}</button>` : ''}
-                                
-                                <!-- Stream Now -->
-                                <a href="${watchLink}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-bold text-sm transition shadow-lg flex items-center justify-center gap-2"><i class="fa-solid fa-play"></i> Stream Now</a>
-                                
-                                <div id="stremio-placeholder" class="hidden w-full"></div>
-
-                                <!-- VidTrackr Watchlist -->
-                                <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', '${type}', this, '${safeJson}')" class="w-full text-center py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalWl ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-red-900/20 text-red-500 border border-red-900/50 hover:bg-red-900/40'}">
-                                    ${isLocalWl ? '<i class="fa-solid fa-folder-minus"></i> VidTrackr Watchlist' : '<i class="fa-solid fa-folder-plus"></i> VidTrackr Watchlist'}
-                                </button>
-
-                                <!-- Collection -->
-                                <button onclick="window.toggleLocalCollection('${item.ids.trakt}', '${type}', this, '${safeJson}')" class="w-full text-center py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 ${isLocalCol ? 'bg-teal-600 hover:bg-teal-500 text-white' : 'bg-teal-900/20 text-teal-500 border border-teal-900/50 hover:bg-teal-900/40'}">
-                                    ${isLocalCol ? '<i class="fa-solid fa-box-open"></i> In Collection' : '<i class="fa-solid fa-box-archive"></i> Add to Collection'}
-                                </button>
-
-                                <!-- Check In -->
-                                <button onclick="window.checkIn('${item.ids.trakt}', '${type}', ${item.runtime || 0}, '${checkInSafeJson}')" class="w-full text-center bg-purple-900/20 hover:bg-purple-900/40 text-purple-500 py-2.5 rounded-lg font-bold text-xs transition border border-purple-900/50 flex items-center justify-center gap-2"><i class="fa-solid fa-map-pin"></i> Check In Now</button>
-                                
-                                <!-- Custom List -->
-                                <button onclick="window.openAddToList('${item.ids.trakt}', '${type}', '${safeJson}')" class="w-full text-center bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-lg font-bold text-xs transition border border-gray-700 flex items-center justify-center gap-2"><i class="fa-solid fa-list-ul"></i> Add to Custom List</button>
-                                
-                                <!-- Hide -->
-                                <button onclick="window.toggleHidden('${canonicalId}', '${type}', '${fullTitle.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="w-full text-center ${isGloballyHidden ? 'bg-red-900/40 hover:bg-red-900/60 text-red-300 border-red-800' : 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white border-gray-700'} py-2.5 rounded-lg font-bold text-xs transition border flex items-center justify-center gap-2">
-                                    <i class="fa-solid ${isGloballyHidden ? 'fa-eye' : 'fa-eye-slash'}"></i> ${isGloballyHidden ? 'Unhide from Up Next' : 'Hide from Up Next'}
-                                </button>
-                            </div>
+                            <!-- Action Buttons Groups -->
                             
-                            <!-- External Links Stack -->
-                            <div class="flex flex-col gap-2 pt-4 border-t border-gray-800 mb-4">
-                                <a href="https://trakt.tv/${type}s/${item.ids.slug || item.ids.trakt}" target="_blank" class="w-full bg-[#ed1c24] hover:bg-[#be161c] text-white py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md">
-                                    <i class="fa-solid fa-ticket"></i> Open in Trakt
-                                </a>
-                                
-                                ${item.ids.imdb ? `<a href="https://www.imdb.com/title/${item.ids.imdb}" target="_blank" class="w-full bg-[#f5c518] hover:bg-[#e2b616] text-black py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md"><i class="fa-brands fa-imdb text-lg"></i> IMDb</a>` : ''}
-                                
-                                ${item.ids.tmdb ? `<a href="https://www.themoviedb.org/${type === 'show' ? 'tv' : 'movie'}/${item.ids.tmdb}" target="_blank" class="w-full bg-[#01b4e4] hover:bg-[#0d253f] text-white py-2 rounded-lg font-bold text-xs transition flex items-center justify-center gap-2 shadow-md"><i class="fa-solid fa-film"></i> TMDB</a>` : ''}
-                                
-                                ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg font-bold text-xs transition shadow-md flex items-center justify-center gap-2">Official Website <i class="fa-solid fa-up-right-from-square ml-1 text-[10px]"></i></a>` : ''}
+                            <!-- Group 1: Track & Log -->
+                            <div class="bg-[var(--card)] shadow-lg rounded-2xl p-4 mb-5 border border-gray-700">
+                                <h4 class="text-[10px] uppercase font-bold text-gray-400 mb-3"><i class="fa-solid fa-clipboard-check mr-1 text-[var(--primary)]"></i> Tracking</h4>
+                                <div class="grid grid-cols-2 gap-2">
+                                    ${type === 'movie' ? `
+                                    <button class="col-span-2 scrobble-btn bg-[#ed2224] hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-md flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime, backdrop_path: item.backdrop_path, poster_path: item.poster_path}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-calendar-plus"></i> Log Past Watch</button>` : ''}
+                                    
+                                    <button onclick="window.checkIn('${item.ids.trakt}', '${type}', ${item.runtime || 0}, '${checkInSafeJson}')" class="col-span-2 bg-purple-900/20 hover:bg-purple-900/40 text-purple-400 py-2.5 rounded-lg font-bold text-xs transition border border-purple-900/50 flex items-center justify-center gap-1.5"><i class="fa-solid fa-map-pin"></i> Check In</button>
+                                    
+                                    <button onclick="window.toggleLocalWatchlist('${item.ids.trakt}', '${type}', this, '${safeJson}')" class="py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 border ${isLocalWl ? 'bg-red-600 border-red-600 text-white hover:bg-red-500' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white'}">
+                                        <i class="fa-solid ${isLocalWl ? 'fa-folder-minus' : 'fa-folder-plus'}"></i> Watchlist
+                                    </button>
+
+                                    <button onclick="window.toggleLocalCollection('${item.ids.trakt}', '${type}', this, '${safeJson}')" class="py-2.5 rounded-lg font-bold text-xs transition flex items-center justify-center gap-1.5 border ${isLocalCol ? 'bg-teal-600 border-teal-600 text-white hover:bg-teal-500' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white'}">
+                                        <i class="fa-solid ${isLocalCol ? 'fa-box-open' : 'fa-box-archive'}"></i> Collect
+                                    </button>
+
+                                    <button onclick="window.openAddToList('${item.ids.trakt}', '${type}', '${safeJson}')" class="col-span-2 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-lg font-bold text-xs transition border border-gray-700 flex items-center justify-center gap-1.5"><i class="fa-solid fa-list-ul"></i> Add to Custom List</button>
+                                </div>
                             </div>
-                            
-                            <!-- Trailer -->
-                            ${trailerUrl ? `<button onclick="window.openTrailer('${trailerUrl}')" class="w-full text-center bg-red-900/10 hover:bg-red-900/20 text-red-500 py-2.5 rounded-lg font-bold text-xs transition border border-red-900/20 flex items-center justify-center gap-2"><i class="fa-brands fa-youtube text-lg"></i> Watch Trailer</button>` : ''}
+
+                            <!-- Group 2: Watch & Stream -->
+                            <div class="bg-[var(--card)] shadow-lg rounded-2xl p-4 mb-5 border border-gray-700">
+                                <h4 class="text-[10px] uppercase font-bold text-gray-400 mb-3"><i class="fa-solid fa-play mr-1 text-blue-500"></i> Watch</h4>
+                                <div class="flex flex-col gap-2">
+                                    <div id="stremio-placeholder" class="hidden w-full"></div>
+                                    <a href="${watchLink}" target="_blank" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-md flex items-center justify-center gap-1.5"><i class="fa-solid fa-bolt"></i> Stream Sources</a>
+                                    ${trailerUrl ? `<button onclick="window.openTrailer('${trailerUrl}')" class="w-full bg-red-900/10 hover:bg-red-900/30 text-red-500 py-2.5 rounded-lg font-bold text-xs transition border border-red-900/20 flex items-center justify-center gap-1.5"><i class="fa-brands fa-youtube text-sm"></i> Watch Trailer</button>` : ''}
+                                </div>
+                            </div>
+
+                            <!-- Group 3: Links & DBs -->
+                            <div class="bg-[var(--card)] shadow-lg rounded-2xl p-4 mb-5 border border-gray-700">
+                                <h4 class="text-[10px] uppercase font-bold text-gray-500 mb-2 px-1"><i class="fa-solid fa-link mr-1"></i> External</h4>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <a href="https://trakt.tv/${type}s/${item.ids.slug || item.ids.trakt}" target="_blank" class="bg-[#ed1c24]/10 hover:bg-[#ed1c24]/20 text-[#ed1c24] py-1.5 rounded-md font-bold text-[10px] transition border border-[#ed1c24]/20 flex items-center justify-center gap-1.5"><i class="fa-solid fa-ticket"></i> Trakt</a>
+                                    ${item.ids.tmdb ? `<a href="https://www.themoviedb.org/${type === 'show' ? 'tv' : 'movie'}/${item.ids.tmdb}" target="_blank" class="bg-[#01b4e4]/10 hover:bg-[#01b4e4]/20 text-[#01b4e4] py-1.5 rounded-md font-bold text-[10px] transition border border-[#01b4e4]/20 flex items-center justify-center gap-1.5"><i class="fa-solid fa-film"></i> TMDB</a>` : ''}
+                                    ${item.ids.imdb ? `<a href="https://www.imdb.com/title/${item.ids.imdb}" target="_blank" class="bg-[#f5c518]/10 hover:bg-[#f5c518]/20 text-[#f5c518] py-1.5 rounded-md font-bold text-[10px] transition border border-[#f5c518]/20 flex items-center justify-center gap-1.5"><i class="fa-brands fa-imdb text-xs"></i> IMDb</a>` : ''}
+                                    ${item.homepage ? `<a href="${item.homepage}" target="_blank" class="bg-gray-800 hover:bg-gray-700 text-gray-300 py-1.5 rounded-md font-bold text-[10px] transition border border-gray-700 flex items-center justify-center gap-1.5">Official <i class="fa-solid fa-up-right-from-square text-[8px]"></i></a>` : ''}
+                                </div>
+                            </div>
+
+                            <!-- Hide Button -->
+                            <button onclick="window.toggleHidden('${canonicalId}', '${type}', '${fullTitle.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="w-full text-center ${isGloballyHidden ? 'bg-orange-900/40 hover:bg-orange-900/60 text-orange-400 border-orange-900/50' : 'bg-transparent hover:bg-gray-800 text-gray-500 hover:text-gray-300 border-gray-800'} py-2 rounded-lg font-bold text-xs transition border flex items-center justify-center gap-1.5">
+                                <i class="fa-solid ${isGloballyHidden ? 'fa-eye' : 'fa-eye-slash'}"></i> ${isGloballyHidden ? 'Unhide from Up Next' : 'Hide from Up Next'}
+                            </button>
                         </div>
                         
                         <!-- RIGHT MAIN CONTENT -->
@@ -3609,6 +3655,7 @@ async function renderPerson(id) {
                                                 season: nextEpData.season_number, 
                                                 number: nextEpData.episode_number, 
                                                 title: nextEpData.name, 
+                                                still_path: nextEpData.still_path,
                                                 ids: { tmdb: nextEpData.id, trakt: `${item.ids?.tmdb}-${nextEpData.season_number}-${nextEpData.episode_number}` } 
                                             } : null,
                                             seasons: []
@@ -3785,6 +3832,13 @@ async function renderPerson(id) {
                             if (primaryDataSource === 'tmdb') {
                                 const tmdbShowId = item.ids.tmdb || id;
                                 const seasonData = await fetchTMDB(`/tv/${tmdbShowId}/season/${seasonNum}`);
+                                
+                                // Chronological Specials Injection
+                                let specialsData = { episodes: [] };
+                                if (showSpecials && seasonNum > 0) {
+                                    try { specialsData = await fetchTMDB(`/tv/${tmdbShowId}/season/0`); } catch(e) {}
+                                }
+
                                 episodes = seasonData.episodes.map(ep => ({
                                     ...ep,
                                     title: ep.name,
@@ -3794,6 +3848,35 @@ async function renderPerson(id) {
                                     rating: ep.vote_average,
                                     ids: { tmdb: ep.id, trakt: ep.id }
                                 }));
+                                
+                                // Interlace Specials
+                                if (specialsData.episodes.length > 0 && episodes.length > 0) {
+                                    const firstAir = new Date(episodes[0].air_date || '2099-01-01');
+                                    const lastAir = new Date(episodes[episodes.length - 1].air_date || '2099-01-01');
+                                    
+                                    const relevantSpecials = specialsData.episodes.filter(sp => {
+                                        if (!sp.air_date) return false;
+                                        const spDate = new Date(sp.air_date);
+                                        return spDate >= firstAir && spDate <= lastAir;
+                                    }).map(ep => ({
+                                        ...ep,
+                                        title: ep.name,
+                                        number: ep.episode_number,
+                                        season: ep.season_number,
+                                        overview: ep.overview,
+                                        rating: ep.vote_average,
+                                        ids: { tmdb: ep.id, trakt: ep.id },
+                                        episode_type: 'special'
+                                    }));
+                                    
+                                    if (relevantSpecials.length > 0) {
+                                        episodes = [...episodes, ...relevantSpecials].sort((a, b) => {
+                                            if (!a.air_date) return 1;
+                                            if (!b.air_date) return -1;
+                                            return new Date(a.air_date) - new Date(b.air_date);
+                                        });
+                                    }
+                                }
                             } else {
                                 const targetTraktId = item.ids?.slug || item.ids?.trakt || showId;
                                 episodes = await fetchDirect(`/shows/${targetTraktId}/seasons/${seasonNum}/episodes?extended=full,images,user_data`);

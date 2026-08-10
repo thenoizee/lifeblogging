@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.12.0-alpha",
+    date: "2026-08-10",
+    changes: [
+        "In VidTrackr: Combined TMDB `guest_stars` and `cast` so episode actors load correctly, and added visual badge distinctions for Series Regulars vs Guest Stars.",
+        "In VidTrackr: Added IMDb profile links directly to the cast/person detail pages.",
+        "In VidTrackr: Renamed 'Full Watch' to 'Fully Watched (X times)' or 'Partially Watched' dynamically based on log history and active playback progress.",
+        "In VidTrackr: Redesigned and grouped the detail view action buttons into categorized, visually aligned premium cards (Tracking, Watch, External) for Movies, Shows, and Episodes for better UI consistency.",
+        "In VidTrackr: Added 'Chronological Specials' support - when viewing a season with 'Specials Included' toggled on, relevant specials from Season 0 are automatically fetched and inserted chronologically by air date.",
+        "In VidTrackr: Fixed the 'Up Next' image renderer so TMDB episodes correctly fall back to the show's backdrop/poster if an episode still image is missing.",
+        "In VidTrackr: Fixed disconnected rating logic by utilizing unified ID checks (TMDB, Trakt, and composite IDs) to reliably display your ratings across grids and Up Next cards."
+    ]
+},
+    {
     version: "v16.11.0-alpha",
     date: "2026-08-10",
     changes: [
