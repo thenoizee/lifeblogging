@@ -452,7 +452,7 @@ export class AppNavigation {
     </div>
 </div>
 
-<header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 2147483646; isolation: isolate;">
+<header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 40; isolation: isolate;">
             <div class="container mx-auto px-4 py-2">
                 <div class="flex items-center justify-start md:justify-between h-12 gap-3 md:gap-0 w-full">
                         
@@ -866,13 +866,31 @@ export class AppNavigation {
         if (hideBtn) hideBtn.addEventListener('click', () => this.toggleNavBar());
         if (restoreBtn) restoreBtn.addEventListener('click', () => this.toggleNavBar());
 
+        // Replace With:
         const dropBtn = document.getElementById('hub-dropdown-btn');
         const dropMenu = document.getElementById('hub-dropdown-menu');
         let hoverTimeout;
 
         if (dropBtn && dropMenu) {
-            const showMenu = () => { clearTimeout(hoverTimeout); dropMenu.classList.remove('hidden'); };
+            // Detach to body to break out of z-index stacking constraints
+            document.body.appendChild(dropMenu);
+
+            const positionMenu = () => {
+                const rect = dropBtn.getBoundingClientRect();
+                dropMenu.style.top = `${rect.bottom + window.scrollY}px`;
+                dropMenu.style.left = `${rect.left + window.scrollX}px`;
+                dropMenu.style.position = 'absolute';
+                dropMenu.style.zIndex = '999999';
+            };
+
+            const showMenu = () => { 
+                clearTimeout(hoverTimeout); 
+                positionMenu();
+                dropMenu.classList.remove('hidden'); 
+            };
             const hideMenu = () => { hoverTimeout = setTimeout(() => { dropMenu.classList.add('hidden'); }, 300); };
+
+            window.addEventListener('resize', () => { if(!dropMenu.classList.contains('hidden')) positionMenu(); }, {passive: true});
 
             dropBtn.addEventListener('mouseenter', showMenu);
             dropBtn.addEventListener('mouseleave', hideMenu);
@@ -888,17 +906,42 @@ export class AppNavigation {
             });
         }
 
-        // Add this inside attachEvents()
         const bellBtn = document.getElementById('nav-bell-btn');
         const notifMenu = document.getElementById('nav-notifications-menu');
         const clearNotifsBtn = document.getElementById('nav-clear-notifications');
 
         if (bellBtn && notifMenu) {
+            // Detach to body to break out of z-index stacking constraints
+            document.body.appendChild(notifMenu);
+
+            const positionNotifMenu = () => {
+                const rect = bellBtn.getBoundingClientRect();
+                notifMenu.style.top = `${rect.bottom + window.scrollY}px`;
+                if (window.innerWidth < 768) {
+                    notifMenu.style.left = '1rem';
+                    notifMenu.style.right = '1rem';
+                    notifMenu.style.width = 'auto';
+                } else {
+                    notifMenu.style.left = 'auto';
+                    notifMenu.style.right = `${window.innerWidth - rect.right - window.scrollX}px`;
+                    notifMenu.style.width = '20rem';
+                }
+                notifMenu.style.position = 'absolute';
+                notifMenu.style.zIndex = '999999';
+            };
+
             bellBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                notifMenu.classList.toggle('hidden');
-                this.markNotificationsAsRead();
+                if (notifMenu.classList.contains('hidden')) {
+                    positionNotifMenu();
+                    notifMenu.classList.remove('hidden');
+                    this.markNotificationsAsRead();
+                } else {
+                    notifMenu.classList.add('hidden');
+                }
             });
+
+            window.addEventListener('resize', () => { if(!notifMenu.classList.contains('hidden')) positionNotifMenu(); }, {passive: true});
 
             document.addEventListener('click', (e) => {
                 if (!bellBtn.contains(e.target) && !notifMenu.contains(e.target)) {

@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.15.0-alpha",
+    date: "2026-08-11",
+    changes: [
+                "In TaskTrackr: Upgraded the desktop quick-add input to smoothly expand into the filter area on focus.",
+                "In TaskTrackr: Added advanced URL hash routing for views and filters with full browser history support.",
+                "In TaskTrackr: Corrected z-index layering to ensure dropdown menus appear above the side pane, which correctly sits above the top header.",
+    ]
+},
+    {
     version: "v16.14.0-alpha",
     date: "2026-08-11",
     changes: [
