@@ -544,7 +544,6 @@ if (headerRight) {
             }, 3000);
         };
 
-        // --- LIVE TMDB HYDRATION LAYER ---
         // --- LIVE TMDB HYDRATION LAYER (V2: Cached & 1-by-1 Callbacks) ---
         window.enrichTMDBImages = async (itemsArray, onProgress = null) => {
             if (!itemsArray || itemsArray.length === 0) return;
@@ -558,20 +557,23 @@ if (headerRight) {
                 let data = item.media || ((type && item[type]) ? item[type] : item);
                 if (!data) continue;
 
-                // Needs hydration if missing images OR missing runtime
+                // Needs hydration if missing images, missing runtime, OR missing parent show title for episodes
                 const needsImages = !(data.poster_path || data.backdrop_path || data.still_path);
                 const needsRuntime = data.runtime === undefined;
+                let needsShowTitle = type === 'episode' && !(data.show?.title || data.show?.name || item.show?.title || item.show?.name);
 
-                if (!needsImages && !needsRuntime) {
+                if (!needsImages && !needsRuntime && !needsShowTitle) {
                     if (onProgress) onProgress(item.id || data.ids?.trakt, data, item);
                     continue;
                 }
 
-                const tmdbId = data.ids?.tmdb || data.tmdb || data.id; // Also fallback to data.id for TMDB items
-                if (!tmdbId) continue;
+                const tmdbId = data.ids?.tmdb || data.tmdb || data.id; 
+                const traktId = data.ids?.trakt;
+                
+                if (!tmdbId && !traktId) continue; 
 
                 // Check localStorage Cache
-                const cacheKey = `vt_img_${type}_${tmdbId}`;
+                const cacheKey = `vt_img_${type}_${tmdbId || traktId}`;
                 const cached = localStorage.getItem(cacheKey);
                 if (cached) {
                     try {
@@ -580,11 +582,18 @@ if (headerRight) {
                         if (needsImages && !(parsed.poster_path || parsed.backdrop_path || parsed.still_path)) cacheValid = false;
                         if (needsRuntime && parsed.runtime === undefined) cacheValid = false;
 
+                        if (needsShowTitle && !parsed.showTitle) cacheValid = false;
+
                         if (cacheValid) {
                             if (parsed.poster_path) data.poster_path = parsed.poster_path;
                             if (parsed.backdrop_path) data.backdrop_path = parsed.backdrop_path;
                             if (parsed.still_path) data.still_path = parsed.still_path;
                             if (parsed.runtime !== undefined) data.runtime = parsed.runtime;
+                            if (parsed.showTitle) {
+                                if (!data.show) data.show = {};
+                                data.show.title = parsed.showTitle;
+                                needsShowTitle = false;
+                            }
                             if (onProgress) onProgress(item.id || data.ids?.trakt, data, item);
                             continue; // No network request needed!
                         }
@@ -592,7 +601,7 @@ if (headerRight) {
                 }
 
                 // If not cached or incomplete, queue it for fetching
-                toFetch.push({ item, type, data, tmdbId, cacheKey });
+                toFetch.push({ item, type, data, tmdbId, traktId, cacheKey, needsShowTitle });
             }
 
             if (toFetch.length === 0) return;
@@ -602,26 +611,74 @@ if (headerRight) {
             for (let i = 0; i < toFetch.length; i += 10) chunks.push(toFetch.slice(i, i + 10));
 
             for (const chunk of chunks) {
-                await Promise.all(chunk.map(async ({ item, type, data, tmdbId, cacheKey }) => {
+                await Promise.all(chunk.map(async ({ item, type, data, tmdbId, traktId, cacheKey, needsShowTitle }) => {
                     try {
                         let cacheData = {};
                         if (type === 'episode') {
-                            const showTmdbId = item.show?.ids?.tmdb || data.show?.ids?.tmdb || item.show?.tmdb || tmdbId;
+                            let showTmdbId = item.show?.ids?.tmdb || data.show?.ids?.tmdb || item.show?.tmdb;
+                            
+                            // If orphaned episode, dynamically extract show ID from the composite ID (e.g. "123-1-1")
+                            if (!showTmdbId && typeof traktId === 'string' && traktId.includes('-')) {
+                                showTmdbId = traktId.split('-')[0];
+                            } else if (!showTmdbId && typeof tmdbId === 'string' && tmdbId.includes('-')) {
+                                showTmdbId = tmdbId.split('-')[0];
+                            }
+
+                            // If we still have absolutely no Show TMDB ID, we must fetch it from Trakt proxy via the episode ID
+                            if (!showTmdbId && needsShowTitle && (traktId || data.id)) {
+                                try {
+                                    const searchId = traktId || data.id;
+                                    const endpoint = traktId ? `/search/trakt/${searchId}?type=episode` : `/search/tmdb/${searchId}?type=episode`;
+                                    const searchData = await fetchDirect(endpoint);
+                                    if (searchData && searchData[0]) {
+                                        showTmdbId = searchData[0].show.ids.tmdb;
+                                        if (!data.show) data.show = {};
+                                        data.show.title = searchData[0].show.title;
+                                        data.show.ids = searchData[0].show.ids;
+                                        cacheData.showTitle = searchData[0].show.title;
+                                        needsShowTitle = false;
+                                    }
+                                } catch(e) { console.warn("Show Rescue Failed", e); }
+                            }
+
                             const sNum = data.season || data.season_number;
                             const epNum = data.number || data.episode_number;
                             if (showTmdbId && sNum !== undefined && epNum !== undefined) {
                                 const res = await fetchTMDB(`/tv/${showTmdbId}/season/${sNum}/episode/${epNum}`);
                                 data.still_path = res.still_path;
                                 data.runtime = res.runtime || 0;
-                                cacheData = { still_path: res.still_path, runtime: data.runtime };
+                                cacheData.still_path = res.still_path; // FIX: Dot notation prevents overwriting showTitle!
+                                cacheData.runtime = data.runtime;
+                                
+                                if (needsShowTitle) {
+                                    try {
+                                        const showRes = await fetchTMDB(`/tv/${showTmdbId}`);
+                                        if (!data.show) data.show = {};
+                                        data.show.title = showRes.name;
+                                        cacheData.showTitle = showRes.name;
+                                    } catch(e) {}
+                                }
                             }
                         } else {
-                            const tmdbType = type === 'show' ? 'tv' : 'movie';
-                            const res = await fetchTMDB(`/${tmdbType}/${tmdbId}`);
-                            data.poster_path = res.poster_path;
-                            data.backdrop_path = res.backdrop_path;
-                            data.runtime = res.runtime !== undefined ? res.runtime : (res.episode_run_time?.[0] || 0);
-                            cacheData = { poster_path: res.poster_path, backdrop_path: res.backdrop_path, runtime: data.runtime };
+                            // Needs generic Trakt -> TMDB resolution?
+                            let resolvedTmdbId = tmdbId;
+                            if (!resolvedTmdbId && traktId) {
+                                try {
+                                    const searchData = await fetchDirect(`/search/trakt/${traktId}?type=${type}`);
+                                    if (searchData && searchData[0]) resolvedTmdbId = searchData[0][type].ids.tmdb;
+                                } catch(e) {}
+                            }
+                            
+                            if (resolvedTmdbId) {
+                                const tmdbType = type === 'show' ? 'tv' : 'movie';
+                                const res = await fetchTMDB(`/${tmdbType}/${resolvedTmdbId}`);
+                                data.poster_path = res.poster_path;
+                                data.backdrop_path = res.backdrop_path;
+                                data.runtime = res.runtime !== undefined ? res.runtime : (res.episode_run_time?.[0] || 0);
+                                cacheData.poster_path = res.poster_path;
+                                cacheData.backdrop_path = res.backdrop_path;
+                                cacheData.runtime = data.runtime;
+                            }
                         }
 
                         // Save to local cache
@@ -811,8 +868,7 @@ if (headerRight) {
                     showLoader();
                     try {
                         const searchId = ids.trakt || fallbackId;
-                        const res = await fetch(`${TRAKT_API_URL}/search/trakt/${searchId}?type=episode`);
-                        const data = await res.json();
+                        const data = await fetchDirect(`/search/trakt/${searchId}?type=episode`);
                         if (data && data[0]) {
                             const showTmdb = data[0].show.ids.tmdb;
                             const s = data[0].episode.season;
@@ -825,8 +881,7 @@ if (headerRight) {
                     showLoader();
                     try {
                         const searchId = ids.trakt || fallbackId;
-                        const res = await fetch(`${TRAKT_API_URL}/search/trakt/${searchId}?type=${type}`);
-                        const data = await res.json();
+                        const data = await fetchDirect(`/search/trakt/${searchId}?type=${type}`);
                         if (data && data[0]) targetId = data[0][type].ids.tmdb || fallbackId;
                     } catch(e) {}
                     hideLoader();
@@ -837,8 +892,7 @@ if (headerRight) {
                 showLoader();
                 try {
                     const searchId = ids.tmdb || fallbackId;
-                    const res = await fetch(`${TRAKT_API_URL}/search/tmdb/${searchId}?type=${type}`);
-                    const data = await res.json();
+                    const data = await fetchDirect(`/search/tmdb/${searchId}?type=${type}`);
                     if (data && data[0]) targetId = data[0][type].ids.trakt || fallbackId;
                 } catch(e) {}
                 hideLoader();
@@ -1581,23 +1635,22 @@ window.removeProgress = async (playbackId) => {
             const imgId = `card-img-${type}-${fallbackId}`; // Generate a targeting ID
             
             // Normalize display title and year
+            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name || item.episode?.show?.title;
             let displayTitle = data.title || data.name || 'Unknown Title';
-            let displaySub = '';
+            if (type === 'episode' && showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
             
-            if (type === 'episode') {
-                const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name;
-                if (showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
+            const dateString = data.release_date || data.first_air_date || data.air_date || data.released;
+            let displayDate = dateString ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : (data.year || 'N/A');
+            
+            let displaySub = displayDate;
+            if (type === 'show') {
+                const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
+                if (epCount) displaySub += ` • ${epCount} Eps`;
+            } else if (type === 'episode') {
                 const sNum = data.season !== undefined ? data.season : (data.season_number !== undefined ? data.season_number : '?');
                 const eNum = data.number !== undefined ? data.number : (data.episode_number !== undefined ? data.episode_number : '?');
-                displaySub = `S${sNum}E${eNum}`;
+                displaySub = `S${sNum}E${eNum} • ${displayDate}`;
             }
-
-            let displayYear = data.year;
-            if (!displayYear) {
-                const dateString = data.release_date || data.first_air_date;
-                displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
-            }
-            if (!displaySub) displaySub = displayYear;
 
             // Fallback rating logic for TMDB's vote_average
             const ratingVal = data.rating || data.vote_average || 0;
@@ -3315,9 +3368,9 @@ async function renderPerson(id) {
                           
                           // Rely strictly on the rating details map to prevent history import pollution
                           const trueRatedAt = rDetails ? rDetails.ratedAt : null;
-                          const ratedStr = trueRatedAt ? new Date(trueRatedAt).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+                          const ratedStr = trueRatedAt ? new Date(trueRatedAt).toLocaleString([], {year: 'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
                                   const hRatingHtml = hRating ? `<div class="flex flex-col items-end mr-3"><span class="text-yellow-500 text-xs font-bold"><i class="fa-solid fa-star"></i> ${hRating}</span>${ratedStr ? `<span class="text-[9px] text-gray-500 mt-0.5">${ratedStr}</span>` : ''}</div>` : '';
-                                  return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition group"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition opacity-100 md:opacity-0 md:group-hover:opacity-100" onclick="window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition opacity-100 md:opacity-0 md:group-hover:opacity-100" onclick="window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                                  return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition group"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition opacity-100 md:opacity-0 md:group-hover:opacity-100" onclick="event.stopPropagation(); window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition opacity-100 md:opacity-0 md:group-hover:opacity-100" onclick="event.stopPropagation(); window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
                               }).join('')}${loadMoreBtn}</div></div>`;
                 }
 
@@ -4443,8 +4496,8 @@ async function renderPerson(id) {
                         const rawEpTitle = type === 'episode' ? (item.episode.name || item.episode.title || 'Unknown') : '';
                         const epTitle = rawEpTitle.includes(item.show?.title) ? rawEpTitle.replace(item.show?.title + ': ', '').replace(item.show?.title + ' ', '') : rawEpTitle;
                         const movieTitle = type === 'movie' ? (item.movie.title || item.movie.name) : '';
-                        const seasonStr = type === 'episode' ? (item.episode.season || item.episode.season_number) : '?';
-                        const epStr = type === 'episode' ? (item.episode.number || item.episode.episode_number) : '?';
+                        const seasonStr = type === 'episode' ? (item.episode.season !== undefined ? item.episode.season : item.episode.season_number) : '?';
+                        const epStr = type === 'episode' ? (item.episode.number !== undefined ? item.episode.number : item.episode.episode_number) : '?';
                         
                         const titleText = (type === 'episode') ? `<span class="text-gray-400 text-xs md:text-sm font-bold uppercase tracking-wider">${item.show?.title || 'TV Episode'}</span> <br> <span class="text-gray-500 font-mono text-xs bg-gray-800 px-1 rounded mr-1 shadow-sm">S${seasonStr}E${epStr}</span> <span class="text-gray-200">${epTitle}</span>` : movieTitle;
                         
@@ -4473,7 +4526,7 @@ async function renderPerson(id) {
                         
                         // Rely strictly on the rating details map to prevent history import pollution
                         const trueRatedAt = rDetails ? rDetails.ratedAt : null;
-                        const ratedStr = trueRatedAt ? new Date(trueRatedAt).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+                        const ratedStr = trueRatedAt ? new Date(trueRatedAt).toLocaleString([], {year: 'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
                         
                         const rateDisplay = myRating ? `<div class="flex flex-col items-end ml-auto"><span class="text-green-400 font-bold text-xs bg-green-900/20 px-2 py-1 rounded-md border border-green-800/50 shadow-sm whitespace-nowrap"><i class="fa-solid fa-user-check"></i> ${myRating}</span>${ratedStr ? `<span class="text-[9px] text-gray-500 mt-1">${ratedStr}</span>` : ''}</div>` : '';
                         
@@ -4484,7 +4537,7 @@ async function renderPerson(id) {
                         const yesterday = new Date(today);
                         yesterday.setDate(yesterday.getDate() - 1);
                         
-                        let prettyDate = wDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+                        let prettyDate = wDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
                         if (dateStr === today.toLocaleDateString()) prettyDate = "Today";
                         else if (dateStr === yesterday.toLocaleDateString()) prettyDate = "Yesterday";
 
@@ -5364,11 +5417,11 @@ async function renderPerson(id) {
                             const data = item[type] || item;
                             
                             let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
-                            if (type === 'episode' && primaryDataSource === 'tmdb' && data.ids?.trakt?.includes('-')) {
+                            if (type === 'episode' && primaryDataSource === 'tmdb' && typeof data.ids?.trakt === 'string' && data.ids.trakt.includes('-')) {
                                 targetId = data.ids.trakt; // Use composite ID for TMDB episodes
                             }
                             
-                            const fallbackId = data.id || data.ids?.trakt || data.ids?.tmdb;
+                            const fallbackId = data.ids?.trakt || data.ids?.tmdb || data.id;
                             const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
                             let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
                             
@@ -5384,30 +5437,27 @@ async function renderPerson(id) {
                             const imgId = `card-img-${type}-${fallbackId}`;
                             const img = getImage(data, type);
                             
-                            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name;
+                            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name || item.episode?.show?.title;
                             let displayTitle = data.title || data.name || 'Unknown Title';
                             if (type === 'episode' && showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
                             
-                            let displayYear = data.year;
-                            if (!displayYear) {
-                                const dateString = data.release_date || data.first_air_date;
-                                displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
-                            }
+                            const dateString = data.release_date || data.first_air_date || data.air_date || data.released;
+                            let displayDate = dateString ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : (data.year || 'N/A');
                             
-                            let displaySub = displayYear;
+                            let displaySub = displayDate;
                             if (type === 'show') {
                                 const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
                                 if (epCount) displaySub += ` • ${epCount} Eps`;
                             } else if (type === 'episode') {
-                                const sNum = data.season || data.season_number || '?';
-                                const eNum = data.number || data.episode_number || '?';
-                                displaySub = `S${sNum}E${eNum}`;
+                                const sNum = data.season !== undefined ? data.season : (data.season_number !== undefined ? data.season_number : '?');
+                                const eNum = data.number !== undefined ? data.number : (data.episode_number !== undefined ? data.episode_number : '?');
+                                displaySub = `S${sNum}E${eNum} • ${displayDate}`;
                             }
                             const ratingVal = data.rating || data.vote_average || 0;
                             const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
-                            const ratingHtml = myRating 
-                                ? `<span class="text-green-400 font-bold flex items-center gap-1"><i class="fa-solid fa-user-check"></i> ${myRating}</span>`
-                                : `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>`;
+                            const tmdbRatingHtml = ratingVal > 0 ? `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>` : '';
+                            const myRatingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 ${ratingVal > 0 ? 'ml-2 border-l border-white/20 pl-2' : ''}"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
+                            const ratingHtml = `<div class="flex items-center">${tmdbRatingHtml}${myRatingHtml}</div>`;
 
                             return `
                             <div class="relative card rounded-xl overflow-hidden shadow-lg border border-pink-900/30 group hover:border-pink-500 transition">
@@ -5415,7 +5465,7 @@ async function renderPerson(id) {
                                     <img id="${imgId}" src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:opacity-80" onerror="this.src='${PLACEHOLDER_IMG}'">
                                     <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
                                     <div class="absolute bottom-0 left-0 p-3 w-full">
-                                        <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${displayTitle}</p>
+                                        <p id="card-title-${type}-${fallbackId}" class="font-bold text-sm text-white truncate shadow-black drop-shadow-md" title="${displayTitle.replace(/"/g, '&quot;')}">${displayTitle}</p>
                                         <p class="text-xs text-pink-200 font-mono">${displaySub}</p>
                                     </div>
                                     <div class="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
@@ -5434,13 +5484,27 @@ async function renderPerson(id) {
                 // Lazy Hydrate TMDB Images
                 window.enrichTMDBImages(items, (itemId, enrichedData, rawItem) => {
                     const dataObj = rawItem[rawItem.type] || rawItem;
-                    const fallbackId = dataObj.ids?.trakt || dataObj.id || dataObj.ids?.tmdb || itemId;
+                    const fallbackId = dataObj.ids?.trakt || dataObj.ids?.tmdb || dataObj.id || itemId;
+                    
                     const imgEl = document.getElementById(`card-img-${rawItem.type}-${fallbackId}`);
                     const newImg = getImage(enrichedData, rawItem.type);
                     
                     if (imgEl && newImg && newImg !== PLACEHOLDER_IMG && !imgEl.src.includes(newImg)) {
                         imgEl.style.opacity = 0;
                         setTimeout(() => { imgEl.src = newImg; imgEl.style.opacity = ''; }, 150);
+                    }
+                    
+                    const titleEl = document.getElementById(`card-title-${rawItem.type}-${fallbackId}`);
+                    if (titleEl && rawItem.type === 'episode') {
+                        const sTitle = enrichedData.show?.title || enrichedData.show?.name || rawItem.show?.title || rawItem.show?.name;
+                        const epTitle = enrichedData.title || enrichedData.name;
+                        if (sTitle && epTitle) {
+                            const expectedTitle = `${sTitle}: ${epTitle}`;
+                            if (titleEl.innerText !== expectedTitle) {
+                                titleEl.innerText = expectedTitle;
+                                titleEl.title = expectedTitle;
+                            }
+                        }
                     }
                 });
 
@@ -5484,11 +5548,11 @@ async function renderPerson(id) {
                             const data = item[type] || item;
                             
                             let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
-                            if (type === 'episode' && primaryDataSource === 'tmdb' && data.ids?.trakt?.includes('-')) {
+                            if (type === 'episode' && primaryDataSource === 'tmdb' && typeof data.ids?.trakt === 'string' && data.ids.trakt.includes('-')) {
                                 targetId = data.ids.trakt;
                             }
                             
-                            const fallbackId = data.id || data.ids?.trakt || data.ids?.tmdb;
+                            const fallbackId = data.ids?.trakt || data.ids?.tmdb || data.id;
                             const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
                             let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
                             
@@ -5504,30 +5568,27 @@ async function renderPerson(id) {
                             const imgId = `card-img-${type}-${fallbackId}`;
                             const img = getImage(data, type);
                             
-                            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name;
+                            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name || item.episode?.show?.title;
                             let displayTitle = data.title || data.name || 'Unknown Title';
                             if (type === 'episode' && showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
                             
-                            let displayYear = data.year;
-                            if (!displayYear) {
-                                const dateString = data.release_date || data.first_air_date;
-                                displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
-                            }
+                            const dateString = data.release_date || data.first_air_date || data.air_date || data.released;
+                            let displayDate = dateString ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : (data.year || 'N/A');
                             
-                            let displaySub = displayYear;
+                            let displaySub = displayDate;
                             if (type === 'show') {
                                 const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
                                 if (epCount) displaySub += ` • ${epCount} Eps`;
                             } else if (type === 'episode') {
-                                const sNum = data.season || data.season_number || '?';
-                                const eNum = data.number || data.episode_number || '?';
-                                displaySub = `S${sNum}E${eNum}`;
+                                const sNum = data.season !== undefined ? data.season : (data.season_number !== undefined ? data.season_number : '?');
+                                const eNum = data.number !== undefined ? data.number : (data.episode_number !== undefined ? data.episode_number : '?');
+                                displaySub = `S${sNum}E${eNum} • ${displayDate}`;
                             }
                             const ratingVal = data.rating || data.vote_average || 0;
                             const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
-                            const ratingHtml = myRating 
-                                ? `<span class="text-green-400 font-bold flex items-center gap-1"><i class="fa-solid fa-user-check"></i> ${myRating}</span>`
-                                : `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>`;
+                            const tmdbRatingHtml = ratingVal > 0 ? `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>` : '';
+                            const myRatingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 ${ratingVal > 0 ? 'ml-2 border-l border-white/20 pl-2' : ''}"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
+                            const ratingHtml = `<div class="flex items-center">${tmdbRatingHtml}${myRatingHtml}</div>`;
 
                             return `
                             <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group hover:border-[var(--primary)] transition">
@@ -5535,7 +5596,7 @@ async function renderPerson(id) {
                                     <img id="${imgId}" src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:opacity-80" onerror="this.src='${PLACEHOLDER_IMG}'">
                                     <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
                                     <div class="absolute bottom-0 left-0 p-3 w-full">
-                                        <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${displayTitle}</p>
+                                        <p id="card-title-${type}-${fallbackId}" class="font-bold text-sm text-white truncate shadow-black drop-shadow-md" title="${displayTitle.replace(/"/g, '&quot;')}">${displayTitle}</p>
                                         <p class="text-xs text-gray-400 font-mono">${displaySub}</p>
                                     </div>
                                     <div class="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
@@ -5560,6 +5621,15 @@ async function renderPerson(id) {
                     if (imgEl && newImg && newImg !== PLACEHOLDER_IMG && !imgEl.src.includes(newImg)) {
                         imgEl.style.opacity = 0;
                         setTimeout(() => { imgEl.src = newImg; imgEl.style.opacity = ''; }, 150);
+                    }
+                    
+                    const titleEl = document.getElementById(`card-title-${rawItem.type}-${targetId}`);
+                    if (titleEl && rawItem.type === 'episode' && enrichedData.show?.title) {
+                        const expectedTitle = `${enrichedData.show.title}: ${enrichedData.title || enrichedData.name}`;
+                        if (titleEl.innerText !== expectedTitle) {
+                            titleEl.innerText = expectedTitle;
+                            titleEl.title = expectedTitle;
+                        }
                     }
                 });
             } catch (e) {
@@ -5733,11 +5803,11 @@ async function renderPerson(id) {
                             const data = item[type] || item;
                             
                             let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
-                            if (type === 'episode' && primaryDataSource === 'tmdb' && data.ids?.trakt?.includes('-')) {
+                            if (type === 'episode' && primaryDataSource === 'tmdb' && typeof data.ids?.trakt === 'string' && data.ids.trakt.includes('-')) {
                                 targetId = data.ids.trakt;
                             }
                             
-                            const fallbackId = data.id || data.ids?.trakt || data.ids?.tmdb;
+                            const fallbackId = data.ids?.trakt || data.ids?.tmdb || data.id;
                             const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
                             let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
                             
@@ -5753,30 +5823,27 @@ async function renderPerson(id) {
                             const imgId = `card-img-${type}-${fallbackId}`;
                             const img = getImage(data, type);
                             
-                            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name;
+                            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name || item.episode?.show?.title;
                             let displayTitle = data.title || data.name || 'Unknown Title';
                             if (type === 'episode' && showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
                             
-                            let displayYear = data.year;
-                            if (!displayYear) {
-                                const dateString = data.release_date || data.first_air_date;
-                                displayYear = dateString ? dateString.substring(0, 4) : 'N/A';
-                            }
+                            const dateString = data.release_date || data.first_air_date || data.air_date || data.released;
+                            let displayDate = dateString ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : (data.year || 'N/A');
                             
-                            let displaySub = displayYear;
+                            let displaySub = displayDate;
                             if (type === 'show') {
                                 const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
                                 if (epCount) displaySub += ` • ${epCount} Eps`;
                             } else if (type === 'episode') {
-                                const sNum = data.season || data.season_number || '?';
-                                const eNum = data.number || data.episode_number || '?';
-                                displaySub = `S${sNum}E${eNum}`;
+                                const sNum = data.season !== undefined ? data.season : (data.season_number !== undefined ? data.season_number : '?');
+                                const eNum = data.number !== undefined ? data.number : (data.episode_number !== undefined ? data.episode_number : '?');
+                                displaySub = `S${sNum}E${eNum} • ${displayDate}`;
                             }
                             const ratingVal = data.rating || data.vote_average || 0;
                             const myRating = userRatings.get(parseInt(fallbackId)) || userRatings.get(parseInt(targetId));
-                            const ratingHtml = myRating 
-                                ? `<span class="text-green-400 font-bold flex items-center gap-1"><i class="fa-solid fa-user-check"></i> ${myRating}</span>`
-                                : `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>`;
+                            const tmdbRatingHtml = ratingVal > 0 ? `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>` : '';
+                            const myRatingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 ${ratingVal > 0 ? 'ml-2 border-l border-white/20 pl-2' : ''}"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
+                            const ratingHtml = `<div class="flex items-center">${tmdbRatingHtml}${myRatingHtml}</div>`;
 
                             return `
                             <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group hover:border-[var(--primary)] transition">
@@ -5784,7 +5851,7 @@ async function renderPerson(id) {
                                     <img id="${imgId}" src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:opacity-80" onerror="this.src='${PLACEHOLDER_IMG}'">
                                     <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
                                     <div class="absolute bottom-0 left-0 p-3 w-full">
-                                        <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${displayTitle}</p>
+                                        <p id="card-title-${type}-${fallbackId}" class="font-bold text-sm text-white truncate shadow-black drop-shadow-md" title="${displayTitle.replace(/"/g, '&quot;')}">${displayTitle}</p>
                                         <p class="text-xs text-gray-400 font-mono">${displaySub}</p>
                                     </div>
                                     <div class="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
@@ -5803,14 +5870,27 @@ async function renderPerson(id) {
                 // Lazy Hydrate TMDB Images
                 window.enrichTMDBImages(items, (itemId, enrichedData, rawItem) => {
                     const dataObj = rawItem[rawItem.type] || rawItem;
-                    // FIX: Ensure TMDB ID is grabbed first for image targeting
-                    const targetId = dataObj.ids?.tmdb || dataObj.id || dataObj.ids?.trakt || itemId;
-                    const imgEl = document.getElementById(`card-img-${rawItem.type}-${targetId}`);
+                    const fallbackId = dataObj.ids?.trakt || dataObj.ids?.tmdb || dataObj.id || itemId;
+                    
+                    const imgEl = document.getElementById(`card-img-${rawItem.type}-${fallbackId}`);
                     const newImg = getImage(enrichedData, rawItem.type);
                     
                     if (imgEl && newImg && newImg !== PLACEHOLDER_IMG && !imgEl.src.includes(newImg)) {
                         imgEl.style.opacity = 0;
                         setTimeout(() => { imgEl.src = newImg; imgEl.style.opacity = ''; }, 150);
+                    }
+                    
+                    const titleEl = document.getElementById(`card-title-${rawItem.type}-${fallbackId}`);
+                    if (titleEl && rawItem.type === 'episode') {
+                        const sTitle = enrichedData.show?.title || enrichedData.show?.name || rawItem.show?.title || rawItem.show?.name;
+                        const epTitle = enrichedData.title || enrichedData.name;
+                        if (sTitle && epTitle) {
+                            const expectedTitle = `${sTitle}: ${epTitle}`;
+                            if (titleEl.innerText !== expectedTitle) {
+                                titleEl.innerText = expectedTitle;
+                                titleEl.title = expectedTitle;
+                            }
+                        }
                     }
                 });
 
@@ -6336,17 +6416,31 @@ async function renderPerson(id) {
                         renderGrid('', data, false, 'wl-grid'); 
                         
                         // Lazy Hydrate TMDB Images
-                        window.enrichTMDBImages(data, (itemId, enrichedData, rawItem) => {
-                            const dataObj = rawItem[rawItem.type] || rawItem;
-                            const targetId = dataObj.id || (dataObj.ids && dataObj.ids.trakt) || itemId;
-                            const imgEl = document.getElementById(`card-img-${rawItem.type}-${targetId}`);
-                            const newImg = getImage(enrichedData, rawItem.type);
-                            
-                            if (imgEl && newImg && newImg !== PLACEHOLDER_IMG && !imgEl.src.includes(newImg)) {
-                                imgEl.style.opacity = 0;
-                                setTimeout(() => { imgEl.src = newImg; imgEl.style.opacity = ''; }, 150);
+                window.enrichTMDBImages(items, (itemId, enrichedData, rawItem) => {
+                    const dataObj = rawItem[rawItem.type] || rawItem;
+                    const fallbackId = dataObj.ids?.trakt || dataObj.ids?.tmdb || dataObj.id || itemId;
+                    
+                    const imgEl = document.getElementById(`card-img-${rawItem.type}-${fallbackId}`);
+                    const newImg = getImage(enrichedData, rawItem.type);
+                    
+                    if (imgEl && newImg && newImg !== PLACEHOLDER_IMG && !imgEl.src.includes(newImg)) {
+                        imgEl.style.opacity = 0;
+                        setTimeout(() => { imgEl.src = newImg; imgEl.style.opacity = ''; }, 150);
+                    }
+                    
+                    const titleEl = document.getElementById(`card-title-${rawItem.type}-${fallbackId}`);
+                    if (titleEl && rawItem.type === 'episode') {
+                        const sTitle = enrichedData.show?.title || enrichedData.show?.name || rawItem.show?.title || rawItem.show?.name;
+                        const epTitle = enrichedData.title || enrichedData.name;
+                        if (sTitle && epTitle) {
+                            const expectedTitle = `${sTitle}: ${epTitle}`;
+                            if (titleEl.innerText !== expectedTitle) {
+                                titleEl.innerText = expectedTitle;
+                                titleEl.title = expectedTitle;
                             }
-                        });
+                        }
+                    }
+                });
                     }
                 }
             );
@@ -6562,6 +6656,43 @@ async function renderPerson(id) {
                     }
                     
                     showToast(progress < 100 ? `Progress updated to ${Math.round(progress)}%` : `Logged as Watched`);
+
+                    // --- BINGE-WATCHER AUTO-ADVANCE ---
+                    if (progress >= 100 && type === 'episode' && location.hash.startsWith('#detail')) {
+                        const sNum = currentModalItem.item.season || currentModalItem.item.season_number;
+                        const eNum = currentModalItem.item.number || currentModalItem.item.episode_number;
+                        const showTmdbId = currentModalItem.item.show?.ids?.tmdb || currentModalItem.item.show?.ids?.trakt;
+                        
+                        if (showTmdbId) {
+                            let advanceModal = document.getElementById('auto-advance-modal');
+                            if (!advanceModal) {
+                                document.body.insertAdjacentHTML('beforeend', `
+                                    <div id="auto-advance-modal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100] hidden backdrop-blur-md px-4 animate-fade">
+                                        <div class="card p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-gray-700 text-center">
+                                            <div class="w-16 h-16 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/50 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                                                <i class="fa-solid fa-check text-2xl"></i>
+                                            </div>
+                                            <h3 class="text-2xl font-bold mb-2 text-white">Episode Logged!</h3>
+                                            <p class="text-gray-400 mb-8 text-sm">Would you like to auto-advance to the next episode?</p>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <button id="btn-advance-no" class="bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl font-bold transition border border-gray-700">Stay Here</button>
+                                                <button id="btn-advance-yes" class="bg-[var(--primary)] hover:bg-red-700 text-white py-3 rounded-xl font-bold transition shadow-[0_0_15px_rgba(237,34,36,0.3)] flex items-center justify-center gap-2">Next Ep <i class="fa-solid fa-forward-step"></i></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `);
+                                advanceModal = document.getElementById('auto-advance-modal');
+                            }
+                            
+                            document.getElementById('btn-advance-no').onclick = () => advanceModal.classList.add('hidden');
+                            document.getElementById('btn-advance-yes').onclick = () => {
+                                advanceModal.classList.add('hidden');
+                                window.navigateEpisode(showTmdbId, sNum, eNum + 1);
+                            };
+                            
+                            advanceModal.classList.remove('hidden');
+                        }
+                    }
                 }
                 
                 // Refresh Views
@@ -6674,7 +6805,7 @@ async function renderPerson(id) {
                         const img = getImage(data, type); 
                         
                         let targetId = (primaryDataSource === 'tmdb') ? data.ids?.tmdb : data.ids?.trakt;
-                        if (type === 'episode' && primaryDataSource === 'tmdb' && data.ids?.trakt?.includes('-')) {
+                        if (type === 'episode' && primaryDataSource === 'tmdb' && typeof data.ids?.trakt === 'string' && data.ids.trakt.includes('-')) {
                             targetId = data.ids.trakt; // Composite ID support
                         }
                         
@@ -6691,8 +6822,24 @@ async function renderPerson(id) {
                             }
                         }
 
-                        const title = type === 'person' ? data.name : data.title;
-                        const sub = type === 'person' ? '' : (type === 'episode' ? `S${data.season||item.episode?.season}E${data.number||item.episode?.number}` : (data.year || ''));
+                        const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name || item.episode?.show?.title;
+                        let title = type === 'person' ? data.name : (data.title || data.name || 'Unknown');
+                        if (type === 'episode' && showTitle) title = `${showTitle}: ${title}`;
+                        
+                        const dateString = data.release_date || data.first_air_date || data.air_date || data.released;
+                        let displayDate = dateString ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : (data.year || '');
+                        
+                        let sub = displayDate;
+                        if (type === 'episode') {
+                            const sNum = data.season !== undefined ? data.season : (item.episode?.season !== undefined ? item.episode.season : '?');
+                            const eNum = data.number !== undefined ? data.number : (item.episode?.number !== undefined ? item.episode.number : '?');
+                            sub = `S${sNum}E${eNum}${displayDate ? ` • ${displayDate}` : ''}`;
+                        } else if (type === 'show') {
+                            const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
+                            if (epCount) sub += ` • ${epCount} Eps`;
+                        } else if (type === 'person') {
+                            sub = '';
+                        }
                         
                         // Resilient Date Parsing
                         const listedDate = item.listedAt || item.listed_at || item.collected_at || item.addedAt;
@@ -6705,7 +6852,7 @@ async function renderPerson(id) {
                                 <img id="list-img-${type}-${fallbackId}" src="${img}" class="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition" loading="lazy" onerror="this.src='${PLACEHOLDER_IMG}'">
                                 <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent"></div>
                                 <div class="absolute bottom-0 left-0 p-3 w-full">
-                                    <p class="font-bold text-sm text-white truncate shadow-black drop-shadow-md">${title}</p>
+                                    <p id="list-title-${type}-${fallbackId}" class="font-bold text-sm text-white truncate shadow-black drop-shadow-md" title="${title.replace(/"/g, '&quot;')}">${title}</p>
                                     <p class="text-xs text-gray-400 font-mono">${sub}</p>
                                     <p class="text-[10px] text-gray-500 mt-1 flex items-center gap-1"><i class="fa-solid fa-calendar-plus"></i> ${dateAdded}</p>
                                 </div>
@@ -6719,13 +6866,29 @@ async function renderPerson(id) {
 
                     // Lazy Hydrate TMDB Images
                     window.enrichTMDBImages(sorted, (itemId, enrichedData, rawItem) => {
-                        const targetId = rawItem.movie?.ids?.trakt || rawItem.show?.ids?.trakt || rawItem.person?.ids?.trakt || itemId;
-                        const imgEl = document.getElementById(`list-img-${rawItem.type}-${targetId}`);
+                        const dataObj = rawItem[rawItem.type] || rawItem;
+                        const fallbackId = dataObj.ids?.trakt || dataObj.ids?.tmdb || dataObj.id || itemId;
+                        
+                        // Use fallbackId for elements since that's what was used to generate the HTML ID
+                        const imgEl = document.getElementById(`list-img-${rawItem.type}-${fallbackId}`);
                         const newImg = getImage(enrichedData, rawItem.type);
                         
                         if (imgEl && newImg && newImg !== PLACEHOLDER_IMG && !imgEl.src.includes(newImg)) {
                             imgEl.style.opacity = 0;
                             setTimeout(() => { imgEl.src = newImg; imgEl.style.opacity = ''; }, 150);
+                        }
+                        
+                        const titleEl = document.getElementById(`list-title-${rawItem.type}-${fallbackId}`);
+                        if (titleEl && rawItem.type === 'episode') {
+                            const sTitle = enrichedData.show?.title || enrichedData.show?.name || rawItem.show?.title || rawItem.show?.name;
+                            const epTitle = enrichedData.title || enrichedData.name;
+                            if (sTitle && epTitle) {
+                                const expectedTitle = `${sTitle}: ${epTitle}`;
+                                if (titleEl.innerText !== expectedTitle) {
+                                    titleEl.innerText = expectedTitle;
+                                    titleEl.title = expectedTitle;
+                                }
+                            }
                         }
                     });
                 };

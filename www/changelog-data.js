@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.14.0-alpha",
+    date: "2026-08-11",
+    changes: [
+        "In VidTrackr: Updated episode cards globally (Watchlist, Collections, custom lists) to display the parent Show Name alongside the episode title.",
+        "In VidTrackr: Implemented standard 'S1E1' formatting for episode subtitles in History and Custom Lists.",
+        "In VidTrackr: Updated TV Show cards globally to display the total number of aired episodes.",
+        "In VidTrackr: Restructured grid cards to simultaneously display both the TMDB community rating and the user's personal rating.",
+        "In VidTrackr: Standardized all library grid cards (Watchlists, Collections, Favorites, Custom Lists) to uniformly display Air Dates/Release Dates.",
+        "In VidTrackr: Added a Binge-Watcher auto-advance feature.",
+        "In VidTrackr: Modified rating timestamps within the Episode Watch History list to correctly display the year.",
+        "In VidTrackr: Refactored background hydration logic to accurately proxy orphaned episodes and extract parent show IDs, ensuring show names appear in Custom Lists and Watchlists.",
+    ]
+},
+    {
     version: "v16.13.0-alpha",
     date: "2026-08-10",
     changes: [
