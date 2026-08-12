@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.16.0-alpha",
+    date: "2026-08-12",
+    changes: [
+        "In VidTrackr: Hid Dashboard Trakt statistics when running in TMDB Standalone mode.",
+        "In VidTrackr: Refactored the local VidTrackr Watchlist to natively use the full-featured Custom List UI layout.",
+        "In VidTrackr: Introduced a Chronological Season View for TV shows, ordering all episodes by air date with season-based color coding.",
+        "In VidTrackr: Upgraded Custom List membership detection to check all cross-platform ID variations (TMDB, Trakt, Composite), fixing legacy episodes incorrectly appearing as unlisted in the 'Add to List' modal.",
+    ]
+},
+    {
     version: "v16.15.0-alpha",
     date: "2026-08-11",
     changes: [
