@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.17.0-alpha",
+    date: "2026-08-13",
+    changes: [
+        "In RecipeManagr: Added a touch device CSS media query (@media hover: none) to eliminate frustrating double-tap bugs on mobile hover elements.",
+        "In RecipeManagr: Built a robust 'updateRecipeLatestStats' helper to correctly extract the latest photo and rating from history logs without accidentally overwriting the main image with null values.",
+        "In RecipeManagr: Enabled HTML5 Drag and Drop within the Cook History modal for faster desktop photo uploads.",
+        "In RecipeManagr: Pushed a forced, one-time aggressive database migration script to rescue historical images that were previously orphaned due to a null-state bug.",
+        "In RecipeManagr: Upgraded Firestore initialization to use 'persistentLocalCache' and 'persistentMultipleTabManager', granting the app true offline support across multiple tabs.",
+        "In RecipeManagr: Injected a client-side HTML Canvas image compressor that intercepts file uploads, downsizes, and converts them to efficient JPEGs prior to hitting Firebase Storage, saving data and speeding up the UI.",
+        "In RecipeManagr: Added a 'Remove Main Image' button to the Recipe Editor to allow users to explicitly delete the main recipe image.",
+    ]
+},
+    {
     version: "v16.16.0-alpha",
     date: "2026-08-12",
     changes: [

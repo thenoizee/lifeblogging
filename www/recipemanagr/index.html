@@ -76,7 +76,18 @@
     background-color: rgba(255, 255, 255, 0.1);
     border-radius: 10px;
 }
-    /* Cook Mode Animations */
+
+/* Mobile Hover Fix for Touch Devices */
+@media (hover: none) {
+    .group-hover\:opacity-100 {
+        opacity: 1 !important;
+    }
+    .add-to-meal-plan-btn {
+        opacity: 1 !important;
+    }
+}
+
+/* Cook Mode Animations */
 @keyframes fadeInSlide {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -439,7 +450,10 @@ select, button, input {
                     <label for="recipe-image-upload" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Recipe Image</label>
                     <div class="flex items-center gap-4">
                         <input type="file" id="recipe-image-upload" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100">
-                        <img id="image-preview" src="" alt="Image Preview" class="w-16 h-16 object-cover rounded-md hidden">
+                        <div id="image-preview-container" class="relative hidden">
+                            <img id="image-preview" src="" alt="Image Preview" class="w-16 h-16 object-cover rounded-md border dark:border-gray-600">
+                            <button type="button" id="remove-main-image-btn" class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow transition-colors" title="Remove Image"><i class="fas fa-times"></i></button>
+                        </div>
                     </div>
                 </div>
                 <div>
@@ -742,7 +756,7 @@ select, button, input {
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { initializeAuth, browserLocalPersistence, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, getDocs, doc, query, orderBy, serverTimestamp, updateDoc, deleteDoc, limit, writeBatch, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, doc, query, orderBy, serverTimestamp, updateDoc, deleteDoc, limit, writeBatch, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
         import { AppNavigation } from '../shared-nav.js'; // Adjust path if needed
         
@@ -762,6 +776,49 @@ select, button, input {
             return d.toISOString().slice(0, 16);
         };
 
+        // --- PERFORMANCE: Client-Side Image Compression Helper ---
+        async function compressImage(file, maxWidth = 1200, quality = 0.8) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+
+                        // Calculate new dimensions preserving aspect ratio
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        canvas.toBlob(
+                            (blob) => {
+                                // Create a compressed File object
+                                const newFile = new File([blob], file.name, {
+                                    type: 'image/jpeg',
+                                    lastModified: Date.now(),
+                                });
+                                resolve(newFile);
+                            },
+                            'image/jpeg',
+                            quality
+                        );
+                    };
+                    img.onerror = (error) => reject(error);
+                };
+                reader.onerror = (error) => reject(error);
+            });
+        }
+
         const CONVERSIONS = {
             TSP_TO_ML: { 'us_customary': 4.92892, 'metric': 5 },
             TBSP_TO_ML: { 'us_customary': 14.7868, 'uk_metric': 15, 'au_metric': 20 },
@@ -771,7 +828,14 @@ select, button, input {
         };
 
         const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+        
+        // --- PERFORMANCE: Enable True Offline Mode with Multi-Tab Sync ---
+        const db = initializeFirestore(app, {
+            localCache: persistentLocalCache({
+                tabManager: persistentMultipleTabManager()
+            })
+        });
+        
         const auth = initializeAuth(app, {
             persistence: browserLocalPersistence
         });
@@ -1382,20 +1446,29 @@ document.querySelectorAll('input[name="recipe-type"]').forEach(radio => {
             // Image Preview Handler for Main Recipe Image
             const recipeImageUpload = document.getElementById('recipe-image-upload');
             const imagePreview = document.getElementById('image-preview');
-            if (recipeImageUpload && imagePreview) {
+            const imagePreviewContainer = document.getElementById('image-preview-container');
+            const removeMainImageBtn = document.getElementById('remove-main-image-btn');
+
+            if (recipeImageUpload && imagePreviewContainer && imagePreview) {
                 recipeImageUpload.addEventListener('change', (e) => {
                     const file = e.target.files[0];
                     if (file) {
                         const reader = new FileReader();
                         reader.onload = (evt) => {
                             imagePreview.src = evt.target.result;
-                            imagePreview.classList.remove('hidden');
+                            imagePreviewContainer.classList.remove('hidden');
                         };
                         reader.readAsDataURL(file);
-                    } else {
-                        imagePreview.src = '';
-                        imagePreview.classList.add('hidden');
+                        form.dataset.removeMainImage = 'false'; // Reset flag if a new file is chosen
                     }
+                });
+
+                removeMainImageBtn.addEventListener('click', () => {
+                    recipeImageUpload.value = ''; // Clear file input
+                    imagePreview.src = '';
+                    imagePreviewContainer.classList.add('hidden');
+                    form.dataset.removeMainImage = 'true'; // Mark for deletion on save
+                    importedImageUrl = null; // Clear if it was an import
                 });
             }
             const addRecipeTabBtn = document.getElementById('add-recipe-tab-btn');
@@ -1560,13 +1633,30 @@ window.switchTab = switchTab;
         const recipesCol = collection(db, 'users', userId, 'recipes');
         const q = query(recipesCol, orderBy("createdAt", "desc"));
         const recipeSnapshot = await getDocs(q);
-        recipesCache = recipeSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        populateFilters();
-        filterRecipes(); 
-        
-        // --- ADD THIS LINE HERE ---
-        handleRouting(); 
-        // --------------------------
+            recipesCache = recipeSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // FORCE AGGRESSIVE MIGRATION: 
+            // Overcomes the 'null' vs 'undefined' bug. Scans all cooked recipes once 
+            // per device to permanently restore missing images from the history folder.
+            if (!localStorage.getItem('forceHistoryImageSync_v5')) {
+                console.log("Running one-time history stats sync...");
+                const syncPromises = recipesCache
+                    .filter(recipe => recipe.lastCooked) // Only scan recipes that actually have history
+                    .map(recipe => updateRecipeLatestStats(recipe.id));
+                
+                Promise.all(syncPromises).then(() => {
+                    localStorage.setItem('forceHistoryImageSync_v5', 'true');
+                    filterRecipes(); // Re-render grid so images instantly pop in
+                    console.log("History sync complete!");
+                });
+            }
+
+            populateFilters();
+            filterRecipes(); 
+            
+            // --- ADD THIS LINE HERE ---
+            handleRouting(); 
+            // --------------------------
 
     } catch (error) {
         console.error("Error loading recipes:", error);
@@ -1949,9 +2039,16 @@ const adaptedFromId = document.getElementById('adapted-from-select').value;
         let imageUrl = editingRecipeId ? (recipesCache.find(r => r.id === editingRecipeId)?.imageUrl || '') : '';
         const imageFile = document.getElementById('recipe-image-upload').files[0];
 
+        // Process explicit deletion
+        if (form.dataset.removeMainImage === 'true') {
+            imageUrl = '';
+        }
+
         if (imageFile) {
-            const imageRef = ref(storage, `users/${userId}/recipes/${Date.now()}_${imageFile.name}`);
-            await uploadBytes(imageRef, imageFile);
+            showNotification("Compressing image...", "info");
+            const compressedFile = await compressImage(imageFile);
+            const imageRef = ref(storage, `users/${userId}/recipes/${Date.now()}_${compressedFile.name}`);
+            await uploadBytes(imageRef, compressedFile);
             imageUrl = await getDownloadURL(imageRef);
         } else if (importedImageUrl) {
             imageUrl = importedImageUrl;
@@ -1972,8 +2069,9 @@ const adaptedFromId = document.getElementById('adapted-from-select').value;
             if (section.items) {
                 for (const item of section.items) {
                     if (item.imageFile) {
-                        const stepImgRef = ref(storage, `users/${userId}/recipes/steps/${Date.now()}_${item.imageFile.name}`);
-                        await uploadBytes(stepImgRef, item.imageFile);
+                        const compressedStepFile = await compressImage(item.imageFile);
+                        const stepImgRef = ref(storage, `users/${userId}/recipes/steps/${Date.now()}_${compressedStepFile.name}`);
+                        await uploadBytes(stepImgRef, compressedStepFile);
                         item.imageUrl = await getDownloadURL(stepImgRef);
                         delete item.imageFile; // Don't save the file object to Firestore
                     }
@@ -2103,8 +2201,9 @@ const adaptedFromId = document.getElementById('adapted-from-select').value;
                 formSummary.textContent = "Add a New Recipe";
                 addRecipeBtn.textContent = "Add Recipe";
                 document.getElementById('form-buttons').querySelector('#cancel-edit-btn')?.remove();
-                document.getElementById('image-preview').classList.add('hidden');
+                document.getElementById('image-preview-container')?.classList.add('hidden');
                 document.getElementById('image-preview').src = '';
+                form.dataset.removeMainImage = 'false';
                 populateLinkedRecipesSelect();
             }
             function populateFormForEdit(recipeOrId) {
@@ -2177,6 +2276,19 @@ document.getElementById('flavor-savoury').checked = flavors.includes('Savoury');
                 document.getElementById('recipe-notes').value = recipe.notes || '';
                 document.getElementById('recipe-labels').value = (recipe.labels || []).join(', ');
                 document.getElementById('recipe-is-public').checked = !!recipe.isPublic;
+                
+                // Show existing image preview
+                const previewContainer = document.getElementById('image-preview-container');
+                const previewImg = document.getElementById('image-preview');
+                if (recipe.imageUrl) {
+                    previewImg.src = recipe.imageUrl;
+                    previewContainer?.classList.remove('hidden');
+                } else {
+                    previewContainer?.classList.add('hidden');
+                    previewImg.src = '';
+                }
+                form.dataset.removeMainImage = 'false';
+
                 renderIngredientBuilder(ingredientsForForm);
                 // Use the raw object data, not the formatted text string
     renderInstructionBuilder(recipe.instructions || []);
@@ -2935,6 +3047,49 @@ const getInstructionsFromBuilder = () => {
                 } catch(e) { console.error("Audio play failed", e); }
             };
 
+async function updateRecipeLatestStats(recipeId) {
+    try {
+        const historyCol = collection(db, 'users', userId, 'recipes', recipeId, 'history');
+        const snap = await getDocs(query(historyCol, orderBy('cookedAt', 'desc')));
+        
+        let lastCooked = null;
+        let latestImg = null;
+        let latestRating = null;
+
+        if (!snap.empty) {
+                    lastCooked = snap.docs[0].data().cookedAt;
+                    
+                    // Find the most recent entry that contains a VALID image string
+                    const imgDoc = snap.docs.find(d => {
+                        const data = d.data();
+                        return data.imageUrl && typeof data.imageUrl === 'string' && data.imageUrl.length > 5;
+                    });
+                    if (imgDoc) latestImg = imgDoc.data().imageUrl;
+
+                    // Find the most recent entry that actually contains a rating
+                    const ratingDoc = snap.docs.find(d => d.data().rating > 0);
+                    if (ratingDoc) latestRating = ratingDoc.data().rating;
+                }
+
+        await updateDoc(doc(db, 'users', userId, 'recipes', recipeId), {
+                lastCooked: lastCooked || null,
+                latestHistoryRating: latestRating || null,
+                latestHistoryImage: latestImg || null
+            });
+
+            // Update local cache
+            const cachedRecipe = recipesCache.find(r => r.id === recipeId);
+            if (cachedRecipe) {
+                cachedRecipe.lastCooked = lastCooked || null;
+                cachedRecipe.latestHistoryRating = latestRating || null;
+                cachedRecipe.latestHistoryImage = latestImg || null;
+            }
+            return { lastCooked, latestRating, latestImg };
+        } catch (e) {
+        console.error("Failed to update recipe stats", e);
+    }
+}
+
 async function showHistoryModal(recipeId, recipeName) {
     const container = document.getElementById('history-modal-container');
     container.innerHTML = `
@@ -2954,9 +3109,9 @@ async function showHistoryModal(recipeId, recipeName) {
                 </div>
                 <textarea id="history-notes" placeholder="Notes (e.g. 'Too salty', 'Cooked 5 mins longer')" class="w-full p-2 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 mb-2" rows="2"></textarea>
                 
-                <div class="flex gap-2 mb-3 items-center">
+                <div id="history-dropzone" class="flex gap-2 mb-3 items-center border-2 border-dashed border-transparent rounded-lg transition-colors p-1 -mx-1">
                      <label class="cursor-pointer flex-grow flex items-center justify-center gap-2 bg-white dark:bg-gray-700 border dark:border-gray-600 p-2 rounded text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition">
-                         <i class="fas fa-camera text-teal-500"></i> <span id="history-image-label">Attach Photo</span>
+                         <i class="fas fa-camera text-teal-500"></i> <span id="history-image-label">Attach Photo (or Drop Here)</span>
                          <input type="file" id="history-image" accept="image/*" class="hidden">
                      </label>
                      <img id="history-image-preview" src="" class="hidden w-10 h-10 object-cover rounded border dark:border-gray-600 flex-shrink-0" />
@@ -2996,6 +3151,24 @@ async function showHistoryModal(recipeId, recipeName) {
     const imgLabel = container.querySelector('#history-image-label');
     const imgPreview = container.querySelector('#history-image-preview');
     
+    const dropzone = container.querySelector('#history-dropzone');
+    dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('border-teal-500', 'bg-teal-50', 'dark:bg-teal-900/20');
+    });
+    dropzone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('border-teal-500', 'bg-teal-50', 'dark:bg-teal-900/20');
+    });
+    dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('border-teal-500', 'bg-teal-50', 'dark:bg-teal-900/20');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            imgInput.files = e.dataTransfer.files;
+            imgInput.dispatchEvent(new Event('change'));
+        }
+    });
+
     imgInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
@@ -3093,54 +3266,8 @@ async function showHistoryModal(recipeId, recipeName) {
                         const logIdToDelete = e.currentTarget.dataset.id;
                         await deleteDoc(doc(db, 'users', userId, 'recipes', recipeId, 'history', logIdToDelete));
                         
-                        // Recalculate the latest history entry after deletion so the main recipe card updates
-                        try {
-                            const historyCol = collection(db, 'users', userId, 'recipes', recipeId, 'history');
-                            // Query the database for the most recent log remaining
-                            const latestQ = query(historyCol, orderBy('cookedAt', 'desc'), limit(1));
-                            const latestSnap = await getDocs(latestQ);
-                            
-                            const parentRef = doc(db, 'users', userId, 'recipes', recipeId);
-                            const cachedRecipe = recipesCache.find(r => r.id === recipeId);
-
-                            if (!latestSnap.empty) {
-                                // A previous log still exists, roll the latest stats back to it
-                                const latestData = latestSnap.docs[0].data();
-                                const updates = {
-                                    lastCooked: latestData.cookedAt,
-                                    latestHistoryRating: latestData.rating || 0,
-                                    latestHistoryImage: latestData.imageUrl || null
-                                };
-                                await updateDoc(parentRef, updates);
-                                
-                                // Update the local memory cache
-                                if (cachedRecipe) {
-                                    cachedRecipe.lastCooked = updates.lastCooked;
-                                    cachedRecipe.latestHistoryRating = updates.latestHistoryRating;
-                                    cachedRecipe.latestHistoryImage = updates.latestHistoryImage;
-                                }
-                            } else {
-                                // No logs are left, completely clear the latest history fields
-                                await updateDoc(parentRef, {
-                                    lastCooked: null,
-                                    latestHistoryRating: null,
-                                    latestHistoryImage: null
-                                });
-                                
-                                // Clear the local memory cache
-                                if (cachedRecipe) {
-                                    cachedRecipe.lastCooked = null;
-                                    cachedRecipe.latestHistoryRating = null;
-                                    cachedRecipe.latestHistoryImage = null;
-                                }
-                            }
-                            
-                            // Trigger a UI re-render so the cards update immediately without a refresh
-                            filterRecipes();
-                        } catch (err) {
-                            console.error("Failed to recalculate latest history after deletion", err);
-                        }
-
+                        await updateRecipeLatestStats(recipeId);
+                        filterRecipes(); // Re-render grid
                         loadHistory();
                     }
                 });
@@ -3213,8 +3340,9 @@ async function showHistoryModal(recipeId, recipeName) {
             
             // Upload new Image if selected
             if (imageFile) {
-                const imageRef = ref(storage, `users/${userId}/recipes/history/${Date.now()}_${imageFile.name}`);
-                await uploadBytes(imageRef, imageFile);
+                const compressedHistoryFile = await compressImage(imageFile);
+                const imageRef = ref(storage, `users/${userId}/recipes/history/${Date.now()}_${compressedHistoryFile.name}`);
+                await uploadBytes(imageRef, compressedHistoryFile);
                 finalImageUrl = await getDownloadURL(imageRef);
             }
 
@@ -3232,21 +3360,17 @@ async function showHistoryModal(recipeId, recipeName) {
                 showNotification('Log updated');
             } else {
                 await addDoc(collection(db, 'users', userId, 'recipes', recipeId, 'history'), payload);
-                await updateDoc(doc(db, 'users', userId, 'recipes', recipeId), { 
-                    lastCooked: isoCookedAt,
-                    latestHistoryRating: selectedRating,
-                    latestHistoryImage: finalImageUrl || null
-                });
-                
-                // Update local cache so it reflects immediately
-                const cachedRecipe = recipesCache.find(r => r.id === recipeId);
-                if (cachedRecipe) {
-                    cachedRecipe.lastCooked = isoCookedAt;
-                    cachedRecipe.latestHistoryRating = selectedRating;
-                    cachedRecipe.latestHistoryImage = finalImageUrl || null;
-                    filterRecipes(); // Re-render grid
-                }
                 showNotification('Log saved');
+            }
+            
+            // Recalculate stats for both new additions and edits to ensure exact correctness
+            const latestStats = await updateRecipeLatestStats(recipeId);
+            filterRecipes(); // Re-render grid
+            
+            // Instantly update the main modal image if it is currently open
+            if (latestStats && latestStats.latestImg) {
+                const modalImg = document.getElementById('main-recipe-modal-image');
+                if (modalImg) modalImg.src = latestStats.latestImg;
             }
 
             resetHistoryForm();
@@ -3743,7 +3867,7 @@ async function showRecipeDetailsModal(recipeId) {
 
     <div class="p-3 bg-white dark:bg-gray-800 shadow-sm z-10 flex-shrink-0 border-b dark:border-gray-700">
         <div class="flex items-center gap-3 relative">
-            <img src="${displayImageUrl}" alt="${recipe.name}" class="w-12 h-12 md:w-16 md:h-16 object-cover rounded-md flex-shrink-0 border border-gray-200 dark:border-gray-600">
+            <img id="main-recipe-modal-image" src="${displayImageUrl}" alt="${recipe.name}" class="w-12 h-12 md:w-16 md:h-16 object-cover rounded-md flex-shrink-0 border border-gray-200 dark:border-gray-600">
             ${recipe.latestHistoryImage ? `<span class="absolute -bottom-1 -left-1 bg-teal-600 text-white text-[9px] px-1 rounded-sm shadow-sm" title="From latest cook"><i class="fas fa-history"></i></span>` : ''}
             <div class="flex-grow min-w-0">
                 <h2 class="text-lg md:text-2xl font-bold truncate leading-tight flex items-center">${recipe.name}${v2BadgeModal}</h2>
@@ -5054,13 +5178,15 @@ function renderReadOnlyRating(rating) {
                 document.getElementById('form-buttons').querySelector('#cancel-edit-btn')?.remove();
 
                 const imagePreview = document.getElementById('image-preview');
+                const imagePreviewContainer = document.getElementById('image-preview-container');
                 importedImageUrl = getImageUrl(recipe.image);
                 if (importedImageUrl) {
                     imagePreview.src = importedImageUrl;
-                    imagePreview.classList.remove('hidden');
+                    imagePreviewContainer?.classList.remove('hidden');
                 } else {
-                    imagePreview.classList.add('hidden');
+                    imagePreviewContainer?.classList.add('hidden');
                 }
+                form.dataset.removeMainImage = 'false';
 
                 document.getElementById('recipe-name').value = recipe.name || '';
                 document.getElementById('recipe-description').value = recipe.description || '';
