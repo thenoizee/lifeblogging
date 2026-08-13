@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.18.0-alpha",
+    date: "2026-08-13",
+    changes: [
+        "In TaskTrackr: Fixed the sidepane mobile view to span the full viewport width and height, resolving the padding gap at the top of the app.",
+        "In TaskTrackr: Hid non-essential sidepane buttons (Zen Mode, Copy Title, Copy Description) on mobile devices to optimize horizontal space.",
+        "In TaskTrackr: Implemented fast-resume by bypassing the blocking loader if a local cache exists, utilizing a silent background sync instead.",
+        "In TaskTrackr: Disabled task card click interactions while the main sync loader overlay is visible.",
+        "In TaskTrackr: Hid the inline '+ Subtask' input field on mobile devices to prevent layout shifting and empty column issues.",
+        "In TaskTrackr: Updated task completion and reactivation toasts to explicitly display the task title in the message.",
+        "In TaskTrackr: Updated the edit task log to track and record all task lifecycle events (creation, project moves, priority changes, date changes, etc.).",
+        "In TaskTrackr: Increased the z-index of the main app loader to ensure the project sidebar is completely hidden during initial startup."
+    ]
+},
+    {
     version: "v16.17.0-alpha",
     date: "2026-08-13",
     changes: [
