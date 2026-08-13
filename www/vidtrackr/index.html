@@ -3017,7 +3017,8 @@ let listsIn = [];
                         tmdbEndpoint = `/tv/${resolvedShowId}/season/${epSeason}/episode/${epNum}?append_to_response=credits,videos,images,external_ids`;
                         
                         // Fetch Show Info with external_ids for Stremio series ID resolution
-                        showInfo = await fetchTMDB(`/tv/${resolvedShowId}?append_to_response=external_ids`);
+                        showInfo = await fetchTMDB(`/tv/${resolvedShowId}?append_to_response=external_ids,aggregate_credits`);
+                        showPeople = { cast: showInfo.aggregate_credits?.cast || showInfo.credits?.cast || [] };
                         showInfo.title = showInfo.name;
                         showInfo.ids = { tmdb: resolvedShowId, trakt: resolvedShowId, imdb: showInfo.external_ids?.imdb_id }; 
                     } else {
@@ -3030,13 +3031,14 @@ let listsIn = [];
                     } catch (e) {
                         // If TMDB 404s on a movie/show, translate Trakt ID to TMDB ID
                         if (type !== 'episode') {
-                            const searchRes = await fetch(`${TRAKT_API_URL}/search/trakt/${id}?type=${type}`, { headers: { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': TRAKT_CLIENT_ID } });
-                            const searchData = await searchRes.json();
-                            if (searchData && searchData[0]) {
-                                tmdbId = searchData[0][type].ids.tmdb;
-                                tmdbEndpoint = `/${tmdbType}/${tmdbId}?append_to_response=credits,videos,recommendations,external_ids`;
-                                item = await fetchTMDB(tmdbEndpoint);
-                            } else { throw e; }
+                            try {
+                                const searchData = await fetchDirect(`/search/trakt/${id}?type=${type}`);
+                                if (searchData && searchData[0]) {
+                                    tmdbId = searchData[0][type].ids.tmdb;
+                                    tmdbEndpoint = `/${tmdbType}/${tmdbId}?append_to_response=credits,videos,recommendations,external_ids`;
+                                    item = await fetchTMDB(tmdbEndpoint);
+                                } else { throw e; }
+                            } catch (searchErr) { throw e; } // Throw original TMDB error if fallback fails
                         } else { throw e; }
                     }
 
@@ -3067,7 +3069,8 @@ let listsIn = [];
 
                     // Map Credits (Episodes use guest_stars)
                     people = {
-                        cast: [...(item.credits?.cast || []), ...(item.guest_stars || [])],
+                        cast: item.credits?.cast || [],
+                        guest_stars: item.guest_stars || item.credits?.guest_stars || [],
                         crew: item.credits?.crew || []
                     };
                     // Remove duplicates by ID
@@ -3491,6 +3494,17 @@ let listsIn = [];
                                 let role = isEpisode ? 'Series Regular' : 'Main Cast';
                                 if (isEpisode && trueRegularIds.size > 0 && !trueRegularIds.has(id)) role = 'Guest Star'; 
                                 combinedMembers.push({ ...p, role_type: role, normPerson: obj, normId: id });
+                            }
+                        });
+                    }
+                    
+                    // Inject missing Series Regulars (Crucial for TMDB where people.cast is often empty for episodes)
+                    if (isEpisode && showPeople && showPeople.cast) {
+                        showPeople.cast.forEach(p => {
+                            const { id, obj } = getP(p);
+                            if (id && !seenIds.has(id)) {
+                                seenIds.add(id);
+                                combinedMembers.push({ ...p, role_type: 'Series Regular', normPerson: obj, normId: id });
                             }
                         });
                     }
@@ -3967,7 +3981,13 @@ let listsIn = [];
                                 allEps.forEach(ep => {
                                     const sColor = seasonColors[ep.season % seasonColors.length];
                                     const epLink = primaryDataSource === 'tmdb' ? `#detail/episode/${item.ids?.tmdb || id}-${ep.season}-${ep.number}` : `#detail/episode/${ep.ids?.trakt}`;
-                                    const epHist = history.find(h => h.episode && (h.episode.season === ep.season || h.episode.season_number === ep.season) && (h.episode.number === ep.number || h.episode.episode_number === ep.number));
+                                    const epHist = history.find(h => {
+                                        if (!h.episode) return false;
+                                        const hShowTmdb = String(h.episode.show?.ids?.tmdb || h.show?.ids?.tmdb || '');
+                                        const currShowTmdb = String(item.ids?.tmdb || id);
+                                        if (hShowTmdb && currShowTmdb && hShowTmdb !== currShowTmdb) return false;
+                                        return (h.episode.season == ep.season || h.episode.season_number == ep.season) && (h.episode.number == ep.number || h.episode.episode_number == ep.number);
+                                    });
                                     const watchedDateStr = epHist ? `<span class="text-[10px] md:text-xs text-green-500 ml-3 bg-green-900/20 px-2 py-1 rounded border border-green-800"><i class="fa-solid fa-calendar-check mr-1"></i> ${new Date(epHist.watched_at).toLocaleDateString()}</span>` : '';
                                     
                                     html += `
@@ -4029,6 +4049,30 @@ let listsIn = [];
                             mount.innerHTML = `<div class="flex items-center gap-3 mb-6"><div class="animate-spin rounded-full h-6 w-6 border-2 border-yellow-500 border-t-transparent"></div> <span class="text-gray-400">Loading Season ${seasonNum}...</span></div>`;
                             
                             let episodes = [];
+                            
+                            // FETCH HISTORY FOR THIS SEASON NATIVELY FROM FIRESTORE CACHE
+                            let seasonHistory = [];
+                            if (currentUser) {
+                                try {
+                                    const histCacheKey = `vidtrackr_full_history_${currentUser.uid}`;
+                                    let fullHist = JSON.parse(localStorage.getItem(histCacheKey) || '[]');
+                                    if (!fullHist.length) {
+                                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(1500));
+                                        const snap = await getDocs(q);
+                                        snap.forEach(doc => fullHist.push(doc.data()));
+                                        localStorage.setItem(histCacheKey, JSON.stringify(fullHist));
+                                        localStorage.setItem(`${histCacheKey}_time`, Date.now().toString());
+                                    }
+                                    const tmdbShowId = item.ids?.tmdb || id;
+                                    seasonHistory = fullHist.filter(h => {
+                                        if (h.type !== 'episode' || !h.media) return false;
+                                        const hShowTmdb = String(h.media.show?.ids?.tmdb || h.media.ids?.show_tmdb || '');
+                                        const hSeason = h.media.season || h.media.season_number;
+                                        return hShowTmdb === String(tmdbShowId) && String(hSeason) === String(seasonNum);
+                                    });
+                                } catch(e) {}
+                            }
+
                             if (primaryDataSource === 'tmdb') {
                                 const tmdbShowId = item.ids.tmdb || id;
                                 const seasonData = await fetchTMDB(`/tv/${tmdbShowId}/season/${seasonNum}`);
@@ -4094,13 +4138,24 @@ let listsIn = [];
                                 const localRating = userRatings.get(cId) || userRatings.get(tId) || (tId && !isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null);
                                 const finalRating = localRating || ep.user_rating;
                                 
-                                const epRating = finalRating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded shadow-sm">You: ${finalRating}</span>` : '';
+                                const rDetails = userRatingDetails.get(cId) || userRatingDetails.get(tId) || (tId && !isNaN(Number(tId)) ? userRatingDetails.get(parseInt(tId)) : null);
+                                const ratedStr = rDetails?.ratedAt ? `<span class="text-[9px] text-gray-400 font-normal ml-1">(${new Date(rDetails.ratedAt).toLocaleDateString()})</span>` : '';
                                 
-                                const epHist = history.find(h => {
-                                    if (h.episode) return (h.episode.season === seasonNum || h.episode.season_number === seasonNum) && (h.episode.number === ep.number || h.episode.episode_number === ep.number);
-                                    return false;
-                                });
-                                const watchedDateStr = epHist ? `<span class="text-xs text-green-500 ml-3"><i class="fa-solid fa-calendar-check mr-1"></i> ${new Date(epHist.watched_at).toLocaleDateString()}</span>` : '';
+                                const epRating = finalRating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded shadow-sm">You: ${finalRating}${ratedStr}</span>` : '';
+                                
+                                // Filter all history logs for this specific episode to show ALL watches
+                                const epHistoryLogs = seasonHistory.filter(h => String(h.media?.number || h.media?.episode_number) === String(ep.number));
+                                
+                                // Map all watch dates and any history-specific ratings into badges
+                                const watchedDateStr = epHistoryLogs.length > 0 
+                                    ? `<div class="inline-flex flex-wrap items-center gap-1.5 ml-3">` + epHistoryLogs.map(h => {
+                                        const dateStr = new Date(h.watchedAt || h.loggedAt).toLocaleDateString();
+                                        // Add comments when writing code so can easily understand what it means and edit it later
+                                        // Extract rating from the specific history log if available
+                                        const rStr = h.rating ? ` <span class="text-yellow-500 ml-1 border-l border-green-800/50 pl-1"><i class="fa-solid fa-star text-[10px]"></i> ${h.rating}</span>` : '';
+                                        return `<span class="text-[10px] text-green-400 bg-green-900/20 px-2 py-0.5 rounded border border-green-800/50 flex items-center shadow-sm"><i class="fa-solid fa-calendar-check mr-1"></i> ${dateStr}${rStr}</span>`;
+                                    }).join('') + `</div>`
+                                    : '';
 
                                 const epPlayback = userPlayback.get(parseInt(ep.ids.trakt));
                                 const pbHtml = epPlayback ? `<div class="mt-2 w-full bg-gray-800 rounded-full h-1"><div class="bg-blue-500 h-1 rounded-full" style="width: ${epPlayback.progress}%"></div></div><p class="text-[10px] text-blue-400 mt-1">${Math.round(epPlayback.progress)}% resumed</p>` : '';
@@ -6092,15 +6147,27 @@ let listsIn = [];
                 let watchedMovies = [];
                 let showProgressData = [];
 
-                // 1. Fetch History from Firebase to calculate accurate local stats
-                const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"));
-                const snapshot = await getDocs(q);
+                // 1. Fetch History from Firebase to calculate accurate local stats (with caching)
+                let localHistory = [];
+                const histCacheKey = `vidtrackr_full_history_${currentUser.uid}`;
+                const histTimeKey = `${histCacheKey}_time`;
+                const now = Date.now();
                 
-                const localHistory = [];
-                snapshot.forEach(doc => localHistory.push(doc.data()));
+                // Use cached history if it's less than 2 minutes old to instantly load big datasets
+                if (localStorage.getItem(histCacheKey) && (now - parseInt(localStorage.getItem(histTimeKey) || 0) < 120000)) {
+                    localHistory = JSON.parse(localStorage.getItem(histCacheKey));
+                } else {
+                    const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"));
+                    const snapshot = await getDocs(q);
+                    snapshot.forEach(doc => localHistory.push(doc.data()));
+                    try {
+                        localStorage.setItem(histCacheKey, JSON.stringify(localHistory));
+                        localStorage.setItem(histTimeKey, now.toString());
+                    } catch(e) { console.warn("History cache full", e); }
+                }
 
-                // Hydrate runtime & images retrospectively before calculating stats
-                await window.enrichTMDBImages(localHistory);
+                // Removed blocking window.enrichTMDBImages(localHistory) to massively speed up progress page loading.
+                // It was trying to fetch TMDB data for every single history item before loading the page.
 
                 const uniqueShowIds = new Set();
                 
@@ -6298,8 +6365,9 @@ let listsIn = [];
                                     <h3 class="text-xl font-bold mb-4 flex items-center"><i class="fa-solid fa-ticket mr-2 text-[var(--primary)]"></i> Recent Films</h3>
                                     <div class="space-y-3">
                                         ${watchedMovies.length > 0 ? watchedMovies.map(h => {
-                                            const targetId = h.movie.ids?.trakt || h.movie.id;
-                                            const myRating = userRatings.get(parseInt(targetId));
+                                            const targetId = (primaryDataSource === 'tmdb' && h.movie.ids?.tmdb) ? h.movie.ids.tmdb : (h.movie.ids?.trakt || h.movie.id);
+                                            const fallbackId = h.movie.ids?.trakt || h.movie.ids?.tmdb || h.movie.id;
+                                            const myRating = userRatings.get(parseInt(targetId)) || userRatings.get(parseInt(fallbackId));
                                             const ratingDisplay = myRating 
                                                 ? `<span class="text-green-400 text-xs font-bold"><i class="fa-solid fa-star"></i> ${myRating}</span>` 
                                                 : `<span class="text-gray-600 text-xs">-</span>`;

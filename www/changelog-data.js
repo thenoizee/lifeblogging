@@ -1,6 +1,15 @@
 // /changelog-data.js
 
 export const changelogData = [
+{
+    version: "v16.19.0-alpha",
+    date: "2026-08-14",
+    changes: [
+        "In VidTrackr: Implemented local storage caching on the Progress page and removed blocking API hydration to drastically improve load speeds for large datasets.",
+        "In VidTrackr: Added the user's specific watch dates to episodes in the Season View list and fixed a cross-show episode matching bug.",
+        "In VidTrackr: Fixed the cast mapping for Episodes fetched natively via TMDB, including fetching aggregate credits to properly display series regulars alongside guest stars.",
+    ]
+},
     {
     version: "v16.18.0-alpha",
     date: "2026-08-13",
