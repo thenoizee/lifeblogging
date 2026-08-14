@@ -887,6 +887,9 @@
                 bInput.value = b;
             }
             updateColorInfo(hex);
+            
+            // Automatically regenerate the palette with the new valid color
+            generatePalette();
         }
 
         function updateColorInfo(hex) {
@@ -1174,13 +1177,17 @@
         
         // --- EVENT LISTENERS ---
         // Filters
-        colorFilterInput.addEventListener('change', (e) => {
-            activeColorFilter = e.target.value;
+        colorFilterInput.addEventListener('input', (e) => {
+            activeColorFilter = e.target.value.toUpperCase();
+            // Reverse: Map hex to Tailwind name in text search
+            const tw = findClosestTailwindColor(activeColorFilter);
+            colorSearchText.value = `${tw.name}-${tw.shade}`;
             renderSavedPalettes();
         });
 
         clearFiltersBtn.addEventListener('click', () => {
             labelFilterInput.value = '';
+            colorSearchText.value = '';
             colorFilterInput.value = '#000000'; // Visual reset only
             activeColorFilter = null;
             renderSavedPalettes();
@@ -1197,46 +1204,52 @@
         
         labelFilterInput.addEventListener('input', renderSavedPalettes);
 
-        // REPLACE THIS SECTION
-colorSearchText.addEventListener('input', (e) => {
-    const val = e.target.value.trim();
-    
-    // 1. Check for Tailwind Name (e.g., "green-600" or "sky-500")
-    // This splits the input into name (green) and shade (600)
-    const twMatch = val.match(/^([a-z]+)-(\d{2,3})$/i);
-    if (twMatch) {
-        const name = twMatch[1].toLowerCase();
-        const shade = twMatch[2];
-        
-        // Check if this color exists in your tailwindColors object
-        if (tailwindColors[name] && tailwindColors[name][shade]) {
-            activeColorFilter = tailwindColors[name][shade];
+        // Reversible Color Type Search
+        colorSearchText.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
             
-            // Optional: Visually show the user what hex they found
-            // You could use a tooltip, but console.log is good for verification
-            console.log(`Found Tailwind Color: ${name}-${shade} = ${activeColorFilter}`);
-            
-            renderSavedPalettes();
-            return;
-        }
-    }
+            // 1. Check for Tailwind Name
+            const twMatch = val.match(/^([a-z]+)-(\d{2,3})$/i);
+            if (twMatch) {
+                const name = twMatch[1].toLowerCase();
+                const shade = twMatch[2];
+                if (tailwindColors[name] && tailwindColors[name][shade]) {
+                    activeColorFilter = tailwindColors[name][shade].toUpperCase();
+                    colorFilterInput.value = activeColorFilter; // Visually show the hex in the swatch
+                    renderSavedPalettes();
+                    return;
+                }
+            }
 
-    // 2. Check if it's a valid Hex
-    if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(val)) {
-        activeColorFilter = val;
-        renderSavedPalettes();
-    } 
-    // 3. Check if it's RGB format (e.g., 255,0,0)
-    else if (/^\d{1,3},\d{1,3},\d{1,3}$/.test(val)) {
-        const parts = val.split(',');
-        activeColorFilter = rgbToHex(parseInt(parts[0]), parseInt(parts[1]), parseInt(parts[2]));
-        renderSavedPalettes();
-    } else {
-        // Clear filter if input is invalid/empty
-        activeColorFilter = null;
-        renderSavedPalettes();
-    }
-});
+            // 2. Check for Hex (handles with or without #)
+            let hexMatch = val;
+            if (/^[A-Fa-f0-9]{3,6}$/.test(hexMatch) && !hexMatch.startsWith('#')) {
+                hexMatch = '#' + hexMatch;
+            }
+            if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hexMatch)) {
+                activeColorFilter = hexMatch.toUpperCase();
+                colorFilterInput.value = activeColorFilter; // Sync swatch
+                // Reverse mapping info as placeholder/tooltip
+                const tw = findClosestTailwindColor(activeColorFilter);
+                colorSearchText.title = `Closest Tailwind: ${tw.name}-${tw.shade}`;
+                renderSavedPalettes();
+                return;
+            } 
+            
+            // 3. Check for RGB
+            if (/^\d{1,3},\d{1,3},\d{1,3}$/.test(val)) {
+                const parts = val.split(',');
+                activeColorFilter = rgbToHex(parseInt(parts[0]), parseInt(parts[1]), parseInt(parts[2]));
+                colorFilterInput.value = activeColorFilter; // Sync swatch
+                renderSavedPalettes();
+                return;
+            }
+
+            // Clear if invalid
+            activeColorFilter = null;
+            colorSearchText.title = "";
+            renderSavedPalettes();
+        });
 
         // Color Inputs
         colorPicker.addEventListener('input', () => updateColorInputs('picker'));

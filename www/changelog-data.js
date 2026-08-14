@@ -1,6 +1,15 @@
 // /changelog-data.js
 
 export const changelogData = [
+    {
+    version: "v16.20.0-alpha",
+    date: "2026-08-15",
+    changes: [
+        "In Converter: Changed the default string conversion mode to 'Binary → Text' and prioritized code-to-text options in the dropdown.",
+        "In Converter: Updated Firebase Auth initialization to use browserLocalPersistence, ensuring the system-wide token prevents random sign-outs.",
+        "In Colour Palette Generator: Implemented reversible color search to instantly map Hex/RGB inputs to their closest Tailwind name, and vice versa.",
+    ]
+},
 {
     version: "v16.19.0-alpha",
     date: "2026-08-14",
