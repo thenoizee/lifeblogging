@@ -281,6 +281,18 @@ input[type=range]::-moz-range-thumb {
             </div>
 
             <div class="space-y-3 mb-6">
+    <!-- Platform Tags Section: Allows users to log where they watched the media -->
+    <label class="text-sm font-bold text-gray-300">Platform</label>
+    <div class="flex flex-wrap gap-2 mb-3" id="platform-tags">
+        <button class="platform-option px-3 py-1 rounded-full text-xs font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Netflix">Netflix</button>
+        <button class="platform-option px-3 py-1 rounded-full text-xs font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Max">Max</button>
+        <button class="platform-option px-3 py-1 rounded-full text-xs font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Hulu">Hulu</button>
+        <button class="platform-option px-3 py-1 rounded-full text-xs font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Disney+">Prime</button>
+        <button class="platform-option px-3 py-1 rounded-full text-xs font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Theater">Theater</button>
+        <button class="platform-option px-3 py-1 rounded-full text-xs font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Airplane">Plane</button>
+        <button class="platform-option px-3 py-1 rounded-full text-xs font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Other">Other</button>
+    </div>
+
     <label class="text-sm font-bold text-gray-300">Watched On</label>
     <div class="grid grid-cols-2 gap-3">
         <button class="date-option p-3 rounded-lg border border-gray-600 hover:border-[var(--primary)] hover:bg-[var(--primary)]/10 transition text-center group bg-[var(--bg)]" data-date="now">
@@ -402,6 +414,10 @@ input[type=range]::-moz-range-thumb {
     let traktAccessToken = localStorage.getItem('trakt_token');
     let currentModalItem = null;
     let selectedDate = new Date().toISOString();
+    // Track the currently selected platform tag for logging
+    let selectedPlatform = null;
+    // Track active search request to prevent stale async responses from overwriting results
+    let activeSearchRequestId = 0;
     let userRatings = new Map(); 
     let userRatingDetails = new Map(); // <--- Added to track exact timestamps
     let userPlayback = new Map();
@@ -505,6 +521,14 @@ if (headerRight) {
                 clearTimeout(timeout);
                 timeout = setTimeout(later, wait);
             };
+        };
+
+        // Helper function to sanitize API text and prevent malicious script injection
+        const sanitizeHTML = (str) => {
+            if (!str) return '';
+            const tempDiv = document.createElement('div');
+            tempDiv.textContent = str;
+            return tempDiv.innerHTML;
         };
 
         const showToast = (msg, type = 'success') => {
@@ -1373,6 +1397,12 @@ window.openScrobbleModal = (data) => {
     document.getElementById('custom-progress').value = ''; 
     document.getElementById('modal-title').innerText = item.title;
     els.modal.classList.remove('hidden');
+
+    // Reset platform tags when modal opens
+    selectedPlatform = null;
+    document.querySelectorAll('.platform-option').forEach(b => {
+        b.classList.remove('bg-[var(--primary)]', 'text-white', 'border-[var(--primary)]');
+    });
     
     // Auto-set date
     const now = new Date(); 
@@ -1677,9 +1707,9 @@ window.removeProgress = async (playbackId) => {
             const typeColor = getTypeColor(type);
             const imgId = `card-img-${type}-${fallbackId}`; // Generate a targeting ID
             
-            // Normalize display title and year
-            const showTitle = data.show?.title || data.show?.name || item.show?.title || item.show?.name || item.episode?.show?.title;
-            let displayTitle = data.title || data.name || 'Unknown Title';
+            // Sanitize titles extracted from APIs before they hit the DOM
+            const showTitle = sanitizeHTML(data.show?.title || data.show?.name || item.show?.title || item.show?.name || item.episode?.show?.title);
+            let displayTitle = sanitizeHTML(data.title || data.name || 'Unknown Title');
             if (type === 'episode' && showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
             
             const dateString = data.release_date || data.first_air_date || data.air_date || data.released;
@@ -3016,14 +3046,14 @@ let listsIn = [];
                         // Request external_ids to capture IMDB IDs for episodes
                         tmdbEndpoint = `/tv/${resolvedShowId}/season/${epSeason}/episode/${epNum}?append_to_response=credits,videos,images,external_ids`;
                         
-                        // Fetch Show Info with external_ids for Stremio series ID resolution
-                        showInfo = await fetchTMDB(`/tv/${resolvedShowId}?append_to_response=external_ids,aggregate_credits`);
+                        // Add watch/providers here as well to fetch 'Where to Watch' data for the parent TV show
+                        showInfo = await fetchTMDB(`/tv/${resolvedShowId}?append_to_response=external_ids,aggregate_credits,watch/providers`);
                         showPeople = { cast: showInfo.aggregate_credits?.cast || showInfo.credits?.cast || [] };
                         showInfo.title = showInfo.name;
                         showInfo.ids = { tmdb: resolvedShowId, trakt: resolvedShowId, imdb: showInfo.external_ids?.imdb_id }; 
                     } else {
-                        // Request external_ids to capture IMDB IDs for movies and shows
-                        tmdbEndpoint = `/${tmdbType}/${id}?append_to_response=credits,videos,recommendations,external_ids`;
+                        // Add watch/providers to append_to_response to fetch 'Where to Watch' data alongside movie/show info
+                        tmdbEndpoint = `/${tmdbType}/${id}?append_to_response=credits,videos,recommendations,external_ids,watch/providers`;
                     }
                     
                     try {
@@ -3381,6 +3411,23 @@ let listsIn = [];
                 const network = item.network || (item.production_countries ? item.production_countries[0]?.name : 'N/A');
                 const trailerUrl = item.trailer ? (item.trailer.includes('youtube') ? item.trailer : null) : null;
                 const language = item.language ? item.language.toUpperCase() : 'EN';
+
+                // Extract 'Where to Watch' providers for US or GB (defaulting to GB, fallback to US)
+                const providersData = isEpisode ? showInfo['watch/providers']?.results : item['watch/providers']?.results;
+                const regionProviders = providersData ? (providersData.GB || providersData.US) : null;
+                let providersHtml = '';
+                if (regionProviders && regionProviders.flatrate) {
+                    providersHtml = `<div class="mt-4 border-t border-gray-800 pt-4">
+                        <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-3">Stream On</p>
+                        <div class="flex flex-wrap gap-3">
+                            ${regionProviders.flatrate.map(p => `
+                                <a href="${regionProviders.link}" target="_blank" class="hover:scale-110 transition-transform duration-200 block" title="Watch on ${p.provider_name}">
+                                    <img src="https://image.tmdb.org/t/p/w45${p.logo_path}" alt="${p.provider_name}" class="w-12 h-12 rounded-xl shadow-lg border border-gray-700 hover:border-[var(--primary)] transition-colors">
+                                </a>
+                            `).join('')}
+                        </div>
+                    </div>`;
+                }
                 const studios = item.production_companies ? item.production_companies.slice(0,2).map(c => c.name).join(', ') : 'N/A';
                 let director = 'N/A';
                 if(people && people.crew) {
@@ -3637,6 +3684,10 @@ let listsIn = [];
                                     <h4 class="text-[10px] uppercase font-bold text-gray-400 mb-3"><i class="fa-solid fa-play mr-1 text-blue-500"></i> Watch</h4>
                                     <div class="flex flex-col gap-2 flex-grow">
                                         <div id="stremio-placeholder" class="hidden w-full mb-2"></div>
+                                        
+                                        <!-- Injected here -->
+                                        ${providersHtml}
+
                                         <button onclick="location.hash='#detail/show/${showInfo.ids.trakt}/season/${item.season}'" class="w-full mt-auto bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-lg font-bold text-xs border border-gray-700 transition flex items-center justify-center gap-1.5"><i class="fa-solid fa-layer-group"></i> View Season ${item.season}</button>
                                     </div>
                                 </div>
@@ -3661,7 +3712,10 @@ let listsIn = [];
                                 ${network !== 'N/A' ? `<p><strong class="text-gray-300">Network:</strong> ${network}</p>` : ''}
                                 ${language !== 'EN' ? `<p><strong class="text-gray-300">Language:</strong> ${language}</p>` : ''}
                                 ${plays > 0 ? `<p><strong class="text-gray-300">Watch Count:</strong> ${plays} play${plays > 1 ? 's' : ''}</p><p><strong class="text-gray-300">Last Watched:</strong> ${history.length > 0 ? new Date(history[0].watched_at).toLocaleDateString() : 'Unknown'}</p>` : `<p><strong class="text-gray-300">Watch Count:</strong> 0 plays</p>`}
-                            </div>
+                            </div>
+                            
+                            <!-- Removed providersHtml from here -->
+
                             ${castHtml}
 
                             <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8">
@@ -3858,6 +3912,9 @@ let listsIn = [];
                                 ${network !== 'N/A' ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Network:</strong> ${network}</p>` : ''}
                                 ${type === 'show' ? '' : (plays > 0 ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Watch Count:</strong> ${plays} play${plays > 1 ? 's' : ''}</p>` : `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Watch Count:</strong> 0 plays</p>`)}
                             </div>
+                            
+                            <!-- Inject Where to Watch Providers here -->
+                            ${providersHtml}
                             
                             <!-- Overview Text -->
                             <p class="text-gray-300 text-sm md:text-base leading-relaxed mb-10 max-w-3xl">${item.overview || 'No overview available.'}</p>
@@ -6599,7 +6656,8 @@ let listsIn = [];
         }
 
         // New Database Helper: Logs completed or partial watches securely to Firebase
-        window.logWatchToFirebase = async (item, type, progress, date, rating = null) => {
+        // Updated to accept a platform parameter to log where it was watched
+        window.logWatchToFirebase = async (item, type, progress, date, rating = null, platform = null) => {
             if (!currentUser) return false;
             try {
                 // Robust ID extraction for movies, shows, and episodes
@@ -6629,6 +6687,8 @@ let listsIn = [];
                     loggedAt: new Date().toISOString(),
                     itemId: targetId ? String(targetId) : null
                 };
+                // Append platform if a tag was selected
+                if (platform) payload.platform = platform;
                 
                 if (rating) {
                     payload.rating = parseInt(rating);
@@ -6725,8 +6785,8 @@ let listsIn = [];
                         localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
                         localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
                     } else if (progress >= 100) {
-                        // Log full watch and clear partial progress
-                        await window.logWatchToFirebase(currentModalItem.item, type, progress, date, passedRating);
+                        // Log full watch with platform info and clear partial progress
+                        await window.logWatchToFirebase(currentModalItem.item, type, progress, date, passedRating, selectedPlatform);
                         if (currentUser) await deleteDoc(doc(db, `users/${currentUser.uid}/playback`, String(traktId)));
                         userPlayback.delete(parseInt(traktId));
                     }
@@ -6797,42 +6857,92 @@ let listsIn = [];
 
         async function loadSearch(rawQuery) {
             if (!rawQuery) return;
-            const currentHash = location.hash;
+            
+            // Increment and capture current request token to drop older pending requests
+            const currentRequestId = ++activeSearchRequestId;
             showLoader();
             els.content.innerHTML = '';
             
-            // Decode the query first to avoid double-encoding spaces
-            const query = decodeURIComponent(rawQuery);
+            // Decode search string properly
+            const query = decodeURIComponent(rawQuery).trim();
+            const cleanQuery = query.toLowerCase();
+
+            // Keep input text boxes synced with active URL query
+            const dSearch = document.getElementById('search-input');
+            const mSearch = document.getElementById('mobile-search-input');
+            if (dSearch && dSearch.value !== query) dSearch.value = query;
+            if (mSearch && mSearch.value !== query) mSearch.value = query;
 
             try {
-                if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
-                // Use TMDB multi search endpoint to get movies, tv, and people
-                const searchParams = new URLSearchParams({ 
-                    api_key: TMDB_API_KEY, 
-                    query: query,
-                    include_adult: false // Optional filter
-                });
+                // Fetch from TMDB using the multi-search endpoint
+                const rawData = await fetchTMDB(`/search/multi?query=${encodeURIComponent(query)}&include_adult=false`);
                 
-                // Call TMDB directly instead of the Trakt proxy
-                const res = await fetch(`https://api.themoviedb.org/3/search/multi?${searchParams.toString()}`);
-                const rawData = await res.json();
-                
-                // Extract results from TMDB response and normalize types
-                const data = (rawData.results || []).map(item => ({
+                // Abort if another search was triggered while waiting for the network
+                if (currentRequestId !== activeSearchRequestId || !location.hash.startsWith('#search')) {
+                    return;
+                }
+
+                let rawResults = rawData.results || [];
+
+                // Normalize media types
+                let data = rawResults.map(item => ({
                     ...item,
                     type: item.media_type === 'tv' ? 'show' : item.media_type
                 }));
 
+                // Filter out low-quality bootlegs, empty entries, and entries with 0 votes and no images
+                data = data.filter(item => {
+                    const hasImage = !!(item.poster_path || item.backdrop_path || item.profile_path);
+                    const voteCount = item.vote_count || 0;
+                    const pop = item.popularity || 0;
+
+                    // Keep items that have artwork or reasonable engagement
+                    if (!hasImage && voteCount === 0 && pop < 2.0) return false;
+                    return true;
+                });
+
+                // Prioritize proper shows and movies over one-offs, low-rated entries, and persons
+                data.sort((a, b) => {
+                    const titleA = (a.title || a.name || '').toLowerCase().trim();
+                    const titleB = (b.title || b.name || '').toLowerCase().trim();
+
+                    // 1. Exact title match priority
+                    const exactA = titleA === cleanQuery;
+                    const exactB = titleB === cleanQuery;
+                    if (exactA && !exactB) return -1;
+                    if (exactB && !exactA) return 1;
+
+                    // 2. Starts-with title match priority
+                    const startsA = titleA.startsWith(cleanQuery);
+                    const startsB = titleB.startsWith(cleanQuery);
+                    if (startsA && !startsB) return -1;
+                    if (startsB && !startsA) return 1;
+
+                    // 3. Media type priority: shows and movies always take precedence over person results
+                    const isMediaA = a.type === 'show' || a.type === 'movie';
+                    const isMediaB = b.type === 'show' || b.type === 'movie';
+                    if (isMediaA && !isMediaB) return -1;
+                    if (isMediaB && !isMediaA) return 1;
+
+                    // 4. Weight by vote count and popularity to surface official releases
+                    const scoreA = (a.popularity || 0) + ((a.vote_count || 0) * 0.1);
+                    const scoreB = (b.popularity || 0) + ((b.vote_count || 0) * 0.1);
+                    return scoreB - scoreA;
+                });
+
                 if (data.length === 0) {
-                    els.content.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-magnifying-glass text-6xl mb-4 opacity-50"></i><p>No results found.</p></div>`;
+                    els.content.innerHTML = `<div class="text-center p-20 text-gray-500 animate-fade"><i class="fa-solid fa-magnifying-glass text-6xl mb-4 opacity-50"></i><p>No results found for "${query}".</p></div>`;
                 } else {
                     renderGrid(`Results: "${query}"`, data);
                 }
             } catch (e) {
                 console.error(e);
                 showToast('Search failed', 'error');
+            } finally {
+                if (currentRequestId === activeSearchRequestId) {
+                    hideLoader();
+                }
             }
-            hideLoader();
         }
         
         async function renderListItems(listId, targetContainerId = null) { 
@@ -7080,7 +7190,8 @@ let listsIn = [];
         else if(hash.startsWith('#settings')) renderSettings();
         else if(hash === '#lists') renderLibrary('lists'); 
         else if(hash.startsWith('#lists/')) renderListItems(hash.split('/')[1]);
-        else if(hash.startsWith('#search')) loadSearch(hash.split('/')[1]);
+        // Extract the full query string past the '#search/' prefix, preserving inner slashes
+        else if(hash.startsWith('#search/')) loadSearch(hash.substring(8));
         else if(hash.startsWith('#detail')) {
             const parts = hash.split('/');
             // FIX: Prevent loading if IDs are undefined
@@ -7142,8 +7253,10 @@ document.getElementById('btn-mark-watched').onclick = () => {
         // --- Search Listener ---
     const searchHandler = debounce((e) => {
         const val = e.target.value.trim();
-        if (val.length > 1) location.hash = `#search/${val}`; 
-        else if (val.length === 0) history.back();
+        // Add encoding to handle spaces and symbols (like '?') securely
+        if (val.length > 1) location.hash = `#search/${encodeURIComponent(val)}`; 
+        // Only trigger history back if we are actively viewing a search results page
+        else if (val.length === 0 && location.hash.startsWith('#search')) history.back();
     }, 600);
 
     // Attach to the NEW dynamically injected input
@@ -7180,6 +7293,16 @@ document.getElementById('modal-title').innerText = data.title;
                 selectedDate = new Date().toISOString();
             }
             // ... (keep existing listeners for closing modal etc if you have them, otherwise just close the block)
+            // Handle Platform selection visually and update state variable
+            if(e.target.closest('.platform-option')) {
+                const btn = e.target.closest('.platform-option');
+                selectedPlatform = btn.dataset.platform;
+                document.querySelectorAll('.platform-option').forEach(b => {
+                    b.classList.remove('bg-[var(--primary)]', 'text-white', 'border-[var(--primary)]');
+                });
+                btn.classList.add('bg-[var(--primary)]', 'text-white', 'border-[var(--primary)]');
+            }
+
             if(e.target.closest('.date-option')) {
                 const type = e.target.closest('.date-option').dataset.date;
                 const d = new Date(); if(type === 'yesterday') d.setDate(d.getDate()-1);

@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.21.0-alpha",
+    date: "2026-08-15",
+    changes: [
+                "In VidTrackr: Fixed the search function by routing queries through the centralized fetchTMDB helper, correctly encoding URL hashes, preserving searches that include slashes, and preventing unexpected history back-navigation when clearing the input box.",
+                "In VidTrackr: Implemented smart search prioritization to rank official, high-popularity shows and movies above obscure or bootleg entries.",
+                "In VidTrackr: Added clickable Platform Tracking tags to the manual Scrobble Modal, which now sync with Firebase payloads.",
+                "In VidTrackr: Integrated TMDB watch/providers endpoints so regional streaming options appear seamlessly inside detail views.",
+    ]
+},
+    {
     version: "v16.20.0-alpha",
     date: "2026-08-15",
     changes: [
