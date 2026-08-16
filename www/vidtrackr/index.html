@@ -380,8 +380,8 @@ input[type=range]::-moz-range-thumb {
     import { changelogData } from '../changelog-data.js'; // Ensure this path is correct
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { initializeAuth, browserLocalPersistence, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    // FIX: Added query, orderBy, and limit for fetching from Firebase History
-    import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, orderBy, limit, where, updateDoc, increment, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    // FIX: Added initializeFirestore, onSnapshot, and IndexedDB persistence components to drastically reduce DB read costs
+    import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, onSnapshot, getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, query, orderBy, limit, where, updateDoc, increment, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     // Globally import the TMDB key so all functions can use it
     import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI, TMDB_API_KEY } from './api_keys.js';
 
@@ -398,7 +398,14 @@ input[type=range]::-moz-range-thumb {
     const auth = initializeAuth(app, {
         persistence: browserLocalPersistence
     });
-    const db = getFirestore(app);
+    
+    // Initialize Firestore with IndexedDB persistent caching.
+    // This allows the app to load instantly from local storage, enables true offline mode,
+    // and drastically reduces Firebase read costs by only fetching delta changes from the server.
+    const db = initializeFirestore(app, {
+        localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+    });
+    
     const TRAKT_API_URL = 'https://us-central1-sammy-7298f.cloudfunctions.net/traktProxy';
     const PLACEHOLDER_IMG = 'https://placehold.co/400x600/1f2937/FFF?text=No+Image';
 
@@ -411,6 +418,8 @@ input[type=range]::-moz-range-thumb {
 
     // --- State ---
     let currentUser = null;
+    let globalHistoryListener = null;
+    window.globalHistoryCache = [];
     let traktAccessToken = localStorage.getItem('trakt_token');
     let currentModalItem = null;
     let selectedDate = new Date().toISOString();
@@ -499,12 +508,20 @@ if (headerRight) {
         // --- Helpers ---
         // Define fetchTMDB globally and attach to window so inline handlers and nested functions can always access it
         window.fetchTMDB = async (endpoint) => {
+            // Speed up loading by caching responses in sessionStorage so UI doesn't block on revisit
+            const cacheKey = `vt_tmdb_${endpoint}`;
+            const cached = sessionStorage.getItem(cacheKey);
+            if (cached) return JSON.parse(cached);
+
             // FIX: Dynamically determine whether to use '?' or '&' to prevent malformed URLs
             const separator = endpoint.includes('?') ? '&' : '?';
             const url = `https://api.themoviedb.org/3${endpoint}${separator}api_key=${TMDB_API_KEY}`;
             const res = await fetch(url);
             if (!res.ok) throw new Error('TMDB API Error');
-            return await res.json();
+            
+            const data = await res.json();
+            try { sessionStorage.setItem(cacheKey, JSON.stringify(data)); } catch(e) {}
+            return data;
         };
         const fetchTMDB = window.fetchTMDB;
 
@@ -1210,10 +1227,17 @@ if (headerRight) {
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
             btn.disabled = true;
             try {
+                let deletedItemData = null;
+
                 // 1. Delete from Firebase (Primary DB)
                 // Firebase IDs are alphanumeric strings, Trakt IDs are numbers. We check if it's a string/Firebase ID.
                 if (currentUser && historyId && isNaN(Number(historyId))) {
-                    await deleteDoc(doc(db, `users/${currentUser.uid}/history`, historyId));
+                    // Fetch the document first so we know which show to rollback in the progress table
+                    const docRef = doc(db, `users/${currentUser.uid}/history`, historyId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) deletedItemData = docSnap.data();
+                    
+                    await deleteDoc(docRef);
                 }
 
                 // 2. Delete from Trakt (If connected)
@@ -1233,11 +1257,70 @@ if (headerRight) {
                     });
                 }
                 
+                // Targeted NoSQL Rollback: Recalculate this specific show's progress so "Last Watched" dates update
+                if (currentUser && type === 'episode' && deletedItemData && deletedItemData.media) {
+                    const media = deletedItemData.media;
+                    const showTmdbId = media.show?.ids?.tmdb || media.ids?.show_tmdb || media.show?.ids?.trakt;
+                    
+                    if (showTmdbId) {
+                        // Fetch remaining history to find the new max episode and latest date
+                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(2500));
+                        const snap = await getDocs(q);
+                        
+                        let maxS = 0, maxE = 0;
+                        let latestDate = null;
+                        let watchCount = 0;
+                        
+                        snap.forEach(d => {
+                            const data = d.data();
+                            if (data.type === 'episode' && data.media) {
+                                const hTmdbId = data.media.show?.ids?.tmdb || data.media.ids?.show_tmdb || data.media.show?.ids?.trakt;
+                                if (String(hTmdbId) === String(showTmdbId)) {
+                                    watchCount++;
+                                    const s = parseInt(data.media.season !== undefined ? data.media.season : (data.media.season_number !== undefined ? data.media.season_number : 1));
+                                    const e = parseInt(data.media.number !== undefined ? data.media.number : (data.media.episode_number !== undefined ? data.media.episode_number : 1));
+                                    const wDate = data.watchedAt || data.loggedAt;
+                                    
+                                    if (s > maxS || (s === maxS && e > maxE)) {
+                                        maxS = s;
+                                        maxE = e;
+                                    }
+                                    if (!latestDate || new Date(wDate) > new Date(latestDate)) {
+                                        latestDate = wDate;
+                                    }
+                                }
+                            }
+                        });
+                        
+                        const progressRef = doc(db, `users/${currentUser.uid}/series_progress`, String(showTmdbId));
+                        if (watchCount === 0) {
+                            // If no episodes left, delete the progress document so it disappears from Up Next
+                            await deleteDoc(progressRef);
+                        } else {
+                            // Otherwise, roll back to the new max limits and latest date
+                            await setDoc(progressRef, {
+                                maxSeason: maxS,
+                                maxEpisode: maxE,
+                                lastWatchedAt: latestDate
+                            }, { merge: true });
+                        }
+                    }
+                }
+
                 // Force invalidate Up Next cache
                 localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
                 localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
                 
                 showToast('Log removed successfully');
+                
+                // Refresh the page if on Detail view to update the "Watch Count" and "Last Watched" text
+                if (location.hash.startsWith('#detail')) {
+                    const parts = location.hash.split('/');
+                    if(parts[3] === 'season' && parts[4]) window.renderDetail(parts[1], parts[2], parts[4]);
+                    else window.renderDetail(parts[1], parts[2]);
+                    return; // Prevent standard row removal logic since page reloads
+                }
+
                 const row = btn.closest('.card') || btn.closest('.history-row');
                 if(row) { 
                     row.style.transition = "opacity 0.5s"; 
@@ -1888,9 +1971,9 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
             const cachedData = JSON.parse(cached);
             rendererFn(cachedData, true);
         } catch(e) { console.warn("Cache parse error", e); }
-    } else {
-        showLoader();
     }
+    // Global showLoader() removed here. 
+    // Containers now rely on their own localized HTML spinners to prevent screen blocking.
 
     // 2. Skip silent fetch if TTL hasn't expired yet to save Firebase reads
     if (cached && lastFetch && (now - parseInt(lastFetch) < ttlMs)) {
@@ -1920,7 +2003,7 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
             statusEl.classList.add('text-red-500', 'border-red-500/50');
         }
     } finally {
-        if (!cached) hideLoader();
+        // Global hideLoader() removed as it is no longer blocking the screen
     }
 }
 
@@ -1950,9 +2033,10 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
                 } catch(e) { console.warn("Could not load local ratings", e); }
             }
 
-            if (!traktAccessToken) return; // Skip Trakt request if token is missing
+            // Skip Trakt request if token is missing or if we are primarily using TMDB to prevent 403 Forbidden console spam
+            if (!traktAccessToken || primaryDataSource !== 'trakt') return; 
             try {
-                const [movies, shows, episodes] = await Promise.all([ 
+                const [movies, shows, episodes] = await Promise.all([
                     fetchDirect('/sync/ratings/movies?limit=1000'), 
                     fetchDirect('/sync/ratings/shows?limit=1000'), 
                     fetchDirect('/sync/ratings/episodes?limit=1000') 
@@ -2046,8 +2130,14 @@ async function renderDashboard() {
             <i class="fa-solid fa-chart-line absolute -bottom-6 -right-6 text-[8rem] md:text-[10rem] opacity-10 rotate-12"></i>
         </div>
 
-        <div id="up-next-container" class="mb-12 hidden animate-fade"></div>
-        <div id="last-watched-container" class="mb-12 hidden animate-fade"></div>
+        <div id="up-next-container" class="mb-12 animate-fade">
+            <h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2>
+            <div class="flex items-center gap-3 text-gray-500 p-4"><div class="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div> <span class="text-sm font-bold uppercase tracking-widest">Loading...</span></div>
+        </div>
+        <div id="last-watched-container" class="mb-12 animate-fade">
+            <h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-purple-500">Recently Watched</h2>
+            <div class="flex items-center gap-3 text-gray-500 p-4"><div class="animate-spin rounded-full h-5 w-5 border-2 border-purple-500 border-t-transparent"></div> <span class="text-sm font-bold uppercase tracking-widest">Loading...</span></div>
+        </div>
         <div id="calendar-container" class="mb-12 hidden animate-fade"></div>
         
         <div id="friends-feed-container" class="mb-12 hidden animate-fade"></div>
@@ -2080,7 +2170,8 @@ loadCalendar();
     }
     
     try {
-        if (primaryDataSource === 'tmdb' && !traktAccessToken) {
+        // Prevent Trakt API calls for stats if we are actively using TMDB mode
+        if (primaryDataSource === 'tmdb' || !traktAccessToken) {
             document.getElementById('quick-stats').style.display = 'none';
         } else {
             const stats = await fetchDirect('/users/me/stats');
@@ -2096,30 +2187,26 @@ loadCalendar();
             if (!container) return;
 
             try {
-                // FIX: Rerouting feed to pull from the new Firebase History collection
-                const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(12));
-                const snapshot = await getDocs(q);
+                // Utilize the global real-time cache instead of executing a new getDocs() query.
+                // This eliminates database reads for this component while providing instant Optimistic UI updates.
+                const cachedHistory = window.globalHistoryCache.slice(0, 12);
                 
                 const containerAfter = document.getElementById('last-watched-container');
                 if (!containerAfter) return; // Abort if user navigated away
                 
-                if (snapshot.empty) {
+                if (cachedHistory.length === 0) {
                     container.classList.add('hidden');
                     return;
                 }
 
-                const history = [];
-                snapshot.forEach(docSnap => {
-                    const data = docSnap.data();
-                    history.push({
-                        id: docSnap.id,
-                        type: data.type,
-                        media: data.media,
-                        watched_at: data.watchedAt || data.loggedAt,
-                        rating: data.rating,
-                        rated_at: data.ratedAt
-                    });
-                });
+                const history = cachedHistory.map(data => ({
+                    id: data._docId,
+                    type: data.type,
+                    media: data.media,
+                    watched_at: data.watchedAt || data.loggedAt,
+                    rating: data.rating,
+                    rated_at: data.ratedAt
+                }));
 
                 // Fetch missing live images for history items before rendering
                 await window.enrichTMDBImages(history);
@@ -2235,6 +2322,7 @@ loadCalendar();
             const container = document.getElementById('calendar-container');
             if (!container) return;
             try {
+                if (primaryDataSource !== 'trakt') return; // Silence 403 errors when using TMDB mode
                 const today = new Date().toISOString().split('T')[0];
                 const calendar = await fetchDirect(`/calendars/my/shows/${today}/7?extended=images`);
                 
@@ -2324,11 +2412,27 @@ loadCalendar();
 
         window.rateDirect = async (id, type, rating, skipLog = false) => {
             if (event) event.stopPropagation();
-            showLoader();
+            
+            // Optimistic UI Update: Instantly apply the rating to the UI state
+            userRatings.set(parseInt(id), parseInt(rating)); 
+            userRatingDetails.set(parseInt(id), { rating: parseInt(rating), ratedAt: new Date().toISOString() });
+            
+            // Instantly visually refresh UI components before network request finishes
+            if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) loadUpNext();
+            if (document.getElementById('last-watched-container') && !document.getElementById('last-watched-container').classList.contains('hidden')) loadLastWatched();
+            if (document.getElementById('history-list-container')) renderHistory(1);
+            if (location.hash.startsWith('#detail')) {
+                 const parts = location.hash.split('/');
+                 if(parts[3] === 'season' && parts[4]) window.renderDetail(parts[1], parts[2], parts[4]);
+                 else window.renderDetail(parts[1], parts[2]);
+            }
+
             try {
                 const ids = { ids: { trakt: id } };
                 const rootKey = type === 'episode' ? 'episodes' : 'movies';
                 const payloadRate = { [rootKey]: [{ ...ids, rating: parseInt(rating), rated_at: new Date().toISOString() }] };
+                
+                // 1. Log to Trakt (if connected)
                 
                 // 1. Log to Trakt (if connected)
                 if (traktAccessToken && primaryDataSource === 'trakt') {
@@ -2348,14 +2452,12 @@ loadCalendar();
                 }
                 
                 showToast(skipLog ? `Rated ${rating}/10!` : `Rated ${rating}/10 & Logged!`);
-                userRatings.set(parseInt(id), parseInt(rating)); 
-                userRatingDetails.set(parseInt(id), { rating: parseInt(rating), ratedAt: new Date().toISOString() });
-                
-                if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) loadUpNext();
-                if (document.getElementById('last-watched-container') && !document.getElementById('last-watched-container').classList.contains('hidden')) loadLastWatched();
-                if (document.getElementById('history-list-container')) renderHistory(1); // Refresh history to show new rating
-            } catch(e) { showToast('Action failed', 'error'); } 
-            hideLoader();
+            } catch(e) { 
+                showToast('Action failed', 'error'); 
+                // Revert optimistic state on failure
+                userRatings.delete(parseInt(id)); 
+                userRatingDetails.delete(parseInt(id));
+            } 
         }
         
 async function loadUpNext() {
@@ -2367,58 +2469,49 @@ async function loadUpNext() {
                     if (!currentUser) return [];
 
                     try {
-                        // Fetch user history from Firebase
-                        // Increased limit to 1000 to catch older shows and accurately calculate maximum progress.
-                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(1000));
+                        // Fetch the pre-aggregated Series Progress from Firebase NoSQL Denormalization
+                        const q = query(collection(db, `users/${currentUser.uid}/series_progress`), orderBy("lastWatchedAt", "desc"), limit(40));
                         const snapshot = await getDocs(q);
-                        if (snapshot.empty) return [];
-
-                        const historyItems = [];
-                        snapshot.forEach(docSnap => historyItems.push(docSnap.data()));
-
-                        // 1. Group episodes by Show to find the absolute highest watched position
-                        const showMap = new Map();
-
-                        historyItems.forEach(item => {
-                            if (item.type !== 'episode') return;
-                            
-                            const media = item.media || item.episode;
-                            if (!media) return;
-                            
-                            const showObj = media.show || item.show;
-                            if (!showObj) return;
-
-                            const tmdbId = showObj.ids?.tmdb || media.ids?.tmdb;
-                            const identifier = tmdbId || showObj.title;
-
-                            if (!identifier) return;
-
-                            const currentS = parseInt(media.season || media.season_number || 1);
-                            const currentE = parseInt(media.number || media.episode_number || 1);
-
-                            if (!showMap.has(identifier)) {
-                                // Initialize with the most recently watched date to order the queue correctly
-                                showMap.set(identifier, {
-                                    showTmdbId: tmdbId,
-                                    showTitle: showObj.title,
-                                    showObj: showObj,
-                                    s: currentS,
-                                    e: currentE,
-                                    watchedAt: item.watchedAt || item.loggedAt
+                        
+                        // Fallback to history array if the denormalized collection is empty (e.g. they haven't logged anything since the update)
+                        let activeShows = [];
+                        if (!snapshot.empty) {
+                            snapshot.forEach(docSnap => {
+                                const p = docSnap.data();
+                                activeShows.push({
+                                    showTmdbId: p.showTmdbId,
+                                    showTitle: p.showObj?.title,
+                                    showObj: p.showObj,
+                                    s: p.maxSeason,
+                                    e: p.maxEpisode,
+                                    watchedAt: p.lastWatchedAt
                                 });
-                            } else {
-                                // Check if we found a later episode watched further back in time, and update the max limits
-                                const entry = showMap.get(identifier);
-                                if (currentS > entry.s || (currentS === entry.s && currentE > entry.e)) {
-                                    entry.s = currentS;
-                                    entry.e = currentE;
+                            });
+                        } else {
+                            // Run the legacy fallback grouping just in case so the app doesn't break
+                            const hq = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(500));
+                            const hSnap = await getDocs(hq);
+                            const showMap = new Map();
+                            hSnap.forEach(docSnap => {
+                                const item = docSnap.data();
+                                if (item.type !== 'episode' || !item.media) return;
+                                const media = item.media;
+                                const showObj = media.show;
+                                if (!showObj) return;
+                                const tmdbId = showObj.ids?.tmdb || media.ids?.tmdb;
+                                const identifier = String(tmdbId || showObj.title).trim();
+                                if (!identifier || identifier === 'undefined') return;
+                                const currentS = parseInt(media.season !== undefined ? media.season : (media.season_number !== undefined ? media.season_number : 1));
+                                const currentE = parseInt(media.number !== undefined ? media.number : (media.episode_number !== undefined ? media.episode_number : 1));
+                                if (!showMap.has(identifier)) {
+                                    showMap.set(identifier, { showTmdbId: tmdbId, showTitle: showObj.title, showObj: showObj, s: currentS, e: currentE, watchedAt: item.watchedAt || item.loggedAt });
+                                } else {
+                                    const entry = showMap.get(identifier);
+                                    if (currentS > entry.s || (currentS === entry.s && currentE > entry.e)) { entry.s = currentS; entry.e = currentE; }
                                 }
-                            }
-                        });
-
-                        // 2. Query TMDB to check if the show is completed, and if not, grab the next episode
-                        // INCREASED SLICE to 40 so completed shows don't suffocate active shows
-                        const activeShows = Array.from(showMap.values()).slice(0, 40);
+                            });
+                            activeShows = Array.from(showMap.values()).slice(0, 40);
+                        }
                         
                         // Chunk requests to avoid TMDB 429 Rate Limits
                         const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
@@ -2521,17 +2614,20 @@ async function loadUpNext() {
                         });
 
                         // Create a set of ALL watched episodes to prevent old shows from suggesting already watched episodes
+                        // We use the globalHistoryCache instead of a dedicated database read to save costs and memory
                         const watchedCompositeIds = new Set();
-                        historyItems.forEach(item => {
-                            if (item.type === 'episode') {
-                                const media = item.media || item.episode;
-                                const showObj = media?.show || item.show;
-                                const sTmdb = showObj?.ids?.tmdb || media?.ids?.tmdb;
-                                const s = media?.season || media?.season_number;
-                                const e = media?.number || media?.episode_number;
-                                if (sTmdb && s !== undefined && e !== undefined) watchedCompositeIds.add(`${sTmdb}-${s}-${e}`);
-                            }
-                        });
+                        if (window.globalHistoryCache) {
+                            window.globalHistoryCache.forEach(item => {
+                                if (item.type === 'episode') {
+                                    const media = item.media || item.episode;
+                                    const showObj = media?.show || item.show;
+                                    const sTmdb = showObj?.ids?.tmdb || media?.ids?.tmdb;
+                                    const s = media?.season !== undefined ? media?.season : media?.season_number;
+                                    const e = media?.number !== undefined ? media?.number : media?.episode_number;
+                                    if (sTmdb && s !== undefined && e !== undefined) watchedCompositeIds.add(`${sTmdb}-${s}-${e}`);
+                                }
+                            });
+                        }
 
                         // Filter out nextEpisodes that are already partially watched OR fully watched
                         const uniqueNextEpisodes = nextEpisodes.filter(nx => {
@@ -2709,6 +2805,7 @@ async function loadFriendsFeed() {
 
     try {
         // Step 1: Get your list of friends (Limit to 6 to prevent hitting API limits)
+        if (primaryDataSource !== 'trakt') return; // Silence 403 errors when using TMDB mode
         const friends = await fetchDirect('/users/me/friends?limit=6');
         
         if (!friends || friends.length === 0) {
@@ -2927,8 +3024,8 @@ let listsIn = [];
                     const matchTraktId = String(item?.ids?.trakt || id || '');
                     const matchTmdbId = String(item?.ids?.tmdb || item?.id || (typeof tmdbId !== 'undefined' ? tmdbId : '') || '');
                     
-                    const targetSeason = String(item?.season || item?.season_number || (typeof epSeason !== 'undefined' ? epSeason : 1));
-                    const targetEpNum = String(item?.number || item?.episode_number || (typeof epNum !== 'undefined' ? epNum : 1));
+                    const targetSeason = String(item?.season !== undefined ? item.season : (item?.season_number !== undefined ? item.season_number : (typeof epSeason !== 'undefined' ? epSeason : 1)));
+                    const targetEpNum = String(item?.number !== undefined ? item.number : (item?.episode_number !== undefined ? item.episode_number : (typeof epNum !== 'undefined' ? epNum : 1)));
                     const currentShowTitle = String(showInfo?.title || showInfo?.name || '').toLowerCase().trim();
                     const currentShowTmdbId = String(showInfo?.ids?.tmdb || (typeof resolvedShowId !== 'undefined' ? resolvedShowId : ''));
                     
@@ -2987,8 +3084,8 @@ let listsIn = [];
                                               (histItemId && (histItemId === matchTraktId || histItemId === matchTmdbId || histItemId === String(id)));
 
                             if (type === 'episode') {
-                                const hSeason = String(media.season || media.season_number || '');
-                                const hEp = String(media.number || media.episode_number || '');
+                                const hSeason = String(media.season !== undefined ? media.season : (media.season_number !== undefined ? media.season_number : ''));
+                                const hEp = String(media.number !== undefined ? media.number : (media.episode_number !== undefined ? media.episode_number : ''));
                                 const hShowTitle = String(media.show?.title || media.show?.name || '').toLowerCase().trim();
                                 const hShowTmdbId = String(media.show?.ids?.tmdb || '');
                                 
@@ -4282,8 +4379,8 @@ let listsIn = [];
                 const baseStremioUrl = 'stremio:///detail';
 
                 if (type === 'episode' && showInfo && showInfo.ids && showInfo.ids.imdb) {
-                    const seasonNum = item.season || item.season_number;
-                    const epNum = item.number || item.episode_number;
+                    const seasonNum = item.season !== undefined ? item.season : item.season_number;
+                    const epNum = item.number !== undefined ? item.number : item.episode_number;
                     targetUrl = `${baseStremioUrl}/series/${showInfo.ids.imdb}/${showInfo.ids.imdb}:${seasonNum}:${epNum}`;
                 } else if (item && item.ids && item.ids.imdb) {
                     targetUrl = `${baseStremioUrl}/${type === 'movie' ? 'movie' : 'series'}/${item.ids.imdb}`;
@@ -4582,7 +4679,14 @@ let listsIn = [];
     }
 }
             
-            isFetchingHistory = true; showLoader();
+            isFetchingHistory = true;
+            // Safely inject the spinner INTO the list container instead of overwriting the entire page layout
+            if (page === 1) {
+                const listContainer = document.getElementById('history-list-container');
+                if (listContainer) {
+                    listContainer.innerHTML = `<div class="flex justify-center items-center h-64"><div class="animate-spin rounded-full h-12 w-12 border-4 border-[var(--primary)] border-t-transparent"></div></div>`;
+                }
+            }
             
             (async () => {
                 try {
@@ -4678,8 +4782,8 @@ let listsIn = [];
                             let compositeId = '';
                             if (item.type === 'episode') {
                                 const sTmdb = item.show?.ids?.tmdb || mediaObj.show?.ids?.tmdb;
-                                const s = mediaObj.season || mediaObj.season_number;
-                                const e = mediaObj.number || mediaObj.episode_number;
+                                const s = mediaObj.season !== undefined ? mediaObj.season : mediaObj.season_number;
+                                const e = mediaObj.number !== undefined ? mediaObj.number : mediaObj.episode_number;
                                 if (sTmdb && s !== undefined && e !== undefined) compositeId = `${sTmdb}-${s}-${e}`;
                             }
                             
@@ -4702,8 +4806,8 @@ let listsIn = [];
                             let compositeId = '';
                             if (item.type === 'episode') {
                                 const sTmdb = item.show?.ids?.tmdb || mediaObj.show?.ids?.tmdb;
-                                const s = mediaObj.season || mediaObj.season_number;
-                                const e = mediaObj.number || mediaObj.episode_number;
+                                const s = mediaObj.season !== undefined ? mediaObj.season : mediaObj.season_number;
+                                const e = mediaObj.number !== undefined ? mediaObj.number : mediaObj.episode_number;
                                 if (sTmdb && s !== undefined && e !== undefined) compositeId = `${sTmdb}-${s}-${e}`;
                             }
                             
@@ -4719,6 +4823,13 @@ let listsIn = [];
 
                     const container = document.getElementById('history-list-container');
                     const loadMoreContainer = document.getElementById('load-more-container');
+                    
+                    // Abort silently if the user navigated away from the History tab before the fetch completed
+                    if (!container || !loadMoreContainer) {
+                        isFetchingHistory = false;
+                        hideLoader();
+                        return;
+                    }
 
                     if (data.length === 0) {
                         if (fetchedCount >= page * 100) {
@@ -5363,8 +5474,8 @@ let listsIn = [];
                                                 const v = validItems[i];
                                                 statsEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-[var(--primary)]"></i> Importing ${i + 1} of ${validItems.length}...`;
                                                 // Prevent the history import from passing the rating parameter to avoid injecting 'now' as the rating timestamp
-                                                const result = await window.logWatchToFirebase(v.mediaData, v.type, 100, v.dateVal, null);
-                                                
+                                                // We pass 'true' as the final parameter to flag it as an import and avoid NoSQL read spikes
+                                                const result = await window.logWatchToFirebase(v.mediaData, v.type, 100, v.dateVal, null, null, true);
                                                 if (result === 'duplicate') {
                                                     skippedCount++;
                                                 } else if (result === true) {
@@ -6039,7 +6150,8 @@ let listsIn = [];
             
             try {
                 // 1. Fetch user history from Firebase
-                const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(600));
+                // Increased to 2500 so it captures all actively watched shows deep in history
+                const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(2500));
                 const snapshot = await getDocs(q);
                 const historyItems = [];
                 snapshot.forEach(docSnap => historyItems.push(docSnap.data()));
@@ -6056,12 +6168,16 @@ let listsIn = [];
                     if (!showObj) return;
 
                     const tmdbId = showObj.ids?.tmdb || media.ids?.tmdb;
-                    const identifier = tmdbId || showObj.title;
-                    if (!identifier) return;
+                    // Force identifier to a string to prevent Javascript from treating 123 and "123" as two different shows
+                    const identifier = String(tmdbId || showObj.title).trim();
+                    if (!identifier || identifier === 'undefined') return;
 
-                    const s = parseInt(media.season || media.season_number || 1);
-                    const e = parseInt(media.number || media.episode_number || 1);
+                    const s = parseInt(media.season !== undefined ? media.season : (media.season_number !== undefined ? media.season_number : 1));
+                    const e = parseInt(media.number !== undefined ? media.number : (media.episode_number !== undefined ? media.episode_number : 1));
                     const epString = `S${s}E${e}`;
+                    
+                    // Capture the timestamp of the actual watch event
+                    const watchTime = item.watchedAt || item.loggedAt || new Date().toISOString();
 
                     if (!showMap.has(identifier)) {
                         showMap.set(identifier, {
@@ -6070,7 +6186,8 @@ let listsIn = [];
                             showObj: showObj,
                             watchedEps: new Set(),
                             maxSeason: s,
-                            maxEpisode: e
+                            maxEpisode: e,
+                            watchedAt: watchTime
                         });
                     }
                     
@@ -6082,7 +6199,29 @@ let listsIn = [];
                         entry.maxSeason = s;
                         entry.maxEpisode = e;
                     }
+                    
+                    // Keep the most recent watch timestamp for accurate sorting in Up Next
+                    if (new Date(watchTime) > new Date(entry.watchedAt)) {
+                        entry.watchedAt = watchTime;
+                    }
                 });
+
+                // WRITE DENORMALIZED STATE TO DB
+                // This permanently caches the calculations so loadUpNext() can fetch them instantly
+                if (currentUser) {
+                    const batchWrites = Array.from(showMap.values()).map(entry => {
+                        const progressRef = doc(db, `users/${currentUser.uid}/series_progress`, String(entry.showTmdbId));
+                        return setDoc(progressRef, {
+                            showTmdbId: entry.showTmdbId,
+                            showObj: entry.showObj,
+                            maxSeason: entry.maxSeason,
+                            maxEpisode: entry.maxEpisode,
+                            lastWatchedAt: entry.watchedAt
+                        }, { merge: true });
+                    });
+                    // Execute in background
+                    Promise.all(batchWrites).catch(e => console.log('Denormalization push failed', e));
+                }
 
                 // Grab the top 10 most recently watched shows
                 const activeShows = Array.from(showMap.values()).slice(0, 10);
@@ -6657,7 +6796,7 @@ let listsIn = [];
 
         // New Database Helper: Logs completed or partial watches securely to Firebase
         // Updated to accept a platform parameter to log where it was watched
-        window.logWatchToFirebase = async (item, type, progress, date, rating = null, platform = null) => {
+        window.logWatchToFirebase = async (item, type, progress, date, rating = null, platform = null, isImport = false) => {
             if (!currentUser) return false;
             try {
                 // Robust ID extraction for movies, shows, and episodes
@@ -6667,8 +6806,8 @@ let listsIn = [];
                 // and correctly loads older history from the DB without hitting the 200-item fallback limit.
                 if (type === 'episode') {
                     const sTmdb = item.show?.ids?.tmdb;
-                    const s = item.season || item.season_number;
-                    const e = item.number || item.episode_number;
+                    const s = item.season !== undefined ? item.season : item.season_number;
+                    const e = item.number !== undefined ? item.number : item.episode_number;
                     if (sTmdb && s !== undefined && e !== undefined) {
                         targetId = `${sTmdb}-${s}-${e}`;
                     } else if (!targetId) {
@@ -6705,15 +6844,42 @@ let listsIn = [];
                     ? doc(db, `users/${currentUser.uid}/history`, docId) 
                     : doc(collection(db, `users/${currentUser.uid}/history`));
 
-                // Read from DB first to accurately detect and skip duplicate exact-timestamp entries
-                if (docId) {
-                    const existingSnap = await getDoc(docRef);
-                    if (existingSnap.exists()) {
-                        return 'duplicate'; // Return special flag so importer knows to skip
+                // We use setDoc with merge:true and a deterministic ID (Item ID + Watch Timestamp) 
+                // to automatically upsert data. This prevents duplicate entries while completely 
+                // eliminating the need for an expensive getDoc() read operation before writing!
+                await setDoc(docRef, payload, { merge: true });
+                
+                // --- NoSQL Denormalization for Series Progress ---
+                // We only execute this if it's NOT a bulk import to protect your database read costs.
+                if (type === 'episode' && progress >= 100 && !isImport) {
+                    const showTmdbId = item.show?.ids?.tmdb || item.show?.ids?.trakt;
+                    const s = parseInt(item.season !== undefined ? item.season : item.season_number);
+                    const e = parseInt(item.number !== undefined ? item.number : item.episode_number);
+                    
+                    if (showTmdbId && !isNaN(s) && !isNaN(e)) {
+                        const progressRef = doc(db, `users/${currentUser.uid}/series_progress`, String(showTmdbId));
+                        const pSnap = await getDoc(progressRef);
+                        let maxS = s, maxE = e;
+                        
+                        if (pSnap.exists()) {
+                            const pData = pSnap.data();
+                            maxS = pData.maxSeason || 1;
+                            maxE = pData.maxEpisode || 1;
+                            if (s > maxS || (s === maxS && e > maxE)) {
+                                maxS = s;
+                                maxE = e;
+                            }
+                        }
+                        
+                        await setDoc(progressRef, {
+                            showTmdbId: showTmdbId,
+                            showObj: item.show,
+                            maxSeason: maxS,
+                            maxEpisode: maxE,
+                            lastWatchedAt: date || new Date().toISOString()
+                        }, { merge: true });
                     }
                 }
-
-                await setDoc(docRef, payload, { merge: true });
                 
                 // Force invalidate Up Next cache so it recalculates with the manual entry
                 localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
@@ -7360,14 +7526,53 @@ document.getElementById('modal-title').innerText = data.title;
                 }
             } catch(e) { console.warn("Firestore sync error", e); }
 
-            if (traktAccessToken) { 
-                await Promise.all([syncUserRatings(), syncPlayback()]);
-            }
-            await syncHiddenItems();
+            // Non-blocking background data syncs.
+            // By NOT awaiting this block, the global loader drops instantly 
+            // and the app routes to the Dashboard immediately.
+            const backgroundSyncs = async () => {
+                if (traktAccessToken) { 
+                    await Promise.all([syncUserRatings(), syncPlayback()]);
+                }
+                await syncHiddenItems();
+                
+                // Silently refresh the localized UI once syncs are complete
+                if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) {
+                    if (typeof loadUpNext === 'function') loadUpNext();
+                }
+                if (document.getElementById('last-watched-container') && !document.getElementById('last-watched-container').classList.contains('hidden')) {
+                    if (typeof loadLastWatched === 'function') loadLastWatched();
+                }
+            };
+            backgroundSyncs();
+
+            // Set up a single, persistent onSnapshot listener
+            // By doing this once globally, we prevent exponential reads caused by destroying and 
+            // recreating listeners on every page navigation.
+            // Firebase's "Latency Compensation" will instantly fire this snapshot with local data
+            // the millisecond a user logs a movie, providing a free Optimistic UI update.
+            if (globalHistoryListener) globalHistoryListener(); // Clean up old listener if exists
+            
+            const qHistory = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(200));
+            globalHistoryListener = onSnapshot(qHistory, (snapshot) => {
+                window.globalHistoryCache = [];
+                snapshot.forEach(doc => {
+                    window.globalHistoryCache.push({ ...doc.data(), _docId: doc.id });
+                });
+                
+                // Trigger Optimistic UI Re-renders automatically when data changes
+                if (document.getElementById('last-watched-container') && !document.getElementById('last-watched-container').classList.contains('hidden')) loadLastWatched();
+                if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) loadUpNext();
+            });
             
             checkActiveWatching();
             handleRoute();
         } else {
+            if (globalHistoryListener) {
+                globalHistoryListener(); // Unsubscribe to prevent memory leaks
+                globalHistoryListener = null;
+            }
+            window.globalHistoryCache = [];
+            
             // Render Login Form (No changes needed here)
             els.content.innerHTML = `<div class="max-w-md mx-auto card p-10 rounded-2xl shadow-2xl mt-12 text-center animate-fade"><div class="mb-6 inline-block p-4 rounded-full bg-[var(--primary)]/10"><i class="fa-solid fa-ticket text-5xl text-[var(--primary)]"></i></div><h1 class="text-4xl font-bold mb-2 text-[var(--primary)]">VidTrackr</h1><p class="text-gray-400 mb-8">Sign in to track your movies and shows.</p><button class="w-full bg-white text-gray-900 font-bold py-3 rounded-lg hover:bg-gray-200 transition mb-4 shadow-lg" onclick="document.getElementById('email-login').classList.remove('hidden'); this.classList.add('hidden');">Sign In / Sign Up</button><form id="email-login" class="space-y-4 hidden animate-fade"><input type="email" id="email" placeholder="Email" class="w-full p-4 rounded-lg bg-[var(--bg)] border border-gray-700 focus:border-[var(--primary)] outline-none transition" required><input type="password" id="password" placeholder="Password" class="w-full p-4 rounded-lg bg-[var(--bg)] border border-gray-700 focus:border-[var(--primary)] outline-none transition" required><div class="flex gap-3"><button type="submit" name="login" class="flex-1 btn-primary py-3 rounded-lg font-bold">Login</button><button type="submit" name="signup" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-lg font-bold transition">Sign Up</button></div></form></div>`; 
             

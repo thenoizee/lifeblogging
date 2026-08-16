@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v16.22.0-alpha",
+    date: "2026-08-16",
+    changes: [
+        "In VidTrackr: Fixed Stremio routing issue where Specials (Season 0) bypassed execution and defaulted to undefined or Season 1.",
+        "In VidTrackr: Corrected History fetching to properly parse and query Season 0 episodes instead of defaulting to S1E1.",
+        "In VidTrackr: Implemented SessionStorage caching for TMDB API fetches to eliminate redundant network requests and speed up UI navigation.",
+        "In VidTrackr: Upgraded Firebase initialization to use persistentLocalCache (IndexedDB), enabling true offline support and drastically reducing database read costs.",
+        "In VidTrackr: Replaced expensive repeated getDocs queries for recently watched items with a single, highly efficient global onSnapshot listener (window.globalHistoryCache).",
+        "In VidTrackr: Eliminated the read-before-write trap in logWatchToFirebase by utilizing deterministic document IDs and native upserts (merge: true).",
+        "In VidTrackr: Implemented Optimistic UI updates for the direct rating feature, instantly updating the DOM and local maps before network resolution.",
+        "In VidTrackr: Decoupled background data synchronization (Trakt ratings, Trakt playback, Hidden items) to unblock app initialization, allowing the Dashboard to render instantly.",
+        "In VidTrackr: Replaced global blocking loading spinners with localized, non-blocking inline skeleton spinners for the Up Next and Recently Watched dashboard components.",
+        "In VidTrackr: Built a NoSQL denormalization engine (series_progress) to aggregate max season, max episode, and last watched timestamps, cutting Up Next calculation costs on mobile devices.",
+        "In VidTrackr: Silenced Trakt 403 Forbidden console errors by short-circuiting Trakt-specific network requests when TMDB mode is active.",
+    ]
+},
+    {
     version: "v16.21.0-alpha",
     date: "2026-08-15",
     changes: [
