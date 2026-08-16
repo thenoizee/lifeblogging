@@ -4847,7 +4847,13 @@ let listsIn = [];
                     const dailyTotals = {};
                     data.forEach(item => {
                         const dStr = new Date(item.watched_at).toLocaleDateString();
-                        const runtime = item.type === 'episode' ? (item.episode.runtime || 0) : (item.movie.runtime || 0);
+                        let runtime = item.type === 'episode' ? (parseInt(item.episode.runtime) || 0) : (parseInt(item.movie.runtime) || 0);
+                        
+                        // Apply standard fallbacks so imported items don't break the daily stats
+                        if (runtime === 0) {
+                            runtime = item.type === 'episode' ? (parseInt(item.episode.show?.runtime) || 30) : 90;
+                        }
+                        
                         dailyTotals[dStr] = (dailyTotals[dStr] || 0) + runtime;
                     });
 
@@ -6278,6 +6284,11 @@ let listsIn = [];
                 // Cache the results locally for the session
                 sessionStorage.setItem('vidtrackr_local_progress', JSON.stringify(validShows));
 
+                // Sync the calculated progress to Firebase so it loads instantly on other devices!
+                if (currentUser) {
+                    setDoc(doc(db, `users/${currentUser.uid}/settings`, 'progress_cache'), { data: validShows, timestamp: Date.now() }, { merge: true }).catch(console.error);
+                }
+
                 // 4. Render HTML
                 const container = document.getElementById('local-series-progress-container');
                 if (validShows.length > 0 && container) {
@@ -6374,7 +6385,12 @@ let listsIn = [];
                 localHistory.forEach(item => {
                     const type = item.type;
                     const media = item.media;
-                    const runtime = parseInt(media.runtime) || 0;
+                    let runtime = parseInt(media.runtime) || 0;
+                    
+                    // Fallback for imported history logs that are natively missing runtime data
+                    if (runtime === 0) {
+                        runtime = type === 'episode' ? (parseInt(media.show?.runtime) || 45) : (parseInt(media.movie?.runtime) || 100);
+                    }
 
                     // Deep Analytics: Day of Week
                     const dDate = new Date(item.watchedAt || item.loggedAt);
@@ -6449,8 +6465,18 @@ let listsIn = [];
 
                 let localCachedShows = [];
                 try {
+                    // First check if we have it locally in the current browser session
                     const cached = sessionStorage.getItem('vidtrackr_local_progress');
-                    if (cached) localCachedShows = JSON.parse(cached);
+                    if (cached) {
+                        localCachedShows = JSON.parse(cached);
+                    } else if (currentUser) {
+                        // Fetch the pre-computed calculation from Firebase so it syncs across devices automatically
+                        const cacheSnap = await getDoc(doc(db, `users/${currentUser.uid}/settings`, 'progress_cache'));
+                        if (cacheSnap.exists() && cacheSnap.data().data) {
+                            localCachedShows = cacheSnap.data().data;
+                            sessionStorage.setItem('vidtrackr_local_progress', JSON.stringify(localCachedShows));
+                        }
+                    }
                 } catch(e) {}
 
                 const showsToRender = validShows.length > 0 ? validShows : localCachedShows;

@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v16.23.0-alpha",
+    date: "2026-08-16",
+    changes: [
+                "In VidTrackr: Synced the 'Calculate Progress Locally' results to Firebase so your Series Progress seamlessly loads across all devices without needing to manually recalculate.",
+                "In VidTrackr: Added standard runtime fallbacks (30 mins for episodes, 90 mins for movies) so imported history items accurately count toward Lifetime Stats total watch time and daily totals.",
+    ]
+},
+    {
     version: "v16.22.0-alpha",
     date: "2026-08-16",
     changes: [
