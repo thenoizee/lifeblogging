@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.27.0-alpha",
+    date: "2026-08-22",
+    changes: [
+        "In MoneyManagr: Extracted the Review Inbox modal into a permanent navigation tab for easier access.",
+        "In MoneyManagr: Cleaned up deprecated `categorize-modal` HTML and simplified tab switching logic.",
+        "In MoneyManagr: Fixed a bug where pending transactions would not render on app load or when navigating to the new Inbox tab.",
+        "In MoneyManagr: Migrated the pending transactions queue from local browser storage to a live Firestore collection (`moneyPending`).",
+        "In MoneyManagr: Added an automatic, one-time migration script to move legacy localStorage pending transactions up to the new Firestore database and prevent duplicates.",
+        "In MoneyManagr: Updated all categorization, single-deletion, and bulk-deletion methods to directly target and remove Firestore documents."
+    ]
+},
+    {
     version: "v16.26.0-alpha",
     date: "2026-08-22",
     changes: [

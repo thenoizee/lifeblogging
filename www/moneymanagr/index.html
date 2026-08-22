@@ -339,9 +339,29 @@
             </div>
         </div>
 
+        <!-- NEW INBOX TAB -->
+        <div id="tab-content-inbox" class="tab-content pt-6">
+            <div class="flex justify-between items-center mb-6 px-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-white leading-tight">Review Inbox</h2>
+                    <p class="text-xs text-gray-500 mt-0.5"><span id="inbox-count" class="font-bold text-orange-500">0</span> pending transactions</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="openBulkActionModal()" id="bulk-action-btn" class="text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 px-3 py-2 rounded-lg hidden transition-all shadow-sm">
+                        Categorize (<span id="bulk-count">0</span>)
+                    </button>
+                    <button onclick="clearAllPending()" id="clear-all-pending-btn" class="text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:text-red-400 dark:bg-red-900/20 dark:hover:bg-red-900/40 px-3 py-2 rounded-lg hidden transition-all">
+                        <i class="fa-solid fa-trash mr-1"></i> Clear All
+                    </button>
+                </div>
+            </div>
+            <!-- Removed the fixed modal height constraints so it scrolls naturally with the page -->
+            <div id="inbox-list" class="space-y-2 pb-10"></div>
+        </div>
+
     </div>
 
-    <div id="pot-modal" class="modal-overlay hidden">
+    <div id="pot-modal" class="modal-overlay hidden">
         <div class="modal-container !p-5">
             <div class="flex justify-between items-center mb-5">
                 <h2 class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-vault text-brand-500"></i> Add Account</h2>
@@ -633,27 +653,7 @@
         </div>
     </div>
 
-    <div id="categorize-modal" class="modal-overlay hidden" style="z-index: 105;">
-        <div class="modal-container h-[85vh] flex flex-col max-w-2xl !p-4">
-            <div class="flex justify-between items-center mb-3 border-b border-gray-100 dark:border-gray-800 pb-3 sticky top-0 bg-white dark:bg-[#1f2937] z-10">
-                <div>
-                    <h2 class="text-lg font-bold text-gray-900 dark:text-white leading-tight">Review Inbox</h2>
-                    <p class="text-xs text-gray-500 mt-0.5"><span id="inbox-count" class="font-bold text-orange-500">0</span> pending</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="openBulkActionModal()" id="bulk-action-btn" class="text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 px-3 py-2 rounded-lg hidden transition-all shadow-sm">
-                        Categorize (<span id="bulk-count">0</span>)
-                    </button>
-                    <button onclick="clearAllPending()" id="clear-all-pending-btn" class="text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:text-red-400 dark:bg-red-900/20 dark:hover:bg-red-900/40 px-3 py-2 rounded-lg hidden transition-all">
-                        <i class="fa-solid fa-trash"></i> All
-                    </button>
-                    <button onclick="closeModal('categorize-modal')" class="text-gray-400 hover:text-gray-600 ml-2 p-1"><i class="fa-solid fa-times text-xl"></i></button>
-                </div>
-            </div>
-            
-            <div id="inbox-list" class="overflow-y-auto flex-1 space-y-2 p-0.5 pr-1"></div>
-        </div>
-    </div>
+    <!-- Categorize modal removed (now handled as a permanent tab) -->
     <div id="action-modal" class="modal-overlay hidden" style="z-index: 110;">
         <div class="modal-container !p-4">
             <h3 class="text-xs font-bold text-gray-400 uppercase mb-3 flex justify-between items-center" id="action-modal-title">
@@ -853,6 +853,7 @@
                 activeTab: 'accounts',
                 tabs: [
                     { id: 'accounts', label: 'Home', icon: 'fa-wallet' },
+                    { id: 'inbox', label: 'Inbox', icon: 'fa-inbox' }, // Added permanent Inbox tab
                     { id: 'tools', label: 'Tools', icon: 'fa-toolbox' }
                 ]
             });
@@ -867,6 +868,8 @@
             if(tabId === 'tools') {
                 updateProjection();
                 setTimeout(updateBreakdownChart, 100);
+            } else if (tabId === 'inbox') {
+                renderInbox();
             }
         };
 
@@ -956,11 +959,26 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
                     }
                 });
 
+                // ONE-TIME MIGRATION: Move old local storage pending items to Firebase
                 const savedPending = localStorage.getItem(`moneymanagr_pending_${user.uid}`);
                 if (savedPending) {
-                    pendingTransactions = JSON.parse(savedPending);
-                    updatePendingAlert();
+                    const oldLocalTxns = JSON.parse(savedPending);
+                    if (oldLocalTxns.length > 0) {
+                        oldLocalTxns.forEach(txn => {
+                            addDoc(collection(db, `users/${user.uid}/moneyPending`), txn);
+                        });
+                    }
+                    // Wipe local storage so it doesn't migrate them again on next load
+                    localStorage.removeItem(`moneymanagr_pending_${user.uid}`);
                 }
+
+                // Real-time Firebase listener for pending import transactions
+                onSnapshot(query(collection(db, `users/${user.uid}/moneyPending`)), (snap) => {
+                    pendingTransactions = snap.docs.map(d => ({ docId: d.id, ...d.data() }));
+                    updatePendingAlert();
+                    renderInbox(); // Keep inbox list up to date in real time
+                });
+
             } else {
                 user = null;
                 document.getElementById('auth-container').style.display = 'block';
@@ -1729,35 +1747,45 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
             stagedImports[idx].desc = newDesc;
         };
 
-        window.confirmPreviewImport = () => {
+        window.confirmPreviewImport = async () => {
             const btn = document.getElementById('confirm-import-btn');
             btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving...';
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Saving to Firebase...';
 
-            setTimeout(() => {
-                // Combine the bank name and the finalized description before saving to the pending queue
+            try {
+                // Prepare transactions with assigned bank tags
                 const finalImports = stagedImports.filter(t => t.included).map(t => ({
-                    ...t,
-                    desc: t.bank ? `[${t.bank}] ${t.desc}` : t.desc
+                    id: t.id,
+                    date: t.date,
+                    desc: t.bank ? `[${t.bank}] ${t.desc}` : t.desc,
+                    amount: t.amount,
+                    hash: t.hash,
+                    importedAt: t.importedAt || new Date().toISOString()
                 }));
-                
-                pendingTransactions = [...pendingTransactions, ...finalImports];
-                localStorage.setItem(`moneymanagr_pending_${user.uid}`, JSON.stringify(pendingTransactions));
-                
-                closeModal('import-modal');
-                updatePendingAlert();
-                openPendingTransactions(); // Auto open the review screen
-                showToast(`Imported ${finalImports.length} new transactions`);
-                
-                // Cleanup mapping/preview view ready for next time
-                stagedImports = [];
-                document.getElementById('csv-file-input').value = '';
-                document.getElementById('import-preview-section').classList.add('hidden');
-                document.getElementById('confirm-import-btn').classList.add('hidden');
-                btn.disabled = false;
-                btn.textContent = 'Confirm Import';
-            }, 200);
-        };
+
+                // Write all new pending transactions into Firestore
+                const savePromises = finalImports.map(txn => 
+                    addDoc(collection(db, `users/${user.uid}/moneyPending`), txn)
+                );
+                await Promise.all(savePromises);
+
+                closeModal('import-modal');
+                openPendingTransactions();
+                showToast(`Imported ${finalImports.length} transactions`);
+
+                // Reset the import wizard state
+                stagedImports = [];
+                document.getElementById('csv-file-input').value = '';
+                document.getElementById('import-preview-section').classList.add('hidden');
+                document.getElementById('confirm-import-btn').classList.add('hidden');
+            } catch (err) {
+                console.error("Firebase import error:", err);
+                alert("Failed to save imports to Firebase.");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Confirm Import';
+            }
+        };
 
         const updatePendingAlert = () => {
             const card = document.getElementById('pending-imports-card');
@@ -1774,7 +1802,13 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
             }
         };
 
-        window.openPendingTransactions = () => { document.getElementById('categorize-modal').classList.remove('hidden'); renderInbox(); };
+        // Switches to the Inbox tab instead of opening a modal
+        window.openPendingTransactions = () => { 
+            switchTab('inbox'); 
+            // Send an event to update the active state in the shared nav bar
+            document.dispatchEvent(new CustomEvent('tab-changed', { detail: { tabId: 'inbox' } }));
+            renderInbox(); 
+        };
         
         window.toggleInboxSelection = (id, checked) => {
             if (checked) selectedInboxIds.add(id);
@@ -1853,23 +1887,26 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
             });
         };
 
-        window.quickDeleteInboxItem = (id) => {
-            pendingTransactions = pendingTransactions.filter(t => t.id !== id);
-            localStorage.setItem(`moneymanagr_pending_${user.uid}`, JSON.stringify(pendingTransactions));
+        // Delete a single pending document in Firebase
+        window.quickDeleteInboxItem = async (id) => {
+            const txn = pendingTransactions.find(t => t.id === id);
+            if (txn && txn.docId) {
+                await deleteDoc(doc(db, `users/${user.uid}/moneyPending`, txn.docId));
+            }
             selectedInboxIds.delete(id);
-            renderInbox();
-            updatePendingAlert();
         };
 
-        window.clearAllPending = () => {
-            if (confirm(`Are you sure you want to delete all ${pendingTransactions.length} pending transactions? This cannot be undone.`)) {
-                pendingTransactions = [];
-                localStorage.setItem(`moneymanagr_pending_${user.uid}`, JSON.stringify(pendingTransactions));
-                renderInbox();
-                updatePendingAlert();
-                showToast("All pending transactions deleted");
-            }
-        };
+        // Batch delete all pending documents in Firebase
+        window.clearAllPending = async () => {
+            if (confirm(`Are you sure you want to delete all ${pendingTransactions.length} pending transactions? This cannot be undone.`)) {
+                const deletePromises = pendingTransactions
+                    .filter(t => t.docId)
+                    .map(t => deleteDoc(doc(db, `users/${user.uid}/moneyPending`, t.docId)));
+                await Promise.all(deletePromises);
+                selectedInboxIds.clear();
+                showToast("All pending transactions deleted");
+            }
+        };
 
         // Setup categories for the action modal
         const setupActionModal = () => {
@@ -1982,14 +2019,14 @@ document.querySelectorAll('.currency-symbol').forEach(el => el.textContent = cur
                 showToast(isBulkAction ? `Deleted ${txnsToProcess.length} Items` : "Deleted");
             }
 
-            const processedIds = new Set(txnsToProcess.map(t => t.id));
-            pendingTransactions = pendingTransactions.filter(t => !processedIds.has(t.id));
-            localStorage.setItem(`moneymanagr_pending_${user.uid}`, JSON.stringify(pendingTransactions));
-            
-            selectedInboxIds.clear();
-            closeModal('action-modal');
-            renderInbox();
-            updatePendingAlert();
+            // Delete categorized transactions from the Firebase pending inbox
+            const cleanupPromises = txnsToProcess
+                .filter(t => t.docId)
+                .map(t => deleteDoc(doc(db, `users/${user.uid}/moneyPending`, t.docId)));
+            await Promise.all(cleanupPromises);
+            
+            selectedInboxIds.clear();
+            closeModal('action-modal');
         };
 
         window.applyAction = async (actionType) => {
@@ -2371,7 +2408,7 @@ window.openDepositModal = (potId, potName, type = 'deposit', potType = 'person')
         window.openSplitFromAction = () => {
             if(isBulkAction) return alert("Cannot split multiple transactions at once. Please split them individually.");
             closeModal('action-modal');
-            closeModal('categorize-modal');
+            // No longer closing categorize-modal since it is now a permanent tab
             openSplitModal({
                 id: currentActionTxn.id,
                 desc: document.getElementById('action-known-as').value || currentActionTxn.desc,
