@@ -464,19 +464,24 @@ input[type=range]::-moz-range-thumb {
 const headerRight = document.querySelector('header .container > .flex > .flex:last-child');
 if (headerRight) {
     const customDiv = document.createElement('div');
-    customDiv.className = 'flex items-center gap-2 mr-2 md:mr-4';
+    // ADDED: 'shrink-0' to prevent the container from squishing unexpectedly
+    // CHANGED: Reduced right margin so it sits comfortably next to the bell icon
+    customDiv.className = 'flex items-center gap-2 mr-1 shrink-0';
     customDiv.innerHTML = `
         <div id="header-watch-status" class="hidden mr-1 animate-pulse"></div>
         
-        <div id="sync-status" class="hidden items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-900 border border-gray-700 transition-all duration-500"></div>
+        <div id="sync-status" class="hidden items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-900 border border-gray-700 transition-all duration-500 shrink-0"></div>
         
-        <div id="search-container" class="hidden md:block relative">
+        <!-- ADDED: 'shrink-0' to the search wrapper to protect the input field's transition widths -->
+        <div id="search-container" class="hidden md:block relative shrink-0">
             <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
             <input type="search" id="search-input" placeholder="Search..." 
                 class="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-200 rounded-lg py-1.5 pl-8 pr-4 text-xs focus:ring-2 focus:ring-red-600 focus:outline-none w-32 transition-all focus:w-48 placeholder-gray-500">
         </div>
     `;
-    headerRight.parentNode.insertBefore(customDiv, headerRight);
+    // FIX: Prepend INTO the right header container instead of inserting as a 4th sibling. 
+    // This preserves the exact 3-column 'justify-between' layout of the nav so it doesn't stretch or shift!
+    headerRight.prepend(customDiv);
 }
 
     // --- Nav Events ---
@@ -1307,9 +1312,8 @@ if (headerRight) {
                     }
                 }
 
-                // Force invalidate Up Next cache
-                localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
-                localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
+                // Invalidate full history and series progress caches on deletion
+                window.invalidateProgressCaches();
                 
                 showToast('Log removed successfully');
                 
@@ -6354,23 +6358,37 @@ let listsIn = [];
                 let watchedMovies = [];
                 let showProgressData = [];
 
-                // 1. Fetch History from Firebase to calculate accurate local stats (with caching)
+                // 1. Fetch History from Firebase to calculate accurate local stats (with safe caching)
                 let localHistory = [];
                 const histCacheKey = `vidtrackr_full_history_${currentUser.uid}`;
                 const histTimeKey = `${histCacheKey}_time`;
                 const now = Date.now();
                 
-                // Use cached history if it's less than 2 minutes old to instantly load big datasets
-                if (localStorage.getItem(histCacheKey) && (now - parseInt(localStorage.getItem(histTimeKey) || 0) < 120000)) {
-                    localHistory = JSON.parse(localStorage.getItem(histCacheKey));
-                } else {
-                    const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"));
+                const cachedHistoryStr = localStorage.getItem(histCacheKey);
+                const lastHistoryFetchTime = parseInt(localStorage.getItem(histTimeKey) || '0');
+                
+                // Use cached history if valid and less than 2 minutes old
+                if (cachedHistoryStr && (now - lastHistoryFetchTime < 120000)) {
+                    try {
+                        localHistory = JSON.parse(cachedHistoryStr);
+                    } catch(e) {
+                        localHistory = [];
+                    }
+                }
+                
+                // If cache is missing or expired, fetch fresh history from Firebase
+                if (!localHistory.length) {
+                    const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(2500));
                     const snapshot = await getDocs(q);
                     snapshot.forEach(doc => localHistory.push(doc.data()));
+                    
                     try {
                         localStorage.setItem(histCacheKey, JSON.stringify(localHistory));
                         localStorage.setItem(histTimeKey, now.toString());
-                    } catch(e) { console.warn("History cache full", e); }
+                    } catch(e) { 
+                        // Safely handle quota limits on devices with large libraries
+                        console.warn("Storage quota reached; continuing without local cache.", e); 
+                    }
                 }
 
                 // Removed blocking window.enrichTMDBImages(localHistory) to massively speed up progress page loading.
@@ -6820,6 +6838,22 @@ let listsIn = [];
             hideLoader(); 
         }
 
+        // HELPER: Centralized Cache Invalidator
+        // Flushes all progress and history caches whenever data changes so stats and queues stay in sync
+        window.invalidateProgressCaches = () => {
+            if (!currentUser) return;
+            // 1. Invalidate Lifetime Stats & History Caches
+            localStorage.removeItem(`vidtrackr_full_history_${currentUser.uid}`);
+            localStorage.removeItem(`vidtrackr_full_history_${currentUser.uid}_time`);
+            
+            // 2. Invalidate Up Next Cache
+            localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
+            localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
+            
+            // 3. Invalidate Session Progress Snapshot so Progress tab re-evaluates
+            sessionStorage.removeItem('vidtrackr_local_progress');
+        };
+
         // New Database Helper: Logs completed or partial watches securely to Firebase
         // Updated to accept a platform parameter to log where it was watched
         window.logWatchToFirebase = async (item, type, progress, date, rating = null, platform = null, isImport = false) => {
@@ -6907,9 +6941,8 @@ let listsIn = [];
                     }
                 }
                 
-                // Force invalidate Up Next cache so it recalculates with the manual entry
-                localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
-                localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
+                // Bust all progress, history, and Up Next caches so all tabs update immediately
+                window.invalidateProgressCaches();
                 
                 return true;
             } catch (e) {

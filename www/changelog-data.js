@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.25.0-alpha",
+    date: "2026-08-22",
+    changes: [
+                "In VidTrackr: Fixed top navigation layout distortion by prepending the custom search container inside the right flex column and applying 'shrink-0'.",
+                "In VidTrackr: Implemented a centralized 'invalidateProgressCaches' helper to resolve stale data issues across the Progress and History tabs.",
+                "In VidTrackr: Updated 'logWatchToFirebase' and 'deleteHistoryItem' to automatically bust caches, ensuring Up Next and lifetime stats update instantly.",
+                "In VidTrackr: Improved cache retrieval in 'renderProgress' to safely handle localStorage quota limits for users with massive watch histories.",
+    ]
+},
+    {
     version: "v16.24.0-alpha",
     date: "2026-08-22",
     changes: [
