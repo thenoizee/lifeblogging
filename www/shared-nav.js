@@ -453,16 +453,16 @@ export class AppNavigation {
 </div>
 
 <header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 40; isolation: isolate;">
-            <div class="container mx-auto px-4 py-2">
-                <div class="flex items-center justify-start md:justify-between h-12 gap-3 md:gap-0 w-full">
+            <div class="container mx-auto px-2 sm:px-4 py-2 min-w-0">
+                <div class="flex items-center justify-between h-12 gap-2 md:gap-3 w-full min-w-0">
                         
-                        <div class="flex items-center gap-3 shrink-0">
-                            <div id="hub-container" class="relative group" style="position: relative;">
-                            <div class="flex rounded-lg shadow-sm overflow-hidden">
-                                <a href="/" class="bg-${this.themeColor}-600 hover:bg-${this.themeColor}-700 text-white text-xs font-bold py-2 px-3 flex items-center gap-1 transition-colors">
+                        <div class="flex items-center gap-2 sm:gap-3 shrink min-w-0">
+                            <div id="hub-container" class="relative group shrink-0" style="position: relative;">
+                            <div class="flex rounded-lg shadow-sm overflow-hidden shrink-0">
+                                <a href="/" class="bg-${this.themeColor}-600 hover:bg-${this.themeColor}-700 text-white text-xs font-bold py-2 px-2.5 sm:px-3 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0">
                                     <i class="fa-solid fa-arrow-left"></i> Hub
                                 </a>
-                                <button id="hub-dropdown-btn" class="bg-${this.themeColor}-700 hover:bg-${this.themeColor}-800 text-white px-2 flex items-center justify-center border-l border-${this.themeColor}-600 transition-colors">
+                                <button id="hub-dropdown-btn" class="bg-${this.themeColor}-700 hover:bg-${this.themeColor}-800 text-white px-1.5 sm:px-2 flex items-center justify-center border-l border-${this.themeColor}-600 transition-colors shrink-0">
                                     <i class="fa-solid fa-chevron-down text-[10px]"></i>
                                 </button>
                             </div>
@@ -500,13 +500,13 @@ export class AppNavigation {
 
                         <div class="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1 hidden sm:block"></div>
 
-                        <a href="#" class="flex items-center gap-2 text-xl font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-500 no-underline hover:opacity-80 transition">
-                            <i class="fa-solid ${this.appIcon}"></i>
-                            <span class="hidden sm:inline">${this.appName}</span>
+                        <a href="#" class="flex items-center gap-1.5 sm:gap-2 text-xl font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-500 no-underline hover:opacity-80 transition shrink min-w-0 hidden sm:flex">
+                            <i class="fa-solid ${this.appIcon} shrink-0"></i>
+                            <span class="hidden md:inline truncate max-w-[90px] lg:max-w-none">${this.appName}</span>
                         </a>
                     </div>
 
-                    <nav class="hidden md:flex items-center gap-1 bg-white/80 shadow-inner dark:bg-gray-900/50 p-1 rounded-lg border border-${this.themeColor}-100 dark:border-transparent">
+                    <nav class="hidden md:flex items-center gap-1 bg-white/80 shadow-inner dark:bg-gray-900/50 p-1 rounded-lg border border-${this.themeColor}-100 dark:border-transparent overflow-x-auto hide-scroll min-w-0 shrink">
                         ${this.tabs.map(tab => `
                             <button class="nav-tab-btn px-4 py-1.5 rounded-md text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-300 ease-in-out" data-tab="${tab.id}">
                                 <i class="fa-solid ${tab.icon} mr-1.5"></i>${tab.label}
@@ -514,17 +514,17 @@ export class AppNavigation {
                         `).join('')}
                     </nav>
 
-                    <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+                    <div class="flex items-center gap-1.5 sm:gap-2 shrink min-w-0 justify-end">
                             ${this.search ? `
-                            <div class="hidden md:block relative mx-2">
-                                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                            <div class="hidden sm:block relative mx-1 shrink min-w-0 max-w-[120px] md:max-w-none">
+                                 <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] md:text-xs pointer-events-none"></i>
                                  <input type="search" id="${this.search.id}" placeholder="${this.search.placeholder || 'Search...'}" 
-                                    class="bg-gray-100 dark:bg-gray-900/50 border-none text-gray-600 dark:text-gray-300 text-xs rounded-lg py-1.5 pl-8 pr-4 w-40 lg:w-48 focus:ring-2 focus:ring-${this.themeColor}-500 focus:outline-none transition-all">
+                                    class="bg-gray-100 dark:bg-gray-900/50 border-none text-gray-600 dark:text-gray-300 text-[10px] md:text-xs rounded-lg py-1 pl-7 pr-2 md:py-1.5 w-full min-w-[80px] md:w-32 lg:w-48 focus:w-full sm:focus:w-32 md:focus:w-48 focus:ring-2 focus:ring-${this.themeColor}-500 focus:outline-none transition-all shrink min-w-0">
                             </div>
                             ` : ''}
 
-                            <div class="relative group" id="nav-notifications-container" style="position: relative;">
-                                <button id="nav-bell-btn" class="relative w-10 h-10 md:w-8 md:h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all">
+                            <div class="relative group shrink-0" id="nav-notifications-container" style="position: relative;">
+                                <button id="nav-bell-btn" class="relative w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all shrink-0">
                                     <i class="fa-regular fa-bell"></i>
                                     <span id="nav-bell-badge" class="hidden absolute top-1 md:top-0 right-1 md:right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></span>
                                 </button>
@@ -543,11 +543,11 @@ export class AppNavigation {
                                 </div>
                             </div>
                             
-<a href="#" id="nav-user-avatar" class="flex items-center justify-center w-10 h-10 md:w-8 md:h-8 shrink-0 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-sm md:text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden" title="${avatarTitle}">                            
+<a href="#" id="nav-user-avatar" class="flex items-center justify-center w-8 h-8 shrink-0 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden" title="${avatarTitle}">                            
                                 ${userInitial}
                             </a>
 
-                            <button id="nav-theme-toggle" class="w-10 h-10 md:w-8 md:h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all duration-500 ease-in-out">
+                            <button id="nav-theme-toggle" class="w-8 h-8 shrink-0 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all duration-500 ease-in-out">
                                 <i id="theme-icon-moon" class="fas fa-moon"></i>
                                 <i id="theme-icon-sun" class="fas fa-sun" style="display: none;"></i>
                             </button>

@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.26.0-alpha",
+    date: "2026-08-22",
+    changes: [
+        "In TaskTrackr: Increased the z-index of the project sidebar and mobile overlay to prevent them from being cut off or trapped behind the navigation bar.",
+        "In TaskTrackr: Elevated the toast notification container to the maximum z-index (2147483647) to ensure alerts always appear above active side panes.",
+        "In Shared Nav: Replaced 'shrink-0' with 'shrink min-w-0' across header containers, search bars, and badges to allow elements to compress fluidly and prevent horizontal layout overflow on mobile screens.",
+        "In Shared Nav: Configured the application name to truncate gracefully and hid the app icon on extra-small screens to preserve real estate for critical interactive elements.",
+        "In Shared Nav: Applied strict fixed sizing (w-8 h-8 shrink-0) to the avatar, notification bell, and theme toggle buttons to prevent icons from warping into ovals under flexbox pressure.",
+    ]
+},
+    {
     version: "v16.25.0-alpha",
     date: "2026-08-22",
     changes: [
