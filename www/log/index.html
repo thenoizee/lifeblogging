@@ -933,7 +933,8 @@
         attributeNames: new Set(),
         firstEntryDates: new Map(),
         isLoading: false,
-        attributeColors: {}
+        attributeColors: {},
+        tags: new Set() // Added to hold tags in memory and prevent DB reads
       };
 
       const body = document.body;
@@ -1044,27 +1045,19 @@
       };
 
       const fetchAndPopulateTags = async (uid) => {
+        // Load tags from local cache and current session to avoid database reads
+        const cachedTags = JSON.parse(localStorage.getItem('cachedTags') || '[]');
+        cachedTags.forEach(t => appState.tags.add(t));
+        
+        sessionLogs.forEach(log => {
+            if (log.tags) log.tags.forEach(t => appState.tags.add(t));
+        });
+        
+        localStorage.setItem('cachedTags', JSON.stringify(Array.from(appState.tags)));
+
         existingTagsList.innerHTML = '';
-        const allTags = new Set();
-        try {
-          // This also works offline with persistence
-          const sourcesRef = collection(db, `users/${uid}/sources`);
-          const sourcesSnapshot = await fetchWithTimeout(sourcesRef, 3000);
-
-          for (const sourceDoc of sourcesSnapshot.docs) {
-            const dataRef = collection(db, `users/${uid}/sources/${sourceDoc.id}/data`);
-            const dataSnapshot = await fetchWithTimeout(dataRef, 3000);
-            dataSnapshot.forEach(doc => {
-              const tags = doc.data().tags || [];
-              tags.forEach(tag => allTags.add(tag));
-            });
-          }
-        } catch (error) {
-          console.error("Error fetching tags:", error);
-          return;
-        }
-
-        const sortedTags = Array.from(allTags).sort();
+        const sortedTags = Array.from(appState.tags).sort();
+        
         sortedTags.forEach(tag => {
           const tagSpan = document.createElement('span');
           tagSpan.className = 'tag cursor-pointer hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors duration-200';
@@ -1147,17 +1140,18 @@
         let logsToResync = [];
         let syncedLogs = [];
 
-        for (const log of pendingLogs) {
-          try {
-            // We double check online status here
-            if(!navigator.onLine) throw new Error("Still offline");
+        try {
+          if (!navigator.onLine) throw new Error("Still offline");
 
+          // Group all offline logs into a single Firestore batch to reduce network overhead
+          const batch = writeBatch(db);
+
+          for (const log of pendingLogs) {
             const logToSync = { ...log };
             if (!logToSync.tags.includes("synced_from_offline")) {
                 logToSync.tags.push("synced_from_offline");
             }
             
-            // Clean up custom properties so they don't get saved into Firestore
             const targetDocId = logToSync.docId;
             delete logToSync.docId;
             delete logToSync.collectionName;
@@ -1165,9 +1159,10 @@
             await ensureCollectionExists(userId, log.collectionName);
 
             const collectionName = log.collectionName || 'manual';
-            // Fix: Use setDoc with the pre-generated docId to prevent duplicate entries and maintain referential integrity
             const docRef = doc(db, `users/${userId}/sources/${collectionName}/data`, targetDocId);
-            await setDoc(docRef, {
+            
+            // Queue the write operation locally instead of firing a request
+            batch.set(docRef, {
               ...logToSync,
               createdAt: logToSync.createdAt && logToSync.createdAt.seconds
                 ? Timestamp.fromMillis(logToSync.createdAt.seconds * 1000)
@@ -1175,17 +1170,28 @@
             });
 
             syncedLogs.push({ ...logToSync, docId: targetDocId, collectionName: collectionName });
-
-          } catch (err) {
-            console.error("Failed to sync log:", err);
-            logsToResync.push(log);
           }
+
+          // Commit the entire batch in a single network request
+          await batch.commit();
+
+        } catch (err) {
+          console.error("Failed to sync batched logs:", err);
+          // If the batch network request fails, retain all items in the pending queue
+          logsToResync = [...pendingLogs];
+          syncedLogs = []; 
         }
 
         localStorage.setItem("pendingLogs", JSON.stringify(logsToResync));
         renderUnsyncedLogs();
 
-        sessionLogs = [...sessionLogs, ...syncedLogs];
+        // Filter out logs that are already in sessionLogs (from optimistic UI updates)
+        // This prevents the double-entry bug when an offline log finally syncs
+        const newLogsToAdd = syncedLogs.filter(syncedItem => {
+            return !sessionLogs.some(sessionItem => sessionItem.docId === syncedItem.docId);
+        });
+
+        sessionLogs = [...sessionLogs, ...newLogsToAdd];
         renderSessionLogs();
 
         if (logsToResync.length === 0) {
@@ -1193,9 +1199,20 @@
         }
       };
 
+      let syncTimeout;
+      let isSyncing = false;
+
       window.addEventListener('online', () => {
         updateConnectivityStatus();
-        syncPendingLogs();
+        clearTimeout(syncTimeout);
+        
+        // Wait 4 seconds for the connection to stabilize before firing the sync
+        syncTimeout = setTimeout(async () => {
+          if (isSyncing) return;
+          isSyncing = true;
+          await syncPendingLogs();
+          isSyncing = false;
+        }, 4000);
       });
       window.addEventListener('offline', () => {
         updateConnectivityStatus();
@@ -1434,8 +1451,13 @@
             setDefaultDateTime();
             showMessage(`Saving...`, "info");
 
+            // Adapt the timeout duration based on the user's current connection speed
+            const isSlowConnection = navigator.connection && 
+                (navigator.connection.effectiveType === '2g' || navigator.connection.effectiveType === '3g');
+            const timeoutMs = isSlowConnection ? 8000 : 3000;
+
             const timeout = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("NetworkTimeout")), 3000)
+                setTimeout(() => reject(new Error("NetworkTimeout")), timeoutMs)
             );
 
             await Promise.race([
@@ -1527,23 +1549,39 @@
           return d.toISOString().split('T')[0];
       };
 
-        const fetchLogsForDateRange = async (startDateStr = null) => {
+        // Replaced single-purpose fetches with a unified data loader to minimize DB reads
+        const fetchUnifiedAppData = async () => {
             if (!appState.user) return;
-            if (!startDateStr) {
-                const d = new Date();
-                d.setDate(d.getDate() - 7);
-                startDateStr = toYYYYMMDD(d);
-            }
+            
+            const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+            const startDate30Str = toYYYYMMDD(d30);
+            
+            const d7 = new Date(); d7.setDate(d7.getDate() - 7);
+            const startDate7Str = toYYYYMMDD(d7);
+
+            appState.attributeNames.clear();
+            
             try {
                 const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
                 const sourcesSnapshot = await fetchWithTimeout(sourcesRef, 8000);
+                
                 for (const sourceDoc of sourcesSnapshot.docs) {
                     const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
-                    const q = query(dataRef, where("date", ">=", startDateStr));
+                    // Query only the last 30 days ONCE per collection
+                    const q = query(dataRef, where("date", ">=", startDate30Str));
                     const dataSnapshot = await fetchWithTimeout(q, 8000);
+                    
                     dataSnapshot.forEach(doc => {
                         const log = {id: doc.id, ...doc.data()};
-                        if (log.date) {
+                        
+                        // Populate Tags
+                        if (log.tags) log.tags.forEach(tag => appState.tags.add(tag));
+                        
+                        // Populate Attributes
+                        if (log.attributeName) appState.attributeNames.add(log.attributeName);
+                        
+                        // Populate 7-day logs for combos
+                        if (log.date && log.date >= startDate7Str) {
                             try {
                                 const logDate = new Date(log.date.replace(" ", "T"));
                                 if (!isNaN(logDate)) {
@@ -1555,35 +1593,22 @@
                                     }
                                 } 
                             } catch (e) { }
-                        } 
+                        }
                     });
                 }
-            } catch (error) {} finally {
+                // Save updated tags to local cache for offline usage
+                localStorage.setItem('cachedTags', JSON.stringify(Array.from(appState.tags)));
+            } catch (error) {
+                console.warn("Unified fetch error, relying on cache.", error);
+            } finally {
+                fetchAndPopulateTags(appState.user.uid); // Update tag UI
                 updateFrequentCombos();
             }
         };
 
-        const fetchAllAttributeNames = async () => {
-            if (!appState.user) return;
-            appState.attributeNames.clear();
-            appState.firstEntryDates.clear();
-            const d = new Date();
-            d.setDate(d.getDate() - 30);
-            const startDateStr = toYYYYMMDD(d);
-            try {
-                const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
-                const sourcesSnapshot = await fetchWithTimeout(sourcesRef, 3000);
-                for (const sourceDoc of sourcesSnapshot.docs) {
-                    const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
-                    const q = query(dataRef, where("date", ">=", startDateStr));
-                    const dataSnapshot = await fetchWithTimeout(q, 3000);
-                    dataSnapshot.forEach(doc => {
-                        const log = doc.data();
-                        if (log.attributeName) appState.attributeNames.add(log.attributeName);
-                    });
-                }
-            } catch (error) {}
-        };
+        // Stubbed out to prevent breaking legacy calls, now routed through unified fetch
+        const fetchLogsForDateRange = async () => { /* Handled by fetchUnifiedAppData */ };
+        const fetchAllAttributeNames = async () => { /* Handled by fetchUnifiedAppData */ };
         
         const updateFrequentCombos = () => {
             const comboContainer = document.getElementById('frequent-combos-container');
@@ -1657,7 +1682,7 @@
           document.getElementById("main-app-container").style.display = "flex";
           appState.user = user;
 
-          // Removed the 'await' so these fetches no longer block the UI
+          // Populate UI instantly from LocalStorage caches before networking
           fetchAndPopulateCollections(userId);
           fetchAndPopulateTags(userId);        
 
@@ -1665,8 +1690,8 @@
           renderUnsyncedLogs();
           syncPendingLogs();
 
-          fetchAllAttributeNames();
-                fetchLogsForDateRange();
+          // Single unified fetch to drastically reduce reads and offline network congestion
+          fetchUnifiedAppData();
           
           // Removed setInputsDisabled(false) 
           appState.isReady = true;

@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.24.0-alpha",
+    date: "2026-08-22",
+    changes: [
+        "In Loggr: Switched offline log syncing to use Firestore 'writeBatch' to consolidate multiple pending items into a single network payload.",
+        "In Loggr: Implemented adaptive network timeouts that detect slow 2G/3G connections and extend the Firestore timeout threshold to prevent premature errors.",
+        "In Loggr: Consolidated multiple database queries on boot into a single unified 'fetchUnifiedAppData' request to heavily minimize Firestore reads.",
+        "In Loggr: Added LocalStorage caching for tags and collections to instantly populate the UI and prevent input blockage when booting offline.",
+        "In Loggr: Fixed a bug where offline logs would visually duplicate in the 'Data Added This Session' UI when background synchronization completed."
+    ]
+},
+    {
     version: "v16.23.0-alpha",
     date: "2026-08-16",
     changes: [
