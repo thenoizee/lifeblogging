@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.30.0-alpha",
+    date: "2026-08-23",
+    changes: [
+        "In MoneyManagr: Redesigned the Import Modal manual data input section and added an advisory note regarding Midata title accuracy.",
+        "In MoneyManagr: Updated import duplicate detection logic to identify and flag matches from different bank tags as cross-bank transfers rather than exact duplicates.",
+        "In MoneyManagr: Added functionality to explicitly overwrite existing transactions or 'Keep Both' during the import review process, complete with a visual comparison UI.",
+        "In MoneyManagr: Added a 'Select All / Toggle Included' button to the Import Preview section for easier bulk management.",
+        "In MoneyManagr: Unified global date parsing to a strict 'YYYY-MM-DD' format to prevent duplicate-checking failures caused by varying date string formats.",
+        "In MoneyManagr: Enhanced the Duplicate Checker tool to use a 'soft hash' (Date + Amount) to accurately catch duplicates regardless of slight description or date format variations.",
+        "In MoneyManagr: Redesigned the Duplicate Checker UI to list all conflicting records equally with a new 'Keep This (Delete Others)' sweeper function.",
+        "In MoneyManagr: Added detailed timestamp data (Bank Date, Categorised Date, Imported Date) to both the Duplicate Checker cards and the main Transaction Details modal."
+    ]
+},
+    {
     version: "v16.29.0-alpha",
     date: "2026-08-23",
     changes: [
