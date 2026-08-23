@@ -203,17 +203,23 @@ self.addEventListener('fetch', event => {
       return;
   }
 
-  // 1. BYPASS SERVICE WORKER FOR API CALLS
-  // Firebase APIs and dynamic external APIs must be ignored so they don't break offline syncing
+  // 1. BYPASS SERVICE WORKER FOR API CALLS & AUTH
+  // Firebase APIs, Google Auth, and dynamic external APIs must be ignored so they don't break offline syncing or authentication flows
   if (event.request.method !== 'GET' || 
       url.hostname.includes('googleapis.com') ||
-      url.hostname.includes('firebaseapp.com') ||
-      url.pathname.includes('/__/auth/') ||
+      url.hostname.includes('apis.google.com') || // Ignore Google Auth API traffic
+      url.hostname.includes('firebaseapp.com') || 
+      url.pathname.includes('/__/auth/') || // Ignore Firebase Auth hidden iframes
+      url.hostname.includes('gstatic.com') || // Ignore Firebase JS SDK assets to prevent caching stale auth logic
       url.hostname.includes('cloudfunctions.net') ||
       url.hostname.includes('api.open-meteo.com') ||
       url.hostname.includes('openfoodfacts.org') ||
       url.hostname.includes('ws.audioscrobbler.com') ||
       url.hostname.includes('api.ticktick.com')) {
+      
+    // Output exactly what is bypassing the Service Worker to help debug login hangs
+    console.log(`[sw.js v${LATEST_VERSION}] 🔀 Bypassing SW for external API/Auth request: ${event.request.url}`);
+    
     return; 
   }
 

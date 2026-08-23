@@ -838,41 +838,66 @@ if ('BroadcastChannel' in window) {
                 return signInWithEmailAndPassword(auth, email, password);
             }
         }));
-        // Hybrid Google Auth: Tries Popup first (best for desktop/web), falls back to Redirect (best for iOS PWAs)
-        // Google Auth: Browser trusted-click bypass with Debounce Lock
+        // Track whether an authentication request is currently active to prevent duplicate triggers
         let isGoogleAuthPending = false;
 
         safeClick('google-sign-in-btn', async (e) => {
             e.preventDefault(); 
             
-            // 1. Prevent double-clicks from firing multiple popup requests
-            if (isGoogleAuthPending) return; 
+            // Prevent duplicate clicks while an authentication attempt is in flight
+            if (isGoogleAuthPending) {
+                console.log('[Auth Debug] Sign-in click ignored: Authentication request already pending.');
+                return;
+            }
             isGoogleAuthPending = true;
 
             const btn = el('google-sign-in-btn');
             const originalText = btn.innerHTML;
             
-            // 2. Safely indicate loading without breaking the DOM trust
+            // Update UI state to indicate progress
             btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Connecting...';
             btn.classList.add('opacity-70', 'cursor-not-allowed');
 
             const provider = new GoogleAuthProvider();
             provider.setCustomParameters({ prompt: 'select_account' });
-            
+
+            // Detect if running as an installed PWA (standalone) or on a mobile device
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+            console.log(`[Auth Debug] Sign-in initiated. Standalone PWA: ${isStandalone}, Mobile Device: ${isMobile}`);
+
             try {
-                await signInWithPopup(auth, provider);
-                // Success! The onAuthStateChanged listener handles the rest.
+                // Standalone PWAs and mobile viewports should bypass popups directly to avoid hanging
+                if (isStandalone || isMobile) {
+                    console.log('[Auth Debug] Standalone/Mobile environment detected. Triggering signInWithRedirect directly.');
+                    await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
+                } else {
+                    console.log('[Auth Debug] Desktop browser environment detected. Attempting signInWithPopup.');
+                    
+                    // Promise.race adds a 15-second timeout to prevent infinite UI hanging
+                    // Explicitly pass browserPopupRedirectResolver to ensure modular SDK compatibility
+                    await Promise.race([
+                        signInWithPopup(auth, provider, browserPopupRedirectResolver),
+                        new Promise((_, reject) => setTimeout(() => reject({ code: 'auth/popup-timeout', message: 'Popup blocked or unresponsive.' }), 15000))
+                    ]);
+                }
             } catch (error) {
-                console.warn("Google Auth Error:", error);
+                console.warn("[Auth Debug] Google Auth Error encountered:", error);
                 
-                if (error.code === 'auth/popup-blocked') {
+                // Fallback for desktop popups blocked by browsers, extensions, or our custom timeout
+                if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-timeout') {
+                    console.log(`[Auth Debug] Popup failed (${error.code}). Falling back to signInWithRedirect.`);
+                    showMessage("Popup delayed or blocked. Redirecting...", "error");
+                    await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
+                    console.log('[Auth Debug] Popup was blocked on desktop. Falling back to signInWithRedirect.');
                     showMessage("Popup blocked. Redirecting...", "error");
                     await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
                 } else if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
                     showMessage(getFriendlyErrorMessage(error), "error");
                 }
             } finally {
-                // 3. Release the lock and restore the button if it failed or was closed
+                // If using redirect, the browser navigates away; if a popup was closed or failed, reset button state
                 isGoogleAuthPending = false;
                 btn.innerHTML = originalText;
                 btn.classList.remove('opacity-70', 'cursor-not-allowed');

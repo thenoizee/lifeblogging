@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.32.0-alpha",
+    date: "2026-08-24",
+    changes: [
+                "In Hub: Updated Google Sign-In to use redirect authentication directly on mobile and standalone PWA environments to prevent hanging.",
+                "In Hub: Added a 15-second timeout failsafe to the desktop Google Sign-In popup to prevent infinite 'Connecting...' states when silently blocked.",
+                "In Service Worker: Added explicit network bypass rules for Firebase Auth, Google APIs, and Firebase SDKs to prevent the cache from breaking the login flow.",
+    ]
+},
+    {
     version: "v16.31.0-alpha",
     date: "2026-08-24",
     changes: [
