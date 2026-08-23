@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.29.0-alpha",
+    date: "2026-08-23",
+    changes: [
+        "In Dashboard: Synced widget layout order and hidden visibility states across devices by saving preferences to Firestore.",
+        "In Dashboard: Added a toggle button to the Kitchen widget to switch between a 'Latest' hero view and a scrollable 'List' view of recent cooks.",
+        "In Dashboard: Fixed an issue where the recent cook image was not loading by querying the correct 'latestHistoryImage' property.",
+        "In Dashboard: Decoupled time and greeting logic from Firebase listeners to ensure time-of-day greetings update dynamically on the local clock interval."
+    ]
+},
+    {
     version: "v16.28.0-alpha",
     date: "2026-08-23",
     changes: [

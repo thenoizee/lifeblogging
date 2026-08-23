@@ -359,9 +359,12 @@
             <div class="dashboard-card col-span-1" id="card-cooking">
                 <div class="card-header">
                     <span>Kitchen</span>
-                    <a href="/recipemanagr" class="text-teal-500 hover:text-teal-600" title="RecipeManagr"><i class="fas fa-book-open text-lg"></i></a>
+                    <div class="flex gap-2">
+                        <button id="toggle-cooking-view" class="text-[var(--text-secondary)] hover:text-[var(--text-primary)]" title="Toggle List/Latest"><i class="fas fa-list"></i></button>
+                        <a href="/recipemanagr" class="text-teal-500 hover:text-teal-600" title="RecipeManagr"><i class="fas fa-book-open text-lg"></i></a>
+                    </div>
                 </div>
-                <div id="cooking-container" class="flex flex-col items-center text-center h-full justify-center">
+                <div id="cooking-container" class="flex flex-col items-center text-center h-full justify-center custom-scroll overflow-y-auto pr-1">
                     <div class="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-md mb-2 animate-pulse"></div>
                     <div class="w-full">
                         <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mx-auto mb-1 animate-pulse"></div>
@@ -526,6 +529,22 @@
             if (ui.time) {
                 ui.time.innerHTML = `<i class="fa-regular fa-clock mr-1"></i> <span class="font-bold">${timeStr}</span>`;
             }
+            
+            // Update greeting dynamically based on the hour
+            if (ui.greeting && window.currentDisplayName) {
+                const hour = now.getHours();
+                let timeGreeting = "Hello";
+                if (hour >= 5 && hour < 12) timeGreeting = "Good morning";
+                else if (hour >= 12 && hour < 17) timeGreeting = "Good afternoon";
+                else if (hour >= 17 && hour < 22) timeGreeting = "Good evening";
+                else timeGreeting = "It's getting late";
+                
+                // Only update the DOM if it actually changed to save paint cycles
+                const newText = `${timeGreeting}, ${window.currentDisplayName}!`;
+                if (ui.greeting.textContent !== newText) {
+                    ui.greeting.textContent = newText;
+                }
+            }
         }
         setInterval(updateTime, 1000);
         updateTime();
@@ -564,17 +583,23 @@
             });
         };
 
-        const saveLayout = () => {
+        const saveLayout = async () => {
             const order = sortableInstance ? sortableInstance.toArray() : Array.from(grid.children).map(c => c.id);
-            localStorage.setItem('dashboard_layout', JSON.stringify(order));
+            localStorage.setItem('dashboard_layout', JSON.stringify(order)); // Keep local for instant load
+            if (currentUser) {
+                await setDoc(doc(db, 'users', currentUser.uid, 'settings', 'dashboard'), { layout: order }, { merge: true });
+            }
         };
 
-        const saveVisibility = () => {
+        const saveVisibility = async () => {
             const hidden = [];
             document.querySelectorAll('.dashboard-card.hidden-widget').forEach(card => {
                 if(card.id) hidden.push(card.id);
             });
-            localStorage.setItem('dashboard_hidden_widgets', JSON.stringify(hidden));
+            localStorage.setItem('dashboard_hidden_widgets', JSON.stringify(hidden)); // Keep local
+            if (currentUser) {
+                await setDoc(doc(db, 'users', currentUser.uid, 'settings', 'dashboard'), { hiddenWidgets: hidden }, { merge: true });
+            }
         };
 
         const updateVisibilityIcon = (btn, card) => {
@@ -1308,17 +1333,8 @@
             unsubscribers.push(onSnapshot(doc(db, 'users', uid, 'settings', 'profile'), (snap) => {
                 const name = snap.data()?.displayName;
                 const emailName = currentUser.email.split('@')[0];
-                const finalName = name || emailName;
-
-                const hour = new Date().getHours();
-                let timeGreeting = "Hello";
-                
-                if (hour >= 5 && hour < 12) timeGreeting = "Good morning";
-                else if (hour >= 12 && hour < 17) timeGreeting = "Good afternoon";
-                else if (hour >= 17 && hour < 22) timeGreeting = "Good evening";
-                else timeGreeting = "It's getting late";
-
-                ui.greeting.textContent = `${timeGreeting}, ${finalName}!`;
+                window.currentDisplayName = name || emailName; // Save globally for the clock interval
+                updateTime(); // Force an immediate greeting update
             }));
 
             let qStart, qEnd;
@@ -1375,19 +1391,54 @@
                 state.plantLogs = s.docs.map(d => ({id:d.id, ...d.data()})); renderPlantsWidget();
             }));
 
-            const cookQ = query(collection(db, `users/${uid}/recipes`), orderBy('lastCooked', 'desc'), limit(5));
-            unsubscribers.push(onSnapshot(cookQ, (snap) => {
-                if (!snap.empty) {
-                    // Always fetch the most recent cook to display
-                    const lastData = snap.docs[0].data();
+            let cookingViewMode = 'latest';
+            let recentCooks = [];
+            
+            const renderCooking = () => {
+                if (recentCooks.length === 0) {
+                    ui.cookingContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic">No recent cooks.</p>`;
+                    return;
+                }
+                
+                if (cookingViewMode === 'latest') {
+                    ui.cookingContainer.classList.replace('justify-start', 'justify-center');
+                    const lastData = recentCooks[0];
                     const daysSince = Math.floor((new Date() - new Date(lastData.lastCooked.replace(' ', 'T')))/(1000*60*60*24));
-
-                    // Removed the 3-day random suggestion condition so it always shows the latest recipe
-                    const img = lastData.lastCookedImage || lastData.imageUrl || 'https://placehold.co/100x100/e2e8f0/adb5bd?text=Food';
+                    // Updated to match RecipeManagr's exact property name: latestHistoryImage
+                    const img = lastData.latestHistoryImage || lastData.imageUrl || 'https://placehold.co/100x100/e2e8f0/adb5bd?text=Food';
+                    
                     ui.cookingContainer.innerHTML = `<div class="flex items-center gap-3 h-full px-1 text-left w-full"><img src="${img}" class="w-12 h-12 rounded-md object-cover shadow-sm bg-gray-100 flex-shrink-0"><div class="min-w-0"><p class="font-bold truncate text-xs">${lastData.name}</p><p class="text-[10px] text-[var(--text-secondary)] truncate">Cooked ${daysSince === 0 ? 'Today' : daysSince + 'd ago'}</p></div></div>`;
                 } else {
-                    ui.cookingContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic">No recent cooks.</p>`;
+                    ui.cookingContainer.classList.replace('justify-center', 'justify-start');
+                    ui.cookingContainer.innerHTML = recentCooks.map(data => {
+                        const daysSince = Math.floor((new Date() - new Date(data.lastCooked.replace(' ', 'T')))/(1000*60*60*24));
+                        // Updated to match RecipeManagr's exact property name: latestHistoryImage
+                        const img = data.latestHistoryImage || data.imageUrl || 'https://placehold.co/100x100/e2e8f0/adb5bd?text=Food';
+                        
+                        return `<div class="flex items-center gap-2 w-full text-left mb-1 p-1.5 bg-gray-50 dark:bg-gray-800 rounded-lg border border-[var(--border-color)]">
+                            <img src="${img}" class="w-8 h-8 rounded object-cover flex-shrink-0">
+                            <div class="min-w-0">
+                                <p class="font-bold truncate text-[11px]">${data.name}</p>
+                                <p class="text-[9px] text-[var(--text-secondary)] truncate">${daysSince === 0 ? 'Today' : daysSince + 'd ago'}</p>
+                            </div>
+                        </div>`;
+                    }).join('');
                 }
+            };
+
+            const toggleCookingBtn = document.getElementById('toggle-cooking-view');
+            if(toggleCookingBtn) {
+                toggleCookingBtn.addEventListener('click', (e) => {
+                    cookingViewMode = cookingViewMode === 'latest' ? 'list' : 'latest';
+                    e.currentTarget.innerHTML = cookingViewMode === 'latest' ? '<i class="fas fa-list"></i>' : '<i class="fas fa-square"></i>';
+                    renderCooking();
+                });
+            }
+
+            const cookQ = query(collection(db, `users/${uid}/recipes`), orderBy('lastCooked', 'desc'), limit(5));
+            unsubscribers.push(onSnapshot(cookQ, (snap) => {
+                recentCooks = snap.docs.map(d => d.data());
+                renderCooking();
             }));
 
             // ADD THIS INSIDE setupListeners
@@ -1847,6 +1898,15 @@
 
                 getDoc(doc(db, 'users', user.uid, 'settings', 'theme')).then(snap => {
                     applyTheme(snap.exists() ? snap.data().theme : 'light');
+                });
+                
+                getDoc(doc(db, 'users', user.uid, 'settings', 'dashboard')).then(snap => {
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (data.layout) localStorage.setItem('dashboard_layout', JSON.stringify(data.layout));
+                        if (data.hiddenWidgets) localStorage.setItem('dashboard_hidden_widgets', JSON.stringify(data.hiddenWidgets));
+                        loadLayout(); // Reload grid immediately with synced data
+                    }
                 });
 
                 getDoc(doc(db, 'users', user.uid, 'services', 'trakt')).then(snap => {
