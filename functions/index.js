@@ -579,3 +579,182 @@ exports.healthRemindersCron = onSchedule({
         console.error("Error in healthRemindersCron:", error);
     }
 });
+
+// ==========================================
+// 9. DREO API (PER-USER)
+// ==========================================
+
+exports.dreoLogin = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be logged in.");
+  
+  const { email, password } = request.data;
+  if (!email || !password) throw new HttpsError("invalid-argument", "Missing email or password");
+
+  const passwordHash = crypto.createHash('md5').update(password).digest('hex');
+  const timestamp = Date.now().toString(); 
+  
+  // CRITICAL: UK/EU users must use this endpoint
+  const baseURL = "https://app-api-eu.dreo-tech.com"; 
+
+  try {
+      const loginResponse = await axios.post(`${baseURL}/api/oauth/login?timestamp=${timestamp}`, {
+          client_id: "7de37c362ee54dcf9c4561812309347a",
+          client_secret: "32dfa0764f25451d99f94e1693498791",
+          email: email,
+          encrypt: "ciphertext",
+          grant_type: "email-password",
+          himei: "faede31549d649f58864093158787ec9",
+          password: passwordHash,
+          scope: "all",
+          traceId: timestamp,
+          appVersion: "2.8.6",
+          phoneBrand: "Google",
+          phoneOS: "Android"
+      }, { 
+          headers: { 
+              "Content-Type": "application/json",
+              "User-Agent": "okhttp/4.9.1",
+              "ua": "dreo/2.8.6 (sdk_gphone64_x86_64;android 13;Scale/2.625)",
+              "lang": "en"
+          }
+      });
+
+      if (loginResponse.data.code && loginResponse.data.code !== 0) {
+          throw new Error(loginResponse.data.msg);
+      }
+
+      const accessToken = loginResponse.data.access_token || loginResponse.data.data?.access_token;
+      
+      await admin.firestore().collection('users').doc(request.auth.uid).collection('services').doc('dreo').set({
+          accessToken: accessToken,
+          email: email,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      return { success: true };
+  } catch (error) {
+      logger.error("Dreo Login Error", error.message);
+      throw new HttpsError("internal", error.message);
+  }
+});
+
+// B. Proxy to fetch live devices using the user's saved token
+exports.dreoProxy = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be logged in");
+
+  const db = admin.firestore();
+  const snap = await db.collection('users').doc(request.auth.uid).collection('services').doc('dreo').get();
+  const data = snap.data();
+
+  if (!data || !data.accessToken) throw new HttpsError("failed-precondition", "Dreo not linked.");
+
+  const baseURL = "https://app-api-eu.dreo-tech.com";
+  const headers = {
+      "Authorization": `Bearer ${data.accessToken}`,
+      "Content-Type": "application/json",
+      "User-Agent": "okhttp/4.9.1",
+      "ua": "dreo/2.8.6 (sdk_gphone64_x86_64;android 13;Scale/2.625)",
+      "lang": "en"
+  };
+
+  try {
+      // 1. Fetch the list of devices
+      const ts1 = Date.now().toString();
+      const listResponse = await axios.get(`${baseURL}/api/v2/user-device/device/list?timestamp=${ts1}`, { headers });
+      const responseData = listResponse.data;
+      const devices = responseData.data?.list || [];
+
+      // 2. Fetch the live state for every device found
+      for (let dev of devices) {
+          try {
+              // Strictly URL-encode the serial number to prevent colons (:) from breaking the query
+              const encodedSn = encodeURIComponent(dev.sn);
+              const ts2 = Date.now().toString();
+              
+              // CRITICAL FIX: The state endpoint does NOT use 'v2' in the path like the list endpoint does
+              const stateRes = await axios.get(`${baseURL}/api/user-device/device/state?deviceSn=${encodedSn}&timestamp=${ts2}`, { headers });
+              
+              // Pass the raw responses down to the frontend for debugging!
+              dev._rawStateResponse = stateRes.data;
+              
+              // Dreo stores the actual live states inside the "mixed" object!
+              if (stateRes.data && stateRes.data.data && stateRes.data.data.mixed) {
+                  dev.deviceState = stateRes.data.data.mixed; 
+              }
+          } catch (stateErr) {
+              // If it fails, attach the exact Dreo error to the device so the frontend console sees it
+              dev._stateError = stateErr.response?.data || stateErr.message;
+              logger.warn(`Failed to fetch state for Dreo device ${dev.sn}:`, dev._stateError);
+          }
+      }
+
+      return responseData;
+  } catch (error) {
+      logger.error("Dreo Proxy Error", error.message);
+      throw new HttpsError("internal", "Dreo API request failed");
+  }
+});
+
+// C. Proxy to send control commands to Dreo devices
+exports.dreoCommand = onCall({ cors: true }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Must be logged in");
+
+  const db = admin.firestore();
+  const snap = await db.collection('users').doc(request.auth.uid).collection('services').doc('dreo').get();
+  const data = snap.data();
+
+  if (!data || !data.accessToken) throw new HttpsError("failed-precondition", "Dreo not linked.");
+
+  const { deviceSn, stateField, stateValue } = request.data;
+  if (!deviceSn || !stateField || stateValue === undefined) {
+      throw new HttpsError("invalid-argument", "Missing command parameters");
+  }
+
+  const baseURL = "https://app-api-eu.dreo-tech.com";
+  const headers = {
+      "Authorization": `Bearer ${data.accessToken}`,
+      "Content-Type": "application/json",
+      "User-Agent": "okhttp/4.9.1",
+      "ua": "dreo/2.8.6 (sdk_gphone64_x86_64;android 13;Scale/2.625)",
+      "lang": "en"
+  };
+
+  // Exhaustive list of every endpoint and device type variation Dreo uses
+  const permutations = [
+      { url: '/api/v2/user-device/control', type: 1 },
+      { url: '/api/v2/user-device/control', type: 2 },
+      { url: '/api/v2/user-device/control', type: 0 },
+      { url: '/api/v1/user-device/control', type: 1 },
+      { url: '/api/v1/user-device/control', type: 2 },
+      { url: '/api/v1/user-device/control', type: 0 }
+  ];
+
+  let errors = [];
+
+  for (let perm of permutations) {
+      try {
+          const response = await axios.post(`${baseURL}${perm.url}?timestamp=${Date.now()}`, {
+              deviceSn: deviceSn,
+              type: perm.type,
+              stateField: stateField,
+              stateValue: stateValue
+          }, { headers });
+          
+          if (response.data && response.data.code === 0) {
+              logger.info(`[Dreo Debug] SUCCESS with ${perm.url} and type ${perm.type}`);
+              return { success: true };
+          } else {
+              errors.push(`[${perm.url}|t:${perm.type}] -> ${response.data.msg || 'Rejected'}`);
+          }
+      } catch (e) {
+          const status = e.response?.status || 'NetErr';
+          const msg = e.response?.data?.msg || e.message;
+          errors.push(`[${perm.url}|t:${perm.type}] -> HTTP ${status}: ${msg}`);
+      }
+  }
+
+  // If we exit the loop, every single API combination failed. 
+  const matrixString = errors.join(' || ');
+  logger.error("Dreo Command Shotgun Failed", matrixString);
+  throw new HttpsError("internal", `Dreo Matrix: ${matrixString}`); 
+});

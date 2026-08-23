@@ -7,6 +7,8 @@
     <link rel="icon" href="/favicons/house.svg" type="image/svg+xml">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/md5.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -432,6 +434,27 @@
     </div>
     <p class="text-[10px] text-gray-500 mt-1 italic">Control lights via LightManagr.</p>
 </div>
+                <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+                    <label class="block text-sm font-semibold mb-1 flex items-center gap-2">
+                        <i class="fa-solid fa-fan text-teal-500"></i> Dreo
+                    </label>
+                    <div id="dreo-connected-ui" class="hidden flex justify-between items-center bg-[var(--input-bg-color)] p-3 rounded-lg">
+                        <span id="dreo-status-text" class="text-sm font-bold text-green-600">Connected</span>
+                        <button id="dreo-disconnect-btn" class="text-xs bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded transition shadow-sm">
+                            Disconnect
+                        </button>
+                    </div>
+                    <div id="dreo-setup-ui" class="bg-[var(--input-bg-color)] p-3 rounded-lg flex flex-col gap-2">
+                        <input type="email" id="dreo-email" placeholder="Dreo Email" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 border border-[var(--text-color-secondary)]/30 bg-white dark:bg-gray-800">
+                        <div class="flex gap-2">
+                            <input type="password" id="dreo-password" placeholder="Dreo Password" class="w-full rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 border border-[var(--text-color-secondary)]/30 bg-white dark:bg-gray-800">
+                            <button id="dreo-connect-btn" class="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg transition shadow-sm text-sm">
+                                Connect
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-gray-500 mt-1 italic">Displays live fan/AC status on your dashboard.</p>
+                </div>
             </div>
         </div>
 
@@ -577,16 +600,17 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { 
-            initializeAuth, browserLocalPersistence, browserPopupRedirectResolver, onAuthStateChanged, signOut,
+        import { initializeAuth, browserLocalPersistence, browserPopupRedirectResolver, onAuthStateChanged, signOut,
             updatePassword, updateEmail, GoogleAuthProvider, linkWithPopup, unlink, deleteUser,
             signInWithPopup
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, onSnapshot, setDoc, getDocs, collection, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
-        
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
         import { TICKTICK_CLIENT_ID, TICKTICK_REDIRECT_URI } from '../tasktrackr/api_keys.js';
         import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI } from '../vidtrackr/api_keys.js';
+
+        
         
         // Import Changelog data for version and Shared Nav
         import { changelogData } from '../changelog-data.js';
@@ -609,6 +633,7 @@
         });
         const db = getFirestore(app);
         const messaging = getMessaging(app);
+        const functions = getFunctions(app); // Init cloud functions
 
         // State & Nav
         let nav = null;
@@ -1097,6 +1122,19 @@ if (locDoc.exists() && locDoc.data().latitude) {
                     };
                 }
 
+                // Dreo Check
+                const dreoDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'dreo'));
+                if (dreoDoc.exists() && dreoDoc.data().accessToken) {
+                    document.getElementById('dreo-connected-ui').classList.remove('hidden');
+                    document.getElementById('dreo-setup-ui').classList.add('hidden');
+                    document.getElementById('dreo-connected-ui').classList.add('flex');
+                    document.getElementById('dreo-status-text').textContent = `Connected (${dreoDoc.data().email})`;
+                } else {
+                    document.getElementById('dreo-connected-ui').classList.add('hidden');
+                    document.getElementById('dreo-connected-ui').classList.remove('flex');
+                    document.getElementById('dreo-setup-ui').classList.remove('hidden');
+                }
+
                 // Hue Check
 const hueDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'hue'));
 const hueStatus = document.getElementById('hue-status');
@@ -1577,6 +1615,35 @@ updateLocationBtn.addEventListener('click', () => {
                 }
             });
         }
+
+        // Dreo Connect Listener
+        document.getElementById('dreo-connect-btn').addEventListener('click', async () => {
+            const email = document.getElementById('dreo-email').value.trim();
+            const password = document.getElementById('dreo-password').value;
+            if(!email || !password) return showMessage("Enter Dreo email and password", "error");
+            
+            const btn = document.getElementById('dreo-connect-btn');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                // Safely route through the backend
+                const dreoLogin = httpsCallable(functions, 'dreoLogin');
+                await dreoLogin({ email, password });
+                showMessage("Dreo connected successfully!");
+                loadSettings(auth.currentUser);
+            } catch (e) {
+                showMessage(`Dreo Error: ${e.message}`, "error");
+            } finally {
+                btn.textContent = "Connect";
+            }
+        });
+
+        // Dreo Disconnect Listener
+        document.getElementById('dreo-disconnect-btn').addEventListener('click', async () => {
+            if(!confirm("Disconnect Dreo?")) return;
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'services', 'dreo'), { accessToken: deleteField(), email: deleteField() }, { merge: true });
+            showMessage("Dreo disconnected.");
+            loadSettings(auth.currentUser);
+        });
 
         deleteAccountBtn.addEventListener('click', async () => {
             const confirmText = prompt("Type 'DELETE' to confirm account deletion. This is permanent.");

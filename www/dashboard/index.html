@@ -422,6 +422,34 @@
                 </div>
             </div>
 
+            <!-- Added data attributes so our JS functions know which device to target -->
+            <div class="dashboard-card col-span-1" id="card-dreo" data-sn="" data-power="false" data-powerfield="fanon">
+                <div class="card-header">
+                    <span id="dreo-name">Fan</span>
+                    <!-- Read-Only Power Icon (Device requires MQTT for control) -->
+                    <div id="dreo-power-btn" class="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center cursor-not-allowed" title="HTTP Control not supported for this model">
+                        <i class="fas fa-power-off text-gray-500" id="dreo-power-icon"></i>
+                    </div>
+                </div>
+                <div class="flex flex-col items-center justify-center h-full gap-2">
+                    <div class="text-3xl text-gray-300 dark:text-gray-600 transition-colors" id="dreo-icon">
+                        <i class="fas fa-power-off"></i>
+                    </div>
+                    <div class="text-center w-full px-2">
+                        <!-- Swapped: Speed is now the main text -->
+                        <p id="dreo-speed-display" class="font-bold text-2xl">--</p>
+                        <!-- Swapped: Temp is now the subtext -->
+                        <p id="dreo-temp-display" class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mt-1">Temp: --°C</p>
+                    </div>
+                    <!-- Read-Only Speed Display -->
+                    <div class="w-full px-2 mt-1 opacity-50 transition-opacity cursor-not-allowed" id="dreo-controls" title="HTTP Control not supported for this model">
+                        <div class="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700 overflow-hidden">
+                            <div id="dreo-speed-bar" class="bg-teal-500 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="dashboard-card md:col-span-2" id="card-activity">
                 <div class="card-header">
                     <span>Recent Activity</span>
@@ -449,6 +477,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { initializeAuth, browserLocalPersistence, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, onSnapshot, Timestamp, setDoc, deleteField, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-functions.js";
 
         // Constants
         const TRAKT_CLIENT_ID = '46c509e2cef42228978ae6a69b138628a6399c0bf28b729b7883b19ab9b082eb';
@@ -474,6 +503,7 @@
             persistence: browserLocalPersistence
         });
         const db = getFirestore(app);
+        const functions = getFunctions(app); // Init cloud functions
         let currentUser = null;
         let unsubscribers = [];
         let targetDate = new Date();
@@ -778,6 +808,189 @@
                  ui.moodDisplay.innerHTML = `<i class="fas fa-meh text-gray-300"></i>`;
                  ui.moodText.textContent = "No data";
                  ui.moodTime.classList.add('opacity-0');
+            }
+        };
+
+        // Pulls the Dreo data securely via the Firebase backend
+        async function updateDreoWidget() {
+            try {
+                console.log("[Dreo Debug] 1. Requesting data from backend proxy...");
+                const proxy = httpsCallable(functions, 'dreoProxy');
+                const result = await proxy();
+                
+                // Account for potential structural variations in Dreo's API
+                const devices = result.data?.data?.list || result.data?.list || [];
+                console.log("[Dreo Debug] 2. Raw Devices Array:", devices);
+                
+                if (!devices || !Array.isArray(devices) || devices.length === 0) {
+                    document.getElementById('dreo-status').textContent = 'No devices found';
+                    return;
+                }
+                
+                // Try to specifically find a fan (Tower fans are usually 'HTF' or 'MAC', Purifiers are 'HAP')
+                let device = devices.find(d => 
+                    (d.model && d.model.includes('HTF')) || 
+                    (d.model && d.model.includes('MAC')) ||
+                    (d.deviceName && d.deviceName.toLowerCase().includes('fan'))
+                );
+                
+                // If we still can't find it by name or model, just pick the device that IS NOT the air purifier
+                if (!device) {
+                    console.log("[Dreo Debug] 3. Fan not found by name, selecting the non-purifier device.");
+                    device = devices.find(d => d.model && !d.model.includes('HAP')) || devices[0];
+                }
+                
+                console.log("[Dreo Debug] 4. Selected Device for Widget:", device);
+                console.log("[Dreo Debug] 4b. Raw State API Response:", device._rawStateResponse);
+                console.log("[Dreo Debug] 4c. State API Error (if any):", device._stateError);
+                
+                let powerOn = false;
+                let speed = "--";
+                let temp = null;
+                
+                const name = (device.deviceName || device.productName || '').toLowerCase();
+                const isPurifier = name.includes('purifier');
+
+                // Gracefully fallback to empty object if state didn't fetch properly
+                const stateData = device.deviceState || {};
+                console.log("[Dreo Debug] 5. Device State Object:", stateData);
+
+                // Dreo structures this as { fanon: { state: true }, windlevel: { state: 2 }, ... }
+                if (stateData.poweron) powerOn = stateData.poweron.state;
+                if (stateData.fanon) powerOn = stateData.fanon.state; // Many fans use fanon instead of poweron
+                if (stateData.windlevel) speed = stateData.windlevel.state;
+                
+                if (stateData.temperature) {
+                    // Dreo returns temperature in Fahrenheit by default. 
+                    // Convert to Celsius using the standard formula: (F - 32) * 5/9
+                    const tempF = stateData.temperature.state;
+                    temp = Math.round((tempF - 32) * 5 / 9);
+                    console.log(`[Dreo Debug] Converted Temp: ${tempF}F to ${temp}C`);
+                }
+                
+                if (stateData.pm25) temp = stateData.pm25.state;
+
+                console.log(`[Dreo Debug] 6. Final Parsing -> Power: ${powerOn}, Speed: ${speed}, Temp/AQI: ${temp}`);
+                
+                // --- UPDATE UI WITH SWAPPED LABELS ---
+                
+                // Save device details to the DOM for the control functions to access
+                const dreoCard = document.getElementById('card-dreo');
+                dreoCard.dataset.sn = device.sn;
+                dreoCard.dataset.type = device.type !== undefined ? device.type : 1; // CRITICAL: Save exact device type
+                dreoCard.dataset.power = powerOn;
+                dreoCard.dataset.powerfield = stateData.fanon ? 'fanon' : 'poweron'; // Dynamically detect correct power field
+
+                // Update the Widget Header name dynamically
+                const headerSpan = document.getElementById('dreo-name');
+                if (headerSpan) headerSpan.textContent = device.deviceName || device.productName || 'Fan';
+
+                // Update Power Button UI
+                const powerBtn = document.getElementById('dreo-power-btn');
+                const powerIcon = document.getElementById('dreo-power-icon');
+                if (powerOn) {
+                    powerBtn.classList.replace('bg-gray-200', 'bg-teal-100');
+                    powerBtn.classList.replace('dark:bg-gray-700', 'dark:bg-teal-900/40');
+                    powerIcon.classList.replace('text-gray-500', 'text-teal-600');
+                } else {
+                    powerBtn.classList.replace('bg-teal-100', 'bg-gray-200');
+                    powerBtn.classList.replace('dark:bg-teal-900/40', 'dark:bg-gray-700');
+                    powerIcon.classList.replace('text-teal-600', 'text-gray-500');
+                }
+
+                // SWAP: Big text is now Speed
+                document.getElementById('dreo-speed-display').textContent = powerOn ? `Speed: ${speed}` : 'Off';
+                
+                // SWAP: Small text is now Temperature/AQI
+                if (temp !== null) {
+                    document.getElementById('dreo-temp-display').textContent = isPurifier ? `AQI: ${temp}` : `Temp: ${temp}°C`;
+                } else {
+                    document.getElementById('dreo-temp-display').textContent = "Temp: --";
+                }
+                
+                // Update Read-Only Speed Bar UI
+                const controlsBlock = document.getElementById('dreo-controls');
+                const speedBar = document.getElementById('dreo-speed-bar');
+                if (powerOn) {
+                    controlsBlock.classList.remove('opacity-50');
+                    // Calculate percentage based on the fan's 9 speed levels
+                    const speedPercent = speed !== "--" ? (parseInt(speed) / 9) * 100 : 0;
+                    speedBar.style.width = `${speedPercent}%`;
+                } else {
+                    controlsBlock.classList.add('opacity-50');
+                    speedBar.style.width = `0%`;
+                }
+                
+                // Update Central Icon
+                const icon = document.getElementById('dreo-icon');
+                const activeIconClass = isPurifier ? 'fa-wind' : 'fa-fan';
+                
+                icon.innerHTML = powerOn 
+                    ? `<i class="fas ${activeIconClass} fa-spin text-teal-500"></i>` 
+                    : `<i class="fas fa-power-off text-gray-300"></i>`;
+                
+                if (powerOn) {
+                    icon.classList.remove('text-gray-300', 'dark:text-gray-600');
+                    icon.classList.add('text-teal-500');
+                } else {
+                    icon.classList.add('text-gray-300', 'dark:text-gray-600');
+                    icon.classList.remove('text-teal-500');
+                }
+
+            } catch (error) {
+                console.error('[Dreo Debug] Failed to fetch Dreo data:', error);
+                document.getElementById('dreo-speed-display').textContent = 'Error';
+            }
+        }
+
+        // --- DREO INTERACTIVE CONTROLS ---
+        
+        window.handleDreoToggle = async () => {
+            const card = document.getElementById('card-dreo');
+            const sn = card.dataset.sn;
+            const powerField = card.dataset.powerfield || 'fanon';
+            if (!sn) return;
+            
+            const btn = document.getElementById('dreo-power-btn');
+            const isCurrentlyOn = card.dataset.power === "true";
+            const newState = !isCurrentlyOn;
+            
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-circle-notch fa-spin text-gray-500"></i>';
+            
+            try {
+                const cmd = httpsCallable(functions, 'dreoCommand');
+                await cmd({ deviceSn: sn, stateField: powerField, stateValue: newState });
+                
+                // Wait 1 second for the Dreo server to register the change before fetching the live state again
+                setTimeout(() => {
+                    updateDreoWidget().finally(() => {
+                        btn.disabled = false;
+                        btn.innerHTML = `<i class="fas fa-power-off ${newState ? 'text-teal-600' : 'text-gray-500'}" id="dreo-power-icon"></i>`;
+                    });
+                }, 1000);
+            } catch (e) {
+                console.error("[Dreo Debug] Control Error:", e);
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fas fa-power-off text-red-500" id="dreo-power-icon"></i>`; 
+            }
+        };
+
+        window.handleDreoSpeed = async (val) => {
+            const card = document.getElementById('card-dreo');
+            const sn = card.dataset.sn;
+            if (!sn) return;
+            
+            try {
+                document.getElementById('dreo-speed-display').textContent = `Speed: ${val}`;
+                
+                const cmd = httpsCallable(functions, 'dreoCommand');
+                await cmd({ deviceSn: sn, stateField: 'windlevel', stateValue: parseInt(val) });
+                
+                // Sync proper state a moment later
+                setTimeout(updateDreoWidget, 1000);
+            } catch (e) {
+                console.error("[Dreo Debug] Speed Control Error:", e);
             }
         };
 
@@ -1916,6 +2129,16 @@
                         updateVidTrackrWidget(user.uid, token); 
                     } else {
                         ui.videoContainer.innerHTML = `<div class="w-full text-center text-sm text-[var(--text-secondary)]">VidTrackr not connected.</div>`;
+                    }
+                });
+                
+                // Trigger Dreo widget checks
+                getDoc(doc(db, 'users', user.uid, 'services', 'dreo')).then(snap => {
+                    if (snap.exists() && snap.data().accessToken) {
+                        updateDreoWidget();
+                        // Setup interval to check every 30 seconds
+                        const dreoInterval = setInterval(updateDreoWidget, 30000);
+                        unsubscribers.push(() => clearInterval(dreoInterval));
                     }
                 });
 

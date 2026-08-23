@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.31.0-alpha",
+    date: "2026-08-24",
+    changes: [
+                "In Account Page: Integrated Dreo account linking and management settings.",
+                "In Dashboard: Introduced real-time Dreo smart fan integration to monitor live device power and settings.",
+                "In Dashboard: Implemented smart device targeting to automatically identify and connect to the Air Circulator over other connected devices.",
+                "In Dashboard: Added a dynamic visual progress bar calibrated to reflect the fan's active setting across its 1-9 speed range."
+    ]
+},
+    {
     version: "v16.30.0-alpha",
     date: "2026-08-23",
     changes: [
