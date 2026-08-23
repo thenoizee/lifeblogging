@@ -2,6 +2,21 @@
 
 export const changelogData = [
     {
+    version: "v16.28.0-alpha",
+    date: "2026-08-23",
+    changes: [
+        "In MoneyManagr: Added a search bar and a 'Select Visible' bulk-selection button to the new Inbox tab.",
+        "In MoneyManagr: Built a comprehensive 'Ledger Cleanup' tool that automatically detects, groups, and calculates the financial impact of duplicate transactions, complete with search/date filters and a 'Delete All' function.",
+        "In MoneyManagr: Introduced a 'Bulk Edit' mode to the Recent Activity feed, allowing users to safely rename, recategorize, or move multiple transactions at once with a visual preview.",
+        "In MoneyManagr: Upgraded the Recent Activity feed to group transactions under sticky date headers (e.g., 'Today', 'Yesterday') rather than a flat list.",
+        "In MoneyManagr: Reorganized the main dashboard by visually separating 'Bank Accounts' from 'Savings & Investments', and nesting the 'Owed to you / You owe' balances logically inside the People (IOUs) section.",
+        "In MoneyManagr: Upgraded the 'Add Account' modal to handle 'Edit Account' functionality, allowing users to rename or reclassify existing pots.",
+        "In MoneyManagr: Redesigned the 'Split Bill' modal into a clean, 3-step structured layout for better UX.",
+        "In MoneyManagr: Overhauled global UI styling, implementing modern borderless inputs, glowing focus rings, and glassmorphic modal overlays.",
+        "In MoneyManagr: Implemented UI safety measures, including double-click protection on save buttons, robust null-checking, and DOM-escape mechanisms to prevent modals from getting trapped inside hidden tabs."
+    ]
+},
+    {
     version: "v16.27.0-alpha",
     date: "2026-08-22",
     changes: [
