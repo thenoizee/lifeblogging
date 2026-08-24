@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v16.33.1-alpha",
+    date: "2026-08-24",
+    changes: [
+                "In Hub: Disabled auto-reload on Service Worker updates to prevent infinite refresh loops caused by Capacitor's local server.",
+              
+    ]
+},
+    {
     version: "v16.33.0-alpha",
     date: "2026-08-24",
     changes: [
