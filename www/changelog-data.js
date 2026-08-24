@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v16.33.3-alpha",
+    date: "2026-08-24",
+    changes: [
+                "In Hub: Android widget bug fix.",
+              
+    ]
+},
+    {
     version: "v16.33.2-alpha",
     date: "2026-08-24",
     changes: [
