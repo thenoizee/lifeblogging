@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.33.0-alpha",
+    date: "2026-08-24",
+    changes: [
+        "In Android: Replaced deprecated AsyncTask with modern ExecutorService in LatestMoodWidgetProvider to fix premature process termination.",
+        "In Android: Fixed ISO 8601 date parsing string format in LatestMoodWidgetProvider.",
+        "In Android: Overhauled LatestMoodWidgetProvider XML layout for a sleek, centralized, and modern UI design.",
+        "In Main: Added a helpful readme markdown file."
+    ]
+},
+    {
     version: "v16.32.0-alpha",
     date: "2026-08-24",
     changes: [
