@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.34.0-alpha",
+    date: "2026-08-28",
+    changes: [
+        "In HealthManagr: Refactored modal CSS to use smooth scale and opacity transitions instead of sudden DOM removal/keyframes.",
+        "In HealthManagr: Implemented a reset function that clears modal states and timeouts immediately upon closing to prevent data leakage between actions.",
+        "In HealthManagr: Upgraded dose logging buttons to display a loading spinner, await Firestore success, show a confirmation checkmark, and smoothly self-dismiss.",
+        "In HealthManagr: Eliminated the initial UI and table flicker on load by debouncing the Firestore snapshot render calls by 50ms and applying a minimum height to the table container.",
+        "In HealthManagr: Overhauled the Dashboard into a split-grid layout, bringing 'Active Treatments' and 'Adherence' side-by-side for better screen real estate.",
+        "In HealthManagr: Changed the default data filter for the Distribution & Analytics charts from 'All Time' to 'Last 30 Days'.",
+        "In HealthManagr: Introduced Dynamic Color Inheritance for the Edit Medicine, Edit Dose, and Log Dose modals so that borders, glows, and buttons automatically adapt to the specific medication's custom accent color."
+    ]
+},
+    {
     version: "v16.33.3-alpha",
     date: "2026-08-24",
     changes: [
