@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.35.0-alpha",
+    date: "2026-08-29",
+    changes: [
+        "In Android Widget: Redesigned the background to a dark slate for better contrast, shifting dynamic pastel mood colors directly to the text and icons to prevent blinding flash effects.",
+        "In Android Widget: Replaced standard Unicode emojis with exact FontAwesome SVG vector paths (Angry, Frown, Meh, Smile, Laugh Beam) to perfectly mirror the web app's UI.",
+        "In Android Widget: Added tap-to-log functionality, allowing users to click anywhere on the widget background to instantly open and deep-link directly to the Loggr.",
+        "In Android Widget: Updated error state fallbacks (Auth Blocked, Network Sleeping, Server Timeout) to use native Android system icons instead of generic emojis.",
+        "In Android Wrapper: Implemented a smart cold-boot watchdog to prevent Capacitor's default SPA router from hijacking the widget's deep-link clicks upon app launch.",
+        "In Android Wrapper: Added a warm-start JavaScript injection that smoothly navigates to the Loggr without a jarring hard reload if the app is already open in the background."
+    ]
+},
+    {
     version: "v16.34.0-alpha",
     date: "2026-08-28",
     changes: [

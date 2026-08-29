@@ -59,13 +59,22 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
                 for (int appWidgetId : appWidgetIds) {
                     RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.latest_mood_widget);
 
-                    Intent intent = new Intent(context, LatestMoodWidgetProvider.class);
-                    intent.setAction("MANUAL_REFRESH");
+                    // 1. Setup the Refresh Button Intent
+                    Intent refreshIntent = new Intent(context, LatestMoodWidgetProvider.class);
+                    refreshIntent.setAction("MANUAL_REFRESH");
                     // [CRITICAL FIX] Tell Android a human clicked this, forcing the OS to grant temporary foreground network access
-                    intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
+                    refreshIntent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
+                    PendingIntent refreshPendingIntent = PendingIntent.getBroadcast(context, 0, refreshIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                    views.setOnClickPendingIntent(R.id.widget_refresh_button, refreshPendingIntent);
 
-                    PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                    views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingIntent);
+                    // 2. Setup the App Launch Intent for the rest of the widget
+                    Intent launchAppIntent = new Intent(context, MainActivity.class);
+                    // Use a Data URI instead of an Action string. The Android OS NEVER strips Data URIs.
+                    launchAppIntent.setData(android.net.Uri.parse("loggr://widget/open"));
+                    launchAppIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+                    PendingIntent launchPendingIntent = PendingIntent.getActivity(context, 2005, launchAppIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                    views.setOnClickPendingIntent(R.id.widget_root_layout, launchPendingIntent);
 
                     if (data.moodVal != null && data.moodVal.matches("[1-5]")) {
                         views.setTextViewText(R.id.widget_mood_text, "Mood Level: " + data.moodVal);
@@ -73,10 +82,13 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
                         views.setTextViewText(R.id.widget_mood_text, data.moodVal != null ? data.moodVal : "Critical Error");
                     }
 
-                    views.setTextViewText(R.id.widget_mood_emoji, data.emoji);
+                    // Set the FontAwesome icon and tint it with the pastel color
+                    views.setImageViewResource(R.id.widget_mood_icon, data.iconResId);
+                    views.setInt(R.id.widget_mood_icon, "setColorFilter", data.colorCode);
+
                     views.setTextViewText(R.id.widget_time_logged, data.loggedTime);
                     views.setTextViewText(R.id.widget_last_updated, data.lastRefreshedTime);
-                    views.setInt(R.id.widget_root_layout, "setBackgroundColor", data.colorCode);
+                    views.setTextColor(R.id.widget_mood_text, data.colorCode);
 
                     // Push the final view to the home screen
                     appWidgetManager.updateAppWidget(appWidgetId, views);
@@ -112,8 +124,8 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
         String moodVal = "Error";
         String loggedTime = "Logged at: --";
         String lastRefreshedTime = "Refreshed: --";
-        int colorCode = Color.parseColor("#475569"); // Slate gray fallback
-        String emoji = "⚠️";
+        int colorCode = Color.parseColor("#F8FAFC");
+        int iconResId = android.R.drawable.ic_dialog_alert; // Native fallback icon
     }
 
     private static WidgetData fetchMoodDataFromServer(Context context) {
@@ -171,19 +183,19 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
 
                     data.loggedTime = "Logged at: " + displayTime;
 
-                    // Color scaling logic
+                    // Color scaling logic using your native FontAwesome drawables
                     switch (data.moodVal) {
-                        case "1": data.emoji = "😠"; colorHex = "#ffadad"; break;
-                        case "2": data.emoji = "☹️"; colorHex = "#ffd6a5"; break;
-                        case "3": data.emoji = "😐"; colorHex = "#fdffb6"; break;
-                        case "4": data.emoji = "🙂"; colorHex = "#caffbf"; break;
-                        case "5": data.emoji = "😁"; colorHex = "#9bf6ff"; break;
-                        default: data.emoji = "❓"; colorHex = "#475569"; break;
+                        case "1": data.iconResId = R.drawable.ic_face_angry; colorHex = "#ffadad"; break;
+                        case "2": data.iconResId = R.drawable.ic_face_frown; colorHex = "#ffd6a5"; break;
+                        case "3": data.iconResId = R.drawable.ic_face_meh; colorHex = "#fdffb6"; break;
+                        case "4": data.iconResId = R.drawable.ic_face_smile; colorHex = "#caffbf"; break;
+                        case "5": data.iconResId = R.drawable.ic_face_laugh_beam; colorHex = "#9bf6ff"; break;
+                        default: data.iconResId = android.R.drawable.ic_dialog_info; colorHex = "#F8FAFC"; break;
                     }
                     data.colorCode = Color.parseColor(colorHex);
                 } else {
                     data.moodVal = (responseCode == 401 || responseCode == 403) ? "Auth Blocked" : "API Error " + responseCode;
-                    data.emoji = "🔒";
+                    data.iconResId = android.R.drawable.ic_secure; // Native lock icon
                 }
 
                 // If we reach this line, the request succeeded! Break out of the retry loop.
@@ -196,11 +208,11 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
                     android.os.PowerManager pm = (android.os.PowerManager) context.getSystemService(Context.POWER_SERVICE);
                     if (pm != null && pm.isPowerSaveMode()) {
                         data.moodVal = "Power Saver Active";
-                        data.emoji = "🔋";
-                        data.colorCode = Color.parseColor("#F59E0B"); // Amber warning color
+                        data.iconResId = android.R.drawable.ic_lock_idle_low_battery; // Native battery icon
+                        data.colorCode = Color.parseColor("#FBBF24");
                     } else {
                         data.moodVal = "Network Sleeping";
-                        data.emoji = "💤";
+                        data.iconResId = android.R.drawable.ic_dialog_alert; // Native warning icon
                     }
                 } else {
                     android.util.Log.d("MoodWidget", "Waiting 1.5s for radio to wake up...");
@@ -210,7 +222,7 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
                 // Server took longer than 8s to wake up, fail gracefully
                 android.util.Log.e("MoodWidget", "Server wake-up timeout.");
                 data.moodVal = "Waking Server... Tap Again";
-                data.emoji = "🥱";
+                data.iconResId = android.R.drawable.ic_dialog_alert; // Native warning icon
                 break; // Do not retry timeouts, it will trigger an ANR crash
             } catch (Exception e) {
                 android.util.Log.e("MoodWidget", "Network Crash Details: " + e.toString());
