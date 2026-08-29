@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.37.0-alpha",
+    date: "2026-08-29",
+    changes: [
+        "In Shared Navigation: Implemented strict environment detection to apply a 20px safe-area top padding solely to the native Android APK, while hiding the floating corner menu to prevent it from overlapping the profile and notification icons.",
+        "In Shared Navigation: Removed mouseenter and mouseleave listeners from the Hub dropdown to fix an Android WebView double-tap bug, and established a strict min-w-[32px] boundary on the toggle to prevent accidental routing to the Home page.",
+        "In Shared Navigation: Disabled physical CSS active state transformations (such as scaling and translateY) on touch devices to stop buttons from physically shifting out from under the user's finger during a tap.",
+        "In Shared Navigation: Engineered a URL formatting helper for the native build that automatically appends /index.html to internal routes, ensuring reliable navigation within Capacitor's strict local file server."
+    ]
+},
+    {
     version: "v16.36.0-alpha",
     date: "2026-08-29",
     changes: [

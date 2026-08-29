@@ -397,9 +397,12 @@ export class AppNavigation {
                     box-shadow: 0 6px 12px -2px rgba(15, 23, 42, 0.08);
                 }
             }
-            .nav-tab-btn:active {
-                transform: translateY(1px);
-                box-shadow: 0 2px 4px -2px rgba(15, 23, 42, 0.08);
+            /* Only apply active transforms on non-touch devices to prevent click cancellation */
+            @media (hover: hover) {
+                .nav-tab-btn:active {
+                    transform: translateY(1px);
+                    box-shadow: 0 2px 4px -2px rgba(15, 23, 42, 0.08);
+                }
             }
 
             /* Nav Bar Toggle Transitions */
@@ -421,6 +424,25 @@ export class AppNavigation {
     }
 
     renderHeader() {
+        // Android APK strictly runs on https://localhost. Desktop/PWA runs on lifeblogging.app.
+        // This is a bulletproof way to apply the notch padding ONLY to the APK.
+        const isNativeApp = typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.protocol === 'https:';
+        
+        // Snug 20px padding for the status bar
+        const nativeHeaderStyle = isNativeApp ? 'padding-top: 20px;' : '';
+        
+        // Hide the floating corner menu completely on native mobile to prevent layout clutter
+        const nativeCornerStyle = isNativeApp ? 'display: none;' : 'top: 4px;';
+
+        // Capacitor requires exact file paths. Safely append /index.html to all internal routes universally.
+        // This won't hurt the web version, as standard web servers resolve /index.html naturally.
+        const formatUrl = (url) => {
+            if (!url || !url.startsWith('/')) return url;
+            if (url === '/') return '/index.html';
+            if (!url.endsWith('.html')) return url.replace(/\/$/, '') + '/index.html';
+            return url;
+        };
+
         const userInitial = this.userEmail.charAt(0).toUpperCase();
         
         const hour = new Date().getHours();
@@ -452,7 +474,7 @@ export class AppNavigation {
     </div>
 </div>
 
-<header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 40; isolation: isolate;">
+<header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 40; isolation: isolate; ${nativeHeaderStyle}">
             <div class="container mx-auto px-2 sm:px-4 py-2 min-w-0">
                 <div class="flex items-center justify-between h-12 gap-2 md:gap-3 w-full min-w-0">
                         
@@ -462,7 +484,7 @@ export class AppNavigation {
                                 <a href="/" class="bg-${this.themeColor}-600 hover:bg-${this.themeColor}-700 text-white text-xs font-bold py-2 px-2.5 sm:px-3 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0">
                                     <i class="fa-solid fa-arrow-left"></i> Hub
                                 </a>
-                                <button id="hub-dropdown-btn" class="bg-${this.themeColor}-700 hover:bg-${this.themeColor}-800 text-white px-1.5 sm:px-2 flex items-center justify-center border-l border-${this.themeColor}-600 transition-colors shrink-0">
+                                <button id="hub-dropdown-btn" class="bg-${this.themeColor}-700 hover:bg-${this.themeColor}-800 text-white px-2.5 sm:px-3 flex items-center justify-center border-l border-${this.themeColor}-600 transition-colors shrink-0 min-w-[32px]">
                                     <i class="fa-solid fa-chevron-down text-[10px]"></i>
                                 </button>
                             </div>
@@ -475,7 +497,7 @@ export class AppNavigation {
                                         const pointerClass = isCurrent ? 'cursor-default opacity-50 ring-2 ring-gray-200 dark:ring-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer group/item';
                                         
                                         return `
-                                        <a href="${isCurrent ? '#' : app.url}" class="flex flex-col items-center justify-center p-2 rounded-lg transition-all text-center ${pointerClass}">
+                                        <a href="${isCurrent ? '#' : formatUrl(app.url)}" class="flex flex-col items-center justify-center p-2 rounded-lg transition-all text-center ${pointerClass}">
                                             <div class="${app.color} text-white w-8 h-8 rounded-full flex items-center justify-center mb-1 shadow-sm ${!isCurrent ? 'group-hover/item:scale-110' : ''} transition-transform">
                                                 <i class="fa-solid ${app.icon} text-xs"></i>
                                             </div>
@@ -488,7 +510,7 @@ export class AppNavigation {
                                 <div class="border-t border-gray-100 dark:border-gray-700 pt-2">
                                     <div class="grid grid-cols-9 gap-1 justify-items-center">
                                         ${this.hubTools.map(tool => `
-                                        <a href="${tool.url}" class="${tool.color} text-white w-6 h-6 rounded-full flex items-center justify-center hover:opacity-80 transition-opacity" title="${tool.name}">
+                                        <a href="${formatUrl(tool.url)}" class="${tool.color} text-white w-6 h-6 rounded-full flex items-center justify-center hover:opacity-80 transition-opacity" title="${tool.name}">
                                             <i class="fa-solid ${tool.icon} text-[10px]"></i>
                                         </a>
                                         `).join('')}
@@ -557,7 +579,7 @@ export class AppNavigation {
                 </div>
             </div>
             
-            <div class="fixed top-1 right-2 flex flex-col items-end z-[100]">
+            <div class="absolute right-2 flex flex-col items-end z-[100]" style="${nativeCornerStyle}">
                 ${this.version ? `
                     <a href="/changelog" class="text-[10px] font-mono text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors" title="App Version ${this.version}">
                         App: ${this.version}
@@ -582,7 +604,7 @@ export class AppNavigation {
         <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-800 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
             <div class="flex justify-around items-center h-16 px-2">
                 ${this.tabs.map(tab => `
-                    <button class="mobile-nav-btn flex flex-col items-center justify-center flex-1 h-full text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 transition-colors active:scale-95" data-tab="${tab.id}">
+                    <button class="mobile-nav-btn flex flex-col items-center justify-center flex-1 h-full text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 transition-colors" data-tab="${tab.id}">
                         <div class="icon-wrapper flex items-center justify-center w-14 h-8 rounded-full transition-colors pointer-events-none mb-0.5">
                             <i class="fa-solid ${tab.icon} text-lg"></i>
                         </div>
@@ -892,10 +914,8 @@ export class AppNavigation {
 
             window.addEventListener('resize', () => { if(!dropMenu.classList.contains('hidden')) positionMenu(); }, {passive: true});
 
-            dropBtn.addEventListener('mouseenter', showMenu);
-            dropBtn.addEventListener('mouseleave', hideMenu);
-            dropMenu.addEventListener('mouseenter', showMenu);
-            dropMenu.addEventListener('mouseleave', hideMenu);
+            // Mouse hover events removed to prevent Android WebView double-tap bugs.
+            // Menu will now exclusively open and close on explicit click interactions.
             
             dropBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
