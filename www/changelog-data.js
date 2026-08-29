@@ -2,6 +2,25 @@
 
 export const changelogData = [
     {
+    version: "v16.36.0-alpha",
+    date: "2026-08-29",
+    changes: [
+        "In VidTrackr: Fixed the desktop footer gap so it no longer floats above the bottom of the viewport on desktop devices.",
+        "In VidTrackr: Excluded search queries from sessionStorage to ensure live TMDB search results always surface immediately.",
+        "In VidTrackr: Eliminated database read spikes by intelligently updating or filtering items directly in the local cache array instead of wiping the entire full history cache on log creation or deletion.",
+        "In VidTrackr: Drastically reduced Trakt API calls on the Progress Tab by checking the session cache before dispatching batch requests.",
+        "In VidTrackr: Replaced an O(N^2) array search with an O(1) Set lookup during history merging on Detail pages to eliminate UI stutter for large watch logs.",
+        "In VidTrackr: Added decoding='async' across all image components to prevent image rendering from blocking the main browser thread.",
+        "In VidTrackr: Added loading='lazy' to Up Next queue imagery to conserve bandwidth and accelerate initial page loads.",
+        "In VidTrackr: Configured the Library view to automatically smooth-scroll to the top of the page whenever switching sub-tabs.",
+        "In VidTrackr: Implemented a global window.VIDTRACKR_DEBUG toggle to keep production consoles clean while preserving detailed API tracing for development.",
+        "In VidTrackr: Added a floating 'Back to Top' button that appears dynamically when scrolling through long lists.",
+        "In VidTrackr: Added tactile scaling hover states to Toast notifications for clear interactive feedback.",
+        "In PodTrackr: Fixed the floating footer alignment by converting the body into a flex-column layout with min-h-screen, allowing the main container to stretch and anchor the footer to the bottom.",
+        "In PodTrackr: Cleaned up the HTML structure by removing an orphaned closing div tag below the footer."
+    ]
+},
+    {
     version: "v16.35.0-alpha",
     date: "2026-08-29",
     changes: [
