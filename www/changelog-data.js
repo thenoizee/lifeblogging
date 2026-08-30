@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.38.0-alpha",
+    date: "2026-08-30",
+    changes: [
+                "In TaskTrackr: Created a new 1x1 Android widget shortcut that directly launches the app's Quick Add feature.",
+                "In Lifeblogging App: Increased the network wake-up retry limit and wait delay for the Mood Widget to reduce false 'Network Sleeping' timeouts.",
+                "In Shared Nav: Restored desktop hover functionality for the hub dropdown menu using media queries to prevent mobile double-tap bugs.",
+                "In Shared Nav: Prevented .html from being appended to URLs on the desktop web version, restricting it solely to the local Capacitor APK."
+    ]
+},
+    {
     version: "v16.37.0-alpha",
     date: "2026-08-29",
     changes: [

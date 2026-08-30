@@ -130,7 +130,8 @@ public class LatestMoodWidgetProvider extends AppWidgetProvider {
 
     private static WidgetData fetchMoodDataFromServer(Context context) {
         WidgetData data = new WidgetData();
-        int maxAttempts = 2;
+        // Increased from 2 to 4 to give the network radio more time to wake up from deep sleep
+        int maxAttempts = 4;
 
         // [CRITICAL FIX] Implement a retry loop.
         // Waking up a backgrounded app is instant, but waking up the physical network radio takes ~500ms.

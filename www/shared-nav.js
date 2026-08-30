@@ -434,9 +434,11 @@ export class AppNavigation {
         // Hide the floating corner menu completely on native mobile to prevent layout clutter
         const nativeCornerStyle = isNativeApp ? 'display: none;' : 'top: 4px;';
 
-        // Capacitor requires exact file paths. Safely append /index.html to all internal routes universally.
-        // This won't hurt the web version, as standard web servers resolve /index.html naturally.
+        // Capacitor requires exact file paths. Safely append /index.html to all internal routes.
         const formatUrl = (url) => {
+            // [DEBUG] Only append .html if we are running locally inside the Android APK
+            if (!isNativeApp) return url; 
+
             if (!url || !url.startsWith('/')) return url;
             if (url === '/') return '/index.html';
             if (!url.endsWith('.html')) return url.replace(/\/$/, '') + '/index.html';
@@ -914,9 +916,28 @@ export class AppNavigation {
 
             window.addEventListener('resize', () => { if(!dropMenu.classList.contains('hidden')) positionMenu(); }, {passive: true});
 
-            // Mouse hover events removed to prevent Android WebView double-tap bugs.
-            // Menu will now exclusively open and close on explicit click interactions.
+            // Desktop hover support (safely ignored on mobile touch devices to prevent bugs)
+            const handleMouseEnter = () => {
+                if (window.matchMedia('(hover: hover)').matches) {
+                    clearTimeout(hoverTimeout);
+                    showMenu();
+                }
+            };
             
+            const handleMouseLeave = () => {
+                if (window.matchMedia('(hover: hover)').matches) {
+                    // Slight delay before closing so the mouse can travel from the button to the menu
+                    hoverTimeout = setTimeout(() => { dropMenu.classList.add('hidden'); }, 250);
+                }
+            };
+
+            // Attach to both the button and the detached menu so the dropdown stays open while hovering either
+            dropBtn.addEventListener('mouseenter', handleMouseEnter);
+            dropBtn.addEventListener('mouseleave', handleMouseLeave);
+            dropMenu.addEventListener('mouseenter', handleMouseEnter);
+            dropMenu.addEventListener('mouseleave', handleMouseLeave);
+            
+            // Retain the click listener for mobile usage and forced toggling
             dropBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if(dropMenu.classList.contains('hidden')) showMenu(); else { clearTimeout(hoverTimeout); dropMenu.classList.add('hidden'); }
