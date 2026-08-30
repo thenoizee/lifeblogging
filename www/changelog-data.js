@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v16.41.1-alpha",
+    date: "2026-08-30",
+    changes: [
+        "In PlantTrackr: Bug fix: Corrected a rare crash when adding a new plant with a photo, ensuring the initial 'Added' log is created successfully even if the photo upload is still processing.",
+    ]
+},
+    {
     version: "v16.41.0-alpha",
     date: "2026-08-30",
     changes: [

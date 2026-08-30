@@ -2090,21 +2090,50 @@
         };
         const toggleDisplay = window.toggleDisplay; // Keeps internal JS calls working too
 
-        // DEBUG: Upgraded compressImage to use URL.createObjectURL instead of FileReader
-        // This prevents memory bloat on mobile devices which causes the app to crash or refresh!
-        const compressImage = (file, maxWidth = 800) => {
-            return new Promise((resolve) => {
-                if (!file || !file.type.match(/image.*/)) return resolve(file);
-                
+        // DEBUG: Hyper-optimized memory path for image compression.
+        // Uses off-thread createImageBitmap to prevent UI thread lockups and OS watchdog crashes
+        // (which cause the app to silently reload/crash back to the hub on mobile).
+        const compressImage = async (file, maxWidth = 800) => {
+            if (!file || !file.type.match(/image.*/)) return file;
+            
+            // Standardize output name to .jpg to avoid HEIC/Firebase formatting crashes
+            const newName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+
+            return new Promise(async (resolve) => {
+                try {
+                    // Modern, memory-safe decode (bypasses massive UI thread RAM spikes)
+                    if (window.createImageBitmap) {
+                        const bitmap = await createImageBitmap(file);
+                        const maxDim = Math.max(bitmap.width, bitmap.height);
+                        let ratio = 1;
+                        if (maxDim > maxWidth) {
+                            ratio = maxWidth / maxDim;
+                        }
+                        
+                        const canvas = document.createElement('canvas');
+                        canvas.width = bitmap.width * ratio;
+                        canvas.height = bitmap.height * ratio;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                        bitmap.close(); // Free native memory instantly
+                        
+                        canvas.toBlob((blob) => {
+                            canvas.width = 0; canvas.height = 0;
+                            if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
+                            else resolve(file);
+                        }, 'image/jpeg', 0.7);
+                        return; // Exit successfully
+                    }
+                } catch (err) {
+                    console.warn("createImageBitmap failed, falling back to legacy Image()", err);
+                }
+
+                // Legacy fallback for older browser environments
                 const img = new Image();
-                // Create a temporary, low-memory object URL instead of loading a massive base64 string
                 const objectUrl = URL.createObjectURL(file);
                 
                 img.onload = () => {
-                    // DEBUG: Clean up the object URL immediately to free memory
                     URL.revokeObjectURL(objectUrl);
-                    
-                    // Max dimension constraints to prevent mobile canvas crash
                     const maxDim = Math.max(img.width, img.height);
                     let ratio = 1;
                     if (maxDim > maxWidth) {
@@ -2119,16 +2148,12 @@
                     canvas.toBlob((blob) => {
                         img.src = '';
                         canvas.width = 0; canvas.height = 0;
-                        if (blob) {
-                            resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
-                        } else {
-                            resolve(file); // Fallback if blob conversion fails
-                        }
+                        if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
+                        else resolve(file);
                     }, 'image/jpeg', 0.7);
                 };
                 
                 img.onerror = () => {
-                    // DEBUG: Fallback in case of image load error to ensure we don't leak memory
                     URL.revokeObjectURL(objectUrl);
                     resolve(file);
                 };
@@ -3875,7 +3900,8 @@ if (state.compost) {
             getEl("plant-acquired").value = toLocalISOString(new Date()).split('T')[0];
             getEl("plant-icon").value = "fa-leaf";
             getEl("plant-health").value = "healthy";
-            getEl('plant-photo-name').innerHTML = ''; // Add this line
+            getEl('plant-photo-name').innerHTML = ''; 
+            if (getEl("plant-photo")) getEl("plant-photo").value = ""; // DEBUG: Clear ghost files to prevent duplicate uploads
             getEl("plant-status").value = "alive";
             getEl("plant-background").value = "";
             getEl("plant-pot-type").value = "plastic";
@@ -4214,10 +4240,14 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
                     data.createdAt = Timestamp.now();
                     const docRef = await addDoc(collection(db, `users/${state.user.uid}/plants`), data);
                     
-                    await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), {
+                    // DEBUG: Attach the uploaded photo URL to the initial Added log!
+                    const addedLog = {
                         plantId: docRef.id, type: "Added", date: new Date().toISOString(), 
                         notes: `Welcome home, ${data.name}!`, createdAt: Timestamp.now()
-                    });
+                    };
+                    if (data.photoUrl) addedLog.photoUrl = data.photoUrl;
+                    
+                    await addDoc(collection(db, `users/${state.user.uid}/plant_logs`), addedLog);
                     showMsg("Plant added", "success", 3000);
                 }
                 toggleDisplay(getEl("plant-modal"), false);
