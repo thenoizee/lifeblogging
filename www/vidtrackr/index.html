@@ -464,9 +464,10 @@ input[type=range]::-moz-range-thumb {
         version: currentVersion,
         activeTab: initialTab,
         tabs: [
-            { id: 'dashboard', label: 'Dashboard', icon: 'fa-border-all' },
-            { id: 'library',   label: 'Library',   icon: 'fa-layer-group' },
-            { id: 'progress',  label: 'Progress',  icon: 'fa-chart-pie' },
+                { id: 'dashboard', label: 'Dashboard', icon: 'fa-border-all' },
+                { id: 'library',   label: 'Library',   icon: 'fa-layer-group' },
+                { id: 'upcoming',  label: 'Upcoming',  icon: 'fa-calendar-days' },
+                { id: 'progress',  label: 'Progress',  icon: 'fa-chart-pie' },
             { id: 'history',   label: 'History',   icon: 'fa-clock-rotate-left' },
             { id: 'settings',  label: 'Settings',  icon: 'fa-gear' }
         ]
@@ -531,17 +532,43 @@ if (headerRight) {
                 if (cached) return JSON.parse(cached);
             }
 
+            // CRITICAL FIX: Service Workers (sw.js) with `ignoreSearch: true` will eternally trap searches.
+            // We must forcefully evict stale search caches from CacheStorage before fetching.
+            if (isSearch && 'caches' in window) {
+                try {
+                    const cacheNames = await caches.keys();
+                    for (const name of cacheNames) {
+                        const cache = await caches.open(name);
+                        const keys = await cache.keys();
+                        for (const req of keys) {
+                            if (req.url.includes('/search/')) await cache.delete(req);
+                        }
+                    }
+                } catch(e) {}
+            }
+
             // FIX: Dynamically determine whether to use '?' or '&' to prevent malformed URLs
             const separator = endpoint.includes('?') ? '&' : '?';
-            const url = `https://api.themoviedb.org/3${endpoint}${separator}api_key=${TMDB_API_KEY}`;
-            const res = await fetch(url);
+            
+            // Deeply cached search results require cache-busting to bypass aggressive browser caching
+            const cacheBuster = isSearch ? `&_cb=${Date.now()}_${Math.random().toString(36).substring(2, 9)}` : '';
+            const url = `https://api.themoviedb.org/3${endpoint}${separator}api_key=${TMDB_API_KEY}${cacheBuster}`;
+            
+            // Using 'reload' forces both the browser AND the Service Worker to fetch a fresh network payload.
+            const fetchOptions = isSearch ? { cache: 'reload' } : {};
+            const res = await fetch(url, fetchOptions);
             if (!res.ok) {
-                // Log detailed error information if debug mode is enabled
-                if (window.VIDTRACKR_DEBUG) console.error(`[Debug] TMDB fetch failed for endpoint: ${endpoint} | Status: ${res.status}`);
+                console.error(`[Debug] TMDB fetch failed for endpoint: ${endpoint} | Status: ${res.status}`);
                 throw new Error('TMDB API Error');
             }
             
             const data = await res.json();
+            
+            // Add debugging to inspect received search payloads
+            if (isSearch) {
+                console.log(`[Debug] Search results received from API for endpoint ${endpoint}:`, data.results?.map(r => r.title || r.name));
+            }
+
             if (!isSearch) {
                 try { sessionStorage.setItem(cacheKey, JSON.stringify(data)); } catch(e) {}
             }
@@ -1914,7 +1941,22 @@ window.removeProgress = async (playbackId) => {
         
         async function fetchDirect(endpoint) {
             const isUserSync = endpoint.includes('/sync') || endpoint.includes('/users') || endpoint.includes('/calendars') || endpoint.includes('/watching');
+            const isSearch = endpoint.includes('/search/'); // Added to track search requests
             
+            // CRITICAL FIX: Nuke stale Service Worker caches for Trakt search queries. 
+            if (isSearch && 'caches' in window) {
+                try {
+                    const cacheNames = await caches.keys();
+                    for (const name of cacheNames) {
+                        const cache = await caches.open(name);
+                        const keys = await cache.keys();
+                        for (const req of keys) {
+                            if (req.url.includes('/search/')) await cache.delete(req);
+                        }
+                    }
+                } catch(e) {}
+            }
+
             // Bypasses Trakt requests smoothly when running in TMDB Standalone Mode
             const handleStandaloneBypass = () => {
                 if (endpoint.includes('/stats')) return { movies: { watched: 0, minutes: 0 }, episodes: { watched: 0, minutes: 0 }, network: { friends: 0 } };
@@ -1931,7 +1973,17 @@ window.removeProgress = async (playbackId) => {
             const headers = traktHeader();
             if (!traktAccessToken || !isUserSync) delete headers['Authorization'];
             
-            const res = await fetch(`${TRAKT_API_URL}${endpoint}`, { headers });
+            // DEBUG: Log when a search cache bypass is triggered
+            if (isSearch && window.VIDTRACKR_DEBUG) console.log(`[Debug] Bypassing HTTP cache for Trakt search: ${endpoint}`);
+            
+            // FIX: Deeply cached search results require cache-busting to bypass aggressive browser/edge caching
+            const separator = endpoint.includes('?') ? '&' : '?';
+            const cacheBuster = isSearch ? `${separator}_cb=${Date.now()}` : '';
+            
+            const fetchOptions = { headers };
+            if (isSearch) fetchOptions.cache = 'no-store'; // Ensure fetch explicitly ignores local browser HTTP cache
+            
+            const res = await fetch(`${TRAKT_API_URL}${endpoint}${cacheBuster}`, fetchOptions);
             
             if (res.status === 401 || res.status === 403) {
                 if (primaryDataSource !== 'trakt') return handleStandaloneBypass();
@@ -7136,11 +7188,24 @@ let listsIn = [];
             // Increment and capture current request token to drop older pending requests
             const currentRequestId = ++activeSearchRequestId;
             showLoader();
-            els.content.innerHTML = '';
             
             // Decode search string properly
             const query = decodeURIComponent(rawQuery).trim();
             const cleanQuery = query.toLowerCase();
+
+            // Add debugging to trace query execution
+            console.log(`[Debug] Executing search for query: "${query}" (Request ID: ${currentRequestId})`);
+            
+            // Render placeholder search state immediately
+            els.content.innerHTML = `
+                <div class="mb-6 mt-4 animate-fade">
+                    <h2 class="text-2xl font-bold border-l-4 border-[var(--primary)] px-3 mb-6">Results: "${query}"</h2>
+                    <div class="flex items-center gap-3 text-gray-500 p-4">
+                        <div class="animate-spin rounded-full h-5 w-5 border-2 border-[var(--primary)] border-t-transparent"></div>
+                        <span class="text-sm font-bold uppercase tracking-widest">Searching...</span>
+                    </div>
+                </div>
+            `;
 
             // Keep input text boxes synced with active URL query
             const dSearch = document.getElementById('search-input');
@@ -7445,6 +7510,199 @@ let listsIn = [];
             hideLoader(); 
         }
 
+        // --- NEW: Upcoming Releases Feed (Personalized & Chronologically Ordered) ---
+        async function renderUpcoming() {
+            // Debugging to track initialization
+            console.log("[Debug] Initializing Upcoming Releases Feed...");
+
+            els.content.innerHTML = `
+                <div class="flex items-center justify-between mb-8 mt-4 animate-fade">
+                    <h2 class="text-2xl font-bold border-l-4 border-yellow-500 px-3">Upcoming Releases</h2>
+                </div>
+                <div id="tracked-shows-upcoming" class="mb-12">
+                    <div class="flex items-center gap-3 text-gray-500 p-4"><div class="animate-spin rounded-full h-5 w-5 border-2 border-yellow-500 border-t-transparent"></div> <span class="text-sm font-bold uppercase tracking-widest">Checking Your Shows for New Episodes...</span></div>
+                </div>
+                <div id="upcoming-movies-container" class="mb-12">
+                    <div class="flex items-center gap-3 text-gray-500 p-4"><div class="animate-spin rounded-full h-5 w-5 border-2 border-[var(--primary)] border-t-transparent"></div> <span class="text-sm font-bold uppercase tracking-widest">Loading Movies in Release Order...</span></div>
+                </div>
+                <div id="popular-shows-upcoming" class="mb-12"></div>
+            `;
+
+            // Calculate exact date ranges
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+            const future = new Date(today);
+            future.setDate(future.getDate() + 45); // Check 45 days into the future
+            const futureStr = future.toISOString().split('T')[0];
+
+            // 1. PERSONALIZED SHOWS: Checks new episodes for shows you actually watch
+            // BUMPED CACHE KEY TO _v3 TO FLUSH THE PREVIOUSLY CRASHED EMPTY STATE
+            runSmart('upcoming_tracked_shows_v3',
+                async () => {
+                    const upcomingEpisodes = [];
+
+                    // 1A. If connected to Trakt, pull personal calendar directly
+                    if (traktAccessToken && primaryDataSource === 'trakt') {
+                        try {
+                            console.log("[Debug] Fetching Trakt user calendar...");
+                            const calendar = await fetchDirect(`/calendars/my/shows/${todayStr}/45?extended=images`);
+                            if (calendar && calendar.length > 0) {
+                                calendar.forEach(item => {
+                                    upcomingEpisodes.push({
+                                        ...item.episode,
+                                        show: item.show,
+                                        type: 'episode',
+                                        air_date: item.first_aired ? item.first_aired.split('T')[0] : item.episode?.air_date,
+                                        ids: item.episode?.ids || item.show?.ids
+                                    });
+                                });
+                            }
+                        } catch(e) { console.warn("Trakt calendar fetch failed", e); }
+                    }
+
+                    // 1B. TMDB Mode: Collect all unique show IDs from user history & check next_episode_to_air
+                    if (upcomingEpisodes.length === 0 && currentUser) {
+                        try {
+                            console.log("[Debug] Cross-referencing user history for upcoming TMDB episodes...");
+                            const trackedShowTmdbIds = new Set();
+
+                            // Extract show IDs from local in-memory history cache
+                            if (window.globalHistoryCache && window.globalHistoryCache.length > 0) {
+                                window.globalHistoryCache.forEach(h => {
+                                    if (h.type === 'episode' && h.media) {
+                                        const showId = h.media.show?.ids?.tmdb || h.media.ids?.show_tmdb || h.media.show?.id;
+                                        if (showId) trackedShowTmdbIds.add(String(showId));
+                                    }
+                                });
+                            }
+
+                            // Also fetch any shows in user's watchlist
+                            const wlSnap = await getDocs(collection(db, `users/${currentUser.uid}/watchlist`));
+                            wlSnap.forEach(d => {
+                                const wData = d.data();
+                                if (wData.type === 'show') {
+                                    const showId = wData.show?.ids?.tmdb || wData.show?.id || wData.id;
+                                    if (showId) trackedShowTmdbIds.add(String(showId));
+                                }
+                            });
+
+                            // Limit check to the top 20 active shows to respect API limits
+                            const showIdList = Array.from(trackedShowTmdbIds).slice(0, 20);
+                            
+                            // Query show metadata from TMDB in parallel
+                            const showDetails = await Promise.all(showIdList.map(sId => fetchTMDB(`/tv/${sId}`).catch(() => null)));
+
+                            showDetails.forEach(show => {
+                                if (show && show.next_episode_to_air) {
+                                    const nextEp = show.next_episode_to_air;
+                                    // Only include if air date is today or in the future
+                                    if (nextEp.air_date && nextEp.air_date >= todayStr) {
+                                        upcomingEpisodes.push({
+                                            title: nextEp.name || `Episode ${nextEp.episode_number}`,
+                                            name: nextEp.name,
+                                            season: nextEp.season_number,
+                                            number: nextEp.episode_number,
+                                            air_date: nextEp.air_date,
+                                            release_date: nextEp.air_date,
+                                            still_path: nextEp.still_path,
+                                            poster_path: show.poster_path,
+                                            backdrop_path: show.backdrop_path,
+                                            type: 'episode',
+                                            show: {
+                                                title: show.name,
+                                                name: show.name,
+                                                ids: { tmdb: show.id }
+                                            },
+                                            ids: {
+                                                tmdb: nextEp.id,
+                                                trakt: `${show.id}-${nextEp.season_number}-${nextEp.episode_number}`
+                                            }
+                                        });
+                                    }
+                                }
+                            });
+                        } catch(e) { console.warn("Failed checking tracked show air dates", e); }
+                    }
+
+                    // Sort chronologically by air date (earliest first)
+                    upcomingEpisodes.sort((a, b) => new Date(a.air_date || a.release_date) - new Date(b.air_date || b.release_date));
+                    return upcomingEpisodes;
+                },
+                (items) => {
+                    const container = document.getElementById('tracked-shows-upcoming');
+                    if (!container) return;
+                    if (items.length > 0) {
+                        const gridHtml = `
+                            <h2 class="text-2xl font-bold mb-6 mt-8 px-2 border-l-4 border-yellow-500 animate-fade">Your Shows: New Episodes Coming Soon</h2>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6 mb-8 animate-fade">
+                                ${items.map(item => createCardHtml(item)).join('')}
+                            </div>
+                        `;
+                        container.innerHTML = gridHtml;
+                    } else {
+                        container.innerHTML = `
+                            <div class="bg-gray-900/50 p-6 rounded-2xl border border-gray-800 text-center text-gray-500">
+                                <i class="fa-solid fa-calendar-check text-3xl mb-2 text-yellow-500/50"></i>
+                                <p class="text-sm">No new upcoming episodes scheduled for your tracked shows in the next 45 days.</p>
+                            </div>
+                        `;
+                    }
+                },
+                14400000 // 4-hour TTL for live calendar
+            );
+
+            // 2. UPCOMING MOVIES: Strict release date filter & sorted by release date ascending
+            runSmart('upcoming_movies_chronological',
+                async () => {
+                    console.log("[Debug] Fetching upcoming theatrical movies...");
+                    const data = await fetchTMDB(`/discover/movie?region=US&with_release_type=2|3&primary_release_date.gte=${todayStr}&primary_release_date.lte=${futureStr}&sort_by=primary_release_date.asc`);
+                    let movies = data.results || [];
+                    
+                    // Filter out legacy re-releases with old release dates
+                    movies = movies.filter(m => m.release_date && m.release_date >= todayStr && m.release_date <= futureStr);
+                    
+                    // Explicitly sort by release date ascending (soonest first)
+                    movies.sort((a, b) => new Date(a.release_date) - new Date(b.release_date));
+                    
+                    return movies.map(item => ({ ...item, type: 'movie' })).slice(0, 15);
+                },
+                (items) => {
+                    const container = document.getElementById('upcoming-movies-container');
+                    if (!container) return;
+                    if (items.length > 0) {
+                        renderGrid('Movies in Theatres Soon (By Release Date)', items, false, 'upcoming-movies-container');
+                    } else {
+                        container.innerHTML = `<p class="text-gray-500 text-sm italic">No upcoming movies found in this window.</p>`;
+                    }
+                },
+                43200000 // 12-hour TTL
+            );
+
+            // 3. NEW SERIES PREMIERING SOON: Sorted strictly by premiere date ascending
+            runSmart('upcoming_shows_chronological_v2',
+                async () => {
+                    console.log("[Debug] Fetching new series premiering soon...");
+                    // Use first_air_date to get BRAND NEW series premieres, ensuring the date matches the UI display
+                    const data = await fetchTMDB(`/discover/tv?with_original_language=en&first_air_date.gte=${todayStr}&first_air_date.lte=${futureStr}&sort_by=first_air_date.asc`);
+                    let shows = data.results || [];
+                    
+                    // Filter out older shows and sort earliest premiere first
+                    shows = shows.filter(s => s.first_air_date && s.first_air_date >= todayStr && s.first_air_date <= futureStr);
+                    shows.sort((a, b) => new Date(a.first_air_date) - new Date(b.first_air_date));
+                    
+                    return shows.map(item => ({ ...item, type: 'show' })).slice(0, 15);
+                },
+                (items) => {
+                    const container = document.getElementById('popular-shows-upcoming');
+                    if (!container) return;
+                    if (items.length > 0) {
+                        renderGrid('New Series Premiering Soon (By Premiere Date)', items, false, 'popular-shows-upcoming');
+                    }
+                },
+                43200000 // 12-hour TTL
+            );
+        }
+
         function handleRoute() {
         const hash = location.hash || '#dashboard';
         
@@ -7460,6 +7718,7 @@ let listsIn = [];
         if(hash.startsWith('#dashboard')) renderDashboard();
         else if(hash.startsWith('#library')) renderLibrary(); 
         else if(hash.startsWith('#watchlist')) renderLibrary('watchlist'); 
+        else if(hash.startsWith('#upcoming')) renderUpcoming();
         else if(hash.startsWith('#history')) renderHistory();
         else if(hash.startsWith('#progress')) renderProgress();
         else if(hash.startsWith('#settings')) renderSettings();

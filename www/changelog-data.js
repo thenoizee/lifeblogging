@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v16.39.0-alpha",
+    date: "2026-08-30",
+    changes: [
+                "In VidTrackr: Added CacheStorage eviction logic to completely nuke stale Service Worker intercepts right before searches are fired.",
+                "In VidTrackr: Added personalized TMDB tracking to cross-reference watch history and watchlists for surfacing upcoming episodes.",
+    ]
+},
+    {
     version: "v16.38.0-alpha",
     date: "2026-08-30",
     changes: [
