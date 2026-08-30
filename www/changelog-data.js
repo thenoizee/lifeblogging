@@ -2,6 +2,32 @@
 
 export const changelogData = [
     {
+    version: "v16.41.0-alpha",
+    date: "2026-08-30",
+    changes: [
+        "In PlantTrackr: Rewrote the mobile image compression logic to use object URLs instead of FileReader, resolving a major out-of-memory crash issue when uploading camera photos.",
+        "In PlantTrackr: Added a 'Sort: Most Neglected' option to the Garden tab to easily find plants that haven't had recent care logs.",
+        "In PlantTrackr: Added Sequential Walkthrough Mode to rapidly capture photos and log progress across all plants in sequence.",
+        "In PlantTrackr: Enhanced mobile ergonomics with iOS safe-area-inset padding, overscroll containment, and instant-tap feedback.",
+        "In PlantTrackr: Added a 'Quick Adjust' modal (lightning bolt icon) to plant cards and the View Details modal for instant editing of Name, Space, Zone, Status, and Care frequencies.",
+        "In PlantTrackr: Upgraded the Quick Adjust save logic to explicitly log exactly which fields were changed (e.g., 'Water Freq changed from 7d to 5d') in the plant's history.",
+        "In PlantTrackr: Fixed a UI bug in the Edit Plant modal where the sticky Save footer floated above the bottom content by correcting margin mappings.",
+        "In PlantTrackr: Added the 'View Details' button to plants in the Graveyard so their full profiles and history can still be viewed.",
+        "In PlantTrackr: Created a powerful 'Undo' mechanism on success popups. Removed the annoying confirmation prompt from 'Quick Water' buttons, allowing a true 1-tap action with a 5-second undo safety net.",
+        "In PlantTrackr: Added a 'Clone' button to the View Details modal that instantly duplicates a parent plant's settings into a new cutting/propagation record, cross-logging the event on both plants."
+    ]
+},
+    {
+    version: "v16.40.0-alpha",
+    date: "2026-08-30",
+    changes: [
+        "In HydrationTrackr: Added Tailwind config script to enforce class-based dark mode (`darkMode: 'class'`) so it respects the manual app toggle.",
+        "In HydrationTrackr: Added `color-scheme: dark;` to root CSS to properly render native mobile UI elements (like date/time pickers and dropdowns) in dark mode.",
+        "In HydrationTrackr: Replaced outdated `.dark-mode` CSS selectors with `.dark` to correctly style history buttons, custom grids, and progress bars.",
+        "In HydrationTrackr: Updated Chart.js dynamic grid line configuration to check for the `.dark` class on the document element instead of `.dark-mode`.",
+    ]
+},
+    {
     version: "v16.39.0-alpha",
     date: "2026-08-30",
     changes: [
