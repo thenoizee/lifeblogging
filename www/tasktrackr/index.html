@@ -1052,7 +1052,12 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         } catch (e) { console.error(e); }
 
-        // Fetch Data ONLY once here
+        // 1. INSTANT UI: Render the local cache immediately before waiting for network calls
+        if (taskCache && taskCache.length > 0) {
+            renderApp();
+        }
+
+        // 2. Fetch Data silently to update the cache
         fetchAllData();
         fetchHistory(); // ADDED: Seed completed tasks immediately at startup
     } 
@@ -1184,7 +1189,13 @@ window.addEventListener('DOMContentLoaded', () => {
 }
 function hideLoader() { 
     const el = document.getElementById('app-loader');
-    if(el) el.classList.add('hidden'); 
+    if (el && !el.classList.contains('hidden')) {
+        el.classList.add('opacity-0');
+        setTimeout(() => {
+            el.classList.add('hidden');
+            el.classList.remove('opacity-0'); // reset for next time
+        }, 500);
+    }
     window.updateSyncStatus('success');
 }
         const showToast = (msg, type = 'success', actionText = null, actionCallback = null) => {
@@ -1375,6 +1386,159 @@ window.updateSyncStatus = (status) => {
         el.innerHTML = '<i class="fa-solid fa-cloud"></i>';
     }
 };
+
+// --- NEW: OFFLINE SYNC PROCESSOR & LIFECYCLE LISTENERS ---
+window.syncPendingTasks = async () => {
+    if (window.isSyncingTasks) return;
+    window.isSyncingTasks = true;
+
+    let pending = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+    if (pending.length === 0 || !navigator.onLine) {
+        window.isSyncingTasks = false;
+        return;
+    }
+
+    console.log(`[TaskTrackr Debug] Syncing ${pending.length} offline tasks...`);
+    let remaining = [];
+
+    // Helper timeout
+    const fetchWithTimeout = (promise, ms = 8000) => {
+        return Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("NetworkTimeout")), ms))
+        ]);
+    };
+
+    for (const pt of pending) {
+        try {
+            let savedTask = null;
+            const { tempId, destination, payload, isEdit, mergedTask } = pt;
+            const isTemp = tempId.startsWith('temp_');
+            const targetId = isTemp ? null : tempId;
+
+            if (destination === 'local') {
+                if (!auth.currentUser) throw new Error("Not logged in");
+                const realDocRef = isTemp ? doc(collection(db, 'users', auth.currentUser.uid, 'local_tasks')) : doc(db, 'users', auth.currentUser.uid, 'local_tasks', tempId);
+                const realDocId = realDocRef.id;
+                const taskData = { ...payload, id: realDocId, updated: new Date(), source: 'local' };
+                if (!isEdit) taskData.created = new Date();
+                
+                await fetchWithTimeout(setDoc(realDocRef, taskData, { merge: true }));
+                savedTask = { id: realDocId };
+
+            } else if (destination === 'google' || mergedTask.source === 'google' || mergedTask.kind === 'google') {
+                const gListId = mergedTask.projectId === 'inbox' ? '@default' : mergedTask.projectId;
+                const gPayload = { title: mergedTask.title, notes: mergedTask.content };
+                if (mergedTask.dueDate) gPayload.due = new Date(mergedTask.dueDate).toISOString();
+                
+                // Ensure Google status updates correctly (Completion logic)
+                if (mergedTask.status === 2) gPayload.status = 'completed';
+                else gPayload.status = 'needsAction';
+
+                if (isEdit && !isTemp) {
+                    savedTask = await fetchWithTimeout(googleApi(`lists/${gListId}/tasks/${targetId}`, 'PATCH', gPayload));
+                    if (!savedTask) savedTask = { id: targetId };
+                } else {
+                    savedTask = await fetchWithTimeout(googleApi(`lists/${gListId}/tasks`, 'POST', gPayload));
+                }
+
+                if (savedTask && savedTask.id && auth.currentUser) {
+                    const mirrorPayload = { ...mergedTask, id: savedTask.id, source: 'google', lastSynced: new Date(), dueDate: payload.dueDate ? new Date(payload.dueDate) : null, contextMode: mergedTask.contextMode || 'inherit' };
+                    await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload, { merge: true });
+                }
+            } else {
+                // TickTick
+                if (isEdit && !isTemp) {
+                    // CRITICAL FIX: TickTick requires a specific endpoint to mark tasks as completed
+                    if (mergedTask.status === 2) {
+                        await fetchWithTimeout(api(`/project/${mergedTask.projectId}/task/${targetId}/complete`, 'POST'));
+                        savedTask = { id: targetId };
+                    } else {
+                        savedTask = await fetchWithTimeout(api(`/task/${targetId}`, 'POST', payload));
+                    }
+                } else {
+                    savedTask = await fetchWithTimeout(api('/task', 'POST', payload));
+                }
+
+                if (savedTask && savedTask.id && auth.currentUser) {
+                    await saveTaskOrigin(savedTask.id, 'tasktrackr');
+                    const mirrorPayload = { ...payload, id: savedTask.id, source: 'ticktick', lastSynced: new Date(), dueDate: payload.dueDate ? new Date(payload.dueDate) : null, startDate: payload.startDate ? new Date(payload.startDate) : null, contextMode: mergedTask.contextMode || 'inherit' };
+                    await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload);
+                }
+            }
+
+            if (savedTask && savedTask.id) {
+                // Replace temp ID with real ID in cache
+                const idx = taskCache.findIndex(t => t.id === tempId);
+                if (idx > -1) {
+                    taskCache[idx].id = savedTask.id;
+                    if (!isTemp) Object.assign(taskCache[idx], mergedTask); 
+                } else {
+                    // Check history cache in case it was completed before sync finished
+                    const histIdx = historyCache.findIndex(h => h.id === tempId);
+                    if (histIdx > -1) {
+                        historyCache[histIdx].id = savedTask.id;
+                        if (!isTemp) Object.assign(historyCache[histIdx], mergedTask); 
+                    }
+                }
+
+                // --- SILENT DOM UPDATE ---
+                // CRITICAL FIX: Only touch the DOM if transitioning from a temp offline ID to a real cloud ID.
+                if (tempId !== savedTask.id) {
+                    const cardEl = document.querySelector(`[data-task-id="${tempId}"]`);
+                    if (cardEl) {
+                        cardEl.setAttribute('data-task-id', savedTask.id);
+                        if (cardEl.getAttribute('onclick')) cardEl.setAttribute('onclick', cardEl.getAttribute('onclick').replaceAll(tempId, savedTask.id));
+                        if (cardEl.getAttribute('ondragstart')) cardEl.setAttribute('ondragstart', cardEl.getAttribute('ondragstart').replaceAll(tempId, savedTask.id));
+                        if (cardEl.getAttribute('oncontextmenu')) cardEl.setAttribute('oncontextmenu', cardEl.getAttribute('oncontextmenu').replaceAll(tempId, savedTask.id));
+                        
+                        cardEl.innerHTML = cardEl.innerHTML.replaceAll(tempId, savedTask.id);
+                    }
+                    
+                    // Keep global memory states perfectly aligned
+                    if (typeof selectedTasks !== 'undefined' && selectedTasks.has(tempId)) {
+                        selectedTasks.delete(tempId);
+                        selectedTasks.add(savedTask.id);
+                    }
+                    if (typeof lastSelectedId !== 'undefined' && lastSelectedId === tempId) lastSelectedId = savedTask.id;
+                    if (typeof currentSidePaneTaskId !== 'undefined' && currentSidePaneTaskId === tempId) currentSidePaneTaskId = savedTask.id;
+                    if (window.contextMenuTaskId === tempId) window.contextMenuTaskId = savedTask.id;
+                }
+
+            } else {
+                throw new Error("Failed to get saved task ID");
+            }
+        } catch (err) {
+            console.warn("[TaskTrackr Debug] Network slow or failed. Keeping in offline queue.", err);
+            remaining.push(pt);
+        }
+    }
+
+    localStorage.setItem('pendingTasks', JSON.stringify(remaining));
+    localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
+    
+    // We completely removed renderApp() here! 
+    // The Silent DOM Update above handles the ID swapping perfectly, meaning 0 flickering.
+    
+    window.isSyncingTasks = false;
+};
+
+window.addEventListener('online', () => {
+    console.log("[TaskTrackr Debug] Network came online. Scheduling queue sync...");
+    setTimeout(() => { if (window.syncPendingTasks) window.syncPendingTasks(); }, 4000);
+});
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+        console.log("[TaskTrackr Debug] App backgrounded. Un-synced data is safe in localStorage.");
+    } else if (document.visibilityState === "visible") {
+        console.log("[TaskTrackr Debug] App foregrounded. Triggering sync for any missed offline data...");
+        if (navigator.onLine && window.syncPendingTasks) {
+            window.syncPendingTasks();
+        }
+    }
+});
+// -----------------------------------------------------------
 
 const api = async (endpoint, method = 'GET', body = null) => {
     if (!accessToken) return null;
@@ -1664,9 +1828,19 @@ const fetchGoogleData = async () => {
                     (now - new Date(h.completedAt)) < 60000 // Keep for 60 seconds to allow DB catch-up
                 );
                 
-                historyCache = [...optimisticHistory, ...fetchedHistory];
-                renderApp(); 
-            } catch (e) { 
+                const newHistoryCache = [...optimisticHistory, ...fetchedHistory];
+                
+                // Use visual signature to ignore backend timestamp drift
+                const getHistorySignature = (cache) => JSON.stringify(cache.map(t => t.id + t.status));
+                const historyChanged = getHistorySignature(historyCache) !== getHistorySignature(newHistoryCache);
+                
+                historyCache = newHistoryCache;
+                
+                // Only redraw if the history from the server is visually different
+                if (historyChanged) {
+                    renderApp(); 
+                }
+            } catch (e) {
                 console.error(e); 
                 showToast('Error loading history', 'error'); 
             } 
@@ -1841,6 +2015,10 @@ const fetchAllData = async () => {
         if (t.status === 2 && !newCache.find(n => n.id === t.id)) newCache.push(t);
     });
 
+    // Generate a visual signature to ignore invisible backend timestamp updates (like lastSynced)
+    const getCacheSignature = (cache) => JSON.stringify(cache.map(t => ({id: t.id, status: t.status, title: t.title, dueDate: t.dueDate, projectId: t.projectId, priority: t.priority, hidden: t.hidden, items: (t.items||[]).length})));
+    const oldSig = getCacheSignature(taskCache);
+    
     taskCache = newCache;
     localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
 
@@ -1849,8 +2027,11 @@ const fetchAllData = async () => {
         pSelect.innerHTML = `<option value="all">All Lists</option>` + Object.entries(projectMap).map(([id, p]) => `<option value="${id}" ${currentState.projectId===id?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
     }
 
-    renderApp();
-    window.renderProjectSidebar();
+    // SILENT REFRESH: Only rebuild the DOM if the visual cloud data is actually different from our local cache
+    if (oldSig !== getCacheSignature(taskCache)) {
+        renderApp();
+        window.renderProjectSidebar();
+    }
     
     // Sync the side pane to the newly fetched data
     if (currentSidePaneTaskId) {
@@ -2335,7 +2516,7 @@ const fetchAllData = async () => {
             if (currentState.filter === 'today' || currentState.filter === 'focus') { newDateISO = now.toISOString(); } 
             else if (currentState.filter === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
             
-            // --- NEW: OPTIMISTIC UI INJECTION ---
+            // --- OPTIMISTIC UI INJECTION ---
             const tempId = 'temp_' + Date.now();
             const tempTask = {
                 id: tempId,
@@ -2357,30 +2538,22 @@ const fetchAllData = async () => {
             const payload = { title: title, projectId: pid, priority: 0 }; 
             if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } 
             
-            try {
-                // 1. Create in TickTick
-                const newTask = await api('/task', 'POST', payload);
-                
-                // 2. Save Origin to Firebase (if successful)
-                if (newTask && newTask.id) {
-                    await saveTaskOrigin(newTask.id, 'tasktrackr');
-                    // Replace temp ID with the verified Cloud ID
-                    const idx = taskCache.findIndex(t => t.id === tempId);
-                    if(idx > -1) taskCache[idx] = { ...tempTask, ...newTask, id: newTask.id };
-                }
+            // 1. SAFE WRITE: Synchronously save locally to offline queue FIRST
+            const pendingTasks = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+            pendingTasks.push({ tempId, destination: 'ticktick', payload, isEdit: false, mergedTask: tempTask });
+            localStorage.setItem('pendingTasks', JSON.stringify(pendingTasks));
+            
+            input.value = '';
+            if (isPopup) window.closeQuickAddPopup();
+            input.disabled = false;
+            input.focus();
 
-                input.value = '';
-                showToast('Task added');
-                fetchAllData(); // Fetch in background safely
-                if (isPopup) window.closeQuickAddPopup();
-            } catch (err) {
-                showToast('Failed to add task', 'error');
-                taskCache = taskCache.filter(t => t.id !== tempId); // Cleanup fail safely
-                renderApp();
-            } finally {
-                input.disabled = false;
-                input.focus();
+            if (!navigator.onLine) {
+                showToast('Saved locally (Network offline)', 'info');
+                return;
             }
+
+            if (window.syncPendingTasks) window.syncPendingTasks();
         };
         const initDropZones = () => { /*...*/ const filters = document.querySelectorAll('.filter-chip'); filters.forEach(btn => { let action = btn.getAttribute('data-drop-action'); if(!action) { const text = btn.innerText.toLowerCase(); if (text.includes('today') || text.includes('focus')) action = 'today'; else if (text.includes('tomorrow')) action = 'tomorrow'; else if (text.includes('inbox')) action = 'inbox'; } if (!action) return; btn.setAttribute('data-drop-action', action); btn.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; btn.classList.add('drag-over'); }); btn.addEventListener('dragleave', (e) => { btn.classList.remove('drag-over'); }); btn.addEventListener('drop', (e) => { e.preventDefault(); btn.classList.remove('drag-over'); const actionType = btn.getAttribute('data-drop-action'); document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging')); if (actionType) { window.bulkAction(actionType); } }); }); };
         document.addEventListener('dragend', () => { document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging')); });
@@ -3694,29 +3867,29 @@ const renderProjectsManager = () => {
         };
 
 window.submitTaskForm = async () => {
-            const id = document.getElementById('modal-task-id').value;
-            
-            // 1. Build checklist
-            const checklistItems = [];
-            document.querySelectorAll('.checklist-row').forEach(row => {
-                const input = row.querySelector('.checklist-input');
-                if(input && input.value.trim()) {
-                    const itemObj = { 
-                        title: input.value.trim(), 
-                        status: parseInt(row.dataset.status) || 0 
-                    };
-                    if (row.dataset.itemId) itemObj.id = row.dataset.itemId;
-                    checklistItems.push(itemObj);
-                }
-            });
-            
-            // 2. Get existing task data
+    const id = document.getElementById('modal-task-id').value;
+    
+    // 1. Build checklist
+    const checklistItems = [];
+    document.querySelectorAll('.checklist-row').forEach(row => {
+        const input = row.querySelector('.checklist-input');
+        if(input && input.value.trim()) {
+            const itemObj = { 
+                title: input.value.trim(), 
+                status: parseInt(row.dataset.status) || 0 
+            };
+            if (row.dataset.itemId) itemObj.id = row.dataset.itemId;
+            checklistItems.push(itemObj);
+        }
+    });
+    
+    // 2. Get existing task data
     let existingTask = {};
     if (id) {
         existingTask = taskCache.find(t => t.id === id) || {};
     }
 
-    // 3. Get Save Location (Force local if project is local)
+    // 3. Get Save Location
     let destination = document.getElementById('modal-destination-input').value;
     const selectedPid = document.getElementById('modal-project-input').value;
     if (selectedPid.startsWith('local_proj_') || (projectMap[selectedPid] && projectMap[selectedPid].kind === 'local_list')) {
@@ -3757,104 +3930,39 @@ window.submitTaskForm = async () => {
         items: checklistItems,
         dueDate: rawDueDate || null,
         startDate: rawStartDate || null,
-        contextMode: document.getElementById('modal-task-context').value // ADDED: Collect context mode
+        contextMode: document.getElementById('modal-task-context').value 
     };
 
-    const mergedTask = { ...existingTask, ...rawFormData };
+    const tempId = id || ('temp_' + Date.now() + Math.random().toString(36).substr(2, 5));
+    const mergedTask = { ...existingTask, ...rawFormData, id: tempId };
     
-    // Log edit or creation
     if (!id) {
         mergedTask.editHistory = [{ action: 'Created Task (Full Form)', timestamp: new Date().toISOString() }];
+        mergedTask.source = destination === 'local' ? 'local' : (isGoogle ? 'google' : 'tasktrackr');
+        taskCache.unshift(mergedTask); // Optimistic UI Insert
     } else {
         window.logTaskAudit(mergedTask, 'Edited via Full Form');
+        const idx = taskCache.findIndex(t => t.id === id);
+        if(idx > -1) taskCache[idx] = mergedTask; // Optimistic UI Update
     }
+
     const payload = formatTaskPayload(mergedTask);
 
-    showLoader(); 
-    try {
-        if (destination === 'local') {
-            // --- LOCAL LOGIC ---
-            if (!auth.currentUser) throw new Error("You must be logged in to save local tasks.");
-            const taskData = { ...payload, updated: new Date(), source: 'local' };
-            
-            if (id) {
-                // Moving an existing non-local task to Local
-                if (existingTask.source !== 'local') {
-                    try { await api(`/project/${existingTask.projectId}/task/${id}`, 'DELETE'); } catch(e){ console.warn("Could not delete from TickTick", e); }
-                }
-                await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', id), taskData, { merge: true });
-            } else {
-                taskData.created = new Date();
-                taskData.status = 0; 
-                await addDoc(collection(db, 'users', auth.currentUser.uid, 'local_tasks'), taskData);
-            }
-        } else if (isGoogle) {
-            // --- GOOGLE TASKS LOGIC ---
-            // 1. Prepare Google Payload
-            const gListId = mergedTask.projectId === 'inbox' ? '@default' : mergedTask.projectId;
-            const gPayload = {
-                title: mergedTask.title,
-                notes: mergedTask.content
-            };
-            if (mergedTask.dueDate) gPayload.due = new Date(mergedTask.dueDate).toISOString();
+    document.getElementById('task-modal').classList.add('hidden');
+    window.closeSidePane();
+    renderApp();
 
-            // 2. Send to Google API
-            let savedTask;
-            if (id && existingTask.source === 'google') {
-                savedTask = await googleApi(`lists/${gListId}/tasks/${id}`, 'PATCH', gPayload);
-                // If PATCH returns nothing, assume success and use existing ID
-                if(!savedTask) savedTask = { id: id };
-            } else {
-                savedTask = await googleApi(`lists/${gListId}/tasks`, 'POST', gPayload);
-            }
+    // 1. SAFE WRITE: Synchronously save locally to offline queue FIRST
+    const pendingTasks = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+    pendingTasks.push({ tempId, destination, payload, isEdit: !!id, mergedTask });
+    localStorage.setItem('pendingTasks', JSON.stringify(pendingTasks));
 
-            // 3. Mirror to Firebase
-            if (savedTask && savedTask.id) {
-                const mirrorPayload = {
-                    ...mergedTask,
-                    id: savedTask.id, // Ensure we use the Google ID
-                    source: 'google',
-                    lastSynced: new Date(),
-                    dueDate: payload.dueDate ? new Date(payload.dueDate) : null,
-                    contextMode: mergedTask.contextMode || 'inherit' // ADDED: Save context to mirror
-                };
-                // Force save to local_tasks for record keeping
-                await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload, { merge: true });
-            }
+    if (!navigator.onLine) {
+        showToast('Saved locally (Network offline)', 'info');
+        return;
+    }
 
-        } else {
-            // --- TICKTICK LOGIC ---
-            let savedTask;
-            if(id && existingTask.source !== 'local') {
-                savedTask = await api(`/task/${id}`, 'POST', payload);
-            } else {
-                savedTask = await api('/task', 'POST', payload);
-            }
-            
-            if (savedTask && savedTask.id) {
-                 await saveTaskOrigin(savedTask.id, 'tasktrackr');
-                 const mirrorPayload = {
-                     ...payload,
-                     id: savedTask.id,
-                     source: 'ticktick',
-                     lastSynced: new Date(),
-                     dueDate: payload.dueDate ? new Date(payload.dueDate) : null,
-                     startDate: payload.startDate ? new Date(payload.startDate) : null,
-                     contextMode: mergedTask.contextMode || 'inherit' // ADDED: Save context to mirror
-                 };
-                 await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload);
-            }
-        }
-
-        showToast('Task saved successfully');
-        document.getElementById('task-modal').classList.add('hidden');
-        window.closeSidePane();
-        fetchAllData();
-    } catch(e) { 
-        showToast('Error saving task', 'error'); 
-        console.error(e);
-    } 
-    hideLoader(); 
+    if (window.syncPendingTasks) window.syncPendingTasks();
 };
 
 window.openModal = (isEdit, taskId = null) => {
@@ -4182,34 +4290,37 @@ window.completeTask = async (pid, tid, checkbox, event) => {
         window.openSidePane(currentSidePaneTaskId, task.isHistory);
     }
 
-    // 4. Update Backend
-    try { 
-        if (auth.currentUser) {
-            const safeTask = JSON.parse(JSON.stringify(task));
-            safeTask.status = newStatus;
-            safeTask.updated = new Date();
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid), safeTask, { merge: true });
-        }
+    // 4. OFFLINE-PROOF QUEUEING
+    // Add completed task to local storage so it survives app restarts offline before Firestore cache resolves
+    const cacheToSave = [...taskCache];
+    if (newStatus === 2) cacheToSave.push(task); 
+    localStorage.setItem('ticktrackr_tasks', JSON.stringify(cacheToSave));
 
-        if (task.source === 'google') {
-            const googleStatus = newStatus === 2 ? 'completed' : 'needsAction';
-            await googleApi(`lists/${pid}/tasks/${tid}`, 'PATCH', { status: googleStatus });
-        } else if (task.source !== 'local') {
-            if (newStatus === 2) {
-                await api(`/project/${pid}/task/${tid}/complete`, 'POST');
-            } else {
-                const restorePayload = formatTaskPayload(task);
-                restorePayload.status = 0;
-                await api(`/task/${tid}`, 'POST', restorePayload);
-            }
-        }
-    } catch(e) {
-        console.error("Sync failed, rolling back:", e);
-        // Rollback state if network fails
-        task.status = oldStatus;
-        renderApp();
-        showToast('Sync failed, rolled back.', 'error');
+    // Prepare for offline sync queue
+    const destination = task.source === 'local' ? 'local' : (task.source === 'google' ? 'google' : 'ticktick');
+    const payload = formatTaskPayload(task);
+    
+    const pendingTasks = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+    
+    // Filter out previous pending edits for this same task to prevent redundant queues
+    const filteredPending = pendingTasks.filter(pt => pt.tempId !== tid);
+    filteredPending.push({ 
+        tempId: tid, 
+        destination, 
+        payload, 
+        isEdit: true, 
+        mergedTask: task 
+    });
+    
+    localStorage.setItem('pendingTasks', JSON.stringify(filteredPending));
+
+    if (!navigator.onLine) {
+        console.log("[TaskTrackr Debug] Offline: Completion queued locally.");
+        showToast('Completion saved offline', 'info');
+        return;
     }
+
+    if (window.syncPendingTasks) window.syncPendingTasks();
 };
 
 window.stopRepeating = (taskId) => { 

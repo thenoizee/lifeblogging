@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.43.0-alpha",
+    date: "2026-08-31",
+    changes: [
+                "In TaskTrackr: Completely refactored task creation, quick-adds, full edits, and completions to utilize an offline-first synchronous queue (localStorage), ensuring zero data loss on flaky connections.",
+                "In TaskTrackr: Completely eliminated severe UI flashing during background syncing and startup. The app now utilizes a strict 'Visual Signature' map to entirely skip screen redraws if background updates only contain invisible timestamp drifts.",
+                "In TaskTrackr: Silenced the redundant 'Offline tasks synced' toast during active online usage.",
+                "Android App: Generated and mapped full 1024x1024 adaptive icons and splash screens across all DPI densities using @capacitor/assets.",
+                "Android App: Prepared shell architecture strategy to allow Over-The-Air (OTA) web app updates, bypassing the need for manual APK downloads unless native code is altered."
+    ]
+},
+    {
     version: "v16.42.0-alpha",
     date: "2026-08-31",
     changes: [
