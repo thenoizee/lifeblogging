@@ -1205,6 +1205,7 @@
       window.addEventListener('online', () => {
         updateConnectivityStatus();
         clearTimeout(syncTimeout);
+        console.log("[Loggr Debug] Network came online. Scheduling queue sync...");
         
         // Wait 4 seconds for the connection to stabilize before firing the sync
         syncTimeout = setTimeout(async () => {
@@ -1214,9 +1215,25 @@
           isSyncing = false;
         }, 4000);
       });
+      
       window.addEventListener('offline', () => {
         updateConnectivityStatus();
+        console.log("[Loggr Debug] Network went offline.");
       });
+
+      // ADDED: Lifecycle listener to handle the "backing out of app" and widget issues
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+            console.log("[Loggr Debug] App backgrounded. Un-synced data is safe in localStorage.");
+        } else if (document.visibilityState === "visible") {
+            console.log("[Loggr Debug] App foregrounded. Triggering sync for any missed offline data...");
+            if (navigator.onLine && userId && !isSyncing) {
+                isSyncing = true;
+                syncPendingLogs().finally(() => { isSyncing = false; });
+            }
+        }
+      });
+
       updateConnectivityStatus();
       const renderSessionLogs = () => {
         const logItemsContainer = document.getElementById("session-log-items");
@@ -1418,8 +1435,8 @@
         const newDocRef = doc(collection(db, `users/${userId}/sources/${collectionName}/data`));
         const realDocId = newDocRef.id;
 
-        // Helper function to save locally (only used when completely offline)
-        const saveLocally = () => {
+        // Helper function to synchronously save locally
+        const saveLocally = (isOffline = false) => {
             const pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
             const offlineLogEntry = {
               ...logEntry,
@@ -1434,23 +1451,26 @@
             // Optimistic UI Update
             sessionLogs.push({ ...logEntry, collectionName, docId: realDocId });
             renderSessionLogs();
-            showMessage("Saved locally (Network offline)", "info");
+            
+            if (isOffline) {
+                showMessage("Saved locally (Network offline)", "info");
+            } else {
+                showMessage("Saving...", "info");
+            }
         };
 
-        // 1. OFFLINE CHECK
+        // 1. SAFE WRITE: Always write synchronously to localStorage FIRST. 
+        // This guarantees zero data loss if the user backs out of the app before Firebase commits.
+        saveLocally(!navigator.onLine); 
+        setDefaultDateTime(); // Reset UI immediately
+        console.log("[Loggr Debug] Log safely committed to local queue to prevent app-exit data drops.");
+
         if (!navigator.onLine) {
-            saveLocally();
-            return;
+            return; // We are offline, keep it safely in the queue.
         }
 
-        // 2. ONLINE WITH TIMEOUT (Flaky Connection Protection)
+        // 2. ONLINE SYNC ATTEMPT
         try {
-            // --- OPTIMISTIC UI UPDATE ---
-            sessionLogs.push({ ...logEntry, docId: realDocId, collectionName: collectionName });
-            renderSessionLogs();
-            setDefaultDateTime();
-            showMessage(`Saving...`, "info");
-
             // Adapt the timeout duration based on the user's current connection speed
             const isSlowConnection = navigator.connection && 
                 (navigator.connection.effectiveType === '2g' || navigator.connection.effectiveType === '3g');
@@ -1469,16 +1489,23 @@
                 timeout
             ]);
 
+            console.log("[Loggr Debug] Firebase sync successful. Removing from local queue.");
+            // 3. SUCCESS: Remove from pendingLogs queue since it synced successfully
+            let pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
+            pendingLogs = pendingLogs.filter(log => log.docId !== realDocId);
+            localStorage.setItem("pendingLogs", JSON.stringify(pendingLogs));
+            renderUnsyncedLogs(); // Update the UI to remove the "Sync Pending" tag
+            
             showMessage(`Data logged successfully: ${attributeName} = ${attributeValue}`, "success");
             fetchAndPopulateTags(userId);
             fetchLogsForDateRange();
             fetchAllAttributeNames();
 
         } catch (err) {
-            console.warn("Save failed or timed out:", err);
-            // Fix: If it timed out, Firestore's IndexedDB persistence queue HAS already taken control of it.
-            // Do NOT call saveLocally() here, otherwise it queues twice (double sync).
-            showMessage("Network is slow. Saving securely in background...", "info");
+            console.warn("[Loggr Debug] Save failed or timed out:", err);
+            // It timed out or failed. It remains safely in our `pendingLogs` queue!
+            // The visibilitychange or online listeners will flush it later.
+            showMessage("Network is slow. Saved securely in offline queue.", "info");
         }
       }
 

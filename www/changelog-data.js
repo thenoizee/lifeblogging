@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v16.42.0-alpha",
+    date: "2026-08-31",
+    changes: [
+                "In Loggr: Refactored the logging sequence to synchronously save data to the local offline queue before initiating Firebase network requests, preventing data loss when backing out of the app or during widget interruptions.",
+                "In Loggr: Implemented a visibilitychange lifecycle listener to automatically trigger a sync of pending offline logs the moment the app returns to the foreground.",
+    ]
+},
+    {
     version: "v16.41.1-alpha",
     date: "2026-08-30",
     changes: [
