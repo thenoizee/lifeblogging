@@ -2110,18 +2110,22 @@
                             ratio = maxWidth / maxDim;
                         }
                         
-                        const canvas = document.createElement('canvas');
-                        canvas.width = bitmap.width * ratio;
-                        canvas.height = bitmap.height * ratio;
                         const ctx = canvas.getContext('2d');
-                        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(bitmap, 0, 0, targetW, targetH);
                         bitmap.close(); // Free native memory instantly
                         
-                        canvas.toBlob((blob) => {
-                            canvas.width = 0; canvas.height = 0;
-                            if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
-                            else resolve(file);
-                        }, 'image/jpeg', 0.7);
+                        if (window.OffscreenCanvas) {
+                            const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 });
+                            resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
+                        } else {
+                            canvas.toBlob((blob) => {
+                                // FIX: Aggressively zero out the canvas to force WebKit garbage collection
+                                ctx.clearRect(0, 0, targetW, targetH);
+                                canvas.width = 0; canvas.height = 0;
+                                if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
+                                else resolve(file);
+                            }, 'image/jpeg', 0.7);
+                        }
                         return; // Exit successfully
                     }
                 } catch (err) {
@@ -2146,7 +2150,11 @@
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     
                     canvas.toBlob((blob) => {
+                        // FIX: Detach img events and forcefully clear context memory
                         img.src = '';
+                        img.onload = null;
+                        img.onerror = null;
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
                         canvas.width = 0; canvas.height = 0;
                         if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
                         else resolve(file);
@@ -2577,7 +2585,7 @@
                             <div class="flex items-start justify-between mb-4 relative">
                                 <div class="flex items-center gap-3 cursor-pointer hover:opacity-70 transition text-left" onclick="window.openViewPlantModal('${plant.id}')" title="View Plant Details">
                                     ${getLatestPlantPhoto(plant)
-                                    ? `<img src="${getLatestPlantPhoto(plant)}" class="w-12 h-12 rounded-full object-cover border border-[var(--border)] shrink-0">` 
+                                    ? `<img src="${getLatestPlantPhoto(plant)}" loading="lazy" class="w-12 h-12 rounded-full object-cover border border-[var(--border)] shrink-0">`
                                     : `<div class="plant-icon-circle shrink-0 ${propColor}"><i class="fa-solid ${propIcon}"></i></div>`
                                     }
                                     <div class="overflow-hidden max-w-[140px] sm:max-w-[200px]">
@@ -2761,7 +2769,7 @@ card.innerHTML = `
         ` : ''}
         <div class="flex items-center gap-3 ${window.isSelectMode ? '' : 'cursor-pointer hover:opacity-70 transition'}" ${window.isSelectMode ? '' : `onclick="window.openViewPlantModal('${plant.id}')"`} title="${window.isSelectMode ? '' : 'View Plant Details'}">
             ${getLatestPlantPhoto(plant)
-            ? `<img src="${getLatestPlantPhoto(plant)}" class="w-12 h-12 rounded-full object-cover border border-[var(--border)]">` 
+            ? `<img src="${getLatestPlantPhoto(plant)}" loading="lazy" class="w-12 h-12 rounded-full object-cover border border-[var(--border)]">`
             : `<div class="plant-icon-circle"><i class="fa-solid ${plant.icon || 'fa-leaf'}"></i></div>`
             }
             <div>
@@ -3198,7 +3206,7 @@ freq = Math.max(1, freq);
                                 
                                 const latestPhoto = getLatestPlantPhoto(plant);
                                 const imgHtml = latestPhoto 
-                                    ? `<img src="${latestPhoto}" class="w-10 h-10 rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-700">`
+                                    ? `<img src="${latestPhoto}" loading="lazy" class="w-10 h-10 rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-700">`
                                     : `<div class="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0 text-blue-500"><i class="fa-solid ${plant.icon || 'fa-droplet'}"></i></div>`;
 
                                 div.innerHTML = `
@@ -3241,7 +3249,7 @@ freq = Math.max(1, freq);
                             
                             const latestPhoto = getLatestPlantPhoto(plant);
                             const imgHtml = latestPhoto 
-                                ? `<img src="${latestPhoto}" class="w-10 h-10 rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-700">`
+                                ? `<img src="${latestPhoto}" loading="lazy" class="w-10 h-10 rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-700">`
                                 : `<div class="w-10 h-10 rounded-full bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center shrink-0 text-orange-500"><i class="fa-solid ${plant.icon || 'fa-seedling'}"></i></div>`;
 
                             div.innerHTML = `
@@ -3628,7 +3636,7 @@ if (state.compost) {
                     if (log.health) detailsHtml += `<span class="inline-block text-[10px] bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold capitalize">❤️ ${log.health.replace('-', ' ')}</span>`;
                     if (log.noticing && log.noticing.length > 0) detailsHtml += `<span class="inline-block text-[10px] bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-1.5 py-0.5 rounded mr-1 mt-1 font-bold">✨ ${log.noticing.join(', ')}</span>`;
                     
-                    let photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" onclick="openPhotoModal(this.src, '${plant?.id || ''}')" class="w-12 h-12 md:w-10 md:h-10 object-cover rounded shadow-sm cursor-zoom-in hover:opacity-80 shrink-0 border border-[var(--border)]">` : '';
+                    let photoHtml = log.photoUrl ? `<img src="${log.photoUrl}" loading="lazy" onclick="openPhotoModal(this.src, '${plant?.id || ''}')" class="w-12 h-12 md:w-10 md:h-10 object-cover rounded shadow-sm cursor-zoom-in hover:opacity-80 shrink-0 border border-[var(--border)]">` : '';
                     if (!log.photoUrl) {
                         if (isLawn) photoHtml = `<div class="w-12 h-12 md:w-10 md:h-10 rounded bg-green-100 flex items-center justify-center text-green-600 shrink-0"><i class="fa-solid fa-scissors"></i></div>`;
                         if (isCompost) photoHtml = `<div class="w-12 h-12 md:w-10 md:h-10 rounded bg-orange-100 flex items-center justify-center text-orange-600 shrink-0"><i class="fa-solid fa-recycle"></i></div>`;
@@ -5239,9 +5247,11 @@ window.openFamilyTreeModal = (plantId) => {
             const previewImg = getEl("walkthrough-photo-preview-img");
             const nameSpan = getEl("walkthrough-photo-name");
 
-            const objectUrl = URL.createObjectURL(walkthroughCurrentFile);
-            previewImg.src = objectUrl;
-            nameSpan.textContent = walkthroughCurrentFile.name;
+            // FIX: Removed URL.createObjectURL for raw camera files to prevent iOS Safari memory crashes.
+            // Matches logic from other modals (Quick Log, Edit Plant) by skipping the heavy DOM preview.
+            previewImg.classList.add('hidden'); 
+            nameSpan.innerHTML = `<i class="fa-solid fa-check text-green-500 mr-1"></i> ${walkthroughCurrentFile.name}`;
+            
             previewContainer.classList.remove('hidden');
             previewContainer.classList.add('flex');
         };
@@ -5251,9 +5261,19 @@ window.openFamilyTreeModal = (plantId) => {
             const input = getEl("walkthrough-photo-input");
             if (input) input.value = '';
             const previewContainer = getEl("walkthrough-photo-preview-container");
+            const previewImg = getEl("walkthrough-photo-preview-img");
+            
             if (previewContainer) {
                 previewContainer.classList.add('hidden');
                 previewContainer.classList.remove('flex');
+            }
+            if (previewImg) {
+                // Free memory just in case a previous blob was hanging around
+                if (previewImg.src && previewImg.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(previewImg.src);
+                }
+                previewImg.src = '';
+                previewImg.classList.add('hidden');
             }
         };
 

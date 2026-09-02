@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.44.0-alpha",
+    date: "2026-09-03",
+    changes: [
+                "In PlantTrackr: Fixed mobile memory crashes in the Garden Walkthrough modal by replacing raw uncompressed photo previews with a memory-safe file name indicator.",
+                "In PlantTrackr: Added native 'loading=\"lazy\"' to plant thumbnails across all list and history views to prevent GPU texture memory exhaustion on iOS Safari.",
+                "In PlantTrackr: Upgraded the image compression utility to utilize OffscreenCanvas and aggressive garbage collection (clearRect) to prevent OS watchdog crashes during photo uploads."
+    ]
+},
+    {
     version: "v16.43.0-alpha",
     date: "2026-08-31",
     changes: [
