@@ -411,8 +411,10 @@ input[type=range]::-moz-range-thumb {
     // Initialize Firestore with IndexedDB persistent caching.
     // This allows the app to load instantly from local storage, enables true offline mode,
     // and drastically reduces Firebase read costs by only fetching delta changes from the server.
+    // OPTIMIZATION: Switched to default single-tab manager to fix the 'startTime' exception 
+    // and stop Firestore from endlessly polling Listen/channel via HTTP POST.
     const db = initializeFirestore(app, {
-        localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+        localCache: persistentLocalCache() 
     });
     
     const TRAKT_API_URL = 'https://us-central1-sammy-7298f.cloudfunctions.net/traktProxy';
@@ -700,8 +702,11 @@ if (headerRight) {
             if (toFetch.length === 0) return;
 
             // Phase 2: Fetch missing data in chunks and update 1-by-1
+            // [DEBUG] Track total time spent hydrating images
+            if (window.VIDTRACKR_DEBUG) console.time('enrichTMDBImages');
             const chunks = [];
-            for (let i = 0; i < toFetch.length; i += 10) chunks.push(toFetch.slice(i, i + 10));
+            // OPTIMIZATION: Increased chunk size from 10 to 25 to maximize TMDB's 50 req/sec limit
+            for (let i = 0; i < toFetch.length; i += 25) chunks.push(toFetch.slice(i, i + 25));
 
             for (const chunk of chunks) {
                 await Promise.all(chunk.map(async ({ item, type, data, tmdbId, traktId, cacheKey, needsShowTitle }) => {
@@ -780,10 +785,15 @@ if (headerRight) {
                         // Fire real-time callback the moment THIS single item is done
                         if (onProgress) onProgress(item.id || data.ids?.trakt, data, item);
 
-                    } catch(e) { /* Silent fail */ }
+                    } catch(e) { 
+                        // [DEBUG] Added logging so we can identify specific TMDB ID failures later
+                        if (window.VIDTRACKR_DEBUG) console.error(`Failed to enrich TMDB item: ${tmdbId || traktId}`, e);
+                    }
                 }));
-                if (chunks.length > 1) await new Promise(r => setTimeout(r, 250)); // Respect TMDB rate limits
+                // OPTIMIZATION: Reduced artificial wait time from 250ms to 150ms 
+                if (chunks.length > 1) await new Promise(r => setTimeout(r, 150)); 
             }
+            if (window.VIDTRACKR_DEBUG) console.timeEnd('enrichTMDBImages');
         };
 
         // --- NEW: Custom List Logic ---
@@ -1695,8 +1705,11 @@ window.removeProgress = async (playbackId) => {
 
                 // Helper to check if an episode exists
                 const checkEp = async (s, e) => {
-                    if (isTMDB) return await fetchTMDB(`/tv/${showId}/season/${s}/episode/${e}`);
-                    return await fetchDirect(`/shows/${showId}/seasons/${s}/episodes/${e}`);
+                    // OPTIMIZATION: Match the exact URL parameters renderDetail uses.
+                    // This forces fetchTMDB to store the massive payload in sessionStorage,
+                    // resulting in a 0ms cache hit when the page actually routes and renders!
+                    if (isTMDB) return await fetchTMDB(`/tv/${showId}/season/${s}/episode/${e}?append_to_response=credits,videos,images,external_ids`);
+                    return await fetchDirect(`/shows/${showId}/seasons/${s}/episodes/${e}?extended=full`);
                 };
 
                 if (targetNumber > 0) {
@@ -2233,12 +2246,16 @@ async function renderDashboard() {
     `;
 
     // Call this FIRST to prioritize the network request
+    // [DEBUG] Track how fast Dashboard sections kick off
+    if (window.VIDTRACKR_DEBUG) console.log("Kicking off dashboard load sequence...");
     loadUpNext();
     
-    // Then load the rest
-loadLastWatched();
-loadFriendsFeed(); // <--- Add this
-loadCalendar();
+    // OPTIMIZATION: Stagger the execution of secondary components.
+    // This prevents the browser's main thread and network queue from locking up all at once,
+    // allowing the primary 'Up Next' UI to render instantly.
+    setTimeout(loadLastWatched, 150);
+    setTimeout(loadFriendsFeed, 300); // Friends feed is heavy on Trakt APIs, push it back
+    setTimeout(loadCalendar, 400);
     
     // (Existing stats & trending logic...)
     
@@ -2295,8 +2312,9 @@ loadCalendar();
                     rated_at: data.ratedAt
                 }));
 
-                // Fetch missing live images for history items before rendering
-                await window.enrichTMDBImages(history);
+                // OPTIMIZATION: Removed the blocking 'await' so the UI renders instantly with placeholders.
+                // Images will pop in dynamically via the callback below.
+                if (window.VIDTRACKR_DEBUG) console.log("Rendering Last Watched UI instantly...");
 
                 const createCard = (h) => {
                     const type = h.type;
@@ -2357,7 +2375,7 @@ loadCalendar();
                     return `
                         <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer animate-fade" onclick="location.hash='${targetHash}'">
                             <div class="aspect-video relative">
-                                <img src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:scale-110" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                <img id="last-watched-img-${h.id}" src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:scale-110" onerror="this.src='${PLACEHOLDER_IMG}'">
                                 <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
                                 <div class="absolute bottom-0 left-0 p-4 w-full">
                                     <h4 class="text-white font-bold truncate shadow-black drop-shadow-md text-sm md:text-base flex items-center">${title}</h4>
@@ -2399,6 +2417,21 @@ loadCalendar();
 
                 container.innerHTML = html;
                 container.classList.remove('hidden');
+
+                // ASYNC HYDRATION: Fetch images in the background after the user can see the cards
+                window.enrichTMDBImages(history, (itemId, enrichedData, rawItem) => {
+                    const targetId = rawItem.id || itemId;
+                    // [DEBUG] Track asynchronous image swaps
+                    if (window.VIDTRACKR_DEBUG) console.log(`Hydrating Last Watched image for ID: ${targetId}`);
+                    
+                    const specificImgEl = document.getElementById(`last-watched-img-${targetId}`);
+                    const newImg = getImage(enrichedData, rawItem.type === 'episode' ? 'episode' : 'movie', true);
+                    
+                    if (specificImgEl && newImg && newImg !== PLACEHOLDER_IMG) {
+                        specificImgEl.style.opacity = 0;
+                        setTimeout(() => { specificImgEl.src = newImg; specificImgEl.style.opacity = ''; }, 150);
+                    }
+                });
 
             } catch (error) {
                 console.error("Firebase Last Watched Error:", error);
@@ -2601,8 +2634,11 @@ async function loadUpNext() {
                         }
                         
                         // Chunk requests to avoid TMDB 429 Rate Limits
+                        // [DEBUG] Track total UpNext processing time
+                        if (window.VIDTRACKR_DEBUG) console.time('UpNextFetchEngine');
                         const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
-                        const batches = chunk(activeShows, 8); // 8 shows per batch = max 16 TMDB requests per batch
+                        // OPTIMIZATION: Increased batch size from 8 to 15. This allows 30 concurrent TMDB requests instead of 16.
+                        const batches = chunk(activeShows, 15);
                         
                         const nextEpisodes = [];
                         for (const batch of batches) {
@@ -2621,34 +2657,23 @@ async function loadUpNext() {
                                     }
                                     if (!tmdbId) return null;
 
-                                    // Fetch show details to get season counts and episode limits
-                                    const showDetails = await fetchTMDB(`/tv/${tmdbId}`);
-                                    if (!showDetails || !showDetails.seasons) return null;
-
+                                    // OPTIMIZATION: Cut Up Next API calls by 50%.
+                                    // Instead of fetching the parent show details to calculate limits, blindly fetch the next sequential episode.
+                                    // If TMDB returns 34 (Not Found), bump to Episode 1 of the NEXT season.
                                     let nextS = entry.s;
                                     let nextE = entry.e + 1;
 
-                                    // Check current season
-                                    const currentSeason = showDetails.seasons.find(x => x.season_number === nextS);
-                                    
-                                    if (currentSeason) {
-                                        // If the next episode exceeds the current season's episode count, bump to next season
-                                        if (nextE > currentSeason.episode_count) {
-                                            nextS += 1;
-                                            nextE = 1;
-                                        }
+                                    let nextEpData = await fetchTMDB(`/tv/${tmdbId}/season/${nextS}/episode/${nextE}`).catch(() => null);
+
+                                    if (!nextEpData || nextEpData.status_code === 34) {
+                                        // Season ended. Try S(N+1) E1
+                                        nextS += 1;
+                                        nextE = 1;
+                                        nextEpData = await fetchTMDB(`/tv/${tmdbId}/season/${nextS}/episode/${nextE}`).catch(() => null);
                                     }
 
-                                    // Verify the target season exists and has episodes
-                                    const targetSeason = showDetails.seasons.find(x => x.season_number === nextS);
-                                    if (!targetSeason || targetSeason.episode_count === 0) {
-                                        // Show is completed / caught up!
-                                        return null; 
-                                    }
-
-                                    // Fetch the exact next episode data
-                                    const nextEpData = await fetchTMDB(`/tv/${tmdbId}/season/${nextS}/episode/${nextE}`);
-                                    if (!nextEpData || nextEpData.status_code === 34) return null; // 34 = Not Found
+                                    // Show is completely caught up
+                                    if (!nextEpData || nextEpData.status_code === 34) return null;
 
                                     return {
                                         type: 'episode',
@@ -2675,9 +2700,11 @@ async function loadUpNext() {
                             
                             // Respect TMDB rate limits between batches
                             if (batches.indexOf(batch) < batches.length - 1) {
-                                await new Promise(r => setTimeout(r, 250));
+                                // OPTIMIZATION: Reduced timeout from 250ms to 150ms to match the new image hydration speeds
+                                await new Promise(r => setTimeout(r, 150));
                             }
                         }
+                        if (window.VIDTRACKR_DEBUG) console.timeEnd('UpNextFetchEngine');
                         
                         // Incorporate partial watch (resume) items if available
                         const resumeItems = Array.from(userPlayback.values()).map(p => ({
@@ -2733,7 +2760,9 @@ async function loadUpNext() {
 
                         const finalItems = [...resumeItems, ...uniqueNextEpisodes].slice(0, 18);
                         
-                        await window.enrichTMDBImages(finalItems);
+                        // OPTIMIZATION: Do not block returning the data arrays!
+                        // We removed 'await window.enrichTMDBImages' here so the UI renderer fires immediately.
+                        if (window.VIDTRACKR_DEBUG) console.log("Returning Up Next items instantly to UI renderer.");
                         return finalItems;
             } catch(e) {
                 console.error("Local Up Next calculation error:", e);
@@ -2882,6 +2911,25 @@ async function loadUpNext() {
             const html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2><div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">${items.map(createCard).join('')}</div>`;
             container.innerHTML = html;
             container.classList.remove('hidden');
+
+            // ASYNC HYDRATION: Fetch images dynamically in the background without blocking the initial UI draw.
+            window.enrichTMDBImages(items, (itemId, enrichedData, rawItem) => {
+                const fallbackId = rawItem.ids?.trakt || rawItem.ids?.tmdb || rawItem.id || itemId;
+                const linkTarget = `location.hash='#detail/${rawItem.type}/${fallbackId}'`;
+                
+                // Locate the specific card that was just rendered
+                const containerDiv = container.querySelector(`div[onclick="${linkTarget}"]`);
+                if (containerDiv) {
+                    const imgEl = containerDiv.querySelector('img');
+                    const newImg = getImage(enrichedData, null, true);
+                    
+                    // Smoothly swap the placeholder for the real image
+                    if (imgEl && newImg && newImg !== PLACEHOLDER_IMG && !imgEl.src.includes(newImg)) {
+                        imgEl.style.opacity = 0;
+                        setTimeout(() => { imgEl.src = newImg; imgEl.style.opacity = ''; }, 150);
+                    }
+                }
+            });
         }
     );
 }
@@ -7941,9 +7989,12 @@ document.getElementById('modal-title').innerText = data.title;
                     window.globalHistoryCache.push({ ...doc.data(), _docId: doc.id });
                 });
                 
-                // Trigger Optimistic UI Re-renders automatically when data changes
-                if (document.getElementById('last-watched-container') && !document.getElementById('last-watched-container').classList.contains('hidden')) loadLastWatched();
-                if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) loadUpNext();
+                // OPTIMIZATION: Guard against the initial cache load. We ONLY want to trigger 
+                // heavy UI re-renders if a genuine new log/change occurred, eliminating double-boots.
+                if (!snapshot.metadata.fromCache) {
+                    if (document.getElementById('last-watched-container') && !document.getElementById('last-watched-container').classList.contains('hidden')) loadLastWatched();
+                    if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) loadUpNext();
+                }
             });
             
             checkActiveWatching();

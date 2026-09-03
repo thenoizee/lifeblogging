@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.45.0-alpha",
+    date: "2026-09-04",
+    changes: [
+        "In VidTrackr: Replaced persistentMultipleTabManager() with standard persistentLocalCache() to stop internal Firebase 'startTime' crashes and eliminate endless Listen/channel HTTP POST retry floods.",
+        "In VidTrackr: Guarded the global onSnapshot history listener with snapshot.metadata.fromCache to prevent initial cache loads from double-booting dashboard UI fetches.",
+        "In VidTrackr: Optimized Up Next episode resolution by querying the next sequential episode directly instead of downloading the entire parent show season tree first, cutting TMDB requests in half.",
+        "In VidTrackr: Aligned query parameters between navigateEpisode and renderDetail, fixing a cache-miss issue when flipping through episodes.",
+        "In VidTrackr: Unblocked dashboard rendering by rendering cards immediately with placeholders and hydrating TMDB images asynchronously in the background.",
+        "In VidTrackr: Staggered initial dashboard sub-component fetches (Last Watched, Friends Feed, Airing Calendar) to prevent browser main-thread and network queue locking on boot.",
+        "In VidTrackr: Increased TMDB batch processing limits from 8 to 15 for Up Next and 10 to 25 for image hydration, reducing artificial timeout delays from 250ms to 150ms."
+    ]
+},
+    {
     version: "v16.44.0-alpha",
     date: "2026-09-03",
     changes: [
