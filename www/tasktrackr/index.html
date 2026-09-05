@@ -1005,12 +1005,17 @@ window.addEventListener('DOMContentLoaded', () => {
         // Clean URL to prevent reopening on manual refresh
         window.history.replaceState({}, document.title, '/tasktrackr/');
         
-        // Delay slightly to ensure Firebase/UI has settled
-        setTimeout(() => {
-            if (typeof window.openQuickAddPopup === 'function') {
+        // Polling mechanism: Wait until the app is fully ready before opening the popup
+        const tryOpenPopup = () => {
+            const overlay = document.getElementById('login-overlay');
+            // If the login overlay is explicitly hidden, the app is ready for the popup
+            if (overlay && overlay.classList.contains('hidden') && typeof window.openQuickAddPopup === 'function') {
                 window.openQuickAddPopup();
+            } else {
+                setTimeout(tryOpenPopup, 250);
             }
-        }, 500);
+        };
+        tryOpenPopup();
     }
 });
 // --- END Web Share Target Handler ---
@@ -1514,10 +1519,18 @@ window.syncPendingTasks = async () => {
         }
     }
 
-    localStorage.setItem('pendingTasks', JSON.stringify(remaining));
+    // CRITICAL FIX: Read the current queue again before saving to avoid overwriting tasks added DURING the sync
+    const currentPending = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+    // Filter out the ones we just successfully processed (which are NOT in 'remaining')
+    const failedOrNew = currentPending.filter(cp => 
+        remaining.some(r => r.tempId === cp.tempId) || // It failed, so it's in remaining
+        !pending.some(p => p.tempId === cp.tempId)     // It's brand new (added during sync)
+    );
+
+    localStorage.setItem('pendingTasks', JSON.stringify(failedOrNew));
     localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
     
-    // We completely removed renderApp() here! 
+    // We completely removed renderApp() here!
     // The Silent DOM Update above handles the ID swapping perfectly, meaning 0 flickering.
     
     window.isSyncingTasks = false;
@@ -1851,6 +1864,12 @@ const fetchGoogleData = async () => {
 
 // REPLACE your existing fetchAllData with this updated version
 const fetchAllData = async () => {
+    if (!navigator.onLine) {
+        console.log("[TaskTrackr Debug] Offline. Skipping API fetch to preserve cache.");
+        hideLoader();
+        return;
+    }
+
     // 1. Fetch Projects from TickTick
     const projects = await api('/project');
     if (!projects && !auth.currentUser) return; // Allow if only local user exists

@@ -2,7 +2,17 @@
 
 export const changelogData = [
     {
-    version: "16.47.0-alpha",
+  version: "v16.48.0-alpha",
+  date: "2026-09-05",
+  changes: [
+    "In Android App: Resolved cold-boot widget routing failures under OS battery saver using WebView readyState polling in MainActivity.",
+    "In TaskTrackr: Fixed background sync race condition to ensure tasks added during active synchronization are never overwritten.",
+    "In TaskTrackr: Shielded task caches against offline network dropouts during background fetch operations.",
+    "In Loggr: Added persistent last-log timestamp tracking and a relative time elapsed status indicator.",
+  ]
+},
+    {
+    version: "v16.47.0-alpha",
     date: "2026-09-05",
     changes: [
         "In PlantTrackr: Added Life Stage tracking (Seedling, Young, Mature, Declining) to plant profiles.",
