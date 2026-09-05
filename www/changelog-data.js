@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.46.0-alpha",
+    date: "2026-09-05",
+    changes: [
+        "In FoodTrackr: Reinstated the manual 'Search' button to the food search bar for more reliable lookups.",
+        "In FoodTrackr: Fixed a bug where selecting a food from search would default to the current time instead of the selected dashboard date.",
+        "In FoodTrackr: Updated the Move/Copy modal labels to explicitly state 'Destination Date & Time' for better clarity.",
+        "In FoodTrackr: Updated the bulk action bar's date picker to say 'Set Dest' / 'To: DD/MM' to clarify it sets the destination date."
+    ]
+},
+    {
     version: "v16.45.0-alpha",
     date: "2026-09-04",
     changes: [
