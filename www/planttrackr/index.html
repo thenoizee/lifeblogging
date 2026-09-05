@@ -966,9 +966,16 @@
                             </select>
                         </div>
                         <div>
+                            <label class="text-sm font-bold">Life Stage</label>
+                            <select id="plant-stage" class="input-std mb-4">
+                                <option value="seedling">🌱 Seedling / Propagating</option>
+                                <option value="young">🌿 Young / Establishing</option>
+                                <option value="mature" selected>🪴 Mature</option>
+                                <option value="declining">🍂 Declining / Dormant</option>
+                            </select>
                             <label class="text-sm font-bold">Status & Location</label>
-                            <select id="plant-status" class="input-std">
-                                <option value="alive" selected>🌿 Active (Main Garden)</option>
+                            <select id="plant-status" class="input-std">
+                                <option value="alive" selected>🌿 Active (Main Garden)</option>
                                 <option value="sheltered">⛺ Sheltered (Override Location/Weather)</option>
                                 <optgroup label="✂️ Propagations (Props Tab)">
                                     <option value="propagating-water">Propagating in Water 💧</option>
@@ -1204,6 +1211,7 @@
         <p><strong class="opacity-70 inline-block w-24">Species:</strong> <span id="view-plant-species" class="font-medium"></span></p>
         <p><strong class="opacity-70 inline-block w-24">Variety:</strong> <span id="view-plant-variety" class="font-medium"></span></p>
         <p><strong class="opacity-70 inline-block w-24">Type:</strong> <span id="view-plant-type" class="font-medium capitalize"></span></p>
+        <p><strong class="opacity-70 inline-block w-24">Stage:</strong> <span id="view-plant-stage" class="font-medium capitalize"></span></p>
         <p><strong class="opacity-70 inline-block w-24">Facing:</strong> <span id="view-plant-facing" class="font-medium capitalize"></span></p>
         <p><strong class="opacity-70 inline-block w-24">Source:</strong> <span id="view-plant-brand" class="font-medium"></span></p>
         <p><strong class="opacity-70 inline-block w-24">Acquired:</strong> <span id="view-plant-acquired" class="font-medium"></span></p>
@@ -2110,11 +2118,23 @@
                             ratio = maxWidth / maxDim;
                         }
                         
+                        const targetW = bitmap.width * ratio;
+                        const targetH = bitmap.height * ratio;
+                        
+                        let canvas;
+                        if (window.OffscreenCanvas) {
+                            canvas = new OffscreenCanvas(targetW, targetH);
+                        } else {
+                            canvas = document.createElement('canvas');
+                            canvas.width = targetW;
+                            canvas.height = targetH;
+                        }
+                        
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(bitmap, 0, 0, targetW, targetH);
                         bitmap.close(); // Free native memory instantly
                         
-                        if (window.OffscreenCanvas) {
+                        if (window.OffscreenCanvas && canvas.convertToBlob) {
                             const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 });
                             resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
                         } else {
@@ -2927,23 +2947,40 @@ window.toggleGardenView = (view) => {
                 if (minTempForecast <= 2) frostRisk = true;
             }
 
+            // Build dynamic advice based on owned plants
+            const hasVeggies = state.plants.some(p => p.type === 'vegetable' || p.type === 'herb' || (p.location && state.locations.find(l=>l.id===p.location)?.type === 'outside-exposed'));
+            const hasHouseplants = state.plants.some(p => p.type === 'houseplant' || p.type === 'succulent');
+            const hasTrees = state.plants.some(p => p.type === 'tree' || p.type === 'bush');
+
             if (season === "Spring") {
-                advice.push("<strong>Early Spring:</strong> Time to start seeds indoors (tomatoes, peppers, eggplants).");
-                if (month === 2 || month === 8) advice.push("<strong>Chitted Potatoes:</strong> Ideal time to plant out early seed potatoes if the ground isn't frozen.");
-                if (month === 4 || month === 10) advice.push("<strong>Hardening Off:</strong> Begin hardening off indoor-grown seedlings by placing them outside during the day for a few hours.");
-                advice.push("<strong>Direct Sowing:</strong> Cool-weather crops like carrots, peas, and radishes can be sown directly outdoors.");
+                if (hasVeggies) {
+                    advice.push("<strong>Veggie Patch:</strong> Time to start seeds indoors (tomatoes, peppers, eggplants).");
+                    if (month === 2 || month === 8) advice.push("<strong>Chitted Potatoes:</strong> Ideal time to plant out early seed potatoes if the ground isn't frozen.");
+                    if (month === 4 || month === 10) advice.push("<strong>Hardening Off:</strong> Begin hardening off indoor-grown seedlings.");
+                } else {
+                    advice.push("<strong>Spring Prep:</strong> Clean your pots and prepare fresh soil for the active growing season.");
+                }
+                if (hasHouseplants) advice.push("<strong>Houseplants Waking Up:</strong> Your indoor plants are entering their active growth phase. Time to resume regular fertilizing!");
+                if (hasTrees) advice.push("<strong>Trees & Shrubs:</strong> Apply a fresh layer of mulch around the base to retain moisture for the coming warmer months.");
             } else if (season === "Summer") {
-                advice.push("<strong>Planting Out:</strong> Safe to plant tender crops outside (tomatoes, beans, courgettes) as frost risk has passed.");
-                advice.push("<strong>Maintenance:</strong> Keep crops well-watered. Mulch around plants to retain moisture.");
-                advice.push("<strong>Succession:</strong> Sow quick-growing salads and radishes every 2 weeks for a continuous harvest.");
+                if (hasVeggies) {
+                    advice.push("<strong>Planting Out:</strong> Safe to plant tender crops outside as frost risk has passed.");
+                    advice.push("<strong>Succession:</strong> Sow quick-growing salads and radishes every 2 weeks for a continuous harvest.");
+                }
+                if (hasHouseplants) advice.push("<strong>Houseplant Care:</strong> Growth is rapid! Keep an eye on moisture levels as indoor temperatures rise, and check for pests.");
+                advice.push("<strong>Maintenance:</strong> Keep all active plants well-watered. Mulch around outdoor plants to retain moisture.");
             } else if (season === "Autumn") {
-                advice.push("<strong>Overwintering:</strong> Plant garlic cloves, autumn onion sets, and broad beans now.");
-                advice.push("<strong>Harvest:</strong> Lift maincrop potatoes and root vegetables before heavy frosts.");
+                if (hasVeggies) {
+                    advice.push("<strong>Overwintering Veggies:</strong> Plant garlic cloves, autumn onion sets, and broad beans now.");
+                    advice.push("<strong>Harvest:</strong> Lift maincrop potatoes and root vegetables before heavy frosts.");
+                }
+                if (hasHouseplants) advice.push("<strong>Houseplant Prep:</strong> Reduce fertilizing frequency as daylight hours decrease. Check plants for pests before bringing them fully indoors.");
                 advice.push("<strong>Cleanup:</strong> Move tender perennials indoors or into a greenhouse. Clear finished crops to the compost bin.");
             } else if (season === "Winter") {
-                advice.push("<strong>Dormancy:</strong> Perfect time to prune dormant fruit trees, bushes, and grapevines.");
-                advice.push("<strong>Preparation:</strong> Plan your crop rotation. Order seeds for the upcoming year.");
-                if (month === 1 || month === 7) advice.push("<strong>Early Starts:</strong> Sow slow-growing seeds like chillies and geraniums indoors in a heated propagator.");
+                if (hasTrees) advice.push("<strong>Dormancy:</strong> Perfect time to prune dormant trees, bushes, and grapevines.");
+                if (hasHouseplants) advice.push("<strong>Houseplant Dormancy:</strong> Growth slows drastically. Cut watering frequency and pause fertilizing to prevent root rot.");
+                if (hasVeggies && (month === 1 || month === 7)) advice.push("<strong>Early Starts:</strong> Sow slow-growing seeds like chillies indoors in a heated propagator.");
+                advice.push("<strong>Preparation:</strong> Plan your crop rotation. Clean and sharpen your garden tools.");
             }
 
             let alertHtml = "";
@@ -3786,7 +3823,8 @@ if (state.compost) {
     getEl("view-plant-species").textContent = plant.species || "Unknown";
     getEl("view-plant-variety").textContent = plant.variety || "N/A";
     getEl("view-plant-type").textContent = plant.type || "N/A";
-    getEl("view-plant-facing").textContent = plant.facing || "N/A";
+    getEl("view-plant-stage").textContent = plant.stage || "Mature";
+    getEl("view-plant-facing").textContent = plant.facing || "N/A";
     getEl("view-plant-brand").textContent = plant.brand || "N/A";
     
     // Format the acquired date safely
@@ -3899,6 +3937,7 @@ if (state.compost) {
             ['plant-mist-freq', 'plant-prune-freq', 'plant-repot-freq', 'plant-mulch-freq'].forEach(id => getEl(id).value = '');
             getEl("plant-type").value = "";
             getEl("plant-facing").value = "";
+            if (getEl("plant-stage")) getEl("plant-stage").value = "mature";
             getEl("plant-water-freq").value = 7;
             getEl("plant-fert-freq").value = 14; // Default to 14 days
             getEl("plant-fert-enable").checked = true; // Enabled by default
@@ -3952,6 +3991,7 @@ getEl("plant-has-saucer").checked = false;
                     getEl("plant-brand").value = plant.brand || "";
                     getEl("plant-type").value = plant.type || "";
                     getEl("plant-facing").value = plant.facing || "";
+                    if (getEl("plant-stage")) getEl("plant-stage").value = plant.stage || "mature";
                     getEl("plant-location").value = plant.location || "";
                     getEl("plant-light").value = plant.light || "";
 getEl("plant-pot-type").value = plant.potType || "plastic";
@@ -4138,6 +4178,7 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
                 weatherAlerts: getEl("plant-weather").checked,
                 overwinter: getEl("plant-overwinter").checked,
                 status: getEl("plant-status").value,
+                stage: getEl("plant-stage") ? getEl("plant-stage").value : "mature",
                 background: getEl("plant-background").value,
                 parentId: getEl("plant-parent").value || null,
                 seedId: getEl("plant-seed-origin") ? (getEl("plant-seed-origin").value || null) : null,
@@ -4225,6 +4266,7 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
 
                         addChange("Health", existingPlant.health, data.health);
                         if (existingPlant.status !== data.status && data.status !== 'dead') addChange("Status", existingPlant.status, data.status);
+                        if (existingPlant.stage !== data.stage) addChange("Life Stage", existingPlant.stage, data.stage);
 
                         addChange("Water Freq", existingPlant.waterFreq ? existingPlant.waterFreq + 'd' : '', data.waterFreq ? data.waterFreq + 'd' : '');
                         addChange("Fertilize Freq", existingPlant.fertFreq ? existingPlant.fertFreq + 'd' : '', data.fertFreq ? data.fertFreq + 'd' : '');

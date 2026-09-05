@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "16.47.0-alpha",
+    date: "2026-09-05",
+    changes: [
+        "In PlantTrackr: Added Life Stage tracking (Seedling, Young, Mature, Declining) to plant profiles.",
+        "In PlantTrackr: Made Seasonal Planting Guide dynamic, providing advice tailored to the specific plant types you own (veggies, houseplants, trees, etc.).",
+        "In PlantTrackr: Fixed a severe memory leak in image compression that caused mobile browsers to crash when taking multiple photos in Walkthrough mode."
+    ]
+},
+    {
     version: "v16.46.0-alpha",
     date: "2026-09-05",
     changes: [
