@@ -2,6 +2,28 @@
 
 export const changelogData = [
     {
+    version: "v16.49.0-alpha",
+    date: "2026-09-05",
+    changes: [
+        "In PlantTrackr: Completely redesigned the Settings page with a premium, segmented list layout.",
+        "In PlantTrackr: Overhauled the Garden tab plant card UI for a cleaner, dashboard-widget feel.",
+        "In PlantTrackr: Refactored the DOM rendering engine in the Garden tab to use DocumentFragment, eliminating layout thrashing and improving mobile scrolling performance.",
+        "In PlantTrackr: Rewrote the photo compression engine to use OffscreenCanvas and aggressive garbage collection, preventing memory crashes on mobile browsers during high-res uploads.",
+        "In PlantTrackr: Upgraded the Tailored Care Guide to generate highly customized, contextual care advice based on specific environmental factors, pot type, and soil.",
+        "In PlantTrackr: Made the Dashboard Planting Guide context-aware, dynamically inserting your specific owned plants into the seasonal advice.",
+        "In PlantTrackr: Refactored the API Heuristic Engine to use proportional multipliers (percentages) instead of flat day additions for calculating care frequencies.",
+        "In PlantTrackr: Updated the Care Engine to intelligently ignore 'Distance to Window' modifiers for plants in outdoor spaces.",
+        "In PlantTrackr: Dynamically hid the 'Distance to Window' input field in the Add/Edit Plant modal when an outdoor space is selected."
+    ]
+},
+    {
+    version: "v16.48.1-alpha",
+    date: "2026-09-05",
+    changes: [
+        "In Loggr: Offline indicator bug fix.",
+    ]
+},
+    {
   version: "v16.48.0-alpha",
   date: "2026-09-05",
   changes: [

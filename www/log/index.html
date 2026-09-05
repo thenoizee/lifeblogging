@@ -884,25 +884,29 @@
   const db = getFirestore(app);
 
   const fetchWithTimeout = async (queryRef, ms = 8000) => {
-      try {
-          if (!navigator.onLine) {
-              return await getDocsFromCache(queryRef);
-          }
-          return await Promise.race([
-              getDocs(queryRef),
-              new Promise((_, reject) => setTimeout(() => reject(new Error("NetworkTimeout")), ms))
-          ]);
-      } catch (err) {
-          console.warn("Network timeout/error, attempting cache fallback...", err);
-          try {
-              return await getDocsFromCache(queryRef);
-          } catch (cacheErr) {
-              console.warn("Cache also failed. Returning empty snapshot.", cacheErr);
-              // Mock an empty snapshot to prevent the app from hard-crashing offline
-              return { docs: [], forEach: () => {} }; 
-          }
-      }
-  };
+      try {
+          if (!navigator.onLine) {
+              updateConnectivityStatus('offline');
+              return await getDocsFromCache(queryRef);
+          }
+          const res = await Promise.race([
+              getDocs(queryRef),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("NetworkTimeout")), ms))
+          ]);
+          updateConnectivityStatus('online');
+          return res;
+      } catch (err) {
+          console.warn("Network timeout/error, attempting cache fallback...", err);
+          updateConnectivityStatus('offline');
+          try {
+              return await getDocsFromCache(queryRef);
+          } catch (cacheErr) {
+              console.warn("Cache also failed. Returning empty snapshot.", cacheErr);
+              // Mock an empty snapshot to prevent the app from hard-crashing offline
+              return { docs: [], forEach: () => {} }; 
+          }
+      }
+  };
 
   // --- ENABLE OFFLINE PERSISTENCE ---
   enableMultiTabIndexedDbPersistence(db)
@@ -1094,10 +1098,21 @@
       };
       setInterval(updateLastLogTime, 60000);
 
-  // ... [Keep connectivity logic: connectivityStatusEl, updateConnectivityStatus] ...
-  const connectivityStatusEl = document.getElementById("connectivity-status");
-      const updateConnectivityStatus = () => {
-        if (navigator.onLine) {
+      const connectivityStatusEl = document.getElementById("connectivity-status");
+      let isEffectivelyOffline = !navigator.onLine;
+
+      // In Capacitor/WebViews, navigator.onLine often falsely reports true.
+      // We override it with actual fetch/timeout results.
+      const updateConnectivityStatus = (statusOverride) => {
+        if (statusOverride !== undefined) {
+            isEffectivelyOffline = statusOverride === 'offline';
+        } else {
+            // Only trust navigator.onLine if it says we are offline. 
+            // If it says true, don't immediately override a known 'offline' state without a ping.
+            if (!navigator.onLine) isEffectivelyOffline = true;
+        }
+
+        if (!isEffectivelyOffline) {
           connectivityStatusEl.textContent = "Online";
           connectivityStatusEl.className = "connectivity-status online";
         } else {
@@ -1194,10 +1209,13 @@
           }
 
           // Commit the entire batch in a single network request
-          await batch.commit();
+          const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("NetworkTimeout")), 8000));
+          await Promise.race([batch.commit(), timeout]);
 
+          updateConnectivityStatus('online');
         } catch (err) {
           console.error("Failed to sync batched logs:", err);
+          updateConnectivityStatus('offline');
           // If the batch network request fails, retain all items in the pending queue
           logsToResync = [...pendingLogs];
           syncedLogs = []; 
@@ -1224,7 +1242,7 @@
       let isSyncing = false;
 
       window.addEventListener('online', () => {
-        updateConnectivityStatus();
+        updateConnectivityStatus('online'); // Optimistic reset
         clearTimeout(syncTimeout);
         console.log("[Loggr Debug] Network came online. Scheduling queue sync...");
         
@@ -1238,7 +1256,7 @@
       });
       
       window.addEventListener('offline', () => {
-        updateConnectivityStatus();
+        updateConnectivityStatus('offline');
         console.log("[Loggr Debug] Network went offline.");
       });
 
@@ -1372,17 +1390,25 @@
                       renderUnsyncedLogs();
                   } else {
                       // Only delete from Firestore directly if it's not strictly in our offline queue
-                      // (If it was a flaky connection, Firestore handles the queued delete automatically)
                       const docRef = doc(db, `users/${userId}/sources/${logEntry.collectionName}/data`, logEntry.docId);
-                      await deleteDoc(docRef);
+                      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("NetworkTimeout")), 8000));
+                      await Promise.race([deleteDoc(docRef), timeout]);
                   }
-
+                  
+                  updateConnectivityStatus('online');
                   sessionLogs.splice(index, 1);
                   renderSessionLogs();
                   showMessage("Log successfully undone.", "success");
                   fetchLogsForDateRange(); 
               } catch (err) {
-                  showMessage("Error undoing log: " + err.message, "error");
+                  console.error("Error undoing log:", err);
+                  updateConnectivityStatus('offline');
+                  showMessage("Network is slow. Undo queued by offline cache.", "info");
+                  
+                  // Still optimistically remove it from the UI session logs
+                  sessionLogs.splice(index, 1);
+                  renderSessionLogs();
+                  fetchLogsForDateRange(); 
               }
           } else {
               showMessage("Cannot undo. Log is missing a database ID or collection name.", "error");
@@ -1491,6 +1517,7 @@
         console.log("[Loggr Debug] Log safely committed to local queue to prevent app-exit data drops.");
 
         if (!navigator.onLine) {
+            updateConnectivityStatus('offline');
             return; // We are offline, keep it safely in the queue.
         }
 
@@ -1515,6 +1542,8 @@
             ]);
 
             console.log("[Loggr Debug] Firebase sync successful. Removing from local queue.");
+            updateConnectivityStatus('online'); // Success!
+            
             // 3. SUCCESS: Remove from pendingLogs queue since it synced successfully
             let pendingLogs = JSON.parse(localStorage.getItem("pendingLogs") || "[]");
             pendingLogs = pendingLogs.filter(log => log.docId !== realDocId);
@@ -1528,6 +1557,7 @@
 
         } catch (err) {
             console.warn("[Loggr Debug] Save failed or timed out:", err);
+            updateConnectivityStatus('offline'); // Real offline detected
             // It timed out or failed. It remains safely in our `pendingLogs` queue!
             // The visibilitychange or online listeners will flush it later.
             showMessage("Network is slow. Saved securely in offline queue.", "info");
@@ -1563,11 +1593,12 @@
               renderUnsyncedLogs();
           } else {
               // Only update Firestore directly if it's not strictly in our offline queue
-              // (If it was a flaky connection, Firestore handles the queued update automatically)
               const docRef = doc(db, `users/${userId}/sources/${collectionName}/data`, docId);
-              await updateDoc(docRef, logEntryUpdate);
+              const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("NetworkTimeout")), 8000));
+              await Promise.race([updateDoc(docRef, logEntryUpdate), timeout]);
           }
 
+          updateConnectivityStatus('online');
           showMessage(`Data updated successfully: ${attributeName} = ${attributeValue}`, "success");
 
           const updatedIndex = sessionLogs.findIndex(log => log.docId === docId);
@@ -1583,7 +1614,9 @@
           }
 
         } catch (err) {
-          showMessage("Error updating data: " + err.message, "error");
+          console.error("Error updating log:", err);
+          updateConnectivityStatus('offline');
+          showMessage("Network is slow. Update queued by offline cache.", "info");
         }
       }
 
