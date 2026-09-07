@@ -1,10 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Dashboard - Lifeblogging Hub</title>
     <link rel="icon" href="/favicons/house.svg" type="image/svg+xml">
+    <script>
+        try {
+            const theme = localStorage.getItem('theme');
+            if (theme === 'light' || (!theme && !window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.remove('dark');
+            }
+        } catch (e) {}
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -268,7 +276,10 @@
             <div class="dashboard-card col-span-1" id="card-meds">
                 <div class="card-header">
                     <span>Meds</span>
-                    <a href="/medimanagr" class="text-pink-500 hover:text-pink-600" title="MediManagr"><i class="fas fa-pills text-lg"></i></a>
+                    <div class="flex gap-2">
+                        <button id="toggle-meds-view" class="text-[var(--text-secondary)] hover:text-[var(--text-primary)]" title="Toggle Schedule/Latest"><i class="fas fa-list"></i></button>
+                        <a href="/medimanagr" class="text-pink-500 hover:text-pink-600" title="MediManagr"><i class="fas fa-pills text-lg"></i></a>
+                    </div>
                 </div>
                 <div id="meds-list" class="flex-grow custom-scroll overflow-y-auto space-y-2 pr-1 max-h-[140px]">
                     <p class="text-xs text-[var(--text-secondary)] italic text-center mt-4">Loading schedule...</p>
@@ -691,6 +702,19 @@
         loadLayout();
 
         // --- Shared Data State ---
+        let medsViewMode = 'schedule';
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggleMedsBtn = document.getElementById('toggle-meds-view');
+            if (toggleMedsBtn) {
+                toggleMedsBtn.addEventListener('click', (e) => {
+                    medsViewMode = medsViewMode === 'schedule' ? 'latest' : 'schedule';
+                    e.currentTarget.innerHTML = medsViewMode === 'schedule' ? '<i class="fas fa-list"></i>' : '<i class="fas fa-history"></i>';
+                    if (typeof renderMeds === 'function') renderMeds();
+                });
+            }
+        });
+
         let state = {
             dailyLogs: [],
             manualLogs: [],
@@ -1252,90 +1276,89 @@
             }
             ui.medsList.innerHTML = '';
             
-            let scheduledDoses = [];
-            state.medsSchedule.forEach(med => {
-                if (med.isArchived) return;
-                if (med.schedule && med.schedule.days.includes(dayName)) {
-                    const times = med.schedule.times.split(',').map(t => t.trim()).filter(Boolean);
-                    times.forEach(time => {
-                        scheduledDoses.push({
-                            medId: med.id, name: med.name, dosage: med.dosage, tags: med.tags || [],
-                            icon: med.icon || 'fas fa-pills', color: med.color || '#666', time: time, status: 'pending'
+            if (medsViewMode === 'schedule') {
+                let scheduledDoses = [];
+                state.medsSchedule.forEach(med => {
+                    if (med.isArchived) return;
+                    if (med.schedule && med.schedule.days.includes(dayName)) {
+                        const times = med.schedule.times.split(',').map(t => t.trim()).filter(Boolean);
+                        times.forEach(time => {
+                            scheduledDoses.push({
+                                medId: med.id, name: med.name, dosage: med.dosage, tags: med.tags || [],
+                                icon: med.icon || 'fas fa-pills', color: med.color || '#666', time: time, status: 'pending'
+                            });
                         });
+                    }
+                });
+
+                let availableLogs = [...state.todayDoses];
+                scheduledDoses.sort((a, b) => a.time.localeCompare(b.time));
+
+                scheduledDoses.forEach(doseItem => {
+                    const logIndex = availableLogs.findIndex(log => log.medId === doseItem.medId && log.status === 'taken');
+                    if (logIndex !== -1) {
+                        doseItem.status = 'taken';
+                        availableLogs.splice(logIndex, 1);
+                    }
+                });
+
+                if (scheduledDoses.length === 0) {
+                    ui.medsList.innerHTML = `<p class="text-[10px] text-[var(--text-secondary)] italic text-center mb-2">No meds scheduled today.</p>`;
+                } else {
+                    scheduledDoses.forEach(dose => {
+                        const isTaken = dose.status === 'taken';
+                        const tagsHtml = dose.tags.slice(0, 2).map(tag => 
+                            `<span class="px-1 py-0.5 rounded-[3px] text-[8px] bg-gray-200 dark:bg-gray-700 text-[var(--text-secondary)]">${tag}</span>`
+                        ).join('');
+
+                        const div = document.createElement('div');
+                        div.className = `flex justify-between items-center p-1.5 rounded-lg text-xs mb-1 ${isTaken ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-800'}`;
+                        
+                        div.innerHTML = `
+                            <div class="flex items-start gap-2 min-w-0 flex-grow">
+                                <span class="font-mono text-[var(--text-secondary)] w-8 text-right flex-shrink-0 pt-0.5">${dose.time}</span>
+                                <div class="flex flex-col min-w-0 gap-0.5">
+                                    <div class="flex items-center gap-1.5">
+                                        <i class="${dose.icon}" style="color: ${dose.color}"></i>
+                                        <span class="${isTaken ? 'line-through opacity-60' : 'font-bold'} truncate text-xs" title="${dose.name}">${dose.name}</span>
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+                                        ${dose.dosage ? `<span class="text-[9px] text-[var(--text-secondary)] opacity-90">${dose.dosage}</span>` : ''}
+                                        ${tagsHtml}
+                                    </div>
+                                </div>
+                            </div>
+                            <i class="fas ${isTaken ? 'fa-check text-green-500' : 'fa-hourglass-half text-gray-300'} ml-1 text-[10px] flex-shrink-0"></i>
+                        `;
+                        ui.medsList.appendChild(div);
                     });
                 }
-            });
-
-            let availableLogs = [...state.todayDoses];
-            scheduledDoses.sort((a, b) => a.time.localeCompare(b.time));
-
-            scheduledDoses.forEach(doseItem => {
-                const logIndex = availableLogs.findIndex(log => log.medId === doseItem.medId && log.status === 'taken');
-                if (logIndex !== -1) {
-                    doseItem.status = 'taken';
-                    availableLogs.splice(logIndex, 1);
-                }
-            });
-
-            if (scheduledDoses.length === 0) {
-                ui.medsList.innerHTML = `<p class="text-[10px] text-[var(--text-secondary)] italic text-center mb-2">No meds scheduled today.</p>`;
             } else {
-                scheduledDoses.forEach(dose => {
-                    const isTaken = dose.status === 'taken';
-                    const tagsHtml = dose.tags.slice(0, 2).map(tag => 
-                        `<span class="px-1 py-0.5 rounded-[3px] text-[8px] bg-gray-200 dark:bg-gray-700 text-[var(--text-secondary)]">${tag}</span>`
-                    ).join('');
-
-                    const div = document.createElement('div');
-                    div.className = `flex justify-between items-center p-1.5 rounded-lg text-xs mb-1 ${isTaken ? 'bg-green-50 dark:bg-green-900/20' : 'bg-gray-50 dark:bg-gray-800'}`;
-                    
-                    div.innerHTML = `
-                        <div class="flex items-start gap-2 min-w-0 flex-grow">
-                            <span class="font-mono text-[var(--text-secondary)] w-8 text-right flex-shrink-0 pt-0.5">${dose.time}</span>
-                            <div class="flex flex-col min-w-0 gap-0.5">
-                                <div class="flex items-center gap-1.5">
-                                    <i class="${dose.icon}" style="color: ${dose.color}"></i>
-                                    <span class="${isTaken ? 'line-through opacity-60' : 'font-bold'} truncate text-xs" title="${dose.name}">${dose.name}</span>
-                                </div>
-                                <div class="flex flex-wrap items-center gap-1.5 min-w-0">
-                                    ${dose.dosage ? `<span class="text-[9px] text-[var(--text-secondary)] opacity-90">${dose.dosage}</span>` : ''}
-                                    ${tagsHtml}
+                if (state.recentMedLogs && state.recentMedLogs.length > 0) {
+                    state.recentMedLogs.forEach(log => {
+                        const div = document.createElement('div');
+                        div.className = "flex justify-between items-center p-1.5 rounded-lg text-xs mb-1 bg-gray-50 dark:bg-gray-800 border border-[var(--border-color)]";
+                        const timeStr = new Date(log.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        const dateStr = new Date(log.date).toLocaleDateString([], {month: 'short', day: 'numeric'});
+                        
+                        div.innerHTML = `
+                            <div class="flex items-center gap-2 min-w-0">
+                                <i class="fas fa-history text-[9px] text-gray-400"></i>
+                                <div class="flex flex-col min-w-0">
+                                    <span class="font-bold truncate text-[11px]">${log.medicineName}</span>
+                                    <span class="text-[9px] text-[var(--text-secondary)]">${log.dosage || ''}</span>
                                 </div>
                             </div>
-                        </div>
-                        <i class="fas ${isTaken ? 'fa-check text-green-500' : 'fa-hourglass-half text-gray-300'} ml-1 text-[10px] flex-shrink-0"></i>
-                    `;
-                    ui.medsList.appendChild(div);
-                });
-            }
-
-            if (state.recentMedLogs && state.recentMedLogs.length > 0) {
-                const historyHeader = document.createElement('div');
-                historyHeader.className = "text-[9px] font-bold uppercase tracking-wider text-[var(--text-secondary)] mt-3 mb-1 pl-1 border-t border-[var(--border-color)] pt-2";
-                historyHeader.textContent = "Latest Logs";
-                ui.medsList.appendChild(historyHeader);
-
-                state.recentMedLogs.forEach(log => {
-                    const div = document.createElement('div');
-                    div.className = "flex justify-between items-center p-1.5 rounded-lg text-xs mb-1 bg-gray-50 dark:bg-gray-800 border border-[var(--border-color)]";
-                    const timeStr = new Date(log.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                    const dateStr = new Date(log.date).toLocaleDateString([], {month: 'short', day: 'numeric'});
-                    
-                    div.innerHTML = `
-                        <div class="flex items-center gap-2 min-w-0">
-                            <i class="fas fa-history text-[9px] text-gray-400"></i>
-                            <div class="flex flex-col min-w-0">
-                                <span class="font-bold truncate text-[11px]">${log.medicineName}</span>
-                                <span class="text-[9px] text-[var(--text-secondary)]">${log.dosage || ''}</span>
+                            <div class="text-right">
+                                <div class="font-mono text-[10px]">${timeStr}</div>
+                                <div class="text-[8px] text-[var(--text-secondary)]">${dateStr}</div>
                             </div>
-                        </div>
-                        <div class="text-right">
-                            <div class="font-mono text-[10px]">${timeStr}</div>
-                            <div class="text-[8px] text-[var(--text-secondary)]">${dateStr}</div>
-                        </div>
-                    `;
-                    ui.medsList.appendChild(div);
-                });
+                        `;
+                        ui.medsList.appendChild(div);
+                    });
+                } else {
+                    ui.medsList.innerHTML = `<p class="text-[10px] text-[var(--text-secondary)] italic text-center mb-2">No recent logs.</p>`;
+                }
             }
         };
         async function fetchTickTickCount(accessToken) {
@@ -2046,13 +2069,16 @@
             const ctx = document.getElementById('water-chart').getContext('2d');
             if (waterChartInstance) waterChartInstance.destroy();
             
+            const isDark = document.documentElement.classList.contains('dark');
+            const remainingColor = isDark ? '#374151' : '#e5e7eb';
+            
             waterChartInstance = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
                     labels: ['Drank', 'Remaining'],
                     datasets: [{
                         data: [current, Math.max(0, goal - current)],
-                        backgroundColor: ['#3b82f6', '#e5e7eb'],
+                        backgroundColor: ['#3b82f6', remainingColor],
                         borderWidth: 0,
                         cutout: '75%'
                     }]

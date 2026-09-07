@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.50.0-alpha",
+    date: "2026-09-07",
+    changes: [
+        "In Dashboard: Applied a dark-mode first initialization to the HTML structure to prevent the white flash on load.",
+        "In Dashboard: Upgraded the Meds widget to include a toggle button, allowing users to switch between their daily medication schedule and their latest logged doses.",
+        "In Dashboard: Fixed the Water widget's doughnut chart to dynamically use a dark-mode friendly color for the 'Remaining' segment.",
+    ]
+},
+    {
     version: "v16.49.0-alpha",
     date: "2026-09-05",
     changes: [
