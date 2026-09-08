@@ -1677,22 +1677,14 @@
                 renderCooking();
             }));
 
-            // ADD THIS INSIDE setupListeners
-            unsubscribers.push(onSnapshot(collection(db, `users/${uid}/moneyPots`), (snap) => {
-                let owedToMe = 0;
-                let iOwe = 0;
-                
-                snap.forEach(d => {
-                    const bal = d.data().balance || 0;
-                    if (bal >= 0) owedToMe += bal;
-                    else iOwe += Math.abs(bal);
-                });
-                
-                const netTotal = owedToMe - iOwe;
+            let currentFinancePotsTotal = 0;
+            let currentFinancePersonalTotal = 0;
+            
+            const updateFinanceWidgetUI = () => {
+                const netTotal = currentFinancePotsTotal + currentFinancePersonalTotal;
                 const el = document.getElementById('finance-net-balance');
-                
                 if (el) {
-                    const currency = localStorage.getItem('moneybox_currency') || '$';
+                    const currency = localStorage.getItem('moneymanagr_currency') || '$';
                     if (netTotal >= 0) {
                         el.className = "text-2xl font-bold text-emerald-500";
                         el.innerHTML = `<span class="opacity-50 text-lg">${currency}</span>${netTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
@@ -1701,6 +1693,35 @@
                         el.innerHTML = `-<span class="opacity-50 text-lg">${currency}</span>${Math.abs(netTotal).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
                     }
                 }
+            };
+
+            // Global Currency sync listener
+            unsubscribers.push(onSnapshot(doc(db, `users/${uid}/moneySettings/preferences`), (snap) => {
+                if (snap.exists() && snap.data().currency) {
+                    localStorage.setItem('moneymanagr_currency', snap.data().currency);
+                    updateFinanceWidgetUI(); // Re-render instantly
+                }
+            }));
+
+            // Pots Balance
+            unsubscribers.push(onSnapshot(collection(db, `users/${uid}/moneyPots`), (snap) => {
+                let owedToMe = 0;
+                let iOwe = 0;
+                snap.forEach(d => {
+                    const bal = d.data().balance || 0;
+                    if (bal >= 0) owedToMe += bal;
+                    else iOwe += Math.abs(bal);
+                });
+                currentFinancePotsTotal = owedToMe - iOwe;
+                updateFinanceWidgetUI();
+            }));
+
+            // Personal Ledger Balance (Cash/Unlinked)
+            unsubscribers.push(onSnapshot(query(collection(db, `users/${uid}/moneyLogs`), where('potId', '==', 'personal')), (snap) => {
+                let personalTotal = 0;
+                snap.forEach(d => personalTotal += (d.data().amount || 0));
+                currentFinancePersonalTotal = personalTotal;
+                updateFinanceWidgetUI();
             }));
 
             unsubscribers.push(onSnapshot(collection(db, `users/${uid}/books`), (snap) => {

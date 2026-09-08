@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.51.0-alpha",
+    date: "2026-09-08",
+    changes: [
+        "In MoneyManagr: Redesigned the Categorize/Action Modal to explicitly select transaction types: Spend, Income, Transfer, and Save/Invest.",
+        "In MoneyManagr: Upgraded Dropdowns logic to filter accounts correctly depending on context (Banks vs Investments vs People).",
+        "In MoneyManagr: Created an explicit 'Review Legacy' tab under Activity Logs to easily identify previously uncategorized items lacking the new routing types.",
+        "In MoneyManagr: Added an 'Invoice / Settle Up' bundle feature in Pot Details. You can now select individual pending IOUs for a person and mark them as paid back into a specific bank account.",
+        "In Account Hub: Added Global Currency option to Regional Preferences.",
+        "In Dashboard: Finance widget now reacts in real-time to global currency setting updates.",
+    ]
+},
+    {
     version: "v16.50.0-alpha",
     date: "2026-09-07",
     changes: [
