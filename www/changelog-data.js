@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.52.0-alpha",
+    date: "2026-09-13",
+    changes: [
+                "In Analyser: Decreased main container mobile padding to better maximize layout space on smaller devices.",
+                "In VehicleManagr: Restructured the layout and branding of 'My Vehicles' inside the settings module to better divide active vehicle actions from creation actions.",
+                "In VehicleManagr: Redesigned the Quick Fuel Modal inputs to feature much clearer questions ('Total Cost Paid', 'Station Brand', etc.) preventing bad data entry.",
+                "In VehicleManagr: Touched up 'Total Lifecycle Cost' widget layout on the dashboard to look more natural across screen sizes.",
+                "In PlantTrackr: Walkthrough Mode now perfectly respects all active garden filters (Health, Zone, Photo Status, Search, and Sort options).",
+                "In PlantTrackr: Upgraded the image compression engine to use hardware-accelerated 'createImageBitmap' to prevent Android out-of-memory browser crashes when returning from the camera app."
+    ]
+},
+    {
     version: "v16.51.0-alpha",
     date: "2026-09-08",
     changes: [

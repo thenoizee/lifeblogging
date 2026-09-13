@@ -2150,66 +2150,82 @@
         };
         const toggleDisplay = window.toggleDisplay; // Keeps internal JS calls working too
 
-        // DEBUG: Bulletproof memory path for image compression.
-        // Forces strict cleanup to prevent Safari from crashing on 48MP mobile uploads.
+        // DEBUG: Advanced Hardware-accelerated memory path for image compression.
+        // Uses createImageBitmap to prevent Android Out-Of-Memory (OOM) browser kills returning from Camera.
         const compressImage = async (file, maxWidth = 800) => {
             if (!file || !file.type.match(/image.*/)) return file;
             const newName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
 
-            return new Promise((resolve) => {
+            return new Promise(async (resolve) => {
+                try {
+                    // Modern Android/iOS memory-safe approach
+                    if (window.createImageBitmap) {
+                        const bmp = await createImageBitmap(file);
+                        const maxDim = Math.max(bmp.width, bmp.height);
+                        let ratio = 1;
+                        if (maxDim > maxWidth) {
+                            ratio = maxWidth / maxDim;
+                        }
+                        const targetW = Math.round(bmp.width * ratio);
+                        const targetH = Math.round(bmp.height * ratio);
+
+                        const canvas = window.OffscreenCanvas ? new OffscreenCanvas(targetW, targetH) : document.createElement('canvas');
+                        canvas.width = targetW;
+                        canvas.height = targetH;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(bmp, 0, 0, targetW, targetH);
+                        
+                        bmp.close(); // CRITICAL: Frees the uncompressed bitmap memory immediately!
+
+                        const handleBlob = (blob) => {
+                            ctx.clearRect(0, 0, targetW, targetH);
+                            canvas.width = 0; canvas.height = 0;
+                            if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
+                            else resolve(file);
+                        };
+
+                        if (canvas.convertToBlob) {
+                            canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 }).then(handleBlob).catch(() => resolve(file));
+                        } else {
+                            canvas.toBlob(handleBlob, 'image/jpeg', 0.7);
+                        }
+                        return; // Exit successful modern path
+                    }
+                } catch (e) {
+                    console.warn("[DEBUG] createImageBitmap failed, falling back to FileReader", e);
+                }
+
+                // Fallback for older browsers
                 const img = new Image();
                 const objectUrl = URL.createObjectURL(file);
                 
                 img.onload = () => {
-                    URL.revokeObjectURL(objectUrl); // Free URL pointer immediately
-                    
+                    URL.revokeObjectURL(objectUrl); 
                     const maxDim = Math.max(img.width, img.height);
                     let ratio = 1;
-                    if (maxDim > maxWidth) {
-                        ratio = maxWidth / maxDim;
-                    }
+                    if (maxDim > maxWidth) ratio = maxWidth / maxDim;
                     
                     const targetW = Math.round(img.width * ratio);
                     const targetH = Math.round(img.height * ratio);
                     
-                    // Prefer OffscreenCanvas so the main UI thread doesn't lock up
-                    const canvas = window.OffscreenCanvas ? new OffscreenCanvas(targetW, targetH) : document.createElement('canvas');
-                    canvas.width = targetW;
-                    canvas.height = targetH;
-                    
+                    const canvas = document.createElement('canvas');
+                    canvas.width = targetW; canvas.height = targetH;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, targetW, targetH);
                     
-                    // ULTRA AGGRESSIVE CLEANUP: Drop the original massive image before converting the Blob
-                    img.onload = null;
-                    img.onerror = null;
-                    img.src = 'data:,'; 
+                    img.onload = null; img.onerror = null; img.src = 'data:,'; 
                     
                     const handleBlob = (blob) => {
-                        // Nuke the canvas memory right after extraction
                         ctx.clearRect(0, 0, targetW, targetH);
                         canvas.width = 0; canvas.height = 0;
-                        if (blob) {
-                            resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
-                        } else {
-                            resolve(file);
-                        }
+                        if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
+                        else resolve(file);
                     };
 
-                    if (canvas.convertToBlob) {
-                        canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 })
-                            .then(handleBlob)
-                            .catch(() => resolve(file));
-                    } else {
-                        canvas.toBlob(handleBlob, 'image/jpeg', 0.7);
-                    }
+                    canvas.toBlob(handleBlob, 'image/jpeg', 0.7);
                 };
                 
-                img.onerror = () => {
-                    URL.revokeObjectURL(objectUrl);
-                    resolve(file);
-                };
-                
+                img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
                 img.src = objectUrl;
             });
         };
@@ -2558,6 +2574,73 @@
             });
         };
 
+        window.getFilteredPlants = () => {
+            const filterLoc = getEl("plant-filter-location")?.value;
+            const filterZone = getEl("plant-filter-zone")?.value;
+            const searchQ = getEl("plant-search-input") ? getEl("plant-search-input").value.toLowerCase() : "";
+            const filterPhoto = getEl("plant-filter-photo") ? getEl("plant-filter-photo").value : "all";
+            const filterHealth = getEl("plant-filter-health") ? getEl("plant-filter-health").value : "all";
+            const sortOpt = getEl("plant-sort-option") ? getEl("plant-sort-option").value : "name";
+            const showProps = getEl("show-props-toggle") ? getEl("show-props-toggle").checked : false;
+
+            let displayPlants = state.plants.filter(p => {
+                if (p.status === 'dead' || p.status === 'given_away') return false;
+                if (!p.status || p.status === 'alive' || p.status === 'sheltered') return true;
+                if (p.status.startsWith('propagating') && showProps) return true;
+                return false;
+            });
+
+            if (filterLoc && filterLoc !== 'all') {
+                displayPlants = displayPlants.filter(p => p.location === filterLoc);
+                if (filterZone && filterZone !== 'all') {
+                    displayPlants = displayPlants.filter(p => p.position === filterZone);
+                }
+            }
+
+            if (searchQ) {
+                displayPlants = displayPlants.filter(p => p.name.toLowerCase().includes(searchQ) || (p.species && p.species.toLowerCase().includes(searchQ)));
+            }
+
+            if (filterPhoto !== "all") {
+                if (filterPhoto === "has-photo") {
+                    displayPlants = displayPlants.filter(p => getLatestPlantPhoto(p) !== null && getLatestPlantPhoto(p) !== undefined);
+                } else if (filterPhoto === "no-photo") {
+                    displayPlants = displayPlants.filter(p => getLatestPlantPhoto(p) === null || getLatestPlantPhoto(p) === undefined);
+                }
+            }
+
+            if (filterHealth !== "all") {
+                displayPlants = displayPlants.filter(p => (p.health || 'good') === filterHealth);
+            }
+
+            if (sortOpt === "name") {
+                displayPlants.sort((a,b) => a.name.localeCompare(b.name));
+            } else if (sortOpt === "newest") {
+                displayPlants.sort((a,b) => new Date(b.acquired || 0) - new Date(a.acquired || 0));
+            } else if (sortOpt === "urgent") {
+                displayPlants.sort((a,b) => {
+                    const aLogs = state.logs.filter(l => l.plantId === a.id && l.type === 'Water');
+                    const bLogs = state.logs.filter(l => l.plantId === b.id && l.type === 'Water');
+                    const aDate = aLogs.length ? new Date(aLogs[0].date).getTime() : 0;
+                    const bDate = bLogs.length ? new Date(bLogs[0].date).getTime() : 0;
+                    return aDate - bDate; 
+                });
+            } else if (sortOpt === "health") {
+                const healthScores = { "excellent": 8, "great": 7, "good": 6, "fair": 5, "poor": 4, "bad": 3, "sick-pests": 2, "sick-wilty": 1, "sick-other": 0 };
+                displayPlants.sort((a,b) => (healthScores[b.health] || 0) - (healthScores[a.health] || 0));
+            } else if (sortOpt === "neglected") {
+                displayPlants.sort((a,b) => {
+                    const aLogs = state.logs.filter(l => l.plantId === a.id);
+                    const bLogs = state.logs.filter(l => l.plantId === b.id);
+                    const aDate = aLogs.length ? new Date(aLogs[0].date).getTime() : new Date(a.acquired || 0).getTime();
+                    const bDate = bLogs.length ? new Date(bLogs[0].date).getTime() : new Date(b.acquired || 0).getTime();
+                    return aDate - bDate; 
+                });
+            }
+
+            return displayPlants;
+        };
+
         const renderPlants = () => {
             if (typeof renderPottingShed === 'function') renderPottingShed();
             const list = getEl("plants-list-container");
@@ -2671,72 +2754,8 @@
             }
 
             
-            // Filter plants for the active garden view
-            let displayPlants = state.plants.filter(p => {
-                if (p.status === 'dead' || p.status === 'given_away') return false;
-                if (!p.status || p.status === 'alive' || p.status === 'sheltered') return true;
-                if (p.status.startsWith('propagating') && showProps) return true;
-                return false;
-            });
-            if (filterLoc.value && filterLoc.value !== 'all') {
-                displayPlants = displayPlants.filter(p => p.location === filterLoc.value);
-                
-                const filterZone = getEl("plant-filter-zone");
-                if (filterZone && filterZone.value !== 'all') {
-                    displayPlants = displayPlants.filter(p => p.position === filterZone.value);
-                }
-            }
-            
-            const searchQ = getEl("plant-search-input") ? getEl("plant-search-input").value.toLowerCase() : "";
-            if (searchQ) {
-                displayPlants = displayPlants.filter(p => p.name.toLowerCase().includes(searchQ) || (p.species && p.species.toLowerCase().includes(searchQ)));
-            }
-
-            const filterPhoto = getEl("plant-filter-photo") ? getEl("plant-filter-photo").value : "all";
-            if (filterPhoto !== "all") {
-                if (filterPhoto === "has-photo") {
-                    displayPlants = displayPlants.filter(p => getLatestPlantPhoto(p) !== null && getLatestPlantPhoto(p) !== undefined);
-                } else if (filterPhoto === "no-photo") {
-                    displayPlants = displayPlants.filter(p => getLatestPlantPhoto(p) === null || getLatestPlantPhoto(p) === undefined);
-                }
-            }
-
-            // Apply Health Filter (defaulting to 'good' if unset)
-            const filterHealth = getEl("plant-filter-health") ? getEl("plant-filter-health").value : "all";
-            if (filterHealth !== "all") {
-                displayPlants = displayPlants.filter(p => (p.health || 'good') === filterHealth);
-            }
-
-            const sortOpt = getEl("plant-sort-option") ? getEl("plant-sort-option").value : "name";
-            if (sortOpt === "name") {
-                displayPlants.sort((a,b) => a.name.localeCompare(b.name));
-            } else if (sortOpt === "newest") {
-                displayPlants.sort((a,b) => new Date(b.acquired || 0) - new Date(a.acquired || 0));
-            } else if (sortOpt === "urgent") {
-                displayPlants.sort((a,b) => {
-                    const aLogs = state.logs.filter(l => l.plantId === a.id && l.type === 'Water');
-                    const bLogs = state.logs.filter(l => l.plantId === b.id && l.type === 'Water');
-                    const aDate = aLogs.length ? new Date(aLogs[0].date).getTime() : 0;
-                    const bDate = bLogs.length ? new Date(bLogs[0].date).getTime() : 0;
-                    return aDate - bDate; 
-                });
-            } else if (sortOpt === "health") {
-                const healthScores = { "excellent": 8, "great": 7, "good": 6, "fair": 5, "poor": 4, "bad": 3, "sick-pests": 2, "sick-wilty": 1, "sick-other": 0 };
-                displayPlants.sort((a,b) => (healthScores[b.health] || 0) - (healthScores[a.health] || 0));
-            } else if (sortOpt === "neglected") {
-                // DEBUG: Sorting by neglected - calculates the last interaction date for each plant
-                displayPlants.sort((a,b) => {
-                    const aLogs = state.logs.filter(l => l.plantId === a.id);
-                    const bLogs = state.logs.filter(l => l.plantId === b.id);
-                    
-                    // Grab the most recent log date, or fallback to the acquired date if no logs exist
-                    const aDate = aLogs.length ? new Date(aLogs[0].date).getTime() : new Date(a.acquired || 0).getTime();
-                    const bDate = bLogs.length ? new Date(bLogs[0].date).getTime() : new Date(b.acquired || 0).getTime();
-                    
-                    // Ascending order: older dates (smaller timestamp) come first
-                    return aDate - bDate; 
-                });
-            }
+            // Use the unified filtering engine
+            let displayPlants = window.getFilteredPlants();
 
             if (!displayPlants.length) {
                 list.innerHTML = `<p class="opacity-50 text-center col-span-3 py-8">No plants found.</p>`;
@@ -5216,20 +5235,12 @@ window.openFamilyTreeModal = (plantId) => {
 
         window.openWalkthroughModal = () => {
             console.log("[DEBUG] Initializing Garden Walkthrough Mode...");
-            // Filter only active plants that are not in the graveyard
-            walkthroughQueue = state.plants.filter(p => p.status !== 'dead' && p.status !== 'given_away');
+            
+            // Sync Walkthrough Queue perfectly to the visible Garden UI
+            walkthroughQueue = window.getFilteredPlants();
 
             if (walkthroughQueue.length === 0) {
-                return showMsg("No active plants available for walkthrough!", "error");
-            }
-
-            // Respect currently filtered space if set
-            const currentFilterLoc = getEl("plant-filter-location")?.value;
-            if (currentFilterLoc && currentFilterLoc !== 'all') {
-                const spaceFiltered = walkthroughQueue.filter(p => p.location === currentFilterLoc);
-                if (spaceFiltered.length > 0) {
-                    walkthroughQueue = spaceFiltered;
-                }
+                return showMsg("No plants match your current filters!", "error");
             }
 
             walkthroughIndex = 0;
