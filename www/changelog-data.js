@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.53.0-alpha",
+    date: "2026-09-14",
+    changes: [
+                "In Text Generator: Moved copy buttons to a prominent bottom action bar with bold text labels to prevent users from forgetting to click them.",
+                "In Text Generator: Changed the 'Folder' field on the Manage tab to a dropdown <select> element, with an 'Add New' button.",
+                "In Text Generator: Added a pulsing red visual reminder to the Pronouns selector if the loaded template contains pronoun placeholders.",
+                "In Text Generator: Set the scheduled time input on the Use tab to automatically default to the user's current time.",
+                "In Text Generator: Upgraded the validatePlaceholders function in the Manage Template tab to explicitly detect and report the usage of built-in Pronoun placeholders and the Greeting placeholder.",
+                "In Text Generator: Added 'Long Text' (textarea) as a field type option for custom fields to support multi-line inputs like feedback or paragraphs.",
+                "In Text Generator: Improved UX of the custom field builder on the Manage tab with better spacing and cleaner HTML structure.",
+                "In Text Generator: Added vertical resize capabilities and default row heights to multi-line dynamic fields."
+    ]
+},
+    {
     version: "v16.52.0-alpha",
     date: "2026-09-13",
     changes: [

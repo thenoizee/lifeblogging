@@ -411,7 +411,7 @@
     </div>
     <div id="template-actions" class="hidden flex gap-3 text-xs">
         <button id="edit-template-btn" class="flex items-center gap-1 text-[var(--secondary)] hover:text-indigo-600 transition" title="Edit Master Template">
-            <i class="fa-solid fa-pen-to-square"></i> <span class="hidden sm:inline">Edit</span>
+            <i class="fa-solid fa-pen-to-square"></i> <span class="hidden sm:inline">Manage Template</span>
         </button>
         <button id="duplicate-template-btn" class="flex items-center gap-1 text-[var(--secondary)] hover:text-green-600 transition" title="Duplicate as New">
             <i class="fa-solid fa-copy"></i> <span class="hidden sm:inline">Duplicate</span>
@@ -480,17 +480,20 @@
                         </div>
 
                         <div class="relative flex-grow overflow-hidden flex flex-col">
-                            <div id="generated-text" class="email-content-area p-6 h-full overflow-y-auto whitespace-pre-wrap outline-none" contenteditable="true"></div>
-                            
-                            <div id="text-stats" class="absolute bottom-4 left-4 text-xs font-medium text-[var(--secondary)] bg-[var(--card)] px-2 py-1 rounded shadow-sm border border-[var(--border-color)]">
+                            <div id="generated-text" class="email-content-area p-6 flex-grow overflow-y-auto whitespace-pre-wrap outline-none" contenteditable="true"></div>
+                        </div>
+                        
+                        <!-- NEW PROMINENT ACTION BAR -->
+                        <div class="bg-[var(--card)] p-4 border-t border-[var(--border-color)] flex justify-between items-center shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                            <div id="text-stats" class="text-xs font-medium text-[var(--secondary)] px-2 py-1 rounded">
                                 0 words | 0 chars
                             </div>
-                            <div class="absolute bottom-4 right-4 flex gap-2">
-                                <button id="load-to-gmail-button" class="hidden bg-red-600 text-white p-3 rounded-full shadow-lg hover:bg-red-700 hover:scale-105 transition" title="Open in Gmail">
-                                    <i class="fa-brands fa-google"></i>
+                            <div class="flex gap-3">
+                                <button id="load-to-gmail-button" class="hidden bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow hover:bg-red-700 transition flex items-center gap-2" title="Open in Gmail">
+                                    <i class="fa-brands fa-google"></i> Gmail Draft
                                 </button>
-                                <button id="copy-body-button" class="bg-indigo-600 text-white p-3 rounded-full shadow-lg hover:bg-indigo-700 hover:scale-105 transition" title="Copy Text">
-                                    <i class="fa-regular fa-copy"></i>
+                                <button id="copy-body-button" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg shadow hover:bg-indigo-700 transition flex items-center gap-2 uppercase tracking-wide" title="Copy Text">
+                                    <i class="fa-regular fa-copy"></i> Copy Body
                                 </button>
                             </div>
                         </div>
@@ -605,8 +608,12 @@
                         <div>
                             <label class="block text-[10px] font-bold uppercase text-gray-500 mb-1">Folder</label>
                             <div class="flex gap-2">
-                                <input type="text" id="template-folder" class="w-full p-2 text-sm" placeholder="Folder" list="folder-suggestions">
-                                <datalist id="folder-suggestions"></datalist>
+                                <select id="template-folder" class="w-full p-2 text-sm border border-[var(--border-color)] rounded bg-[var(--input-bg)]">
+                                    <!-- Options populated dynamically -->
+                                </select>
+                                <button type="button" id="new-folder-btn" class="px-3 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-xs font-bold transition" title="Create New Folder">
+                                    <i class="fa-solid fa-plus"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -899,6 +906,29 @@ const updateManagerPreview = () => {
     ui.manage.subjectInput.addEventListener('input', updateManagerPreview);
     ui.manage.bodyTextarea.addEventListener('input', updateManagerPreview);
     
+    // Default the scheduled time input to the current time right on load
+    const now = new Date();
+    const currentTimeString = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    ui.use.scheduledTimeInput.value = currentTimeString;
+    console.debug("[Init] Scheduled time defaulted to:", currentTimeString);
+
+    // Setup the new folder button logic for the Manage Tab
+    const newFolderBtn = document.getElementById('new-folder-btn');
+    if (newFolderBtn) {
+        newFolderBtn.addEventListener('click', () => {
+            console.debug("[Manage Templates] User clicked to create a new folder.");
+            const folderName = prompt("Enter new folder name:");
+            if (folderName && folderName.trim() !== '') {
+                const folderSelect = document.getElementById('template-folder');
+                const option = document.createElement('option');
+                option.value = folderName.trim();
+                option.textContent = folderName.trim();
+                folderSelect.appendChild(option);
+                folderSelect.value = folderName.trim();
+            }
+        });
+    }
+    
     ui.use.pronounPreset.addEventListener('change', () => {
         applyPronounPreset();
         liveGenerateText();
@@ -1101,13 +1131,17 @@ function renderFolderList() {
         container.appendChild(btn);
     });
     
-    // Also update Manage tab suggestions
-    ui.manage.folderSuggestions.innerHTML = '';
-    folders.filter(f => f !== 'All').forEach(folder => {
-        const option = document.createElement('option');
-        option.value = folder;
-        ui.manage.folderSuggestions.appendChild(option);
-    });
+    // Also update Manage tab suggestions (Now targeting the <select> element)
+    const folderSelect = document.getElementById('template-folder');
+    if (folderSelect) {
+        folderSelect.innerHTML = '';
+        folders.filter(f => f !== 'All').forEach(folder => {
+            const option = document.createElement('option');
+            option.value = folder;
+            option.textContent = folder;
+            folderSelect.appendChild(option);
+        });
+    }
 }
 
 function renderTemplateList(searchTerm = '') {
@@ -1228,24 +1262,31 @@ function resetSelectionUI() {
             });
         }
         
+        // Renders the appropriate HTML input element based on the custom field configuration
         function createFieldInput(field) {
+            console.debug(`[createFieldInput] Generating input for field: ${field.name} (Type: ${field.type})`);
             const sanitizedId = `field-${sanitizeForId(field.name)}`;
             const fieldWrapper = document.createElement('div');
+            fieldWrapper.className = "mb-3"; // UX Polish: Added margin bottom for better spacing between stacked fields
             
+            // 1. Create the Label
             const label = document.createElement('label');
             label.setAttribute('for', sanitizedId);
-            label.className = "block text-sm font-medium";
+            label.className = "block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1"; // UX Polish: bolder label, slight margin
             label.textContent = field.name;
             fieldWrapper.appendChild(label);
 
+            // 2. Create the Description (if provided)
             if (field.desc) {
                 const descEl = document.createElement('p');
-                descEl.className = "text-xs text-[var(--text-secondary)] mb-1";
+                descEl.className = "text-[11px] text-[var(--text-secondary)] mb-2 italic"; // UX Polish: slightly smaller, italicized helper text
                 descEl.textContent = field.desc;
                 fieldWrapper.appendChild(descEl);
             }
 
             let inputElement;
+            
+            // 3. Render the specific input type
             if (field.type === 'dropdown') {
                 inputElement = document.createElement('select');
                 const options = (field.options || '').split(',').map(opt => opt.trim());
@@ -1255,14 +1296,23 @@ function resetSelectionUI() {
                     optionEl.textContent = opt;
                     inputElement.appendChild(optionEl);
                 });
-            } else {
+                inputElement.className = "w-full px-3 py-2 border rounded-md shadow-sm dynamic-field bg-[var(--input-bg)] cursor-pointer";
+            
+            } else if (field.type === 'textarea') { // NEW: Long Text Support
+                inputElement = document.createElement('textarea');
+                inputElement.placeholder = `Enter ${field.name}...\n(Multi-line supported)`;
+                inputElement.rows = 3; // Default to 3 lines height
+                inputElement.className = "w-full px-3 py-2 border rounded-md shadow-sm dynamic-field bg-[var(--input-bg)] resize-y min-h-[80px]";
+            
+            } else { // Default: Standard Text Input
                 inputElement = document.createElement('input');
                 inputElement.type = 'text';
                 inputElement.placeholder = `Enter ${field.name}...`;
+                inputElement.className = "w-full px-3 py-2 border rounded-md shadow-sm dynamic-field bg-[var(--input-bg)]";
             }
             
+            // 4. Assign shared attributes
             inputElement.id = sanitizedId;
-            inputElement.className = "w-full px-3 py-2 border rounded-md shadow-sm dynamic-field";
             inputElement.setAttribute('data-original-name', field.name);
             fieldWrapper.appendChild(inputElement);
             
@@ -1327,13 +1377,34 @@ function resetSelectionUI() {
                  ui.use.fieldsContainer.innerHTML = '<p class="col-span-full text-[var(--text-secondary)]">This template version has no placeholders.</p>';
             }
 
+            // Check if template uses pronouns to give visual reminder
+            const usesPronouns = Object.keys(PRONOUN_PLACEHOLDERS).some(p => templateText.includes(`{{${p}}}`));
+            const pronounLabel = document.querySelector('label[for="pronoun-preset"]');
+            
+            if (usesPronouns && ui.use.pronounPreset.value === "") {
+                console.debug("[loadSelectedVersion] Template uses pronouns. Activating visual reminder.");
+                ui.use.pronounPreset.classList.add('ring-2', 'ring-red-500', 'animate-pulse');
+                if (pronounLabel) pronounLabel.innerHTML = '<i class="fa-solid fa-user-group mr-1"></i>Pronouns <span class="text-red-500 animate-pulse ml-1">(Select!)</span>';
+            } else {
+                ui.use.pronounPreset.classList.remove('ring-2', 'ring-red-500', 'animate-pulse');
+                if (pronounLabel) pronounLabel.innerHTML = '<i class="fa-solid fa-user-group mr-1"></i>Pronouns';
+            }
+
             applyPronounPreset();
             handleScheduledTimeChange();
-            liveGenerateText(); 
+            liveGenerateText();
         }
         
         function applyPronounPreset() {
             const preset = ui.use.pronounPreset.value;
+
+            // Remove visual reminder if a valid preset is selected
+            const pronounLabel = document.querySelector('label[for="pronoun-preset"]');
+            if (preset !== "") {
+                console.debug("[applyPronounPreset] Pronoun selected, removing visual reminder.");
+                ui.use.pronounPreset.classList.remove('ring-2', 'ring-red-500', 'animate-pulse');
+                if (pronounLabel) pronounLabel.innerHTML = '<i class="fa-solid fa-user-group mr-1"></i>Pronouns';
+            }
 
             if (preset) {
                 Object.keys(PRONOUN_PLACEHOLDERS).forEach(fieldName => {
@@ -1424,43 +1495,69 @@ function resetSelectionUI() {
         
     }, 400); // Short delay makes it feel like "work" is being done
 }
-        // This is the new function for live updates
+        // This function dynamically updates the preview pane as the user types in the fields.
         function liveGenerateText(autoCopy = false) {
-            if (!currentTemplateVersion) return;
+            console.debug("[liveGenerateText] Triggered. autoCopy:", autoCopy);
+
+            // Exit early if no template is selected to prevent errors
+            if (!currentTemplateVersion) {
+                console.debug("[liveGenerateText] No current template version selected. Aborting.");
+                return;
+            }
+
             const fieldData = {};
+            
+            // 1. Gather all current values from the dynamic input fields
             document.querySelectorAll('#fields-container .dynamic-field').forEach(input => {
                 const originalName = input.getAttribute('data-original-name');
-                if (originalName) fieldData[originalName] = input.value;
+                if (originalName) {
+                    fieldData[originalName] = input.value;
+                }
             });
+            console.debug("[liveGenerateText] Gathered field data:", fieldData);
 
+            // 2. Helper function to find and replace {{Placeholders}}
             const process = (text) => {
                 if (!text) return "";
+                // Regex matches {{ ... }} and captures the inner text, ignoring surrounding whitespace
                 return text.replace(/{{\s*([^}]+?)\s*}}/g, (match, placeholderName) => {
-                    return fieldData.hasOwnProperty(placeholderName) ? fieldData[placeholderName] : match;
+                    // If the field exists and has a value, use it. Otherwise, leave the raw {{Placeholder}} tag.
+                    return fieldData.hasOwnProperty(placeholderName) && fieldData[placeholderName] !== "" 
+                        ? fieldData[placeholderName] 
+                        : match; 
                 });
             };
 
+            // 3. Process the subject and body text
             ui.use.generatedSubjectInput.value = process(currentTemplateVersion.subject);
             const bodyText = process(currentTemplateVersion.template);
+            
+            // Note: In a production environment, wrap 'bodyText' in DOMPurify.sanitize(bodyText) to prevent XSS
             ui.use.generatedTextDiv.innerHTML = bodyText;
 
-            // Show the containers if they have content
+            // 4. Update UI visibility states
             ui.use.generatedSubjectWrapper.classList.toggle('hidden', !currentTemplateVersion.subject);
             ui.use.generatedTextContainer.style.maxHeight = '500px';
 
-            if (gapi.client && gapi.client.getToken()) {
+            // Check if Gmail integration is authenticated
+            if (window.gapi && gapi.client && gapi.client.getToken()) {
                 ui.use.loadToGmailButton.classList.remove('hidden');
             }
 
-            // Add Word/Character count
+            // 5. Calculate and display text statistics
             const charCount = bodyText.length;
+            // Split by whitespace to get an accurate word count, handling empty strings safely
             const wordCount = bodyText.trim() === "" ? 0 : bodyText.trim().split(/\s+/).length;
+            
             const textStats = document.getElementById('text-stats');
             if (textStats) {
                 textStats.innerText = `${wordCount} words | ${charCount} chars`;
+                console.debug(`[liveGenerateText] Stats updated: ${wordCount} words, ${charCount} chars.`);
             }
 
+            // 6. Handle auto-copy if requested (usually from a button click)
             if (autoCopy && bodyText) {
+                console.debug("[liveGenerateText] Auto-copying to clipboard.");
                 const htmlContent = ui.use.generatedTextDiv.innerHTML.replace(/\n/g, '<br>');
                 copyToClipboardRich(ui.use.generatedTextDiv.innerText, htmlContent, "Body copied automatically!");
             }
@@ -1643,24 +1740,64 @@ function resetSelectionUI() {
                 });
             }
 
+        // Dynamically creates a row in the template builder for defining custom fields
         function addFieldInputRow(field = { name: '', desc: '', type: 'text', options: '' }) {
+            console.debug(`[addFieldInputRow] Adding field builder row for: ${field.name || 'New Field'}`);
+            
             const fieldRow = document.createElement('div');
-            fieldRow.className = "flex items-center gap-2 field-row";
+            // UX Polish: Added hover effect, padding, and subtle background to make individual rows distinct
+            fieldRow.className = "flex items-center gap-3 field-row p-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 transition border border-transparent hover:border-gray-200 dark:hover:border-gray-700";
             fieldRow.draggable = true;
-            const optionsInput = field.type === 'dropdown' ? 
-                `<input type="text" class="w-full px-3 py-2 border rounded-md shadow-sm field-options" placeholder="Options (comma-sep)" value="${field.options || ''}">` :
-                `<input type="text" class="w-full px-3 py-2 border rounded-md shadow-sm field-desc" placeholder="Helpful Description" value="${field.desc || ''}">`;
-            fieldRow.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 cursor-grab drag-handle flex-shrink-0 text-gray-400"><path fill-rule="evenodd" d="M10 3a.75.75 0 01.75.75v12.5a.75.75 0 01-1.5 0V3.75A.75.75 0 0110 3zM3.5 10a.75.75 0 01.75-.75h11.5a.75.75 0 010 1.5H4.25a.75.75 0 01-.75-.75z" clip-rule="evenodd" /></svg><div class="flex-grow grid grid-cols-3 gap-2"><input type="text" class="w-full px-3 py-2 border rounded-md shadow-sm field-name" placeholder="Placeholder Name" value="${field.name || ''}">${optionsInput}<select class="w-full px-3 py-2 border rounded-md shadow-sm field-type"><option value="text" ${field.type === 'text' ? 'selected' : ''}>Text</option><option value="dropdown" ${field.type === 'dropdown' ? 'selected' : ''}>Dropdown</option></select></div><button type="button" class="text-sm text-red-600 hover:underline flex-shrink-0 remove-field-btn">Remove</button>`;
-            fieldRow.querySelector('.remove-field-btn').addEventListener('click', () => { fieldRow.remove(); updateInteractivePlaceholders(); });
+            
+            // Determine the middle input based on type
+            const optionsInput = field.type === 'dropdown' 
+                ? `<input type="text" class="w-full px-3 py-2 text-sm border rounded-md shadow-sm field-options bg-[var(--input-bg)]" placeholder="Options (comma-separated)" value="${field.options || ''}">` 
+                : `<input type="text" class="w-full px-3 py-2 text-sm border rounded-md shadow-sm field-desc bg-[var(--input-bg)]" placeholder="Helpful Description (optional)" value="${field.desc || ''}">`;
+            
+            // Cleaner HTML string formulation
+            fieldRow.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 cursor-grab drag-handle flex-shrink-0 text-gray-400 hover:text-gray-600 transition">
+                    <path fill-rule="evenodd" d="M10 3a.75.75 0 01.75.75v12.5a.75.75 0 01-1.5 0V3.75A.75.75 0 0110 3zM3.5 10a.75.75 0 01.75-.75h11.5a.75.75 0 010 1.5H4.25a.75.75 0 01-.75-.75z" clip-rule="evenodd" />
+                </svg>
+                <div class="flex-grow grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <input type="text" class="w-full px-3 py-2 text-sm border rounded-md shadow-sm field-name bg-[var(--input-bg)] font-bold" placeholder="Placeholder Name" value="${field.name || ''}">
+                    ${optionsInput}
+                    <select class="w-full px-3 py-2 text-sm border rounded-md shadow-sm field-type bg-[var(--input-bg)] cursor-pointer">
+                        <option value="text" ${field.type === 'text' ? 'selected' : ''}>Short Text</option>
+                        <option value="textarea" ${field.type === 'textarea' ? 'selected' : ''}>Long Text (Multi-line)</option>
+                        <option value="dropdown" ${field.type === 'dropdown' ? 'selected' : ''}>Dropdown</option>
+                    </select>
+                </div>
+                <button type="button" class="text-sm text-red-500 hover:text-red-700 font-bold flex-shrink-0 remove-field-btn p-1 transition" title="Remove Field">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            `;
+            
+            // Handle Removal
+            fieldRow.querySelector('.remove-field-btn').addEventListener('click', () => { 
+                fieldRow.remove(); 
+                updateInteractivePlaceholders(); 
+            });
+            
+            // Handle Type Changes (re-renders the row to swap between 'description' and 'options' input)
             fieldRow.querySelector('.field-type').addEventListener('change', (e) => {
-                const newField = { name: fieldRow.querySelector('.field-name').value, desc: fieldRow.querySelector('.field-desc')?.value || '', type: e.target.value, options: fieldRow.querySelector('.field-options')?.value || '' };
+                const newField = { 
+                    name: fieldRow.querySelector('.field-name').value, 
+                    desc: fieldRow.querySelector('.field-desc')?.value || '', 
+                    type: e.target.value, 
+                    options: fieldRow.querySelector('.field-options')?.value || '' 
+                };
                 const newRow = addFieldInputRow(newField);
                 fieldRow.replaceWith(newRow);
                 updateInteractivePlaceholders();
             });
+            
+            // Update placeholders dynamically as they type the name
             fieldRow.querySelector('.field-name').addEventListener('input', updateInteractivePlaceholders);
+            
             ui.manage.fieldsContainer.appendChild(fieldRow);
             if (field.name) updateInteractivePlaceholders();
+            
             return fieldRow;
         }
         
@@ -1727,17 +1864,21 @@ function resetSelectionUI() {
         }
 
         function validatePlaceholders() {
+            console.debug("[validatePlaceholders] Running placeholder checks."); // Debug trace
+            
             const body = ui.manage.bodyTextarea.value || '';
             const subject = ui.manage.subjectInput.value || '';
             const fullText = subject + " " + body;
             
+            // Gather fields the user has manually defined below the editor
             const definedFields = Array.from(ui.manage.fieldsContainer.querySelectorAll('.field-name'))
                                      .map(input => input.value.trim()).filter(Boolean);
             
+            // Built-in system placeholders
             const standardPronouns = Object.keys(PRONOUN_PLACEHOLDERS);
-            standardPronouns.push('Greeting'); // Treat Greeting as standard
+            const systemPlaceholders = [...standardPronouns, 'Greeting'];
             
-            // Extract all placeholders used in text
+            // Extract all placeholders physically written in the text area
             const usedPlaceholders = [];
             const regex = /{{\s*([^}]+?)\s*}}/g;
             let match;
@@ -1756,21 +1897,41 @@ function resetSelectionUI() {
                 const count = usedPlaceholders.filter(p => p === field).length;
                 const li = document.createElement('li');
                 if (count === 0) {
-                    li.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-yellow-500 w-4"></i> Field <strong>${field}</strong> is defined but not used.`;
+                    li.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-yellow-500 w-4"></i> Field <strong>${field}</strong> is defined but not used in the text.`;
                 } else {
-                    li.innerHTML = `<i class="fa-solid fa-check text-green-500 w-4"></i> Field <strong>${field}</strong> used ${count} time(s).`;
+                    li.innerHTML = `<i class="fa-solid fa-check text-green-500 w-4"></i> Field <strong>${field}</strong> used${count} time(s).`;
                 }
                 validationList.appendChild(li);
             });
             
-            // 2. Check for undefined placeholders in text
-            const undefinedPlaceholders = new Set(usedPlaceholders.filter(p => !definedFields.includes(p) && !standardPronouns.includes(p)));
+            // 2. Check for standard pronoun usage
+            // Filter to see which standard pronouns are actually inside the text
+            const usedStandardPronouns = new Set(usedPlaceholders.filter(p => standardPronouns.includes(p)));
+            if (usedStandardPronouns.size > 0) {
+                const li = document.createElement('li');
+                const pronounList = Array.from(usedStandardPronouns).map(p => `{{${p}}}`).join(', ');
+                li.innerHTML = `<i class="fa-solid fa-user-group text-purple-500 w-4"></i> Built-in Pronouns detected: <strong>${pronounList}</strong>`;
+                validationList.appendChild(li);
+                console.debug("[validatePlaceholders] Pronouns found:", pronounList);
+            }
+
+            // 3. Check for Greeting usage
+            const usesGreeting = usedPlaceholders.includes('Greeting');
+            if (usesGreeting) {
+                const li = document.createElement('li');
+                li.innerHTML = `<i class="fa-regular fa-clock text-blue-500 w-4"></i> Built-in <strong>{{Greeting}}</strong> detected. (Populates based on scheduled time).`;
+                validationList.appendChild(li);
+            }
+            
+            // 4. Check for undefined placeholders in text (Errors)
+            const undefinedPlaceholders = new Set(usedPlaceholders.filter(p => !definedFields.includes(p) && !systemPlaceholders.includes(p)));
             undefinedPlaceholders.forEach(p => {
                 const li = document.createElement('li');
-                li.innerHTML = `<i class="fa-solid fa-circle-xmark text-red-500 w-4"></i> <strong>{{${p}}}</strong> is used but not defined in fields!`;
+                li.innerHTML = `<i class="fa-solid fa-circle-xmark text-red-500 w-4"></i> Error: <strong>{{${p}}}</strong> is used in the text but not defined as a Custom Field below!`;
                 validationList.appendChild(li);
             });
             
+            // 5. Show/Hide logic
             if (definedFields.length > 0 || usedPlaceholders.length > 0) {
                 validationContainer.classList.remove('hidden');
             } else {
