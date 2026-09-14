@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.54.0-alpha",
+    date: "2026-09-14",
+    changes: [
+                "In VidTrackr: Elevated the z-index of the Log & Rate modal to 9999 to guarantee it sits above the mobile navigation bar.",
+                "In VidTrackr: Shrunk padding and margins inside the Log & Rate modal to ensure it fits entirely on a single screen without scrolling.",
+                "In VidTrackr: Implemented click-outside-to-dismiss for the Log & Rate modal.",
+                "In VidTrackr: Upgraded the mobile logging modal to support gesture-based swipe-down-to-dismiss.",
+                "In VidTrackr: Added dynamic visual feedback to the rating slider (updates color/label and triggers haptic vibration at a perfect 10).",
+                "In VidTrackr: Replaced clunky native datetime picker adjustments with 1-tap quick time chips (-1 Hour, -4 Hours, -1 Day).",
+                "In VidTrackr: Implemented smart progress context so the interface correctly adapts to 'Save Progress' and 'Finish Remaining X Mins' when logging partial watch sessions.",
+                "In VidTrackr: Moved the 'Go Back' button on the episode detail page from inside the video thumbnail to a standard button above it to prevent confusion with chronological navigation arrows."
+    ]
+},
+    {
     version: "v16.53.0-alpha",
     date: "2026-09-14",
     changes: [
