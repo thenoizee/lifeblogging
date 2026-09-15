@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.55.0-alpha",
+    date: "2026-09-15",
+    changes: [
+                "In Text Generator: Replaced hard-disabled copy and export buttons with interactive alerts that explicitly list any missing fields.",
+                "In Text Generator: Implemented comprehensive field validation to ensure Pronouns, Time, and all dynamic custom fields are filled before allowing export.",
+                "In Text Generator: Added a separating bottom border to the search and filter header in the left navigation pane for better visual hierarchy.",
+                "In Text Generator: Added dynamic folder and layer-group icons to the template filter pills.",
+                "In Text Generator: Redesigned the template list cards to include document and folder icons, alongside improved badge contrast for the active selection state."
+    ]
+},
+    {
     version: "v16.54.0-alpha",
     date: "2026-09-14",
     changes: [
