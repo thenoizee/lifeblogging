@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.56.0-alpha",
+    date: "2026-09-15",
+    changes: [
+        "In IconGenerator: Added 'Glyph Library' and 'Icon Studio' tabbed navigation.",
+        "In IconGenerator: Implemented SVG Sprite sheet compilation and export functionality.",
+        "In IconGenerator: Added Local Storage persistence to save the user's glyph collection across browser sessions.",
+        "In IconGenerator: Enabled bulk importing of icons using comma-separated values.",
+        "In IconGenerator: Added an inline 'Copy HTML' button to individual glyph cards for quick clipboard access."
+    ]
+},
+    {
     version: "v16.55.0-alpha",
     date: "2026-09-15",
     changes: [
