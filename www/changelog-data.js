@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.57.0-alpha",
+    date: "2026-09-16",
+    changes: [
+        "In shared-nav.js: Overhauled the headless command runner into a visual, Spotlight-style Command Palette available across all apps via Ctrl/Cmd+K.",
+        "In shared-nav.js: Updated the Command Palette task creation logic to integrate natively with TaskTrackr's offline queue and live memory cache. Tasks now appear instantly in the UI without requiring a manual refresh.",
+        "In shared-nav.js: Added helpful console debugging for command executions and temporarily disabled the /water command until backend endpoints are ready.",
+        "In hub.html: Added a floating action bolt button to the bottom right of the screen to manually trigger the new global Command Palette.",
+        "In TaskTrackr: Updated the Web Share Target URL parser to safely auto-fill the new Quick Add popup with parameters sent from the Command Palette.",
+        "In TaskTrackr: Repurposed the task card action icons so that the far-left circle handles multi-selection, and the inner square handles task completion, keeping the physical layout untouched."
+    ]
+},
+    {
     version: "v16.56.0-alpha",
     date: "2026-09-15",
     changes: [

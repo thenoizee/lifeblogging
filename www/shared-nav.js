@@ -3,6 +3,8 @@ import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/
 import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs, deleteDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { changelogData } from './changelog-data.js';
 
+const escapeHtml = (unsafe) => !unsafe ? "" : String(unsafe).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+
 // UNIVERSAL TAILWIND SAFELIST HACK
 // Tailwind CDN scans all loaded scripts for valid class strings. Because we dynamically construct
 // classes like `bg-${themeColor}-100`, the scanner misses them. Placing all permutations in this 
@@ -171,11 +173,13 @@ export class AppNavigation {
     }
 
     initCommandPalette() {
+        this.cmdSelectedIndex = 0;
+        this.currentCommands = [];
         this.renderCommandPaletteModal();
         
-        // Listen for Ctrl+K or Cmd+K
+        // Listen for Ctrl+K or Cmd+K globally
         document.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 this.toggleCommandPalette();
             }
@@ -185,31 +189,42 @@ export class AppNavigation {
     toggleCommandPalette() {
         const modal = document.getElementById('nav-command-palette-modal');
         const input = document.getElementById('nav-command-input');
+        
         if (modal.classList.contains('hidden')) {
             modal.classList.remove('hidden');
             setTimeout(() => {
                 modal.classList.remove('opacity-0');
+                input.value = '';
+                this.updateCommandResults('');
                 input.focus();
             }, 10);
         } else {
-            modal.classList.add('opacity-0');
-            setTimeout(() => modal.classList.add('hidden'), 300);
+            this.closeCommandPalette();
         }
+    }
+
+    closeCommandPalette() {
+        const modal = document.getElementById('nav-command-palette-modal');
+        modal.classList.add('opacity-0');
+        setTimeout(() => modal.classList.add('hidden'), 200);
     }
 
     renderCommandPaletteModal() {
         if (document.getElementById('nav-command-palette-modal')) return;
 
         const paletteHtml = `
-<div id="nav-command-palette-modal" class="hidden fixed inset-0 z-[2147483647] bg-gray-800/40 dark:bg-gray-900/80 backdrop-blur-sm flex flex-col items-center p-4 pt-[15vh] sm:p-6 transition-opacity duration-300 opacity-0">
-    <div class="w-full max-w-2xl bg-white dark:bg-gray-800 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/10">
-        <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center">
-            <i class="fa-solid fa-terminal text-gray-400 mr-3"></i>
-            <input id="nav-command-input" type="text" placeholder="Type a command (e.g., /water 250, /task Buy Milk)" class="flex-1 bg-transparent border-none outline-none text-lg text-gray-800 dark:text-gray-200 placeholder-gray-400" autocomplete="off">
-            <span class="text-xs text-gray-400 ml-2 border border-gray-200 dark:border-gray-700 rounded px-2 py-1">ESC</span>
-        </div>
-    </div>
-</div>`;
+        <div id="nav-command-palette-modal" class="hidden fixed inset-0 z-[2147483647] bg-gray-800/60 dark:bg-gray-900/80 backdrop-blur-md flex flex-col items-center p-4 pt-[15vh] sm:p-6 transition-opacity duration-200 opacity-0">
+            <div class="w-full max-w-2xl bg-white dark:bg-gray-800 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
+                <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center">
+                    <i class="fa-solid fa-bolt text-${this.themeColor}-500 mr-3 text-lg"></i>
+                    <input id="nav-command-input" type="text" placeholder="Search apps, or type 'task', 'water', 'log'..." class="flex-1 bg-transparent border-none outline-none text-lg text-gray-800 dark:text-gray-200 placeholder-gray-400" autocomplete="off">
+                    <span class="text-[10px] font-mono bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-1 rounded shadow-sm border border-gray-200 dark:border-gray-600 ml-2">ESC</span>
+                </div>
+                <div id="nav-command-results" class="max-h-[50vh] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                    <!-- Dynamic results injected here -->
+                </div>
+            </div>
+        </div>`;
         document.body.insertAdjacentHTML('beforeend', paletteHtml);
 
         const input = document.getElementById('nav-command-input');
@@ -218,79 +233,165 @@ export class AppNavigation {
         // Close on ESC
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
-                this.toggleCommandPalette();
+                this.closeCommandPalette();
             }
         });
 
         // Close on outside click
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) this.toggleCommandPalette();
+            if (e.target === modal) this.closeCommandPalette();
         });
 
-        // Handle commands
-        input.addEventListener('keyup', (e) => {
-            if (e.key === 'Enter' && input.value.trim().startsWith('/')) {
-                this.executeCommand(input.value.trim());
-                input.value = '';
-                this.toggleCommandPalette();
+        // Handle Input & Navigation
+        input.addEventListener('input', (e) => {
+            this.cmdSelectedIndex = 0;
+            this.updateCommandResults(e.target.value);
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                this.cmdSelectedIndex = Math.min(this.cmdSelectedIndex + 1, this.currentCommands.length - 1);
+                this.renderCommandResultsList();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                this.cmdSelectedIndex = Math.max(this.cmdSelectedIndex - 1, 0);
+                this.renderCommandResultsList();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const selected = this.currentCommands[this.cmdSelectedIndex];
+                if (selected && selected.type !== 'info') {
+                    this.executeCommand(selected);
+                }
             }
         });
     }
 
-    async executeCommand(commandStr) {
-        const parts = commandStr.split(' ');
-        const action = parts[0].toLowerCase();
-        const value = parts.slice(1).join(' ');
-        
-        const db = getFirestore();
-        const userEmail = this.userEmail;
+    updateCommandResults(query) {
+        const q = query.toLowerCase().trim();
+        this.currentCommands = [];
 
-        if (userEmail === 'Guest') {
+        // 1. Task Creation (Direct to Database)
+        if (q.startsWith('task ') || q.startsWith('t ')) {
+            const taskName = query.replace(/^(task|t)\s+/i, '');
+            if (taskName) {
+                this.currentCommands.push({ id: 'cmd-task', icon: 'fa-solid fa-check-double text-blue-500', title: `Add Task: <span class="font-bold">${escapeHtml(taskName)}</span>`, desc: 'Instantly adds this task directly to your Inbox', type: 'task', payload: taskName });
+            }
+        }
+
+        // 2. Quick Log (Firebase execution)
+        if (q.startsWith('log ') || q.startsWith('l ')) {
+            const logText = query.replace(/^(log|l)\s+/i, '');
+            if (logText) {
+                this.currentCommands.push({ id: 'cmd-log', icon: 'fa-solid fa-pen-to-square text-green-500', title: `Quick Log: <span class="font-bold">${escapeHtml(logText)}</span>`, desc: 'Instantly save to Journal/Loggr', type: 'log', payload: logText });
+            }
+        }
+
+        // 3. Search Hub Apps
+        const allApps = [...this.hubApps, ...this.hubTools];
+        allApps.forEach(app => {
+            if (app.name.toLowerCase().includes(q) || !q) {
+                this.currentCommands.push({ id: app.name, icon: `fa-solid ${app.icon} text-gray-500`, title: `Open ${app.name}`, desc: `Go to ${app.url}`, type: 'link', action: app.url });
+            }
+        });
+
+        // 4. Default Helpers if empty
+        if (!q) {
+            this.currentCommands.unshift(
+                { id: 'help-task', icon: 'fa-solid fa-check-double text-blue-400', title: 'Type <span class="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded text-xs">task [name]</span> to add a task', type: 'info' },
+                { id: 'help-log', icon: 'fa-solid fa-pen-to-square text-green-400', title: 'Type <span class="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded text-xs">log [text]</span> to write a quick log', type: 'info' }
+            );
+        }
+
+        this.renderCommandResultsList();
+    }
+
+    renderCommandResultsList() {
+        const cmdResults = document.getElementById('nav-command-results');
+        cmdResults.innerHTML = '';
+
+        if (this.currentCommands.length === 0) {
+            cmdResults.innerHTML = '<div class="p-4 text-center text-gray-500 text-sm">No results found</div>';
+            return;
+        }
+
+        this.cmdSelectedIndex = Math.min(this.cmdSelectedIndex, this.currentCommands.length - 1);
+
+        this.currentCommands.forEach((cmd, idx) => {
+            const isSelected = idx === this.cmdSelectedIndex;
+            const bgClass = isSelected ? `bg-${this.themeColor}-50 dark:bg-${this.themeColor}-900/30 border-${this.themeColor}-200 dark:border-${this.themeColor}-800` : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/50';
+            
+            const el = document.createElement('div');
+            el.className = `flex items-center p-3 rounded-xl cursor-pointer border transition-colors ${bgClass}`;
+            el.onclick = () => { if (cmd.type !== 'info') this.executeCommand(cmd); };
+            
+            el.innerHTML = `
+                <div class="w-8 h-8 rounded-lg bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-700 flex items-center justify-center mr-3 shrink-0">
+                    <i class="${cmd.icon}"></i>
+                </div>
+                <div class="flex-grow min-w-0">
+                    <div class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">${cmd.title}</div>
+                    ${cmd.desc ? `<div class="text-[10px] text-gray-500 truncate">${cmd.desc}</div>` : ''}
+                </div>
+                ${isSelected && cmd.type !== 'info' ? `<div class="text-[10px] text-${this.themeColor}-500 font-bold ml-2 shrink-0"><i class="fa-solid fa-arrow-turn-down -rotate-90"></i></div>` : ''}
+            `;
+            cmdResults.appendChild(el);
+            
+            if (isSelected) {
+                el.scrollIntoView({ block: 'nearest' });
+            }
+        });
+    }
+
+    async executeCommand(cmd) {
+        const db = getFirestore();
+        const auth = getAuth();
+        const user = auth.currentUser;
+
+        if (!user && cmd.type !== 'link') {
             alert('Please log in to use Quick Add commands.');
             return;
         }
 
         try {
-            switch(action) {
-                case '/water':
-                    // Parses amount, defaulting to 250 if just "/water" is typed
-                    const amountStr = value.replace(/[^0-9]/g, '');
-                    const amount = amountStr ? parseInt(amountStr) : 250;
+            switch(cmd.type) {
+                case 'link':
+                    window.location.href = cmd.action;
+                    break;
+                case 'task':
+                    // We write to TaskTrackr's local_tasks collection. 
+                    // TaskTrackr's offline-sync processor will pick this up automatically 
+                    // the next time the app opens and sync it to TickTick/Google.
+                    console.log(`[Command Palette] Writing new task "${cmd.payload}" directly to local_tasks`);
                     
-                    await addDoc(collection(db, 'hydration_logs'), {
-                        userEmail: userEmail,
-                        amount: amount,
-                        timestamp: serverTimestamp(),
-                        source: 'command_palette'
+                    const localTasksRef = collection(db, 'users', user.uid, 'local_tasks');
+                    const newDocRef = doc(localTasksRef);
+                    
+                    await setDoc(newDocRef, {
+                        id: newDocRef.id,
+                        title: cmd.payload,
+                        projectId: 'inbox',
+                        priority: 0,
+                        status: 0,
+                        source: 'local', // Setting source to local ensures TaskTrackr pushes it to the API
+                        created: new Date(),
+                        updated: new Date()
                     });
-                    this.showTemporaryNotification(`Logged ${amount}ml of water!`, 'bg-cyan-500');
+                    
+                    this.showTemporaryNotification(`Task added to Inbox!`, 'bg-blue-500');
+                    this.closeCommandPalette();
                     break;
-
-                case '/task':
-                    if (!value) return;
-                    await addDoc(collection(db, 'tasks'), {
-                        userEmail: userEmail,
-                        title: value,
-                        completed: false,
-                        createdAt: serverTimestamp(),
-                        source: 'command_palette'
-                    });
-                    this.showTemporaryNotification(`Task added: "${value}"`, 'bg-blue-500');
-                    break;
-
-                case '/log':
-                    if (!value) return;
+                case 'log':
+                    console.log(`[Command Palette] Writing log entry...`);
                     await addDoc(collection(db, 'logs'), {
-                        userEmail: userEmail,
-                        content: value,
+                        userEmail: this.userEmail,
+                        content: cmd.payload,
                         timestamp: serverTimestamp(),
                         source: 'command_palette'
                     });
                     this.showTemporaryNotification(`Quick log saved!`, 'bg-green-500');
+                    this.closeCommandPalette();
                     break;
-
-                default:
-                    alert(`Unknown command: ${action}. Try /water, /task, or /log.`);
             }
         } catch (error) {
             console.error("Error executing command: ", error);
