@@ -648,6 +648,8 @@ export class AppNavigation {
                             </div>
                             ` : ''}
 
+                            <div id="nav-sync-indicator" class="hidden items-center gap-1 mr-1 md:mr-2 px-2 md:px-3 py-1 rounded-full text-[10px] md:text-xs font-medium transition-colors shrink-0 cursor-pointer" title="Sync Status"></div>
+
                             <div class="relative group shrink-0" id="nav-notifications-container" style="position: relative;">
                                 <button id="nav-bell-btn" class="relative w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all shrink-0">
                                     <i class="fa-regular fa-bell"></i>
@@ -668,7 +670,7 @@ export class AppNavigation {
                                 </div>
                             </div>
                             
-<a href="#" id="nav-user-avatar" class="flex items-center justify-center w-8 h-8 shrink-0 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden" title="${avatarTitle}">                            
+                            <a href="#" id="nav-user-avatar" class="flex items-center justify-center w-8 h-8 shrink-0 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden" title="${avatarTitle}">                            
                                 ${userInitial}
                             </a>
 
@@ -1297,9 +1299,11 @@ export class AppNavigation {
             }
         });
 
-        // Universal Panel Handling (Automatically applies hidden class based on standard ID conventions)
+        // Universal Panel Handling (Supports tab-*, tab-content-*, or *-tab-panel)
         this.tabs.forEach(tab => {
-            const panel = document.getElementById(`tab-${tab.id}`) || document.getElementById(`${tab.id}-tab-panel`);
+            const panel = document.getElementById(`tab-${tab.id}`) || 
+                          document.getElementById(`tab-content-${tab.id}`) || 
+                          document.getElementById(`${tab.id}-tab-panel`);
             if (panel) {
                 panel.style.display = ''; // Clear inline styles from old apps
                 if (tab.id === tabId) {
@@ -1315,4 +1319,39 @@ export class AppNavigation {
     }
     
     updateActiveTab(tabId) { this.switchTab(tabId); }
+
+    setSyncState(state, message = null) {
+        const indicator = document.getElementById('nav-sync-indicator');
+        if (!indicator) return;
+
+        indicator.className = 'items-center gap-1 mr-1 md:mr-2 px-2 md:px-3 py-1 rounded-full text-[10px] md:text-xs font-medium transition-colors flex shrink-0 cursor-pointer';
+        
+        let iconHtml = '';
+        let defaultMessage = '';
+
+        switch(state) {
+            case 'synced':
+                defaultMessage = 'Synced';
+                indicator.classList.add('bg-green-100', 'text-green-800', 'dark:bg-green-900/50', 'dark:text-green-300');
+                break;
+            case 'unsynced':
+                defaultMessage = 'Unsynced';
+                indicator.classList.add('bg-yellow-100', 'text-yellow-800', 'dark:bg-yellow-900/50', 'dark:text-yellow-300');
+                break;
+            case 'syncing':
+                iconHtml = `<svg class="animate-spin -ml-1 mr-1 h-3 w-3 md:h-4 md:w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+                defaultMessage = 'Syncing...';
+                indicator.classList.add('bg-blue-100', 'text-blue-800', 'dark:bg-blue-900/50', 'dark:text-blue-300');
+                break;
+            case 'error':
+                defaultMessage = 'Sync Error';
+                indicator.classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900/50', 'dark:text-red-300');
+                break;
+            default:
+                indicator.classList.add('hidden');
+                return;
+        }
+
+        indicator.innerHTML = `${iconHtml}<span>${message || defaultMessage}</span>`;
+    }
 }

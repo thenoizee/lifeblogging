@@ -780,6 +780,7 @@
 
         let selectedFolder = 'All';
         let selectedTemplateId = null;
+        let nav = null; // Global nav reference across module scope
 
         const ui = {
             tabs: { buttons: document.querySelectorAll('.nav-tab'), contents: { 'use-templates': document.getElementById('tab-content-use-templates'), 'batch-generate': document.getElementById('tab-content-batch-generate'), 'manage-templates': document.getElementById('tab-content-manage-templates'), 'sync-settings': document.getElementById('tab-content-sync-settings') }},
@@ -807,8 +808,7 @@
             manage: { form: document.getElementById('template-form'), formTitle: document.getElementById('form-title'), nameInput: document.getElementById('template-name'), folderInput: document.getElementById('template-folder'), folderSuggestions: document.getElementById('folder-suggestions'), subjectInput: document.getElementById('template-subject'), descriptionInput: document.getElementById('template-description'), targetInput: document.getElementById('template-target'), purposeInput: document.getElementById('template-purpose'), fieldsContainer: document.getElementById('dynamic-fields-container'), addFieldButton: document.getElementById('add-field-button'), placeholdersWrapper: document.getElementById('interactive-placeholders-wrapper'), placeholdersContainer: document.getElementById('interactive-placeholders-container'), bodyTextarea: document.getElementById('template-body'), editIdInput: document.getElementById('template-edit-id'), editVersionInput: document.getElementById('template-edit-version'), saveModeInput: document.getElementById('template-save-mode'), userTemplatesList: document.getElementById('user-templates-list'), cancelEditButton: document.getElementById('cancel-edit-button'), saveStatus: document.getElementById('save-status'), exportButton: document.getElementById('export-button'), importButton: document.getElementById('import-button'), importFileInput: document.getElementById('import-file-input'), showArchivedToggle: document.getElementById('show-archived-toggle') },
     batch: { templateSelect: document.getElementById('batch-template-select'), csvFileInput: document.getElementById('csv-file-input'), generateButton: document.getElementById('batch-generate-button'), outputContainer: document.getElementById('batch-output-container'), output: document.getElementById('batch-output') },
     sync: { 
-        indicator: document.getElementById('sync-status-indicator'), 
-        authContainer: document.getElementById('firebase-auth-container'), 
+    authContainer: document.getElementById('firebase-auth-container'),
         controls: document.getElementById('firebase-sync-controls'), 
         emailInput: document.getElementById('firebase-email'), 
         passwordInput: document.getElementById('firebase-password'), 
@@ -848,8 +848,17 @@ const updateManagerPreview = () => {
         window.onload = function() {
     loadTemplates();
 
-    // 1. Initialize Shared Navigation
-    const nav = new AppNavigation({
+    // 1. Listen for tab changes BEFORE nav initializes so the first event is caught
+    window.addEventListener('tab-changed', (e) => {
+        const tabId = e.detail.tabId;
+        console.debug('[Tab Navigation] Switched to tab:', tabId);
+        document.querySelectorAll('[id^="tab-content-"]').forEach(el => el.classList.add('hidden'));
+        const content = document.getElementById(`tab-content-${tabId}`);
+        if (content) content.classList.remove('hidden');
+    });
+
+    // 2. Initialize Shared Navigation (assigns to outer scope nav)
+    nav = new AppNavigation({
         appName: 'Text Generator',
         appIcon: 'fa-envelope-open-text',
         themeColor: 'fuchsia', 
@@ -863,28 +872,13 @@ const updateManagerPreview = () => {
         activeTab: 'use-templates'
     });
 
-    // 2. Listen for tab changes
-    window.addEventListener('tab-changed', (e) => {
-        const tabId = e.detail.tabId;
-        document.querySelectorAll('[id^="tab-content-"]').forEach(el => el.classList.add('hidden'));
-        const content = document.getElementById(`tab-content-${tabId}`);
-        if (content) content.classList.remove('hidden');
-    });
+    window.appNav = nav; // Expose nav to global window for external access
 
-    // 3. Inject Sync Indicator into the new Navbar (Fixes the null error)
-    const navRightSection = document.querySelector('header .container > div > div:last-child');
-    if (navRightSection) {
-        const indicator = document.createElement('div');
-        indicator.id = 'sync-status-indicator';
-        indicator.className = 'text-xs font-bold hidden items-center gap-1 mr-2'; // Added mr-2 for spacing
-        // Insert before the avatar or theme toggle
-        navRightSection.insertBefore(indicator, navRightSection.firstChild);
-        
-        // Update the UI reference so the sync logic can find it
-        ui.sync.indicator = indicator;
-    }
+    // Explicitly ensure the initial tab content is visible on first render
+    const initialContent = document.getElementById('tab-content-use-templates');
+    if (initialContent) initialContent.classList.remove('hidden');
 
-    // 4. Mobile Sidebar Logic
+    // 3. Mobile Sidebar Logic
     const toggleBtn = document.getElementById('mobile-sidebar-toggle');
     const sidebar = document.getElementById('manage-sidebar');
     const chevron = document.getElementById('sidebar-chevron');
@@ -1064,37 +1058,6 @@ const updateManagerPreview = () => {
             if (typeof text !== 'string') return '';
             return text.replace(/[^a-zA-Z0-9\-_]/g, '_');
         }
-        
-
-        // Initialize Shared Navigation
-const nav = new AppNavigation({
-    appName: 'Text Generator',
-    appIcon: 'fa-envelope-open-text',
-    themeColor: 'fuchsia', // Matches your --primary color #D946EF
-    version: changelogData[0].version,
-    tabs: [
-        { id: 'use-templates', label: 'Use', icon: 'fa-play' },
-        { id: 'batch-generate', label: 'Batch', icon: 'fa-layer-group' },
-        { id: 'manage-templates', label: 'Manage', icon: 'fa-pen-to-square' },
-        { id: 'sync-settings', label: 'Settings', icon: 'fa-gear' }
-    ],
-    activeTab: 'use-templates'
-});
-
-// Listen for tab changes from the shared nav
-window.addEventListener('tab-changed', (e) => {
-    const tabId = e.detail.tabId;
-    
-    // Hide all tab contents
-    document.querySelectorAll('[id^="tab-content-"]').forEach(el => {
-        el.classList.add('hidden');
-    });
-    
-    // Show selected tab content
-    const content = document.getElementById(`tab-content-${tabId}`);
-    if (content) content.classList.remove('hidden');
-});
-
         
         function migrateTemplates(templates) {
             if (!Array.isArray(templates)) return [];
@@ -2206,8 +2169,9 @@ window.cancelEdit = cancelEdit;
                 
                 firestoreDb = getFirestore(firebaseApp);
                 onAuthStateChanged(firebaseAuth, async user => {
+                    console.debug('[Auth] State changed. User:', user ? user.email : 'Guest');
                     currentUser = user;
-                    if (nav) nav.updateUser(user ? user.email : null);
+                    if (window.appNav) window.appNav.updateUser(user ? user.email : null);
                     updateFirebaseAuthStatus(!!user);
                     if (user) {
                         listenForThemeChanges();
@@ -2314,15 +2278,8 @@ window.cancelEdit = cancelEdit;
 
         function setSyncState(newState) {
             syncState = newState;
-            const indicator = ui.sync.indicator;
-            indicator.className = 'text-sm font-medium px-3 py-1 rounded-full flex items-center gap-2';
-            let iconHtml = '';
-            switch(newState) {
-                case 'synced': indicator.textContent = 'Synced'; indicator.classList.add('bg-green-100', 'text-green-800', 'dark:bg-green-900/50', 'dark:text-green-300'); break;
-                case 'unsynced': indicator.textContent = 'Unsynced Changes'; indicator.classList.add('bg-yellow-100', 'text-yellow-800', 'dark:bg-yellow-900/50', 'dark:text-yellow-300'); break;
-                case 'syncing': iconHtml = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`; indicator.innerHTML = `${iconHtml} Syncing...`; indicator.classList.add('bg-blue-100', 'text-blue-800', 'dark:bg-blue-900/50', 'dark:text-blue-300'); break;
-                case 'error': indicator.textContent = 'Sync Error'; indicator.classList.add('bg-red-100', 'text-red-800', 'dark:bg-red-900/50', 'dark:text-red-300'); break;
-                default: indicator.classList.add('hidden');
+            if (window.appNav) {
+                window.appNav.setSyncState(newState);
             }
         }
         

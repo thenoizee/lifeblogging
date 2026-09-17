@@ -2,6 +2,22 @@
 
 export const changelogData = [
     {
+    version: "v16.58.0-alpha",
+    date: "2026-09-17",
+    changes: [
+        "In Shared Nav: Added a universal, hidden-by-default sync indicator to the top bar, positioned cleanly to the left of the notifications bell.",
+        "In Shared Nav: Implemented the 'setSyncState()' method in the AppNavigation class to globally handle 'synced', 'syncing', and 'error' UI states.",
+        "In Shared Nav: Updated the tab-switching logic to automatically recognize and toggle visibility for panels using the 'tab-content-${id}' ID convention.",
+        "In Text Generator: Removed the localized sync UI and fully integrated 'window.appNav.setSyncState()' for Firebase cloud sync updates.",
+        "In Text Generator: Fixed a scope issue in the Firebase auth listener and hoisted the 'nav' instance to ensure the 'Use' tab renders correctly on initial load.",
+        "In VidTrackr: Removed the local '#sync-status' header UI and successfully piped 'runSmart' background syncing states directly into the new global shared-nav indicator.",
+        "In VidTrackr: Updated the success state text on the global sync indicator to properly read 'Synced' instead of 'Cached'.",
+        "In VidTrackr: Implemented instant 'Stale-While-Revalidate' caching for the detail view ('renderDetail'), allowing previously viewed movies and episodes to load from sessionStorage with 0ms delay while fetching fresh data in the background.",
+        "In VidTrackr: Created a 'window.invalidateDetailCache' helper to automatically flush stale detail views in sessionStorage whenever a user logs a watch, updates progress, or rates an item.",
+        "In VidTrackr: Fixed a missing try/catch bracket syntax error at the end of 'renderDetail' that was causing the app router to crash and failing to load cached episodes."
+    ]
+},
+    {
     version: "v16.57.0-alpha",
     date: "2026-09-16",
     changes: [

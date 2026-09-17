@@ -484,6 +484,7 @@ input[type=range]::-moz-range-thumb {
             { id: 'settings',  label: 'Settings',  icon: 'fa-gear' }
         ]
     });
+    window.appNav = nav;
 
     // --- Inject VidTrackr Header Elements ---
 const headerRight = document.querySelector('header .container > .flex > .flex:last-child');
@@ -492,8 +493,6 @@ if (headerRight) {
     customDiv.className = 'flex items-center gap-1.5 md:gap-2 mr-1 shrink min-w-0 justify-end';
     customDiv.innerHTML = `
         <div id="header-watch-status" class="hidden shrink-0 animate-pulse"></div>
-        
-        <div id="sync-status" class="hidden items-center justify-center gap-1.5 px-2 py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider bg-gray-900 border border-gray-700 transition-all duration-500 shrink min-w-0 overflow-hidden text-ellipsis whitespace-nowrap max-w-[65px] md:max-w-none"></div>
         
         <div id="search-container" class="hidden sm:block relative shrink min-w-0 max-w-[120px] md:max-w-none">
             <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] md:text-xs pointer-events-none"></i>
@@ -2078,31 +2077,22 @@ window.removeProgress = async (playbackId) => {
 async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 minute default TTL saves huge read spikes
     const key = `vidtrackr_smart_${cacheKey}`;
     const timeKey = `${key}_timestamp`;
-    const statusEl = document.getElementById('sync-status');
     const now = Date.now();
     
-    // Helper to update the badge
+    // Helper to update the global shared badge
     const setStatus = (state) => {
-        if (!statusEl) return;
-        statusEl.classList.remove('hidden', 'text-gray-400', 'text-yellow-500', 'text-green-500', 'border-yellow-500', 'border-green-500');
-        
+        if (!window.appNav) return;
         if (state === 'cache') {
-            statusEl.innerHTML = '<i class="fa-solid fa-bolt"></i> Cached';
-            statusEl.classList.add('text-gray-400', 'border-gray-700');
+            window.appNav.setSyncState('synced');
         } else if (state === 'loading') {
-            statusEl.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin"></i> Syncing';
-            statusEl.classList.add('text-yellow-500', 'border-yellow-500/50');
+            window.appNav.setSyncState('syncing');
         } else if (state === 'success') {
-            statusEl.innerHTML = '<i class="fa-solid fa-check"></i> Updated';
-            statusEl.classList.add('text-green-500', 'border-green-500/50');
+            window.appNav.setSyncState('synced');
             // Hide after 3 seconds
-            setTimeout(() => {
-                statusEl.classList.add('opacity-0');
-                setTimeout(() => {
-                    statusEl.classList.add('hidden');
-                    statusEl.classList.remove('opacity-0');
-                }, 500);
-            }, 3000);
+            setTimeout(() => window.appNav.setSyncState('hidden'), 3000);
+        } else if (state === 'error') {
+            window.appNav.setSyncState('error');
+            setTimeout(() => window.appNav.setSyncState('hidden'), 5000);
         }
     };
 
@@ -2112,13 +2102,11 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
     
     if (cached) {
         try {
-            setStatus('cache'); // Show "Cached" immediately
+            setStatus('cache'); // Show "Synced" immediately
             const cachedData = JSON.parse(cached);
             rendererFn(cachedData, true);
         } catch(e) { console.warn("Cache parse error", e); }
     }
-    // Global showLoader() removed here. 
-    // Containers now rely on their own localized HTML spinners to prevent screen blocking.
 
     // 2. Skip silent fetch if TTL hasn't expired yet to save Firebase reads
     if (cached && lastFetch && (now - parseInt(lastFetch) < ttlMs)) {
@@ -2136,7 +2124,7 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
         if (!cached || JSON.stringify(freshData) !== cached) {
             localStorage.setItem(key, JSON.stringify(freshData));
             rendererFn(freshData, false);
-            setStatus('success'); // Show "Updated" (Green)
+            setStatus('success'); // Show "Synced" (Green)
         } else {
             // Data was identical
             setStatus('success');
@@ -2145,12 +2133,7 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
         console.error(`Background update failed for ${cacheKey}`, e);
         // FIX: Add cooldown timestamp so we don't aggressively spam failing APIs (like 403s) on every render
         localStorage.setItem(timeKey, now.toString()); 
-        if(statusEl) {
-            statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Offline';
-            statusEl.classList.add('text-red-500', 'border-red-500/50');
-        }
-    } finally {
-        // Global hideLoader() removed as it is no longer blocking the screen
+        setStatus('error');
     }
 }
 
@@ -3182,7 +3165,25 @@ async function renderPerson(id) {
             window.renderDetail = renderDetail; // Expose globally for inline onclick
             const historyLimit = forceAllHistory ? 10000 : 100;
             const currentHash = location.hash;
-            showLoader(); els.content.innerHTML = '';
+
+            // --- STALE-WHILE-REVALIDATE DETAIL CACHE ---
+            // If the user previously opened this episode/movie, load it with 0ms delay
+            const detailCacheKey = `vt_detail_v1_${type}_${id}${initialSeason ? `_s${initialSeason}` : ''}`;
+            const cachedHtml = sessionStorage.getItem(detailCacheKey);
+            let hasRenderedCache = false;
+
+            if (cachedHtml && !forceAllHistory) {
+                console.debug(`[renderDetail] Instant cache hit for ${type} ${id}`);
+                els.content.innerHTML = cachedHtml;
+                hasRenderedCache = true;
+                hideLoader(); // Kill any pending spinner immediately
+                if (window.appNav) window.appNav.setSyncState('synced');
+            } else {
+                showLoader(); 
+                els.content.innerHTML = '';
+                if (window.appNav) window.appNav.setSyncState('syncing');
+            }
+
             try {
                 if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
                 const isEpisode = type === 'episode';
@@ -4244,14 +4245,27 @@ let listsIn = [];
                                 <span class="font-bold ${c.user?.username?.includes('You') ? 'text-blue-400' : 'text-[var(--primary)]'} text-sm">${c.user?.username || 'User'}</span>
                                 <span class="text-xs text-gray-500">${new Date(c.created_at).toLocaleDateString()}</span>
                             </div>
-                            <p class="text-gray-300 text-sm leading-relaxed">${c.comment}</p>
-                            ${c.spoiler ? '<span class="text-[10px] text-red-500 font-bold uppercase mt-2 block">Spoiler</span>' : ''}
+                            <p class="text-gray-300 text-sm leading-relaxed">${c.comment}</p>${c.spoiler ? '<span class="text-[10px] text-red-500 font-bold uppercase mt-2 block">Spoiler</span>' : ''}
                         </div>
                       `).join('')}</div>`;
                 }
 
                 html += `</div>`;
-                els.content.innerHTML = html;
+
+                // [DEBUG] Cache the completed detail view HTML for instant return visits
+                try {
+                    sessionStorage.setItem(detailCacheKey, html);
+                } catch(e) {
+                    console.warn("[renderDetail] Could not cache detail HTML to sessionStorage:", e);
+                }
+
+                // If user is still viewing this exact item, update DOM seamlessly
+                if (location.hash === currentHash) {
+                    if (!hasRenderedCache || els.content.innerHTML !== html) {
+                        els.content.innerHTML = html;
+                    }
+                    if (window.appNav) window.appNav.setSyncState('synced');
+                }
 
                 // Bind Note Save Button
                 const saveBtn = document.getElementById('save-note');
@@ -4262,7 +4276,10 @@ let listsIn = [];
                         text: document.getElementById('note-input').value, 
                         updatedAt: new Date().toISOString() 
                     }, { merge: true }); 
-                    saveBtn.innerText = 'Saved!'; setTimeout(()=>saveBtn.innerText='Save', 2000); showToast('Note saved'); 
+                    saveBtn.innerText = 'Saved!'; 
+                    setTimeout(()=>saveBtn.innerText='Save', 2000); 
+                    showToast('Note saved'); 
+                    if (window.invalidateDetailCache) window.invalidateDetailCache(type, id);
                 };
                 
                 // Show Logic (Seasons)
@@ -7027,16 +7044,31 @@ let listsIn = [];
         // Flushes all progress and history caches whenever data changes so stats and queues stay in sync
         window.invalidateProgressCaches = () => {
             if (!currentUser) return;
-            // 1. Invalidate Lifetime Stats & History Caches
-            // FIX: We intentionally DO NOT delete full history cache here to prevent massive read spikes.
-            // It is now smartly updated via unshift() and filter() in the logging functions natively.
-            
-            // 2. Invalidate Up Next Cache
+            // 1. Invalidate Up Next Cache
             localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
             localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
             
-            // 3. Invalidate Session Progress Snapshot so Progress tab re-evaluates
+            // 2. Invalidate Session Progress Snapshot so Progress tab re-evaluates
             sessionStorage.removeItem('vidtrackr_local_progress');
+        };
+
+        // HELPER: Flushes cached detail HTML when items are logged, rated, or modified
+        window.invalidateDetailCache = (type, id) => {
+            if (!id) return;
+            console.debug(`[Cache] Invalidating detail cache for ${type} ${id}`);
+            try {
+                const idStr = String(id);
+                const keysToRemove = [];
+                for (let i = 0; i < sessionStorage.length; i++) {
+                    const k = sessionStorage.key(i);
+                    if (k && k.startsWith('vt_detail_') && k.includes(idStr)) {
+                        keysToRemove.push(k);
+                    }
+                }
+                keysToRemove.forEach(k => sessionStorage.removeItem(k));
+            } catch(e) {
+                console.warn("[Cache] Error invalidating detail cache:", e);
+            }
         };
 
         // New Database Helper: Logs completed or partial watches securely to Firebase
