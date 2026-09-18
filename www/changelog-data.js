@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.59.0-alpha",
+    date: "2026-09-19",
+    changes: [
+        "In TaskTrackr: Added direct inline star-icon toggles on task cards for quick priority management.",
+        "In TaskTrackr: Added a satisfying 'ding' audio effect when marking tasks as complete.",
+        "In TaskTrackr: Reorganized task card icons so the square completion checkbox is on the far-left, and the circular multi-select toggle is on the inner-right."
+    ]
+},
+    {
     version: "v16.58.0-alpha",
     date: "2026-09-17",
     changes: [
