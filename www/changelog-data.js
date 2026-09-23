@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.60.0-alpha",
+    date: "2026-09-23",
+    changes: [
+        "In TaskTrackr: Introduced the 'Focus Now' task queue inside the Pomodoro Widget, allowing up to 5 priority tasks to be pinned to the active timer via the context menu or side pane.",
+        "In TaskTrackr: Upgraded 'Zen Mode' into a feature-complete, full-screen Pomodoro experience featuring timer presets, playback controls, and a central interactive display of the Focus Now queue.",
+        "In TaskTrackr: Redesigned the Task Details side pane into a sleek, premium card layout with a unified properties list, borderless text inputs, and a dedicated 'Focus Now' action button.",
+        "In TaskTrackr: Refreshed the main 'Classic' list view with sticky section headers that remain visible while scrolling, modernized dropzone empty states, and fluid flex-gap spacing.",
+        "In TaskTrackr: Added an 'Uncategorised' option to the top context filters (alongside Work and Personal) to easily isolate unassigned tasks.",
+        "In TaskTrackr: Updated the sidebar UI to display a folder icon for parent projects containing sub-lists to improve structural and visual hierarchy.",
+        "In TaskTrackr: Decreased the size of the task selection circle to visually balance with the completion checkbox."
+    ]
+},
+    {
     version: "v16.59.0-alpha",
     date: "2026-09-19",
     changes: [
