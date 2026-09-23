@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v16.61.0-alpha",
+    date: "2026-09-23",
+    changes: [
+                "In Lifeblogging Hub: Added standalone-specific inline scripts to instantly paint the main UI on iPad and iOS standalone apps, removing the initial blank screen delay.",
+                "In Lifeblogging Hub: Added console timing logs to debug and monitor Firebase Auth initialization speeds on devices.",
+    ]
+},
+    {
     version: "v16.60.0-alpha",
     date: "2026-09-23",
     changes: [
