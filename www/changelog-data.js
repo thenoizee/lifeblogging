@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.62.0-alpha",
+    date: "2026-09-23",
+    changes: [
+        "In FoodTrackr: Upgraded the 'Split/Leftovers' interface by replacing static buttons with a dynamic, interactive percentage range slider for precision saving.",
+        "In FoodTrackr: Redesigned the 'Daily Targets' goal modal into a Smart Macro Planner with a live-updating percentage visualizer.",
+        "In FoodTrackr: Overhauled the Composite Meal Builder UI with glassmorphism aesthetics, glowing accents, and cleaner ingredient cards.",
+        "In FoodTrackr: Redesigned the 'Copy Previous Meals' history modal to use visually separated, pill-shaped item selection lists.",
+        "In FoodTrackr: Transformed the bottom Log/Save action buttons into a floating glassmorphism dock.",
+        "In FoodTrackr: Made empty 'No items logged' meal blocks on the Daily Log interactive, auto-routing users to the Search tab with the corresponding meal section pre-selected."
+    ]
+},
+    {
     version: "v16.61.0-alpha",
     date: "2026-09-23",
     changes: [
