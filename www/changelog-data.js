@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.63.0-alpha",
+    date: "2026-09-25",
+    changes: [
+        "In TaskTrackr: Added quick-access 'Manage Lists' navigation shortcuts to the sidebar header and footer to directly open the List & Folder manager.",
+        "In TaskTrackr: Unified terminology across modals, toolbars, and the Kanban board grouping selector to consistently use 'Lists' and 'Folders'.",
+        "In TaskTrackr: Added list color selection and sync support when updating existing list and folder details.",
+    ]
+}, 
+    {
     version: "v16.62.0-alpha",
     date: "2026-09-23",
     changes: [
