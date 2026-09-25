@@ -2,6 +2,22 @@
 
 export const changelogData = [
     {
+    version: "v16.64.0-alpha",
+    date: "2026-09-26",
+    changes: [
+        "In TaskTrackr: Detruncated list names in the left sidebar to allow native text wrapping.",
+        "In TaskTrackr: Added collapsible functionality to project folders in the left sidebar.",
+        "In TaskTrackr: Removed redundant manage buttons from the sidebar footer.",
+        "In TaskTrackr: Excluded read-only Google Calendars from appearing in the Manage Lists screen.",
+        "In TaskTrackr: Drastically redesigned the Edit Project/List modal to be wider, better spaced, and incorporate the Workspace Context setting.",
+        "In TaskTrackr: De-cluttered the top action bar by consolidating utility functions (Pomodoro, Scratchpad, Compact Mode, Layout, Sync) into a new 3-dot 'Tools & View' dropdown menu.",
+        "In TaskTrackr: Relocated the Workspace Context switcher (Work/Personal) from the top bar to a dedicated profile-style dropdown at the top of the left sidebar.",
+        "In TaskTrackr: Expanded the maximum width of the Quick Add entry field to utilize the newly freed space in the top action bar.",
+        "In TaskTrackr: Upgraded the left sidebar lists to act as active drop zones, allowing tasks to be dragged and dropped directly into projects.",
+        "In TaskTrackr: Overhauled the Timeline view into a horizontal Gantt-lite 'Horizon View' with accurate day-spanning task blocks and a customizable timeframe selector (7, 14, or 30 days)."
+    ]
+},
+    {
     version: "v16.63.0-alpha",
     date: "2026-09-25",
     changes: [
