@@ -24,7 +24,9 @@ public class TaskTrackrWidgetProvider extends AppWidgetProvider {
             // [DEBUG] Using a specific Data URI to route cleanly to TaskTrackr
             // Added ?action=add to tell the app to immediately open the FAB modal
             launchAppIntent.setData(android.net.Uri.parse("tasktrackr://widget/open?action=add"));
-            launchAppIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            // [DEBUG] Added FLAG_ACTIVITY_SINGLE_TOP to prevent the OS from destroying and recreating
+            // the activity if it's already in memory. This stops webview connection resets.
+            launchAppIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 
             // Wrap the intent in a PendingIntent
             PendingIntent launchPendingIntent = PendingIntent.getActivity(

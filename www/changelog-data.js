@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.65.0-alpha",
+    date: "2026-09-26",
+    changes: [
+        "In TaskTrackr: Added FLAG_ACTIVITY_SINGLE_TOP to TaskTrackrWidgetProvider.java to stop the webview from resetting its connection when tapped.",
+        "In TaskTrackr: Updated MainActivity.java to dispatch a native 'WidgetAction' CustomEvent to hand off widget intents safely without forcing a page reload.",
+        "In TaskTrackr: Added a 'WidgetAction' event listener to tasktrackr/index.html to open the Quick Add popup cleanly during active background syncs.",
+        "In TaskTrackr: Updated fetchAllData in tasktrackr/index.html to preserve pending offline tasks so they do not disappear from view if a server fetch finishes first.",
+        "In TaskTrackr: Updated handleQuickAddSubmit to dynamically route new tasks to TickTick, Google Tasks, or Local Storage based on the active list rather than hardcoding TickTick."
+    ]
+},
+    {
     version: "v16.64.0-alpha",
     date: "2026-09-26",
     changes: [
@@ -14,7 +25,7 @@ export const changelogData = [
         "In TaskTrackr: Relocated the Workspace Context switcher (Work/Personal) from the top bar to a dedicated profile-style dropdown at the top of the left sidebar.",
         "In TaskTrackr: Expanded the maximum width of the Quick Add entry field to utilize the newly freed space in the top action bar.",
         "In TaskTrackr: Upgraded the left sidebar lists to act as active drop zones, allowing tasks to be dragged and dropped directly into projects.",
-        "In TaskTrackr: Overhauled the Timeline view into a horizontal Gantt-lite 'Horizon View' with accurate day-spanning task blocks and a customizable timeframe selector (7, 14, or 30 days)."
+        "In TaskTrackr: Overhauled the Timeline view into a horizontal Gantt 'Horizon View' with accurate day-spanning task blocks and a customizable timeframe selector (7, 14, or 30 days)."
     ]
 },
     {

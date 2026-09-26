@@ -1064,6 +1064,22 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 // --- END Web Share Target Handler ---
+
+// [DEBUG] Native Event Listener: Catches widget clicks without reloading the page.
+// This preserves background sync connections and prevents UI locking.
+window.addEventListener('WidgetAction', (e) => {
+    console.log('[TaskTrackr Debug] Received WidgetAction event:', e.detail);
+    if (e.detail && e.detail.action === 'add') {
+        const tryOpen = (attempts = 0) => {
+            if (typeof window.openQuickAddPopup === 'function') {
+                window.openQuickAddPopup();
+            } else if (attempts < 20) {
+                setTimeout(() => tryOpen(attempts + 1), 100);
+            }
+        };
+        tryOpen();
+    }
+});
         
         onAuthStateChanged(auth, async (user) => {
     // 1. If Firebase User exists (Google/Sync)
@@ -2098,6 +2114,15 @@ const fetchAllData = async () => {
         if (t.status === 2 && !newCache.find(n => n.id === t.id)) newCache.push(t);
     });
 
+    // [DEBUG] Retain tasks currently in the offline queue. 
+    // If a sync is happening in the background and a fetch finishes, we don't want temp tasks to vanish.
+    const pendingQueue = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+    pendingQueue.forEach(pt => {
+        if (pt.tempId && pt.tempId.startsWith('temp_') && !newCache.find(n => n.id === pt.tempId)) {
+            newCache.unshift(pt.mergedTask);
+        }
+    });
+
     // Generate a visual signature to ignore invisible backend timestamp updates (like lastSynced)
     const getCacheSignature = (cache) => JSON.stringify(cache.map(t => ({id: t.id, status: t.status, title: t.title, dueDate: t.dueDate, projectId: t.projectId, priority: t.priority, hidden: t.hidden, items: (t.items||[]).length})));
     const oldSig = getCacheSignature(taskCache);
@@ -2693,9 +2718,16 @@ const fetchAllData = async () => {
             const payload = { title: title, projectId: pid, priority: 0 }; 
             if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } 
             
+            // [DEBUG] Determine correct destination based on project type
+            let dest = 'ticktick';
+            if (pid.startsWith('local_proj_') || (projectMap[pid] && projectMap[pid].kind === 'local_list')) dest = 'local';
+            else if (projectMap[pid] && projectMap[pid].kind === 'google') dest = 'google';
+
+            tempTask.source = dest === 'local' ? 'local' : (dest === 'google' ? 'google' : 'tasktrackr');
+
             // 1. SAFE WRITE: Synchronously save locally to offline queue FIRST
             const pendingTasks = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
-            pendingTasks.push({ tempId, destination: 'ticktick', payload, isEdit: false, mergedTask: tempTask });
+            pendingTasks.push({ tempId, destination: dest, payload, isEdit: false, mergedTask: tempTask });
             localStorage.setItem('pendingTasks', JSON.stringify(pendingTasks));
             
             input.value = '';

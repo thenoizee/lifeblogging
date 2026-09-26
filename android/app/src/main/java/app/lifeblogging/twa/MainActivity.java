@@ -123,8 +123,15 @@ public class MainActivity extends BridgeActivity {
                                 "    window.location.replace('" + targetRoute + "');" +
                                 "  } else {" +
                                 "    console.log('[NativeBridge] Already on " + basePath + "');" +
-                                "    if ('" + targetRoute + "'.indexOf('action=add') !== -1 && typeof window.openQuickAddPopup === 'function') {" +
-                                "      window.openQuickAddPopup();" +
+                                "    if ('" + targetRoute + "'.indexOf('action=add') !== -1) {" +
+                                "      /* [DEBUG] Dispatching CustomEvent so the web app can queue this action if the UI/sync is busy */" +
+                                "      window.dispatchEvent(new CustomEvent('WidgetAction', { detail: { action: 'add' } }));" +
+                                "      /* [DEBUG] Fallback to direct function call if it's already mounted */" +
+                                "      if (typeof window.openQuickAddPopup === 'function') {" +
+                                "        window.openQuickAddPopup();" +
+                                "      } else {" +
+                                "        console.warn('[NativeBridge] openQuickAddPopup not yet available on window. Relying on WidgetAction event listener.');" +
+                                "      }" +
                                 "    }" +
                                 "  }" +
                                 "})();";
