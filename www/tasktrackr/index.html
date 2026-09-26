@@ -429,7 +429,10 @@ body {
     </div>
 
     <!-- NEW TOOLS DROPDOWN -->
-    <div class="relative border-l border-gray-200 dark:border-gray-700 pl-1 ml-auto flex items-center">
+    <div class="relative border-l border-gray-200 dark:border-gray-700 pl-1 ml-auto flex items-center gap-1">
+        <button onclick="window.refreshData()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-green-500 transition" title="Force Sync">
+            <i class="fa-solid fa-arrows-rotate pointer-events-none"></i>
+        </button>
         <button onclick="event.stopPropagation(); const d = document.getElementById('tools-dropdown'); if(d.parentElement !== document.body) document.body.appendChild(d); if(d.classList.contains('hidden')){ const r = this.getBoundingClientRect(); d.style.position='fixed'; d.style.top=(r.bottom+4)+'px'; d.style.left='auto'; d.style.right=(window.innerWidth - r.right)+'px'; d.style.zIndex=100000; d.classList.remove('hidden'); } else { d.classList.add('hidden'); }" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-blue-500 transition" title="Tools & View">
             <i class="fa-solid fa-ellipsis-vertical pointer-events-none"></i>
         </button>
@@ -446,10 +449,6 @@ body {
             </button>
             <button onclick="window.toggleLayoutSpread(); this.parentElement.classList.add('hidden')" class="w-full text-left px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg flex items-center gap-3 transition-colors">
                 <i id="layout-icon-menu" class="fa-solid fa-arrows-left-right text-purple-500 w-4 text-center"></i> Toggle Layout
-            </button>
-            <div class="h-px bg-gray-200 dark:bg-gray-700 my-1 mx-2"></div>
-            <button onclick="window.refreshData(); this.parentElement.classList.add('hidden')" class="w-full text-left px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600 dark:hover:text-green-400 rounded-lg flex items-center gap-3 transition-colors">
-                <i class="fa-solid fa-arrows-rotate text-green-500 w-4 text-center"></i> Force Sync
             </button>
         </div>
     </div>
@@ -1045,23 +1044,13 @@ window.addEventListener('DOMContentLoaded', () => {
         window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    // --- WIDGET QUICK ADD HANDLER ---
-    if (parsedUrl.searchParams.get('action') === 'add') {
-        // Clean URL to prevent reopening on manual refresh
-        window.history.replaceState({}, document.title, window.location.pathname);
-        
-        // Polling mechanism: Wait until the app is fully ready before opening the popup
-        const tryOpenPopup = () => {
-            const overlay = document.getElementById('login-overlay');
-            // If the login overlay is explicitly hidden, the app is ready for the popup
-            if (overlay && overlay.classList.contains('hidden') && typeof window.openQuickAddPopup === 'function') {
-                window.openQuickAddPopup();
-            } else {
-                setTimeout(tryOpenPopup, 250);
-            }
-        };
-        tryOpenPopup();
+    // Native Event Listener: Hands off to the bulletproof watcher above
+window.addEventListener('WidgetAction', (e) => {
+    console.log('[TaskTrackr Debug] Received WidgetAction event:', e.detail);
+    if (e.detail && e.detail.action === 'add') {
+        window.pendingWidgetAction = 'add';
     }
+});
 });
 // --- END Web Share Target Handler ---
 
@@ -1123,7 +1112,12 @@ window.addEventListener('WidgetAction', (e) => {
             renderApp();
         }
 
-        // 2. Fetch Data silently to update the cache
+        // 2. Process offline queue now that auth is ready
+        if (window.syncPendingTasks) {
+            window.syncPendingTasks();
+        }
+
+        // 3. Fetch Data silently to update the cache
         fetchAllData();
         fetchHistory(); // ADDED: Seed completed tasks immediately at startup
     } 
@@ -1132,6 +1126,12 @@ window.addEventListener('WidgetAction', (e) => {
         // Check if we have a legacy TickTick token
         if (accessToken) {
             document.getElementById('login-overlay').classList.add('hidden');
+            
+            // Process offline queue now that local token is ready
+            if (window.syncPendingTasks) {
+                window.syncPendingTasks();
+            }
+
             fetchAllData();
         } else {
             // No user, no token -> Show Login
@@ -2110,8 +2110,18 @@ const fetchAllData = async () => {
     });
 
     // Retain completed history
+    const now = new Date();
     taskCache.forEach(t => {
         if (t.status === 2 && !newCache.find(n => n.id === t.id)) newCache.push(t);
+        
+        // [CRITICAL FIX] Retain newly created or edited tasks to prevent fetch race conditions wiping them.
+        // If a task was modified in the last 30 seconds, force it into the cache regardless of what the server says.
+        if (t.editHistory && t.editHistory.length > 0) {
+            const lastEdit = new Date(t.editHistory[t.editHistory.length - 1].timestamp);
+            if ((now - lastEdit) < 30000 && !newCache.find(n => n.id === t.id)) {
+                newCache.unshift(t);
+            }
+        }
     });
 
     // [DEBUG] Retain tasks currently in the offline queue. 
@@ -2165,10 +2175,9 @@ const fetchAllData = async () => {
     // DEBUG: See exactly what we are preparing to send
     console.log("[TaskTrackr] Formatting Payload. Repeat Rule:", task.repeatFlag);
 
-    return {
+    const p = {
         title: task.title,
         content: task.content || '',
-        projectId: task.projectId || 'inbox',
         parentId: task.parentId || null,
         priority: parseInt(task.priority || 0),
         tags: task.tags || [],
@@ -2186,6 +2195,12 @@ const fetchAllData = async () => {
             return i;
         })
     };
+    
+    // TICKTICK FIX: If projectId is 'inbox', do not send it. API expects it omitted to hit the default inbox.
+    if (task.projectId && task.projectId !== 'inbox') {
+        p.projectId = task.projectId;
+    }
+    return p;
 };
 
         let currentSidePaneTaskId = null;
@@ -2686,12 +2701,11 @@ const fetchAllData = async () => {
             if (!title) return;
             
             input.disabled = true;
-            // ... (existing project ID logic) ...
             let pid = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; 
-            if (currentState.projectId !== 'all') { pid = currentState.projectId; } 
+            // FIX: Ensure currentState.projectId actually exists before overriding, to prevent 'undefined' crashes
+            if (currentState.projectId && currentState.projectId !== 'all') { pid = currentState.projectId; } 
             
-            // ... (existing date logic) ...
-            let newDateISO = null; 
+            let newDateISO = null;
             const now = new Date(); 
             if (currentState.filter === 'today' || currentState.filter === 'focus') { newDateISO = now.toISOString(); } 
             else if (currentState.filter === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
@@ -2715,13 +2729,15 @@ const fetchAllData = async () => {
             renderApp(); // Draw UI instantly
             // -----------------------------------
             
-            const payload = { title: title, projectId: pid, priority: 0 }; 
+            const payload = { title: title, priority: 0 }; 
+            // TICKTICK FIX: Do not send 'inbox' as a string literal, API expects it omitted
+            if (pid && pid !== 'inbox') payload.projectId = pid;
             if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } 
             
             // [DEBUG] Determine correct destination based on project type
             let dest = 'ticktick';
-            if (pid.startsWith('local_proj_') || (projectMap[pid] && projectMap[pid].kind === 'local_list')) dest = 'local';
-            else if (projectMap[pid] && projectMap[pid].kind === 'google') dest = 'google';
+            if (pid && (pid.startsWith('local_proj_') || (projectMap[pid] && projectMap[pid].kind === 'local_list'))) dest = 'local';
+            else if (pid && projectMap[pid] && projectMap[pid].kind === 'google') dest = 'google';
 
             tempTask.source = dest === 'local' ? 'local' : (dest === 'google' ? 'google' : 'tasktrackr');
 
@@ -2799,6 +2815,30 @@ const fetchAllData = async () => {
                 }, 200);
             }
         };
+
+        // [CRITICAL FIX] Bulletproof Watcher for Widget Actions
+        // This eliminates race conditions between Java WebView injection and deferred Module scripts.
+        setInterval(() => {
+            const parsedUrl = new URL(window.location);
+            if (window.pendingWidgetAction === 'add' || parsedUrl.searchParams.get('action') === 'add') {
+                window.pendingWidgetAction = null;
+                
+                // Clean URL
+                if (parsedUrl.searchParams.get('action') === 'add') {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+
+                // Instantly hide blockers
+                const appLoader = document.getElementById('app-loader');
+                const loginOverlay = document.getElementById('login-overlay');
+                if (appLoader) appLoader.classList.add('hidden');
+                if (loginOverlay) loginOverlay.classList.add('hidden');
+
+                if (typeof window.openQuickAddPopup === 'function') {
+                    window.openQuickAddPopup();
+                }
+            }
+        }, 150);
 
         window.setView = (view, skipHash = false) => { 
             if (!skipHash) {
@@ -4379,12 +4419,29 @@ window.submitTaskForm = async () => {
     pendingTasks.push({ tempId, destination, payload, isEdit: !!id, mergedTask });
     localStorage.setItem('pendingTasks', JSON.stringify(pendingTasks));
 
+    // [DEBUG] On-screen trace for mobile debugging
+    console.log('[TaskTrackr Debug] Quick Add queued:', { tempId, dest, pid, payload });
+    showToast(`Queued for ${dest}...`, 'info');
+
     if (!navigator.onLine) {
         showToast('Saved locally (Network offline)', 'info');
         return;
     }
 
-    if (window.syncPendingTasks) window.syncPendingTasks();
+    if (window.syncPendingTasks) {
+        window.syncPendingTasks().then(() => {
+            const queueAfter = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+            if (queueAfter.length === 0) {
+                showToast('Synced successfully to cloud!', 'success');
+            } else {
+                showToast(`Sync pending (${queueAfter.length} in queue)`, 'error');
+            }
+        }).catch(err => {
+            showToast(`Sync error: ${err.message}`, 'error');
+        });
+    } else {
+        showToast('Error: syncPendingTasks not found', 'error');
+    }
 };
 
 window.openModal = (isEdit, taskId = null) => {

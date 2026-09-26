@@ -78,8 +78,9 @@ public class MainActivity extends BridgeActivity {
 
         Runnable routeTask = new Runnable() {
             int attempts = 0;
-            // Increased to allow slower wake-ups under extreme OS power saving
-            final int maxAttempts = 80;
+            // [DEBUG] Massively increased maxAttempts to handle very slow cold boots on older phones
+            // where the Web Engine takes longer than 12s to initialize and parse the DOM.
+            final int maxAttempts = 200;
 
             @Override
             public void run() {
@@ -124,13 +125,12 @@ public class MainActivity extends BridgeActivity {
                                 "  } else {" +
                                 "    console.log('[NativeBridge] Already on " + basePath + "');" +
                                 "    if ('" + targetRoute + "'.indexOf('action=add') !== -1) {" +
-                                "      /* [DEBUG] Dispatching CustomEvent so the web app can queue this action if the UI/sync is busy */" +
+                                "      /* [DEBUG] Save globally so deferred module scripts can catch it if they missed the event */" +
+                                "      window.pendingWidgetAction = 'add';" +
                                 "      window.dispatchEvent(new CustomEvent('WidgetAction', { detail: { action: 'add' } }));" +
                                 "      /* [DEBUG] Fallback to direct function call if it's already mounted */" +
                                 "      if (typeof window.openQuickAddPopup === 'function') {" +
                                 "        window.openQuickAddPopup();" +
-                                "      } else {" +
-                                "        console.warn('[NativeBridge] openQuickAddPopup not yet available on window. Relying on WidgetAction event listener.');" +
                                 "      }" +
                                 "    }" +
                                 "  }" +

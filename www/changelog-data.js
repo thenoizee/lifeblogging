@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.66.0-alpha",
+    date: "2026-09-26",
+    changes: [
+        "In TaskTrackr: Increased WebView polling timeout to 30s in MainActivity.java to ensure the widget route resolves successfully on slower devices during a cold boot.",
+        "In TaskTrackr: Added a persistent setInterval watcher to guarantee the Quick Add modal opens instantly from the widget, bypassing Firebase auth delays and module deferral race conditions.",
+        "In TaskTrackr: Updated formatTaskPayload and handleQuickAddSubmit to omit the literal string 'inbox' from API payloads, preventing TickTick HTTP 400 rejection errors.",
+        "In TaskTrackr: Updated fetchAllData to retain any task created or modified within the last 30 seconds to prevent slow server syncs from overwriting new local tasks.",
+        "In TaskTrackr: Added window.syncPendingTasks() execution to the Firebase auth resolution block to ensure offline tasks created during boot are successfully pushed to the cloud.",
+        "In TaskTrackr: Extracted the 'Force Sync' button from the Tools dropdown and reinstated it as a standalone icon on the main top action bar for quicker access."
+    ]
+},
+    {
     version: "v16.65.0-alpha",
     date: "2026-09-26",
     changes: [
