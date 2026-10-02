@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v15.67.0-alpha",
+    date: "2026-10-03",
+    changes: [
+        "In TaskTrackr: Added recursive Workspace Context inheritance so tasks correctly adopt the context (Work/Personal) of their parent lists or folders.",
+        "In TaskTrackr: Upgraded Tag Filtering to support selecting multiple tags simultaneously via a new interactive checkbox dropdown interface.",
+        "In TaskTrackr: Implemented Granular DOM Rendering to drastically improve performance by selectively updating individual task cards in-place.",
+        "In TaskTrackr: Enabled SortableJS drag-and-drop reordering for subtasks within the side pane and creation modal to allow dynamic step management.",
+        "In TaskTrackr: Enforced sticky heights on Kanban columns so drag-and-drop targets stretch to the bottom of the screen, preventing jarring layout shifts.",
+        "In TaskTrackr: Overhauled 'Meta' Badges on task cards to use a sleek, single-line breadcrumb style, significantly reducing visual noise.",
+        "In TaskTrackr: Added tactile micro-interactions to task checkboxes, featuring a satisfying pop animation and a smooth strike-through wipe on the task title.",
+        "In TaskTrackr: Overhauled the mobile navigation bar by replacing sticky hover states with tactile press animations and unifying the active-state highlight logic."
+    ]
+},
+    {
     version: "v16.66.0-alpha",
     date: "2026-09-26",
     changes: [
