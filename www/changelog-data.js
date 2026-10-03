@@ -2,7 +2,18 @@
 
 export const changelogData = [
     {
-    version: "v15.67.0-alpha",
+    version: "v16.68.0-alpha",
+    date: "2026-10-03",
+    changes: [
+                "In HealthManagr: Removed bulky accordions on the Record Meds tab and introduced a clean Sub-Tab navigation system (Schedule, My Cabinet, Dose History).",
+                "In HealthManagr: Merged Manage Medications and Stock Management into the unified 'My Cabinet' view.",
+                "In HealthManagr: Moved 'Add New Medicine' and 'Restock' forms into clean, focused modals.",
+                "In HealthManagr: Added global max-height bounds (90vh) to all modals and made the Stock Modal internally scrollable to prevent overflow on mobile devices.",
+                "In HealthManagr: Softened all sharp box edges, cards, inputs, and buttons globally for a friendlier, modern aesthetic."
+    ]
+},
+    {
+    version: "v16.67.0-alpha",
     date: "2026-10-03",
     changes: [
         "In TaskTrackr: Added recursive Workspace Context inheritance so tasks correctly adopt the context (Work/Personal) of their parent lists or folders.",
