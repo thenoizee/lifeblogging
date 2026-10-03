@@ -221,13 +221,21 @@
             
             <div class="bg-gray-100 dark:bg-gray-900 p-4 rounded-xl mb-6">
                 <div class="flex justify-between items-end mb-2">
-                    <label class="text-xs font-bold text-gray-500 uppercase">Pages Read</label>
+                    <label class="text-xs font-bold text-gray-500 uppercase">Pages</label>
                     <div class="flex items-center gap-1">
-                        <input type="number" id="page-number-input" class="w-16 p-1 text-right text-2xl font-bold text-amber-600 bg-transparent border-b-2 border-transparent focus:border-amber-500 outline-none" value="0">
-                        <span class="text-gray-400 text-sm font-bold mt-1">/ <span id="modal-total-pages">Max</span></span>
+                        <input type="number" id="page-number-input" class="w-16 p-1 text-right text-2xl font-bold text-amber-600 bg-transparent border-b-2 border-transparent focus:border-amber-500 outline-none" value="0" title="Pages Read">
+                        <span class="text-gray-400 text-sm font-bold mt-1">/ <input type="number" id="modal-total-pages" class="w-12 bg-transparent border-b-2 border-gray-300 dark:border-gray-600 outline-none text-center text-gray-500 focus:border-amber-500 transition-colors" placeholder="?" title="Total Pages"></span>
                     </div>
                 </div>
                 <input type="range" id="page-slider" min="0" max="1000" value="0" class="w-full h-2 bg-gray-300 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-amber-600">
+                
+                <!-- Quick Page Jump Controls -->
+                <div class="flex items-center justify-between gap-1.5 mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+                    <button type="button" onclick="adjustModalPages(5)" class="flex-1 py-1 text-xs font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md hover:border-amber-500 transition">+5</button>
+                    <button type="button" onclick="adjustModalPages(10)" class="flex-1 py-1 text-xs font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md hover:border-amber-500 transition">+10</button>
+                    <button type="button" onclick="adjustModalPages(25)" class="flex-1 py-1 text-xs font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md hover:border-amber-500 transition">+25</button>
+                    <button type="button" onclick="adjustModalPages('max')" class="flex-1 py-1 text-xs font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-md transition">Max</button>
+                </div>
             </div>
 
             <div class="grid grid-cols-3 gap-2 mb-4">
@@ -419,10 +427,8 @@
                     <p class="text-gray-500 dark:text-gray-400 font-medium">Your currently reading list is empty.</p>
                     <p class="text-sm text-gray-400 mt-1">Click the + button below to search for your first book!</p>
                 </div>`;
-                return;
-            }
-
-            reading.forEach(book => {
+            } else {
+                reading.forEach(book => {
                 const percent = book.totalPages ? Math.round((book.pagesRead / book.totalPages) * 100) : 0;
                 const coverUrl = getValidCover(book.cover); // Clean old URLs
 
@@ -448,26 +454,45 @@
                 `;
                 container.appendChild(card);
             });
+            } // <--- ADD THIS CLOSING BRACKET HERE
             // Populate Recent Activity
             const recentList = document.getElementById('recent-activity-list');
+            
+            // Bulletproof timestamp extractor to prevent silent crashes
+            const getTime = (ts) => {
+                if (!ts) return 0;
+                if (typeof ts.toMillis === 'function') return ts.toMillis();
+                if (ts.seconds) return ts.seconds * 1000;
+                return new Date(ts).getTime() || 0;
+            };
+
             const recentBooks = [...booksCache]
-                .filter(b => b.updatedAt)
-                .sort((a, b) => b.updatedAt.toMillis() - a.updatedAt.toMillis())
+                .filter(b => b.lastReadAt || b.updatedAt)
+                .sort((a, b) => getTime(b.lastReadAt || b.updatedAt) - getTime(a.lastReadAt || a.updatedAt))
                 .slice(0, 5);
 
             if (recentBooks.length === 0) {
                 recentList.innerHTML = '<div class="text-gray-400 italic p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">No recent activity yet.</div>';
             } else {
-                recentList.innerHTML = recentBooks.map(b => `
+                recentList.innerHTML = recentBooks.map(b => {
+                    const rawDate = b.lastReadAt || b.updatedAt;
+                    const dateObj = new Date(getTime(rawDate));
+                    const dateStr = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                    
+                    return `
                     <div class="flex items-center gap-4 bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700 cursor-pointer hover:border-amber-500 transition shadow-sm" onclick="window.location.hash = '#book/${b.key}'">
                         <img src="${getValidCover(b.cover)}" class="w-12 h-16 object-cover rounded shadow flex-shrink-0">
                         <div class="flex-grow min-w-0">
                             <h4 class="font-bold text-sm text-gray-800 dark:text-gray-200 truncate">${b.title}</h4>
-                            <p class="text-xs text-amber-600 dark:text-amber-500 font-bold uppercase mt-0.5">${b.status}</p>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <p class="text-xs text-amber-600 dark:text-amber-500 font-bold uppercase">${b.status}</p>
+                                <span class="text-gray-300 dark:text-gray-600 text-xs">•</span>
+                                <p class="text-[10px] font-bold text-gray-500">${dateStr}</p>
+                            </div>
                             <p class="text-xs text-gray-500 truncate mt-0.5">Progress: ${b.pagesRead} / ${b.totalPages || '?'} pages</p>
                         </div>
                     </div>
-                `).join('');
+                `}).join('');
             }
         }
 
@@ -631,10 +656,12 @@
             // If not local or need more details, fetch OL
             if (!book || !book.description) {
                 try {
-                    // If it's an imported book (custom key), we can't fetch OL details easily unless we stored OL ID.
-                    // Assuming for now if it has 'OL' in key it's OpenLibrary
-                    if (!key.startsWith('imp_')) {
-                        const res = await fetch(`https://openlibrary.org/works/${key}.json`);
+                    // Use the dedicated olKey if it exists, otherwise fall back to the document key
+                    let fetchKey = key;
+                    if (book && book.olKey) fetchKey = book.olKey;
+                    
+                    if (fetchKey && fetchKey.startsWith('OL')) {
+                        const res = await fetch(`https://openlibrary.org/works/${fetchKey}.json`);
                         if (res.ok) {
                             const data = await res.json();
                             description = typeof data.description === 'object' ? data.description.value : data.description;
@@ -672,8 +699,12 @@
                             Update Progress
                         </button>
                         <div class="text-center text-xs text-gray-500">
-                            ${book.pagesRead} / ${book.totalPages} pages read
+                            ${book.pagesRead} / ${book.totalPages || '?'} pages read
                         </div>
+                        ${book.status === 'completed' && book.lastReadAt ? `
+                        <div class="text-center text-[11px] font-bold text-green-600 dark:text-green-500 mt-2">
+                            Finished: ${new Date(book.lastReadAt.seconds ? book.lastReadAt.seconds * 1000 : book.lastReadAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric'})}
+                        </div>` : ''}
                     </div>
                 </div>
                 
@@ -721,13 +752,21 @@
             currentModalContext = book;
             document.getElementById('modal-book-title').innerText = book.title;
             
-            // FIX: Target the new number input's value instead of the old span's innerText
-            document.getElementById('page-number-input').value = book.pagesRead;
+            document.getElementById('page-number-input').value = book.pagesRead || 0;
             
             const slider = document.getElementById('page-slider');
-            slider.max = book.totalPages || 500;
-            slider.value = book.pagesRead;
-            document.getElementById('modal-total-pages').innerText = `${book.totalPages || '?'}`;
+            const totalPagesInput = document.getElementById('modal-total-pages');
+            
+            // Fill the editable input with known pages, or leave blank so placeholder '?' shows
+            totalPagesInput.value = book.totalPages || '';
+            slider.max = book.totalPages || 1000; // Visual fallback for the slider dot
+            slider.value = book.pagesRead || 0;
+            
+            // If you type a new total page count, dynamically update the slider so it doesn't break
+            totalPagesInput.oninput = (e) => {
+                const newMax = parseInt(e.target.value);
+                if (newMax > 0) slider.max = newMax;
+            };
             
             // Setup Rating if it exists
             document.getElementById('modal-rating').value = book.rating || 0;
@@ -850,77 +889,127 @@
                     for(const row of results.data) {
                         if(!row.Title) continue;
                         count++;
-                        
-                        // Update UI with Live Progress
                         log.innerHTML = `<div class="font-bold text-amber-500 mb-2">Processing ${count} of ${totalBooks}...</div>`;
+
+                        const safeTitle = row.Title.trim();
+                        const safeAuthor = (row.Authors || '').trim();
                         
-                        let key = 'imp_' + btoa(unescape(encodeURIComponent(row.Title + row.Authors))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
-                        const statusMap = { 'read': 'completed', 'currently-reading': 'reading', 'to-read': 'tbr' };
-                        const bookStatus = statusMap[row['Read Status']] || 'tbr';
-                        
-                        let cover = PLACEHOLDER_IMG;
                         let isbnVal = row['ISBN/UID'];
                         let isbn = isbnVal ? String(isbnVal).replace(/[^0-9X]/gi, '') : null;
-                        let apiSuccess = false;
+
+                        // 1. DUPLICATE DETECTION (Case insensitive)
+                        const existingBook = booksCache.find(b => b.title && b.title.toLowerCase() === safeTitle.toLowerCase());
                         
-                        // 1. Try ISBN Lookup First
+                        // 2. STRICT SW-SAFE API FETCH (Only uses URL paths!)
+                        let apiPages = null;
+                        let olKey = '';
+                        let cover = PLACEHOLDER_IMG;
+                        
                         if (isbn && (isbn.length === 10 || isbn.length === 13)) {
-                            cover = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+                            // Because ISBN is in the PATH, the ServiceWorker treats every book separately!
+                            cover = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`; 
                             try {
-                                const res = await fetch(`https://openlibrary.org/search.json?isbn=${isbn}`);
+                                const res = await fetch(`https://openlibrary.org/isbn/${isbn}.json`);
                                 if (res.ok) {
                                     const data = await res.json();
-                                    if (data.docs && data.docs.length > 0) {
-                                        const olBook = data.docs[0];
-                                        if (olBook.key) key = olBook.key.replace('/works/', ''); 
-                                        if (olBook.cover_i) cover = `https://covers.openlibrary.org/b/id/${olBook.cover_i}-L.jpg`;
-                                        apiSuccess = true;
+                                    if (data.works && data.works.length > 0) {
+                                        olKey = data.works[0].key.replace('/works/', '');
                                     }
+                                    if (data.number_of_pages) apiPages = data.number_of_pages;
                                 }
-                            } catch(e) { console.warn("ISBN API Lookup failed for", isbn); }
+                            } catch(e) { console.warn("ISBN Lookup failed for", isbn); }
                         }
 
-                        // 2. Fallback to Title + Author Lookup if ISBN failed or is missing
-                        if (!apiSuccess) {
-                            try {
-                                const query = encodeURIComponent(`${row.Title} ${row.Authors}`);
-                                const res = await fetch(`https://openlibrary.org/search.json?q=${query}&limit=1`);
-                                if (res.ok) {
-                                    const data = await res.json();
-                                    if (data.docs && data.docs.length > 0) {
-                                        const olBook = data.docs[0];
-                                        if (olBook.key) key = olBook.key.replace('/works/', ''); 
-                                        if (olBook.cover_i) cover = `https://covers.openlibrary.org/b/id/${olBook.cover_i}-L.jpg`;
-                                    }
-                                }
-                            } catch(e) { console.warn("Fallback Search failed for", row.Title); }
+                        // 3. DETERMINISTIC KEY
+                        let docKey = '';
+                        if (existingBook && existingBook.key) {
+                            docKey = existingBook.key; // Safe overwrite!
+                        } else if (olKey) {
+                            docKey = olKey; 
+                        } else if (isbn && (isbn.length === 10 || isbn.length === 13)) {
+                            docKey = `isbn_${isbn}`;
+                        } else {
+                            docKey = 'imp_' + btoa(unescape(encodeURIComponent(safeTitle + safeAuthor))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 25);
                         }
 
-                        // 3. Map Rich Metadata
+                        // 4. MAP METADATA
+                        const statusMap = { 'read': 'completed', 'currently-reading': 'reading', 'to-read': 'tbr' };
+                        const bookStatus = statusMap[row['Read Status']] || 'tbr';
+
                         let formatMap = { 'audiobook': 'audio', 'ebook': 'kindle', 'physical': 'physical' };
                         let mappedFormat = row['Format'] ? formatMap[row['Format'].toLowerCase()] || 'physical' : 'physical';
-                        let pages = row['Number of Pages'] ? parseInt(row['Number of Pages']) : 300;
+                        
+                        let pages = row['Number of Pages'] ? parseInt(row['Number of Pages']) : (apiPages || 0);
                         let rating = row['Star Rating'] ? parseFloat(row['Star Rating']) : 0;
-                        let review = row['Review'] || '';
-                        let tags = row['Tags'] || row['Bookshelves'] || '';
+                        
+                        let readDateStr = row['Last Date Read'] || row['Date Read'] || row['Date Added'] || null;
+                        let lastReadAtVal = null; 
+                        if (readDateStr) {
+                            if (readDateStr.length === 4) readDateStr += "/01/01"; 
+                            const parsedDate = new Date(readDateStr);
+                            if (!isNaN(parsedDate.getTime())) lastReadAtVal = parsedDate; 
+                        }
+                        
+                        let dateAddedVal = serverTimestamp();
+                        if (row['Date Added']) {
+                            const parsedAdded = new Date(row['Date Added']);
+                            if (!isNaN(parsedAdded.getTime())) dateAddedVal = parsedAdded;
+                        }
 
-                        await setDoc(doc(db, `users/${currentUser.uid}/books`, key), {
-                            key,
-                            title: row.Title,
-                            author: row.Authors,
+                        let readCountInt = row['Read Count'] ? parseInt(row['Read Count']) : (bookStatus === 'completed' ? 1 : 0);
+
+                        // 5. NOTES & SURVEY ARCHIVE
+                        let reviewText = row['Review'] || '';
+                        let sgNotes = []; 
+                        if (row['Character- or Plot-Driven?']) sgNotes.push(`Driven by: ${row['Character- or Plot-Driven?']}`);
+                        if (row['Strong Character Development?'] === 'Yes') sgNotes.push('Strong character development');
+                        if (row['Loveable Characters?'] === 'Yes') sgNotes.push('Loveable characters');
+                        if (row['Flawed Characters?'] === 'Yes') sgNotes.push('Flawed characters');
+                        if (row['Diverse Characters?'] === 'Yes') sgNotes.push('Diverse characters');
+                        if (sgNotes.length > 0) reviewText += `\n\nStoryGraph Survey: ${sgNotes.join(', ')}.`;
+                        
+                        if (row['Content Warnings']) reviewText += `\n\nContent Warnings: ${row['Content Warnings']}`;
+                        if (row['Content Warning Description']) reviewText += `\nWarning Notes: ${row['Content Warning Description']}`;
+                        if (row['Contributors']) reviewText += `\n\nContributors: ${row['Contributors']}`;
+                        if (row['Dates Read']) reviewText += `\nReading History: ${row['Dates Read']}`;
+
+                        const importStamp = `[Imported from StoryGraph on ${new Date().toLocaleDateString()}]`;
+                        let review = reviewText ? `${reviewText.trim()}\n\n${importStamp}` : importStamp;
+
+                        // 6. TAGS
+                        let tagsArray = [];
+                        if (row['Tags']) tagsArray.push(row['Tags']);
+                        if (row['Bookshelves']) tagsArray.push(row['Bookshelves']);
+                        if (row['Moods']) tagsArray.push(row['Moods']);
+                        if (row['Pace']) tagsArray.push(row['Pace'] + ' Pace');
+                        if (row['Owned?'] === 'Yes' || row['Owned?'] === 'yes') tagsArray.push('Owned');
+                        if (readCountInt > 1) tagsArray.push('Re-read');
+                        tagsArray.push('StoryGraph Import');
+                        let tags = tagsArray.filter(Boolean).join(', ');
+
+                        // 7. SAVE TO DATABASE
+                        await setDoc(doc(db, `users/${currentUser.uid}/books`, docKey), {
+                            key: docKey,
+                            olKey: olKey || (existingBook ? existingBook.olKey : ''), 
+                            title: safeTitle,
+                            author: safeAuthor,
+                            isbn: isbn || '', 
                             status: bookStatus,
-                            cover: cover,
-                            pagesRead: bookStatus === 'completed' ? pages : 0,
-                            totalPages: pages,
+                            cover: (existingBook && existingBook.cover && !existingBook.cover.includes('placehold.co')) ? existingBook.cover : cover,
+                            pagesRead: bookStatus === 'completed' && pages > 0 ? pages : 0,
+                            totalPages: pages > 0 ? pages : null, 
                             format: mappedFormat,
                             rating: rating,
                             review: review,
                             tags: tags,
+                            readCount: readCountInt,
                             imported: true,
+                            dateAdded: dateAddedVal, 
+                            lastReadAt: lastReadAtVal, 
                             updatedAt: serverTimestamp()
                         }, { merge: true });
-                        
-                        log.innerHTML += `<div class="text-gray-500 truncate mt-1"><i class="fa-solid fa-check text-green-500"></i> ${row.Title}</div>`;
+
+                        log.innerHTML += `<div class="text-gray-500 truncate mt-1"><i class="fa-solid fa-check text-green-500"></i> ${safeTitle}</div>`;
                     }
                     log.innerHTML += `<div class="text-green-500 font-bold mt-3 text-sm p-2 bg-green-500/10 rounded">Done! Successfully imported ${count} books.</div>`;
                     await loadBooks();
@@ -937,16 +1026,44 @@
             renderLibrary();
         });
 
-        // Exact Page Syncing Logic
+        // Exact Page Syncing Logic with auto-completion trigger
+        function syncPageInputs(val) {
+            const numInput = document.getElementById('page-number-input');
+            const slider = document.getElementById('page-slider');
+            const max = parseInt(slider.max) || 0;
+            
+            let safeVal = parseInt(val) || 0;
+            if (safeVal < 0) safeVal = 0;
+            if (max > 0 && safeVal > max) safeVal = max;
+            
+            numInput.value = safeVal;
+            slider.value = safeVal;
+
+            // Auto-switch to completed if max pages reached
+            if (max > 0 && safeVal >= max && selectedStatus !== 'completed') {
+                console.log("[BookTrackr Debug] Max pages reached; auto-selecting 'completed' status");
+                setModalStatus('completed');
+            }
+        }
+
         document.getElementById('page-slider').addEventListener('input', (e) => {
-            document.getElementById('page-number-input').value = e.target.value;
+            syncPageInputs(e.target.value);
         });
+
         document.getElementById('page-number-input').addEventListener('input', (e) => {
-            let val = parseInt(e.target.value) || 0;
-            const max = parseInt(document.getElementById('page-slider').max);
-            if(val > max) val = max;
-            document.getElementById('page-slider').value = val;
+            syncPageInputs(e.target.value);
         });
+
+        // Quick page increment helper
+        window.adjustModalPages = (delta) => {
+            const current = parseInt(document.getElementById('page-number-input').value) || 0;
+            const max = parseInt(document.getElementById('page-slider').max) || 0;
+            if (delta === 'max') {
+                syncPageInputs(max);
+            } else {
+                syncPageInputs(current + delta);
+            }
+        };
 
         // Star Rating Logic
         document.querySelectorAll('#star-rating-container i').forEach(star => {
@@ -965,7 +1082,7 @@
             });
         });
 
-        // Overwrite window.setModalStatus to toggle Review Section
+        // Overwrite window.setModalStatus to toggle Review Section and auto-fill max pages
         window.setModalStatus = (status) => {
             selectedStatus = status;
             document.querySelectorAll('.status-btn').forEach(btn => {
@@ -977,39 +1094,55 @@
                     btn.classList.add('text-gray-500');
                 }
             });
-            // Show review section if finished
+
+            // Automatically set pages to max when marking as completed
             if(status === 'completed') {
+                const max = parseInt(document.getElementById('page-slider').max) || 0;
+                if(max > 0) {
+                    document.getElementById('page-number-input').value = max;
+                    document.getElementById('page-slider').value = max;
+                }
                 document.getElementById('review-section').classList.remove('hidden');
             } else {
                 document.getElementById('review-section').classList.add('hidden');
             }
         };
 
-        // Overwrite confirm-log to save ratings and reviews
+        // Overwrite confirm-log to save ratings, reviews, total pages, and reading timestamps
         document.getElementById('confirm-log').onclick = async () => {
             if(!currentModalContext) return;
-            const newPages = parseInt(document.getElementById('page-number-input').value);
-            const rating = parseInt(document.getElementById('modal-rating').value);
-            const review = document.getElementById('modal-review').value;
-            const tags = document.getElementById('modal-tags').value;
+            const newPages = parseInt(document.getElementById('page-number-input').value) || 0;
+            const newTotalPages = parseInt(document.getElementById('modal-total-pages').value) || null; // Capture editable total pages
+            const rating = parseInt(document.getElementById('modal-rating').value) || 0;
+            const review = document.getElementById('modal-review').value || "";
+            const tags = document.getElementById('modal-tags').value || "";
             
             try {
+                const wasJustFinished = (selectedStatus === 'completed' && currentModalContext.status !== 'completed');
+
+                // Update book document with progress, user-defined total pages, and read timestamp
                 await setDoc(doc(db, `users/${currentUser.uid}/books`, currentModalContext.key), {
-                    pagesRead: newPages,
+                    pagesRead: selectedStatus === 'completed' && newTotalPages ? newTotalPages : newPages,
+                    totalPages: newTotalPages,
                     status: selectedStatus,
                     rating: selectedStatus === 'completed' ? rating : 0,
-                    review: review, // Now saves notes regardless of completion status
+                    review: review,
                     tags: tags,
+                    lastReadAt: serverTimestamp(), 
                     updatedAt: serverTimestamp()
                 }, { merge: true });
                 
                 showToast(`Updated ${currentModalContext.title}`);
                 document.getElementById('log-modal').classList.add('hidden');
+                
                 await loadBooks();
                 if(document.getElementById('tab-content-dashboard').classList.contains('active')) renderDashboard();
                 if(document.getElementById('tab-content-library').classList.contains('active')) renderLibrary();
                 if(!document.getElementById('book-detail-modal').classList.contains('hidden')) renderBookDetail(currentModalContext.key);
-            } catch(e) { console.error(e); showToast('Error saving', 'error'); }
+            } catch(e) { 
+                console.error("[BookTrackr Error] Failed to save progress:", e); 
+                showToast('Error saving progress', 'error'); 
+            }
         };
 
         

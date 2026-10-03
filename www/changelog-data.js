@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.69.0-alpha",
+    date: "2026-10-03",
+    changes: [
+        "In Dashboard: Redesigned the BookTrackr widget to display the most recently read book's cover, title, progress bar, star rating, and exact read timestamp, matching the PodTrackr and VidTrackr layouts.",
+        "In BookTrackr: Upgraded the 'Total Pages' field in the progress modal to be editable, allowing custom page limits for obscure editions or audiobooks.",
+        "In BookTrackr: Added bi-directional auto-sync so hitting max pages automatically updates the status to 'Finished' and reveals the review section.",
+        "In BookTrackr: Added explicit 'lastReadAt' and 'dateAdded' tracking to allow for accurate chronological sorting and displaying 'Finished: [Date]' on the book details page.",
+        "In BookTrackr: Massively expanded the StoryGraph CSV importer to map Pace, Moods, and Owned status directly into the library tagging system.",
+        "In BookTrackr: Added automatic 'Re-read' tagging for imported books with a read count greater than one.",
+        "In BookTrackr: Appended StoryGraph survey answers (plot vs. character-driven, flawed characters), contributors, content warnings, and reading history natively into the book's personal notes.",
+        "In BookTrackr: Added an '[Imported from StoryGraph on Date]' stamp to the bottom of notes for imported library items."
+    ]
+},
+    {
     version: "v16.68.0-alpha",
     date: "2026-10-03",
     changes: [

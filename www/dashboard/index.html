@@ -1724,39 +1724,77 @@
                 updateFinanceWidgetUI();
             }));
 
-            unsubscribers.push(onSnapshot(collection(db, `users/${uid}/books`), (snap) => {
-                const books = snap.docs.map(d => d.data());
-                const reading = books.filter(b => b.status === 'reading');
-                const completed = books.filter(b => b.status === 'completed').length;
+            // Query for the single most recently updated or read book to match Trakt / PodTrackr cards
+            const booksQ = query(collection(db, `users/${uid}/books`), orderBy('updatedAt', 'desc'), limit(1));
+            
+            unsubscribers.push(onSnapshot(booksQ, (snap) => {
+                // Debugging: Log latest book retrieval status
+                console.log("[Dashboard Books Debug] Snapshot received. Empty?", snap.empty);
+                
+                if (!snap.empty) {
+                    const current = snap.docs[0].data();
+                    console.log("[Dashboard Books Debug] Latest book record:", current);
 
-                if (reading.length > 0) {
-                    // Show the first "Currently Reading" book
-                    const current = reading[0];
                     const percent = current.totalPages ? Math.round((current.pagesRead / current.totalPages) * 100) : 0;
+                    
+                    // Sanitize cover URL against broken placeholders
                     const cover = current.cover && !current.cover.includes('placehold.co') && !current.cover.includes('<svg') ? current.cover : 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22600%22 viewBox=%220 0 400 600%22%3E%3Crect width=%22400%22 height=%22600%22 fill=%22%231f2937%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2224%22 fill=%22%23ffffff%22%3ENo Cover%3C/text%3E%3C/svg%3E';
+                    
+                    // Format read/completion timestamp matching Watched and Listened formats
+                    const rawTimestamp = current.lastReadAt || current.updatedAt;
+                    let dateStr = 'Recently';
+                    let timeStr = '';
+                    
+                    if (rawTimestamp) {
+                        const readDate = typeof rawTimestamp.toDate === 'function' ? rawTimestamp.toDate() : new Date(rawTimestamp);
+                        dateStr = readDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                        timeStr = readDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                    }
+                    
+                    const actionLabel = current.status === 'completed' ? 'Finished' : 'Read';
+                    const timeDisplay = timeStr ? `${actionLabel} ${dateStr} at ${timeStr}` : `${actionLabel} ${dateStr}`;
 
+                    // Star rating badge if book is finished and rated
+                    const ratingBadge = (current.status === 'completed' && current.rating > 0)
+                        ? `<span class="absolute top-[-4px] right-[-4px] bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm border border-[var(--card-bg)]">${current.rating}</span>`
+                        : '';
+
+                    // Progress bar only shown when currently reading
+                    let progressHtml = '';
+                    if (current.status === 'reading') {
+                        progressHtml = `
+                            <div class="w-full bg-gray-200 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden mb-1">
+                                <div class="bg-amber-500 h-full transition-all duration-500" style="width: ${percent}%"></div>
+                            </div>
+                            <div class="flex justify-between items-center text-[9px] text-[var(--text-secondary)] opacity-80 leading-tight">
+                                <span>${current.pagesRead} / ${current.totalPages || '?'} (${percent}%)</span>
+                                <span>${timeDisplay}</span>
+                            </div>
+                        `;
+                    } else {
+                        progressHtml = `
+                            <p class="text-[9px] text-[var(--text-secondary)] opacity-80 leading-tight">
+                                <span class="capitalize font-semibold text-amber-600 dark:text-amber-400 mr-1">${current.status || 'TBR'}</span>• <span>${timeDisplay}</span>
+                            </p>
+                        `;
+                    }
+
+                    // Render dashboard book card
                     ui.booksContainer.innerHTML = `
-                        <div class="flex items-center gap-3 h-full px-1 w-full text-left">
-                            <img src="${cover}" class="w-12 h-16 rounded object-cover shadow-sm bg-gray-100 dark:bg-gray-800 flex-shrink-0">
-                            <div class="min-w-0 flex-1">
-                                <p class="font-bold truncate text-xs text-[var(--text-primary)]" title="${current.title}">${current.title || 'Untitled'}</p>
-                                <p class="text-[10px] text-[var(--text-secondary)] truncate mb-1.5">${current.author || 'Unknown'}</p>
-                                <div class="w-full bg-gray-200 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
-                                    <div class="bg-amber-500 h-full transition-all duration-500" style="width: ${percent}%"></div>
-                                </div>
-                                <p class="text-[9px] mt-0.5 text-right opacity-80 text-[var(--text-secondary)]">${current.pagesRead} / ${current.totalPages} (${percent}%)</p>
+                        <div class="flex items-center gap-3 h-full px-1 w-full text-left relative">
+                            <div class="relative flex-shrink-0">
+                                <img src="${cover}" class="w-12 h-16 rounded-md object-cover shadow-sm bg-gray-100 dark:bg-gray-800" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22600%22 viewBox=%220 0 400 600%22%3E%3Crect width=%22400%22 height=%22600%22 fill=%22%231f2937%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2224%22 fill=%22%23ffffff%22%3ENo Cover%3C/text%3E%3C/svg%3E'">
+                                ${ratingBadge}
+                            </div>
+                            <div class="min-w-0 flex-1 py-1 flex flex-col justify-center">
+                                <p class="font-bold text-xs text-[var(--text-primary)] leading-tight mb-0.5 truncate" title="${current.title}">${current.title || 'Untitled'}</p>
+                                <p class="text-[10px] text-[var(--text-secondary)] leading-tight truncate mb-1.5">${current.author || 'Unknown'}</p>
+                                ${progressHtml}
                             </div>
                         </div>`;
-                } else if (completed > 0) {
-                    // Fallback to stats if not currently reading anything
-                    ui.booksContainer.innerHTML = `
-                        <div class="flex flex-col items-center justify-center">
-                            <span class="text-3xl font-bold text-amber-500">${completed}</span>
-                            <span class="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mt-1">Books Read</span>
-                        </div>`;
                 } else {
-                    // Empty state
-                     ui.booksContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic">Library is empty.</p>`;
+                    // Empty state fallback
+                    ui.booksContainer.innerHTML = `<p class="text-xs text-[var(--text-secondary)] italic">Library is empty.</p>`;
                 }
             }));
 
