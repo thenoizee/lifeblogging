@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.70.0-alpha",
+    date: "2026-10-04",
+    changes: [
+        "In TaskTrackr: Defaulted unassigned and orphaned tasks to 'Inbox' across task cards, side pane, and completion history rather than displaying as 'Unknown'.",
+        "In TaskTrackr: Ensured tasks fetched from TickTick without a project ID inherit the project ID of the list they were fetched from.",
+        "In TaskTrackr: Fixed Quick Add and Task Modal payload creation to stop stripping the 'inbox' ID so tasks are saved to the cloud database under Inbox by default.",
+        "In TaskTrackr: Fixed task deletion for Inbox items by preventing undefined project IDs from being passed to DELETE endpoints.",
+        "In TaskTrackr: Cleaned up duplicated script definitions and redundant functions in index.html."
+    ]
+},
+    {
     version: "v16.69.0-alpha",
     date: "2026-10-03",
     changes: [

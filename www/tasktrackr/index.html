@@ -1707,37 +1707,45 @@ const api = async (endpoint, method = 'GET', body = null) => {
     const opts = { method, headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' } };
     if (body) opts.body = JSON.stringify(body);
     
+    // ---------------- DEBUG OUTGOING ----------------
+    if (isWrite) {
+        console.log(`\n🔵 [API OUT] 🚀 ${method} ${endpoint}`);
+        console.log(`📦 [API OUT] Payload:`, body ? JSON.parse(opts.body) : 'No Body');
+    }
+    // ------------------------------------------------
+
     try {
         const res = await fetch(`${API_BASE}${endpoint}`, opts);
         if (res.status === 401) { 
             console.warn("TickTick Token Expired");
             localStorage.removeItem('ticktick_token'); 
-            accessToken = null; // Clear variable
-            
-            // NEW: Send notification to the bell
+            accessToken = null; 
             window.dispatchEvent(new CustomEvent('app-new-notification', { 
                 detail: {
                     title: 'TickTick Disconnected',
                     body: 'Your session expired. Reconnect to keep tasks synced.',
-                    actionUrl: '/tasktrackr', // Uses URL instead of Event
+                    actionUrl: '/tasktrackr',
                     actionText: 'Go to TaskTrackr to Reconnect'
                 } 
             }));
-            
-            // FIX: Only reload if we aren't logged into Firebase/Google
             if (!auth.currentUser) location.reload(); 
             return null; 
         }
         const text = await res.text();
+        
+        // ---------------- DEBUG INCOMING ----------------
+        if (isWrite) {
+            console.log(`🟢 [API IN] Response Code: ${res.status}`);
+            console.log(`📄 [API IN] Response Text:`, text);
+        }
+        // ------------------------------------------------
+
         const data = text ? JSON.parse(text) : {};
-        
-        // If it was a write operation, show success!
         if(isWrite) window.updateSyncStatus('success');
-        
         return data;
     } catch (e) { 
-        console.error("API Error:", e); 
-        window.updateSyncStatus('error'); // You can implement an error red state if you like
+        console.error("🔴 [API ERROR]:", e); 
+        window.updateSyncStatus('error'); 
         return null; 
     }
 };
@@ -1947,7 +1955,14 @@ const fetchGoogleData = async () => {
             try { 
                 // FIX: Strip 'undefined' values (like _parentDueDate) which crash Firestore silently
                 const safeTask = JSON.parse(JSON.stringify(task));
-                await addDoc(collection(db, 'users', auth.currentUser.uid, 'task_history'), { taskId: task.id, title: task.title, projectId: task.projectId, projectName: projectMap[task.projectId]?.name || 'Unknown', completedAt: new Date(), originalData: safeTask }); 
+                await addDoc(collection(db, 'users', auth.currentUser.uid, 'task_history'), { 
+                    taskId: task.id, 
+                    title: task.title, 
+                    projectId: task.projectId, 
+                    projectName: projectMap[task.projectId]?.name || 'Inbox', 
+                    completedAt: new Date(), 
+                    originalData: safeTask 
+                }); 
             } catch(e) { console.error("Error logging history:", e); }
         };
 
@@ -2103,15 +2118,43 @@ const fetchAllData = async () => {
 
     // 2. Fetch TickTick Tasks
     let allActiveTasks = [];
+    let trueInboxId = localStorage.getItem('ticktrackr_true_inbox_id') || inboxId;
+
     if (projects) {
         const projectIds = new Set(projects.map(p => p.id));
-        projectIds.add(inboxId);
+        projectIds.delete(inboxId); // Handle inbox separately to extract the true ID
+        
+        // [FIX] Fetch Inbox First to discover the True Inbox ID from the server
+        try {
+            const inboxData = await api(`/project/${inboxId}/data`);
+            if (inboxData && inboxData.tasks && inboxData.tasks.length > 0) {
+                trueInboxId = inboxData.tasks[0].projectId || trueInboxId;
+                localStorage.setItem('ticktrackr_true_inbox_id', trueInboxId);
+            }
+            
+            // Register True Inbox in Project Map to prevent UI 'Unknown' rendering
+            projectMap[trueInboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
+            if (trueInboxId !== inboxId && projectMap[inboxId]) delete projectMap[inboxId];
+            if (trueInboxId !== 'inbox' && projectMap['inbox']) delete projectMap['inbox'];
+
+            if (inboxData && inboxData.tasks) {
+                const mappedTasks = inboxData.tasks.map(t => ({ ...t, projectId: t.projectId || trueInboxId }));
+                allActiveTasks.push(...mappedTasks);
+            }
+        } catch (e) { console.warn("Inbox fetch failed", e); }
+
+        // Fetch remaining projects
         await Promise.all(Array.from(projectIds).map(async (pid) => {
             try {
                 const data = await api(`/project/${pid}/data`);
-                if (data && data.tasks) allActiveTasks.push(...data.tasks);
+                if (data && data.tasks) {
+                    const mappedTasks = data.tasks.map(t => ({ ...t, projectId: t.projectId || pid }));
+                    allActiveTasks.push(...mappedTasks);
+                }
             } catch (e) { console.warn(`Failed to fetch tasks for ${pid}`, e); }
         }));
+    } else {
+        projectMap[trueInboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
     }
 
     allActiveTasks = [...allActiveTasks, ...googleData.tasks];
@@ -2162,6 +2205,11 @@ const fetchAllData = async () => {
 
     const newCache = [];
     allActiveTasks.forEach(task => {
+        // [CRITICAL FIX] Universal fallback: if projectId is absent or generic 'inbox', force to True Inbox ID
+        if (!task.projectId || task.projectId === 'undefined' || task.projectId === 'inbox') {
+            task.projectId = trueInboxId;
+        }
+
         if (task.source === 'local') { 
             // Keep local
         } else if (task.source === 'google') { 
@@ -2231,15 +2279,17 @@ const fetchAllData = async () => {
 };
 
 // Helper to ensure we only send clean, API-friendly data
-       const formatTaskPayload = (task) => {
+       window.getInboxId = () => {
+    const trueId = localStorage.getItem('ticktrackr_true_inbox_id');
+    if (trueId && projectMap[trueId]) return trueId;
+    return Object.keys(projectMap).find(id => projectMap[id].isInbox || projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
+};
+
+const formatTaskPayload = (task) => {
     const cleanDate = (d) => {
         if (!d) return null;
-        // Ensure we use +0000 for TickTick, not Z
         return new Date(d).toISOString().replace(/\.\d{3}Z$/, '+0000');
     };
-
-    // DEBUG: See exactly what we are preparing to send
-    console.log("[TaskTrackr] Formatting Payload. Repeat Rule:", task.repeatFlag);
 
     const p = {
         title: task.title,
@@ -2250,10 +2300,7 @@ const fetchAllData = async () => {
         isAllDay: !!task.isAllDay,
         startDate: cleanDate(task.startDate),
         dueDate: cleanDate(task.dueDate),
-        
-        // CRITICAL FIX: The API expects 'repeatFlag'. 
         repeatFlag: task.repeatFlag || null, 
-        
         status: task.status || 0,
         items: (task.items || []).map(item => {
             const i = { title: item.title, status: item.status || 0 };
@@ -2262,10 +2309,23 @@ const fetchAllData = async () => {
         })
     };
     
-    // TICKTICK FIX: If projectId is 'inbox', do not send it. API expects it omitted to hit the default inbox.
-    if (task.projectId && task.projectId !== 'inbox') {
+    console.log(`\n🔍 [FORMATTER] Processing Task Object:`, JSON.parse(JSON.stringify(task)));
+
+    if (task.projectId === 'google_calendar') {
+        // Omit Google Calendar IDs
+    } else if (task.projectId === 'inbox') {
+        // [FIX] Swap literal 'inbox' with the True Inbox ID to prevent the 'Unknown' database corruption
+        const trueId = localStorage.getItem('ticktrackr_true_inbox_id');
+        if (trueId && trueId !== 'inbox') {
+            p.projectId = trueId;
+            console.log(`🔍 [FORMATTER] Swapped 'inbox' for True Inbox ID: ${trueId}`);
+        } else {
+            console.log(`🔍 [FORMATTER] Stripped literal 'inbox' projectId`);
+        }
+    } else if (task.projectId) {
         p.projectId = task.projectId;
     }
+
     return p;
 };
 
@@ -2795,10 +2855,8 @@ const fetchAllData = async () => {
             renderApp(); // Draw UI instantly
             // -----------------------------------
             
-            const payload = { title: title, priority: 0 }; 
-            // TICKTICK FIX: Do not send 'inbox' as a string literal, API expects it omitted
-            if (pid && pid !== 'inbox') payload.projectId = pid;
-            if (newDateISO) { payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); payload.isAllDay = true; } 
+            // [FIX] Use the universal formatter so the 'inbox' string is safely stripped for the API
+            const payload = formatTaskPayload(tempTask);
             
             // [DEBUG] Determine correct destination based on project type
             let dest = 'ticktick';
@@ -3396,13 +3454,23 @@ window.toggleRepeatOptions = () => {
             } else if (action === 'complete') {
                 window.completeTask(task.projectId, task.id, null);
             } else if (action === 'inbox') {
-                // Move to inbox and clear date
-                const inboxId = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox';
+                const inboxId = window.getInboxId();
+                const oldProjectId = task.projectId;
+                
                 task.projectId = inboxId;
                 task.dueDate = null;
                 renderApp(); // Optimistic
                 try {
-                    await api(`/task/${taskId}`, 'POST', { projectId: inboxId, dueDate: null });
+                    const payload = formatTaskPayload(task);
+                    if (task.source === 'google' || task.kind === 'google') {
+                        // Google Tasks API doesn't support list-to-list moves via PATCH. 
+                        // We clear the due date but revert the local project ID so it doesn't break.
+                        task.projectId = oldProjectId;
+                        await googleApi(`lists/${oldProjectId}/tasks/${taskId}`, 'PATCH', { due: null });
+                        renderApp();
+                    } else {
+                        await api(`/task/${taskId}`, 'POST', payload);
+                    }
                     showToast('Moved to Inbox');
                 } catch(e) { showToast('Error moving task', 'error'); fetchAllData(); }
             } else if (action.startsWith('priority-')) {
@@ -3410,7 +3478,13 @@ window.toggleRepeatOptions = () => {
                 task.priority = newP;
                 renderApp();
                 try {
-                    await api(`/task/${taskId}`, 'POST', { projectId: task.projectId, priority: newP });
+                    // [FIX] Full Payload
+                    const payload = formatTaskPayload(task);
+                    if (task.source === 'google' || task.kind === 'google') {
+                        // Google Tasks doesn't natively map priority, so we only update local state
+                    } else {
+                        await api(`/task/${taskId}`, 'POST', payload);
+                    }
                 } catch(e) { showToast('Error updating priority', 'error'); fetchAllData(); }
             } else if (action === 'hide' || action === 'unhide') {
                 task.hidden = (action === 'hide');
@@ -3569,8 +3643,12 @@ if (counterEl) {
             try {
                 if (auth.currentUser && task.source === 'local') {
                     await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { priority: newPriority, updated: new Date() }, { merge: true });
+                } else if (task.source === 'google' || task.kind === 'google') {
+                    // [FIX] Google doesn't natively map TickTick priority levels, omit API call to prevent server wiping it out
                 } else {
-                    await api(`/task/${taskId}`, 'POST', { priority: newPriority });
+                    // [FIX] Convert to full payload so the API doesn't strip the task title to 'Unknown'
+                    const payload = formatTaskPayload(task);
+                    await api(`/task/${taskId}`, 'POST', payload);
                 }
             } catch(e) {
                 task.priority = oldP;
@@ -3619,8 +3697,8 @@ const renderTaskCard = (task) => {
     const isCompleted = task.status === 2; 
     const completeIcon = isCompleted ? '<i class="fa-solid fa-square-check text-green-500 text-xl drop-shadow-md"></i>' : '<i class="fa-regular fa-square text-gray-400 hover:text-green-500 dark:text-gray-500 dark:hover:text-green-500 transition-colors text-xl"></i>';
     const selectIcon = isSelected ? '<i class="fa-solid fa-circle-check text-blue-500 text-lg drop-shadow-md"></i>' : `<i class="fa-regular fa-circle text-gray-400 dark:text-gray-500 text-lg group-hover:text-[var(--primary)] transition-colors priority-${task.priority || 0}"></i>`;
-    const project = projectMap[task.projectId] || { name: 'Unknown', color: '#4b5563' }; 
-    const pColor = getProjectColor(task.projectId); 
+    const project = projectMap[task.projectId] || { name: 'Inbox', color: '#3b82f6' }; 
+    const pColor = getProjectColor(task.projectId);
     
     const projectBadge = `<span class="flex items-center gap-1 font-medium text-inherit whitespace-nowrap"><i class="fa-solid fa-layer-group opacity-80" style="color:${pColor}"></i> ${escapeHtml(project.name)}</span>`;
     
@@ -3814,13 +3892,20 @@ const renderTaskCard = (task) => {
             const tasksToUpdate = Array.from(selectedTasks); 
             let newDateISO = null; 
             let shouldRemoveDate = false; 
+            let newProjectId = null;
+            let newPriority = null;
             const now = new Date(); 
 
             if (action === 'today') { newDateISO = now.toISOString(); } 
             else if (action === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
-            else if (action === 'inbox') { shouldRemoveDate = true; } 
-            else if (action === 'nodate') { shouldRemoveDate = true; } // <--- Added this line
+            else if (action === 'inbox') { 
+                shouldRemoveDate = true; 
+                newProjectId = window.getInboxId();
+            }
+            else if (action === 'nodate') { shouldRemoveDate = true; } 
             else if (action === 'specific' && value) { newDateISO = new Date(value).toISOString(); }
+            else if (action === 'project' && value) { newProjectId = value; }
+            else if (action === 'priority' && value !== null) { newPriority = parseInt(value); }
             
             try { 
                 await Promise.all(tasksToUpdate.map(async (tid) => { 
@@ -3828,44 +3913,44 @@ const renderTaskCard = (task) => {
                     if (!task) return; 
                     
                     if (action === 'delete') { 
-                        await api(`/project/${task.projectId}/task/${task.id}`, 'DELETE'); 
+                        // [FIX] Properly route Google Task bulk deletions
+                        if (task.source === 'google' || task.kind === 'google') {
+                            console.log("[TaskTrackr Debug] Bulk Deleting Google Task");
+                            await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'DELETE');
+                        } else {
+                            await api(`/project/${task.projectId}/task/${task.id}`, 'DELETE'); 
+                        }
                         const idx = taskCache.findIndex(t => t.id === tid); 
                         if (idx > -1) taskCache.splice(idx, 1); 
                     } 
                     else if (action === 'complete') {
-                        // Mark task status as completed using existing logic
                         await window.completeTask(task.projectId, task.id, null);
                     } 
                     else { 
-                        const payload = { projectId: task.projectId, title: task.title }; 
-                        
-                        if (shouldRemoveDate) { 
-                            window.logTaskAudit(task, 'Removed Due Date', task.dueDate, 'None');
-                            task.dueDate = null; payload.dueDate = null; 
-                        } else if (newDateISO) { 
-                            window.logTaskAudit(task, 'Changed Due Date', task.dueDate, newDateISO);
-                            task.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); 
-                            payload.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); 
-                        } 
-                        
-                        // Save original state before mutating
                         const oldProjectId = task.projectId;
                         const oldSource = task.source;
 
-                        // Handle Project / Labels reassignment
-                        if (action === 'project' && value) {
-                            window.logTaskAudit(task, 'Moved Project', task.projectId, value);
-                            task.projectId = value;
-                            payload.projectId = value;
+                        if (shouldRemoveDate) { 
+                            window.logTaskAudit(task, 'Removed Due Date', task.dueDate, 'None');
+                            task.dueDate = null; 
+                        } else if (newDateISO) { 
+                            window.logTaskAudit(task, 'Changed Due Date', task.dueDate, newDateISO);
+                            task.dueDate = newDateISO.replace(/\.\d{3}Z$/, '+0000'); 
                         } 
-                        // Handle Priority reassignment
-                        else if (action === 'priority' && value !== null) {
-                            window.logTaskAudit(task, 'Changed Priority', task.priority, value);
-                            task.priority = parseInt(value);
-                            payload.priority = parseInt(value);
+                        
+                        if (newProjectId) {
+                            window.logTaskAudit(task, 'Moved Project', task.projectId, newProjectId);
+                            task.projectId = newProjectId;
+                        } 
+                        
+                        if (newPriority !== null) {
+                            window.logTaskAudit(task, 'Changed Priority', task.priority, newPriority);
+                            task.priority = newPriority;
                         }
 
-                        // Determine if destination project is local
+                        // [FIX] Force Full Payload to avoid the API wiping unprovided properties and replacing task name with "Unknown"
+                        const payload = formatTaskPayload(task);
+
                         const isLocalDest = task.projectId.startsWith('local_proj_') || (projectMap[task.projectId] && projectMap[task.projectId].kind === 'local_list');
                         
                         if (isLocalDest || task.source === 'local') {
@@ -3873,10 +3958,17 @@ const renderTaskCard = (task) => {
                             if (auth.currentUser) {
                                 await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { ...task, updated: new Date() }, { merge: true });
                             }
-                            // Clear from TickTick if it was moved to local
                             if (action === 'project' && isLocalDest && oldSource !== 'local') {
-                                try { await api(`/project/${oldProjectId}/task/${tid}`, 'DELETE'); } catch(e){ console.error("Failed to delete old TickTick task", e); }
+                                try { 
+                                    if (oldSource === 'google') await googleApi(`lists/${oldProjectId}/tasks/${tid}`, 'DELETE');
+                                    else await api(`/project/${oldProjectId}/task/${tid}`, 'DELETE'); 
+                                } catch(e){ console.error("Failed to delete old task", e); }
                             }
+                        } else if (task.source === 'google' || task.kind === 'google') {
+                            // [FIX] Google specific API payload
+                            const gPayload = { title: task.title, notes: task.content };
+                            if (task.dueDate) gPayload.due = task.dueDate;
+                            await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'PATCH', gPayload);
                         } else {
                             await api(`/task/${tid}`, 'POST', payload); 
                         }
@@ -4039,7 +4131,7 @@ const renderTaskCard = (task) => {
             html += `</div></div></div>`;
             els.content.innerHTML = html;
         };
-        window.handleSortableDrop = async (evt) => { /*...*/ const taskId = evt.item.getAttribute('data-task-id'); const toSection = evt.to.getAttribute('data-section'); const fromSection = evt.from.getAttribute('data-section'); if (toSection === fromSection) return; const task = taskCache.find(t => t.id === taskId); if (!task) return; let newDate = null; let removeDate = false; const now = new Date(); if (toSection === 'today' || toSection === 'overdue') { newDate = now; } else if (toSection === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDate = tmrw; } else if (toSection === 'later') { const nextWeek = new Date(now); nextWeek.setDate(nextWeek.getDate() + 7); newDate = nextWeek; } else if (toSection === 'noDate') { removeDate = true; } else if (toSection === 'completed') { window.completeTask(task.projectId, task.id, null); return; } if (newDate || removeDate) { if (removeDate) task.dueDate = null; else task.dueDate = newDate.toISOString().replace(/\.\d{3}Z$/, '+0000'); renderApp(); try { const payload = { projectId: task.projectId, title: task.title, dueDate: task.dueDate }; await api(`/task/${task.id}`, 'POST', payload); showToast(`Moved to ${toSection}`); } catch (e) { console.error(e); showToast('Failed to save changes', 'error'); } } };
+        window.handleSortableDrop = async (evt) => { /*...*/ const taskId = evt.item.getAttribute('data-task-id'); const toSection = evt.to.getAttribute('data-section'); const fromSection = evt.from.getAttribute('data-section'); if (toSection === fromSection) return; const task = taskCache.find(t => t.id === taskId); if (!task) return; let newDate = null; let removeDate = false; const now = new Date(); if (toSection === 'today' || toSection === 'overdue') { newDate = now; } else if (toSection === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDate = tmrw; } else if (toSection === 'later') { const nextWeek = new Date(now); nextWeek.setDate(nextWeek.getDate() + 7); newDate = nextWeek; } else if (toSection === 'noDate') { removeDate = true; } else if (toSection === 'completed') { window.completeTask(task.projectId, task.id, null); return; } if (newDate || removeDate) { if (removeDate) task.dueDate = null; else task.dueDate = newDate.toISOString().replace(/\.\d{3}Z$/, '+0000'); renderApp(); try { const payload = formatTaskPayload(task); /* [FIX] Use Payload helper */ if (task.source === 'google' || task.kind === 'google') { await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'PATCH', { due: task.dueDate }); } else if (task.source === 'local' && auth.currentUser) { await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { dueDate: task.dueDate, updated: new Date() }, { merge: true }); } else { await api(`/task/${task.id}`, 'POST', payload); } showToast(`Moved to ${toSection}`); } catch (e) { console.error(e); showToast('Failed to save changes', 'error'); } } };
 
         const renderAgenda = (tasks) => {
             if(tasks.length === 0) {
@@ -4580,9 +4672,9 @@ window.submitTaskForm = async () => {
     pendingTasks.push({ tempId, destination, payload, isEdit: !!id, mergedTask });
     localStorage.setItem('pendingTasks', JSON.stringify(pendingTasks));
 
-    // [DEBUG] On-screen trace for mobile debugging
-    console.log('[TaskTrackr Debug] Quick Add queued:', { tempId, dest, pid, payload });
-    showToast(`Queued for ${dest}...`, 'info');
+    // [DEBUG] Fixed variable references (destination instead of dest, selectedPid instead of pid)
+    console.log('[TaskTrackr Debug] Task queued:', { tempId, destination, selectedPid, payload });
+    showToast(`Saved to ${destination === 'local' ? 'Local' : (destination === 'google' ? 'Google' : 'TickTick')}`, 'success');
 
     if (!navigator.onLine) {
         showToast('Saved locally (Network offline)', 'info');
@@ -5451,8 +5543,15 @@ const renderKanban = (tasks) => {
                         window.logTaskAudit(task, 'Changed Priority', oldVal, newVal);
                         task.priority = newVal;
                         try {
-                            if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { priority: newVal, updated: new Date() }, { merge: true });
-                            else await api(`/task/${taskId}`, 'POST', { priority: newVal });
+                            if (auth.currentUser && task.source === 'local') {
+                                await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { priority: newVal, updated: new Date() }, { merge: true });
+                            } else if (task.source === 'google' || task.kind === 'google') {
+                                // Google Tasks don't map priorities, ignore API
+                            } else {
+                                // [FIX] Full Payload extraction
+                                const payload = formatTaskPayload(task);
+                                await api(`/task/${taskId}`, 'POST', payload);
+                            }
                             showToast('Priority updated');
                         } catch(e) { showToast('Failed to update priority', 'error'); task.priority = oldVal; }
                         renderApp(); hideLoader();
@@ -5592,7 +5691,7 @@ if (task.content) {
     descEl.innerHTML = "";
 }
             
-            const pName = projectMap[task.projectId]?.name || 'Unknown'; 
+            const pName = projectMap[task.projectId]?.name || 'Inbox';
             const spProj = document.getElementById('sp-project'); 
             spProj.textContent = pName; 
             const pDot = document.getElementById('sp-project-dot');
@@ -6031,7 +6130,15 @@ window.renderSidePaneChecklist = (task) => {
 
                     if (!task || task.source !== 'local') {
                         try {
-                            await api(`/project/${pid}/task/${tid}`, 'DELETE');
+                            // [FIX] Route Google Tasks deletion directly to Google API to prevent silent failure and refresh reversions
+                            if (task && (task.source === 'google' || task.kind === 'google')) {
+                                console.log("[TaskTrackr Debug] Deleting Google Task via Google API");
+                                await googleApi(`lists/${task.projectId}/tasks/${tid}`, 'DELETE');
+                            } else {
+                                // TickTick deletion
+                                const targetPid = pid && pid !== 'undefined' ? pid : (task ? task.projectId : 'inbox');
+                                await api(`/project/${targetPid}/task/${tid}`, 'DELETE');
+                            }
                             showToast('Deleted from Cloud');
                         } catch(e) {
                             showToast('Error deleting from Cloud', 'error');
