@@ -1605,6 +1605,8 @@ window.syncPendingTasks = async () => {
                         savedTask = { id: targetId };
                     } else {
                         savedTask = await fetchWithTimeout(api(`/task/${targetId}`, 'POST', payload));
+                        // [FIX] If TickTick returns a blank response on success, assume the target ID to prevent sync loops
+                        if (!savedTask || !savedTask.id) savedTask = { id: targetId };
                     }
                 } else {
                     savedTask = await fetchWithTimeout(api('/task', 'POST', payload));
@@ -3913,16 +3915,37 @@ const renderTaskCard = (task) => {
                     if (!task) return; 
                     
                     if (action === 'delete') { 
-                        // [FIX] Properly route Google Task bulk deletions
-                        if (task.source === 'google' || task.kind === 'google') {
-                            console.log("[TaskTrackr Debug] Bulk Deleting Google Task");
-                            await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'DELETE');
-                        } else {
-                            await api(`/project/${task.projectId}/task/${task.id}`, 'DELETE'); 
+                        // 1. Clear from Firestore
+                        try {
+                            if (auth.currentUser) await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid));
+                        } catch(e) {}
+
+                        // 2. Clear from Cloud Provider
+                        if (task.source !== 'local') {
+                            if (task.source === 'google' || task.kind === 'google') {
+                                await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'DELETE');
+                            } else {
+                                let targetPid = task.projectId;
+                                if (!targetPid || targetPid === 'inbox') targetPid = window.getInboxId();
+                                await api(`/project/${targetPid}/task/${task.id}`, 'DELETE'); 
+                            }
                         }
+
+                        // 3. Clear from local cache
                         const idx = taskCache.findIndex(t => t.id === tid); 
                         if (idx > -1) taskCache.splice(idx, 1); 
-                    } 
+
+                        // 4. Purge from Offline Sync Queue to prevent loop crashes
+                        let pending = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+                        pending = pending.filter(pt => pt.tempId !== tid);
+                        localStorage.setItem('pendingTasks', JSON.stringify(pending));
+                        
+                        // 5. Clear from Focus Now
+                        if (window.focusNowTasks && window.focusNowTasks.includes(tid)) {
+                            window.focusNowTasks = window.focusNowTasks.filter(id => id !== tid);
+                            localStorage.setItem('focus_now_tasks', JSON.stringify(window.focusNowTasks));
+                        }
+                    }
                     else if (action === 'complete') {
                         await window.completeTask(task.projectId, task.id, null);
                     } 
@@ -3961,7 +3984,11 @@ const renderTaskCard = (task) => {
                             if (action === 'project' && isLocalDest && oldSource !== 'local') {
                                 try { 
                                     if (oldSource === 'google') await googleApi(`lists/${oldProjectId}/tasks/${tid}`, 'DELETE');
-                                    else await api(`/project/${oldProjectId}/task/${tid}`, 'DELETE'); 
+                                    else {
+                                        let pId = oldProjectId;
+                                        if (!pId || pId === 'inbox') pId = window.getInboxId();
+                                        await api(`/project/${pId}/task/${tid}`, 'DELETE'); 
+                                    }
                                 } catch(e){ console.error("Failed to delete old task", e); }
                             }
                         } else if (task.source === 'google' || task.kind === 'google') {
@@ -6136,7 +6163,8 @@ window.renderSidePaneChecklist = (task) => {
                                 await googleApi(`lists/${task.projectId}/tasks/${tid}`, 'DELETE');
                             } else {
                                 // TickTick deletion
-                                const targetPid = pid && pid !== 'undefined' ? pid : (task ? task.projectId : 'inbox');
+                                let targetPid = pid && pid !== 'undefined' ? pid : (task ? task.projectId : 'inbox');
+                                if (!targetPid || targetPid === 'inbox') targetPid = window.getInboxId();
                                 await api(`/project/${targetPid}/task/${tid}`, 'DELETE');
                             }
                             showToast('Deleted from Cloud');
@@ -6147,6 +6175,16 @@ window.renderSidePaneChecklist = (task) => {
                         showToast('Deleted locally');
                     }
                     
+                    // [CRITICAL FIX] Instantly remove from local cache
+                    const idx = taskCache.findIndex(t => t.id === tid);
+                    if(idx > -1) taskCache.splice(idx, 1);
+                    localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
+
+                    // Add this to purge the offline queue:
+                    let pending = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+                    pending = pending.filter(pt => pt.tempId !== tid);
+                    localStorage.setItem('pendingTasks', JSON.stringify(pending));
+
                     if (window.focusNowTasks && window.focusNowTasks.includes(tid)) {
                         window.focusNowTasks = window.focusNowTasks.filter(id => id !== tid);
                         localStorage.setItem('focus_now_tasks', JSON.stringify(window.focusNowTasks));
@@ -6159,6 +6197,7 @@ window.renderSidePaneChecklist = (task) => {
                 }
             );
         };
+
         window.refreshData = () => fetchAllData(); window.changeMonth = (o) => { currentCalendarDate.setMonth(currentCalendarDate.getMonth()+o); renderApp(); }; 
         window.showDayTasks = (k) => { 
             // Mark the state so renderApp knows to stay here

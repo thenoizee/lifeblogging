@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.72.0-alpha",
+    date: "2026-10-05",
+    changes: [
+        "In TaskTrackr: Fixed inbox task deletion persisting across refreshes by resolving the true internal Inbox ID instead of sending literal 'inbox' to cloud APIs.",
+        "In TaskTrackr: Fixed crash and sync engine lockup during multi-task deletion by purging deleted items from the local offline sync queue (pendingTasks) and Firestore mirrors.",
+        "In TaskTrackr: Added fallback task ID handling in syncPendingTasks for empty 200 responses to prevent infinite sync retry loops."
+    ]
+},
+    {
     version: "v16.71.0-alpha",
     date: "2026-10-05",
     changes: [
