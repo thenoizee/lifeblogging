@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.71.0-alpha",
+    date: "2026-10-05",
+    changes: [
+                "In Text Generator: Reallocated screen real estate by narrowing the Use tab sidebar from 350px to 280px.",
+                "In Text Generator: Shifted the generated text pane width ratio from 7/12 to 8/12 to prioritize reading space.",
+                "In Text Generator: Made the action bar in the Use tab sticky so the copy buttons are always visible at the bottom of the screen.",
+                "In Text Generator: Expanded the global container max-width to 98% to utilize more horizontal monitor space.",
+                "In Text Generator: Reduced vertical padding on template list items to fit more templates in the sidebar without scrolling.",
+                "In Text Generator: Removed the rigid 600px minimum height on the template editor to eliminate double-scrollbars on smaller screens.",
+                "In Text Generator: Added the time-updating 'Greeting' field to the Available Placeholders UI so it can be dragged and dropped."
+    ]
+},
+    {
     version: "v16.70.0-alpha",
     date: "2026-10-04",
     changes: [
