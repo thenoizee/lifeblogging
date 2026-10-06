@@ -2,6 +2,22 @@
 
 export const changelogData = [
     {
+    version: "v16.73.0-alpha",
+    date: "2026-10-06",
+    changes: [
+        "In TaskTrackr: Fixed a bug where global list filters would remain permanently active by properly resetting single and multi-select states.",
+        "In TaskTrackr: Updated task creation (Quick Add and Modal) to push new tasks to the bottom of the list instead of the top.",
+        "In TaskTrackr: Replaced legacy 'Project' and 'Sub-Project' terminology with 'List' and 'Sub-List' across the Task Modal, Kanban View, and Lists Manager.",
+        "In TaskTrackr: Added a permanent inline helper box to the task modal clarifying when to use 'Task Date' versus 'End Date'.",
+        "In TaskTrackr: Resolved an API bug where Google Tasks payloads were sending dates in an incompatible format.",
+        "In TaskTrackr: Fixed a Sortable.js bug that pushed incorrect timestamp formats to Google Tasks upon drag-and-drop.",
+        "In TaskTrackr: Fixed a 404 sync loop by ensuring Google Calendar event completions strictly route to local storage.",
+        "In TaskTrackr: Resolved the 'Infinite Focus Streak' bug so hitting the 4-hour focus goal only increments the streak once per day.",
+        "In TaskTrackr: Added an automatic redirect to the Inbox when deleting the currently viewed list to prevent orphaned blank views.",
+        "In TaskTrackr: Removed duplicate 'sp-recurring-container' HTML IDs in the side pane to prevent UI glitches."
+    ]
+},
+    {
     version: "v16.72.0-alpha",
     date: "2026-10-05",
     changes: [

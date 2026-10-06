@@ -561,11 +561,6 @@ body {
                 </div>
             </div>
 
-            <div id="sp-recurring-container" class="hidden flex items-center p-3 rounded-lg bg-yellow-900/10 border border-yellow-700/30 text-yellow-500 text-sm">
-                <i class="fa-solid fa-repeat mr-3"></i>
-                <span id="sp-recurring">Recurring Task</span>
-            </div>
-
             <!-- Description Container -->
             <div class="space-y-2">
                 <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest px-1"><i class="fa-solid fa-align-left mr-1.5"></i> Description</h3>
@@ -699,7 +694,7 @@ body {
     <div id="checklist-builder" class="space-y-2"></div>
 </div>
 
-                <div><label class="text-xs font-bold text-gray-500 uppercase">Project</label>
+                <div><label class="text-xs font-bold text-gray-500 uppercase">List</label>
                 <select id="modal-project-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm"></select></div>
 
                 <div><label class="text-xs font-bold text-gray-500 uppercase">Tags</label><input type="text" id="modal-tags-input" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm" placeholder="tag1, tag2"></div>
@@ -726,9 +721,25 @@ body {
     </div>
 </div>
                 
-                <div class="grid grid-cols-2 gap-4">
-                    <div><label class="text-xs font-bold text-gray-500 uppercase">Task Date/Time</label><input type="datetime-local" id="modal-due-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm" title="Generic task time. Does not require an end date."></div>
-                    <div><label class="text-xs font-bold text-gray-500 uppercase">End Date/Time (Optional)</label><input type="datetime-local" id="modal-start-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm" title="Only needed if task spans a duration."></div>
+                <div class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 mb-2">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
+                        <div>
+                            <label class="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase mb-1">
+                                Task Date / Time
+                            </label>
+                            <input type="datetime-local" id="modal-due-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm">
+                        </div>
+                        <div>
+                            <label class="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase mb-1">
+                                End Date / Time <span class="normal-case font-normal opacity-70">(Optional)</span>
+                            </label>
+                            <input type="datetime-local" id="modal-start-date" class="w-full bg-[var(--bg)] border border-gray-600 rounded-lg p-3 outline-none focus:border-[var(--primary)] text-sm">
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-gray-500 leading-tight">
+                        <i class="fa-solid fa-circle-info text-blue-400 mr-1"></i>
+                        <strong>How dates work:</strong> For a standard task, only set the first date. Set an <em>End Date</em> only if the task spans across a duration of time (like a 2-hour meeting or a 3-day trip).
+                    </p>
                 </div>
                 
                 <div class="col-span-2 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -1285,6 +1296,7 @@ window.addEventListener('WidgetAction', (e) => {
         window.toggleProjectFilter = (pid) => {
             if (pid === 'all') {
                 currentState.projectIds = []; // Clear all selections
+                currentState.projectId = 'all'; // Clear singular selection too
             } else {
                 if (currentState.projectIds.includes(pid)) {
                     currentState.projectIds = currentState.projectIds.filter(id => id !== pid);
@@ -2458,7 +2470,7 @@ const formatTaskPayload = (task) => {
         if (isAction) {
             clickAction = `window.setFilter('${id}')`;
         } else {
-            clickAction = `window.updateFilter('projectId', '${id}'); window.updateFilter('filter', 'all');`;
+            clickAction = `currentState.projectIds = []; window.updateFilter('projectId', '${id}'); window.updateFilter('filter', 'all');`;
         }
         
         let countBadge = '';
@@ -2853,7 +2865,7 @@ const formatTaskPayload = (task) => {
                 tags: [],
                 editHistory: [{ action: 'Created Task (Quick Add)', timestamp: new Date().toISOString() }]
             };
-            taskCache.unshift(tempTask); // Inject instantly into view
+            taskCache.push(tempTask); // Inject instantly into view at the bottom
             renderApp(); // Draw UI instantly
             // -----------------------------------
             
@@ -3019,6 +3031,12 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
                 }
                 window.location.hash = `#${targetView}/${filter}`;
                 return;
+            }
+            
+            // Clear list selections when using a global filter so tasks actually appear across all lists
+            if (['inbox', 'today', 'tomorrow', 'overdue', 'completed', 'hidden', 'all', 'focus'].includes(filter)) {
+                currentState.projectId = 'all';
+                currentState.projectIds = [];
             }
             
             currentState.filter = filter; 
@@ -3878,7 +3896,7 @@ const renderTaskCard = (task) => {
                     });
                     return options;
                 };
-                bulkProjectSelect.innerHTML = `<option value="" disabled selected>Move to Project</option>` + buildBulkOptions(null, 0);
+                bulkProjectSelect.innerHTML = `<option value="" disabled selected>Move to List</option>` + buildBulkOptions(null, 0);
             }
 
             if (selectedTasks.size > 0) { 
@@ -3994,7 +4012,8 @@ const renderTaskCard = (task) => {
                         } else if (task.source === 'google' || task.kind === 'google') {
                             // [FIX] Google specific API payload
                             const gPayload = { title: task.title, notes: task.content };
-                            if (task.dueDate) gPayload.due = task.dueDate;
+                            if (task.dueDate) gPayload.due = new Date(task.dueDate).toISOString();
+                            else gPayload.due = null;
                             await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'PATCH', gPayload);
                         } else {
                             await api(`/task/${tid}`, 'POST', payload); 
@@ -4158,7 +4177,7 @@ const renderTaskCard = (task) => {
             html += `</div></div></div>`;
             els.content.innerHTML = html;
         };
-        window.handleSortableDrop = async (evt) => { /*...*/ const taskId = evt.item.getAttribute('data-task-id'); const toSection = evt.to.getAttribute('data-section'); const fromSection = evt.from.getAttribute('data-section'); if (toSection === fromSection) return; const task = taskCache.find(t => t.id === taskId); if (!task) return; let newDate = null; let removeDate = false; const now = new Date(); if (toSection === 'today' || toSection === 'overdue') { newDate = now; } else if (toSection === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDate = tmrw; } else if (toSection === 'later') { const nextWeek = new Date(now); nextWeek.setDate(nextWeek.getDate() + 7); newDate = nextWeek; } else if (toSection === 'noDate') { removeDate = true; } else if (toSection === 'completed') { window.completeTask(task.projectId, task.id, null); return; } if (newDate || removeDate) { if (removeDate) task.dueDate = null; else task.dueDate = newDate.toISOString().replace(/\.\d{3}Z$/, '+0000'); renderApp(); try { const payload = formatTaskPayload(task); /* [FIX] Use Payload helper */ if (task.source === 'google' || task.kind === 'google') { await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'PATCH', { due: task.dueDate }); } else if (task.source === 'local' && auth.currentUser) { await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { dueDate: task.dueDate, updated: new Date() }, { merge: true }); } else { await api(`/task/${task.id}`, 'POST', payload); } showToast(`Moved to ${toSection}`); } catch (e) { console.error(e); showToast('Failed to save changes', 'error'); } } };
+        window.handleSortableDrop = async (evt) => { /*...*/ const taskId = evt.item.getAttribute('data-task-id'); const toSection = evt.to.getAttribute('data-section'); const fromSection = evt.from.getAttribute('data-section'); if (toSection === fromSection) return; const task = taskCache.find(t => t.id === taskId); if (!task) return; let newDate = null; let removeDate = false; const now = new Date(); if (toSection === 'today' || toSection === 'overdue') { newDate = now; } else if (toSection === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDate = tmrw; } else if (toSection === 'later') { const nextWeek = new Date(now); nextWeek.setDate(nextWeek.getDate() + 7); newDate = nextWeek; } else if (toSection === 'noDate') { removeDate = true; } else if (toSection === 'completed') { window.completeTask(task.projectId, task.id, null); return; } if (newDate || removeDate) { if (removeDate) task.dueDate = null; else task.dueDate = newDate.toISOString().replace(/\.\d{3}Z$/, '+0000'); renderApp(); try { const payload = formatTaskPayload(task); /* [FIX] Use Payload helper */ if (task.source === 'google' || task.kind === 'google') { await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'PATCH', { due: task.dueDate ? new Date(task.dueDate).toISOString() : null }); } else if (task.source === 'local' && auth.currentUser) { await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { dueDate: task.dueDate, updated: new Date() }, { merge: true }); } else { await api(`/task/${task.id}`, 'POST', payload); } showToast(`Moved to ${toSection}`); } catch (e) { console.error(e); showToast('Failed to save changes', 'error'); } } };
 
         const renderAgenda = (tasks) => {
             if(tasks.length === 0) {
@@ -4449,7 +4468,7 @@ const renderProjectsManager = () => {
                     </div>
                     <div class="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700/50">
                         <div class="flex justify-between text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                            <span>Project Progress</span>
+                            <span>List Progress</span>
                             <span>${completed}/${total} (${pct}%)</span>
                         </div>
                         <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -4681,7 +4700,7 @@ window.submitTaskForm = async () => {
     if (!id) {
         mergedTask.editHistory = [{ action: 'Created Task (Full Form)', timestamp: new Date().toISOString() }];
         mergedTask.source = destination === 'local' ? 'local' : (isGoogle ? 'google' : 'tasktrackr');
-        taskCache.unshift(mergedTask); // Optimistic UI Insert
+        taskCache.push(mergedTask); // Optimistic UI Insert at bottom
     } else {
         window.logTaskAudit(mergedTask, 'Edited via Full Form');
         const idx = taskCache.findIndex(t => t.id === id);
@@ -5026,10 +5045,16 @@ window.openModal = (isEdit, taskId = null) => {
                 
                 // Update daily metrics & streaks
                 todayTrackedSeconds += (currentPomoSessionLength * 60);
-                if (todayTrackedSeconds >= 14400 && currentStreak === parseInt(localStorage.getItem('pomoStreak') || '0')) {
-                    currentStreak++; // Increase streak if goal hit today
-                    showToast("Daily Focus Goal Hit! Streak Increased!", "success");
+                
+                const todayStr = new Date().toDateString();
+                const lastStreakDate = localStorage.getItem('lastStreakDate');
+                
+                if (todayTrackedSeconds >= 14400 && lastStreakDate !== todayStr) {
+                    currentStreak++; // Increase streak only ONCE per day
+                    localStorage.setItem('lastStreakDate', todayStr);
+                    showToast("Daily Focus Goal Hit! Streak Increased! 🔥", "success");
                 }
+                
                 localStorage.setItem('todayTrackedSeconds', todayTrackedSeconds);
                 localStorage.setItem('pomoStreak', currentStreak);
                 window.updatePomoStats();
@@ -5200,7 +5225,7 @@ window.completeTask = async (pid, tid, checkbox, event) => {
     localStorage.setItem('ticktrackr_tasks', JSON.stringify(cacheToSave));
 
     // Prepare for offline sync queue
-    const destination = task.source === 'local' ? 'local' : (task.source === 'google' ? 'google' : 'ticktick');
+    const destination = task.source === 'google_calendar' ? 'local' : (task.source === 'local' ? 'local' : (task.source === 'google' ? 'google' : 'ticktick'));
     const payload = formatTaskPayload(task);
     
     const pendingTasks = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
@@ -5361,7 +5386,7 @@ const renderKanban = (tasks) => {
                 </div>
                 <div class="mt-auto pt-2 space-y-1 shrink-0 bg-gray-50 dark:bg-gray-800/50 -mx-3 -mb-3 p-3 rounded-b-xl border-t border-gray-200 dark:border-gray-700">
                     <button onclick="window.openProjectModal(null, '', null, '${p}')" class="w-full py-1.5 text-[10px] font-bold text-gray-400 hover:text-blue-500 rounded transition border border-dashed border-gray-300 dark:border-gray-700 flex items-center justify-center gap-2 bg-white dark:bg-gray-800 shadow-sm">
-                        <i class="fa-solid fa-folder-tree"></i> New Sub-Project
+                        <i class="fa-solid fa-folder-tree"></i> New Sub-List
                     </button>
                     <button onclick="window.openAddTaskModal()" class="w-full py-2.5 text-xs font-bold text-gray-500 hover:text-[var(--primary)] hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition border border-dashed border-gray-300 dark:border-gray-700 shadow-sm flex items-center justify-center gap-2 group bg-white dark:bg-gray-800">
                         <i class="fa-solid fa-plus group-hover:scale-125 transition-transform"></i> Add Task
@@ -6132,9 +6157,16 @@ window.renderSidePaneChecklist = (task) => {
 
                 // 3. Clean up the UI instantly
                 delete projectMap[id];
+                
+                // Redirect to Inbox if they just deleted the list they were currently viewing
+                if (currentState.projectId === id) {
+                    currentState.projectId = 'all';
+                    window.setFilter('inbox');
+                }
+                
                 showToast('List deleted'); 
                 fetchAllData(); 
-            } catch(e) { 
+            } catch(e) {
                 showToast('Error deleting list', 'error');
                 console.error(e);
             } 
