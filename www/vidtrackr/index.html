@@ -542,9 +542,18 @@ if (headerRight) {
                 const cached = sessionStorage.getItem(cacheKey);
                 if (cached) {
                     const parsed = JSON.parse(cached);
-                    // FIX: Negative Caching. If it failed before, instantly block it without hitting the network.
-                    if (parsed._isError) throw new Error('Cached API Error');
-                    return parsed;
+                    // Add comments so I can easily understand what it means and edit it later
+                    // Check if this is a cached error and if its Time-To-Live (60s) has expired
+                    if (parsed._isError) {
+                        if (Date.now() > parsed.expiry) {
+                            if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Expired TMDB error cache cleared for ${cacheKey}`);
+                            sessionStorage.removeItem(cacheKey); // Clear stale error
+                        } else {
+                            throw new Error('Cached API Error'); // Still within 60s cooldown
+                        }
+                    } else {
+                        return parsed;
+                    }
                 }
             }
 
@@ -570,14 +579,22 @@ if (headerRight) {
             const cacheBuster = isSearch ? `&_cb=${Date.now()}_${Math.random().toString(36).substring(2, 9)}` : '';
             const url = `https://api.themoviedb.org/3${endpoint}${separator}api_key=${TMDB_API_KEY}${cacheBuster}`;
             
-            // Using 'reload' forces both the browser AND the Service Worker to fetch a fresh network payload.
-            const fetchOptions = isSearch ? { cache: 'reload' } : {};
+            // Add comments when writing code so can easily understand what it means and edit it later
+            // Prioritize search requests to jump the browser's network queue instantly.
+            // Background tasks get 'low' priority so they don't block user interactions.
+            const fetchOptions = isSearch ? { cache: 'reload', priority: 'high' } : { priority: 'low' };
             const res = await fetch(url, fetchOptions);
             if (!res.ok) {
                 console.error(`[Debug] TMDB fetch failed for endpoint: ${endpoint} | Status: ${res.status}`);
-                // FIX: Cache the failure so background hydrators don't spam 404s
+                // Add comments so I can easily understand what it means and edit it later
+                // Cache the failure with a 60-second expiration so it can self-heal later
                 if (!isSearch) {
-                    try { sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true })); } catch(e) {}
+                    try { 
+                        if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Caching TMDB API failure for 60s: ${cacheKey}`);
+                        sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true, expiry: Date.now() + 60000 })); 
+                    } catch(e) {
+                        if (window.VIDTRACKR_DEBUG) console.error('[Debug] Failed to write error cache', e);
+                    }
                 }
                 throw new Error('TMDB API Error');
             }
@@ -1919,11 +1936,18 @@ window.removeProgress = async (playbackId) => {
             }
 
             // Improved Rating Logic globally referencing all known map keys
+            // Add comments so I can easily understand what it means and edit it later
+            // Optimize map lookups to prevent excessive parsing CPU overhead on grid renders
+            const traktStr = String(data.ids?.trakt || '');
+            const traktNum = traktStr ? parseInt(traktStr) : NaN;
+            const tmdbStr = String(data.ids?.tmdb || targetId || '');
+            const tmdbNum = tmdbStr ? parseInt(tmdbStr) : NaN;
+
             const myRating = (compositeId ? userRatings.get(compositeId) : null)
-                || userRatings.get(String(data.ids?.trakt)) 
-                || (!isNaN(Number(data.ids?.trakt)) ? userRatings.get(parseInt(data.ids?.trakt)) : null) 
-                || (type !== 'episode' ? userRatings.get(String(data.ids?.tmdb || targetId)) : null)
-                || (type !== 'episode' && !isNaN(Number(data.ids?.tmdb || targetId)) ? userRatings.get(parseInt(data.ids?.tmdb || targetId)) : null);
+                || (traktStr ? userRatings.get(traktStr) : null)
+                || (!isNaN(traktNum) ? userRatings.get(traktNum) : null)
+                || (type !== 'episode' && tmdbStr ? userRatings.get(tmdbStr) : null)
+                || (type !== 'episode' && !isNaN(tmdbNum) ? userRatings.get(tmdbNum) : null);
             
             const tmdbRatingHtml = ratingVal > 0 ? `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>` : '';
             const myRatingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 ${ratingVal > 0 ? 'ml-2 border-l border-white/20 pl-2' : ''}"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
@@ -1986,8 +2010,18 @@ window.removeProgress = async (playbackId) => {
                 const cached = sessionStorage.getItem(cacheKey);
                 if (cached) {
                     const parsed = JSON.parse(cached);
-                    if (parsed._isError) throw new Error('Cached Trakt API Error');
-                    return parsed;
+                    // Add comments so I can easily understand what it means and edit it later
+                    // Check if this is a cached Trakt error and if its Time-To-Live (60s) has expired
+                    if (parsed._isError) {
+                        if (Date.now() > parsed.expiry) {
+                            if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Expired Trakt error cache cleared for ${cacheKey}`);
+                            sessionStorage.removeItem(cacheKey); // Clear stale error
+                        } else {
+                            throw new Error('Cached Trakt API Error'); // Still within 60s cooldown
+                        }
+                    } else {
+                        return parsed;
+                    }
                 }
             }
             
@@ -2028,7 +2062,9 @@ window.removeProgress = async (playbackId) => {
             const separator = endpoint.includes('?') ? '&' : '?';
             const cacheBuster = isSearch ? `${separator}_cb=${Date.now()}` : '';
             
-            const fetchOptions = { headers };
+            // Add comments when writing code so can easily understand what it means and edit it later
+            // Prioritize search requests to jump the browser's network queue ahead of background syncs.
+            const fetchOptions = { headers, priority: isSearch ? 'high' : 'low' };
             if (isSearch) fetchOptions.cache = 'no-store'; // Ensure fetch explicitly ignores local browser HTTP cache
             
             const res = await fetch(`${TRAKT_API_URL}${endpoint}${cacheBuster}`, fetchOptions);
@@ -2039,9 +2075,15 @@ window.removeProgress = async (playbackId) => {
                 throw new Error(`API Error ${res.status}: Unauthorized/Forbidden`);
             }
             if (!res.ok) {
-                // FIX: Cache the failure so background hydrators don't spam 404s
+                // Add comments so I can easily understand what it means and edit it later
+                // Cache the Trakt failure with a 60-second expiration so it can self-heal
                 if (!isSearch && !isUserSync) {
-                    try { sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true })); } catch(e) {}
+                    try { 
+                        if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Caching Trakt API failure for 60s: ${cacheKey}`);
+                        sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true, expiry: Date.now() + 60000 })); 
+                    } catch(e) {
+                        if (window.VIDTRACKR_DEBUG) console.error('[Debug] Failed to write Trakt error cache', e);
+                    }
                 }
                 if (primaryDataSource !== 'trakt' && isUserSync) return handleStandaloneBypass();
                 throw new Error('API Error ' + res.status);
@@ -2672,6 +2714,13 @@ async function loadUpNext() {
                         
                         const nextEpisodes = [];
                         for (const batch of batches) {
+                            // Add comments when writing code so can easily understand what it means and edit it later
+                            // ABORT LOOP IF USER LEAVES DASHBOARD: Drops all pending TMDB requests so the network queue is instantly freed up for other tabs (like Search)
+                            if (!document.getElementById('up-next-container')) {
+                                if (window.VIDTRACKR_DEBUG) console.debug("[Debug] User left Dashboard. Aborting Up Next fetch loop.");
+                                throw new Error("Navigation Abort");
+                            }
+
                             const batchResults = await Promise.all(batch.map(async (entry) => {
                                 try {
                                     let tmdbId = entry.showTmdbId;
@@ -3687,7 +3736,11 @@ let listsIn = [];
                     epTypeBadgeHtml = `<span class="bg-gray-800/80 backdrop-blur ${typeColor} px-3 py-1 rounded border font-bold uppercase tracking-wider text-[10px] flex items-center shadow-lg"><i class="fa-solid fa-star text-[10px] mr-1 opacity-70"></i> ${formatType}</span>`;
                 }
 
-                const runtimeStr = item.runtime ? `${Math.floor(item.runtime/60)}h ${item.runtime%60}m` : 'N/A';
+                // Add comments so I can easily understand what it means and edit it later
+// Format runtime cleanly (e.g. "45m" for episodes under 1 hour, "1h 45m" for movies/long episodes)
+const hrs = item.runtime ? Math.floor(item.runtime / 60) : 0;
+const mins = item.runtime ? item.runtime % 60 : 0;
+const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 'N/A';
                 
                 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
                 const genresHtml = item.genres ? item.genres.map(g => {
@@ -4180,11 +4233,14 @@ let listsIn = [];
                             })() : ''}
                             
                             <!-- Metadata Row -->
-                            <div class="flex flex-wrap items-center gap-4 text-gray-300 mb-4 text-sm font-medium">
-                                <span class="bg-gray-800/80 px-3 py-1 rounded-md border border-gray-700 text-white shadow-sm">${item.year || 'N/A'}</span>
-                                <span class="border border-gray-600 px-2 py-0.5 rounded text-xs uppercase text-gray-400">${cert}</span>
-                                ${statusBadge} ${myRatingHtml}
-                            </div>
+<div class="flex flex-wrap items-center gap-4 text-gray-300 mb-4 text-sm font-medium">
+    <span class="bg-gray-800/80 px-3 py-1 rounded-md border border-gray-700 text-white shadow-sm">${item.year || 'N/A'}</span>
+    <!-- Add comments so I can easily understand what it means and edit it later -->
+    <!-- Display movie runtime next to year and certification -->
+    ${type === 'movie' && item.runtime ? `<span class="bg-gray-800/80 px-3 py-1 rounded-md border border-gray-700 text-gray-300 shadow-sm"><i class="fa-regular fa-clock mr-1 text-[var(--primary)]"></i> ${runtimeStr}</span>` : ''}
+    <span class="border border-gray-600 px-2 py-0.5 rounded text-xs uppercase text-gray-400">${cert}</span>
+    ${statusBadge}${myRatingHtml}
+</div>
                             
                             <!-- Status Badge & Lists -->
                             ${item.status ? `<div class="mb-6"><span class="uppercase tracking-wider font-bold text-[10px] ${getTypeColor(type)} px-2 py-1 bg-red-500/10 border border-red-500/20 rounded shadow-sm">${item.status}</span></div>` : ''}
@@ -4814,11 +4870,17 @@ let listsIn = [];
                     updateLiveTimer(); // Initial tick
                     window.liveCheckinInterval = setInterval(updateLiveTimer, 1000); // 1-second loop
 
+                    // Add comments so I can easily understand what it means and edit it later
                     // Queue the hard-refresh and auto-logger for the exact moment the episode ends
                     const timeRemaining = endTime - Date.now();
                     if (timeRemaining > 0) {
                         if (window.checkInTimeout) clearTimeout(window.checkInTimeout);
-                        window.checkInTimeout = setTimeout(checkActiveWatching, timeRemaining + 2000);
+                        if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Setting auto-logger timeout for ${timeRemaining + 2000}ms`);
+                        window.checkInTimeout = setTimeout(() => {
+                            if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Executing auto-logger timeout`);
+                            checkActiveWatching();
+                            window.checkInTimeout = null; // Free memory reference to prevent leak
+                        }, timeRemaining + 2000);
                     }
                 }
             } catch(e) {
@@ -6326,8 +6388,11 @@ let listsIn = [];
                     let displayTitle = d.title;
                     if (!displayTitle && d[type]) {
                         displayTitle = d[type].title || d[type].name;
+                        // Add comments so I can easily understand what it means and edit it later
+                        // Prevent 'undefined: Episode Name' if show object exists but title is missing
                         if (type === 'episode' && d[type].show) {
-                             displayTitle = `${d[type].show.title}: ${displayTitle}`;
+                             const showName = d[type].show.title || d[type].show.name || 'Unknown Show';
+                             displayTitle = `${showName}: ${displayTitle}`;
                         }
                     }
                     displayTitle = displayTitle || `Item ${targetId || fallbackId}`;
@@ -6674,6 +6739,10 @@ let listsIn = [];
                         const batches = chunk(watchedShows, 3); // Batch size of 3 is safe
 
                         for (const batch of batches) {
+                            // Add comments when writing code so can easily understand what it means and edit it later
+                            // ABORT LOOP IF USER LEAVES PAGE: Frees up the Trakt API queue for other tabs
+                            if (location.hash !== currentHash) throw new Error("Navigation Abort");
+
                             const batchResults = await Promise.all(batch.map(async (item) => {
                                 try {
                                     const traktId = item.show.ids?.trakt;

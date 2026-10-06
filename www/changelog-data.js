@@ -1,6 +1,18 @@
 // /changelog-data.js
 
 export const changelogData = [
+{
+    version: "v16.74.0-alpha",
+    date: "2026-10-06",
+    changes: [
+        "In VidTrackr: Enabled dedicated mobile search container visibility on phone viewports.",
+        "In VidTrackr: Implemented browser-native Fetch Priority Hints to prioritize live search requests ahead of background synchronizations.",
+        "In VidTrackr: Added Navigation Abort handlers across background batch loops (Up Next, Chronological View, Progress Tab) to cancel stale network requests immediately upon route change.",
+        "In VidTrackr: Added a 60-second TTL to API error caching to allow automatic recovery from temporary TMDB and Trakt interruptions without requiring a browser restart.",
+        "In VidTrackr: Optimized the card rendering pipeline by pre-parsing identifier formats to reduce CPU overhead during batch list and grid renders.",
+        "In VidTrackr: Refined runtime formatting to eliminate leading zero-hour displays on episodes under 60 minutes and added runtime duration badges to Movie detail pages.",
+    ]
+}, 
     {
     version: "v16.73.0-alpha",
     date: "2026-10-06",
