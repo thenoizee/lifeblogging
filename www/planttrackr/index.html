@@ -2079,24 +2079,39 @@
 
         const getLatestPlantPhoto = (plant) => {
             if (!plant) return null;
-            const plantLogs = state.logs.filter(l => l.plantId === plant.id && l.photoUrl);
-            let latestLogPhotoUrl = null;
-            let latestLogTime = 0;
-            if (plantLogs.length > 0) {
-                latestLogPhotoUrl = plantLogs[0].photoUrl; // Logs are already sorted desc
-                latestLogTime = new Date(plantLogs[0].date).getTime();
+            console.log(`[DEBUG] Evaluating latest photo for plant: ${plant.name} (id: ${plant.id})`);
+
+            // Sort logs with photos explicitly by date descending
+            const plantLogsWithPhotos = state.logs
+                .filter(l => l.plantId === plant.id && Boolean(l.photoUrl))
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+            const latestLogPhoto = plantLogsWithPhotos.length > 0 ? plantLogsWithPhotos[0] : null;
+            const latestLogTime = latestLogPhoto ? new Date(latestLogPhoto.date).getTime() : 0;
+
+            // Determine acquired/created time of base plant photo
+            let basePhotoTime = 0;
+            if (plant.photoUrl) {
+                if (plant.createdAt) {
+                    basePhotoTime = typeof plant.createdAt.toDate === 'function'
+                        ? plant.createdAt.toDate().getTime()
+                        : new Date(plant.createdAt).getTime();
+                } else if (plant.acquired) {
+                    basePhotoTime = new Date(plant.acquired).getTime();
+                }
             }
-            
-            // SAFELY parse updatedAt
-            let plantUpdateTime = 0;
-            if (plant.updatedAt) {
-                plantUpdateTime = typeof plant.updatedAt.toDate === 'function' 
-                    ? plant.updatedAt.toDate().getTime() 
-                    : new Date(plant.updatedAt).getTime();
+
+            console.log(`[DEBUG] ${plant.name} - Latest Log Photo Time: ${latestLogTime}, Base Photo Time: ${basePhotoTime}`);
+
+            // If a progress log photo exists and is newer than or equal to the base plant photo, return it
+            if (latestLogPhoto && latestLogTime >= basePhotoTime) {
+                console.log(`[DEBUG] ${plant.name} - Using latest log photo: ${latestLogPhoto.photoUrl}`);
+                return latestLogPhoto.photoUrl;
             }
-            
-            if (latestLogPhotoUrl && latestLogTime > plantUpdateTime) return latestLogPhotoUrl;
-            return plant.photoUrl || latestLogPhotoUrl || null;
+
+            const chosen = plant.photoUrl || (latestLogPhoto ? latestLogPhoto.photoUrl : null);
+            console.log(`[DEBUG] ${plant.name} - Resolved photo: ${chosen}`);
+            return chosen;
         };
         
         const getEl = (id) => document.getElementById(id);
@@ -2822,6 +2837,10 @@ if (plant.potType && plant.potType !== 'plastic') {
     potBadge = `<span class="px-2 py-1 rounded-md bg-[var(--input-bg)] border border-[var(--border)] text-gray-600 dark:text-gray-300 flex items-center gap-1">${pTypeIcons[plant.potType] || '🪣'} ${label}</span>`;
 }
 
+// Calculate the latest photo once per card
+const resolvedCardPhoto = getLatestPlantPhoto(plant);
+console.log(`[DEBUG] Card photo for ${plant.name}:`, resolvedCardPhoto);
+
 card.innerHTML = `
     <div class="flex items-start justify-between mb-3 relative">
         ${window.isSelectMode ? `
@@ -2833,8 +2852,8 @@ card.innerHTML = `
         ` : ''}
         
         <div class="flex items-center gap-3 w-full min-w-0 ${window.isSelectMode ? '' : 'cursor-pointer hover:opacity-70 transition'}" ${window.isSelectMode ? '' : `onclick="window.openViewPlantModal('${plant.id}')"`} title="${window.isSelectMode ? '' : 'View Plant Details'}">
-            ${getLatestPlantPhoto(plant)
-            ? `<img src="${getLatestPlantPhoto(plant)}" loading="lazy" class="w-14 h-14 rounded-xl object-cover border border-[var(--border)] shrink-0 shadow-sm">`
+            ${resolvedCardPhoto
+            ? `<img src="${resolvedCardPhoto}" class="w-14 h-14 rounded-xl object-cover border border-[var(--border)] shrink-0 shadow-sm">`
             : `<div class="w-14 h-14 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] flex items-center justify-center text-[var(--primary)] text-xl shrink-0 shadow-sm"><i class="fa-solid ${plant.icon || 'fa-leaf'}"></i></div>`
             }
             <div class="min-w-0 pr-2">
@@ -6697,8 +6716,12 @@ window.saveCompostSettings = async () => {
                 });
 
                 state.unsubLogs = onSnapshot(query(collection(db, `users/${user.uid}/plant_logs`), orderBy("date", "desc")), snap => {
+                    console.log(`[DEBUG] Received ${snap.docs.length} plant logs from Firestore.`);
                     state.logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    renderDashboard(); renderHistory();
+                    // CRITICAL: Re-render the Garden grid so cards update with the latest log photos once logs load!
+                    renderPlants();
+                    renderDashboard(); 
+                    renderHistory();
                 });
 
                 state.unsubStructs = onSnapshot(collection(db, `users/${user.uid}/garden_structures`), snap => {

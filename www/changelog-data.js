@@ -1,6 +1,13 @@
 // /changelog-data.js
 
 export const changelogData = [
+    {
+    version: "v16.74.1-alpha",
+    date: "2026-10-09",
+    changes: [
+        "In PlantTrackr: Fixed an issue where the Garden overview tab did not display the latest progress log photo by triggering renderPlants() when logs load and optimizing card photo resolution.",
+    ]
+},
 {
     version: "v16.74.0-alpha",
     date: "2026-10-06",
