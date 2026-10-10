@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.75.0-alpha",
+    date: "2026-10-11",
+    changes: [
+        "In Hub: Eliminated bright white flash on cold start in iPad Safari PWA by executing theme detection early in the head and setting instant background paint styles.",
+        "In VidTrackr: Added a 'New' badge to highlight series episodes aired within the last 14 days in the Up Next feed.",
+        "In VidTrackr: Added preconnect resource hints for TMDB API and image servers to reduce initial network handshake latency.",
+        "In VidTrackr: Throttled the back-to-top scroll listener using requestAnimationFrame to eliminate layout thrashing during scrolling.",
+    ]
+},
+    {
     version: "v16.74.1-alpha",
     date: "2026-10-09",
     changes: [

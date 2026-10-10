@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>VidTrackr</title>
+    <!-- [PERFORMANCE] Pre-establish connections to TMDB servers to speed up initial data and image fetches -->
+    <link rel="preconnect" href="https://image.tmdb.org" crossorigin>
+    <link rel="preconnect" href="https://api.themoviedb.org" crossorigin>
     <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'128'%20height%3D'128'%20viewBox%3D'0%200%20128%20128'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g'%20x1%3D'85.35533905932738%25'%20y1%3D'85.35533905932738%25'%20x2%3D'14.644660940672615%25'%20y2%3D'14.64466094067263%25'%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D'0%25'%20style%3D'stop-color%3A%234f46e5%3Bstop-opacity%3A0'%20%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3Cstop%20offset%3D'100%25'%20style%3D'stop-color%3A%239333ea%3Bstop-opacity%3A0'%20%2F%3E%0A%20%20%20%20%20%20%20%20%20%20%20%20%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D'128'%20height%3D'128'%20rx%3D'25.6'%20fill%3D'url(%23g)'%20%2F%3E%3Cg%20transform%3D'translate(0%2C%200)%20rotate(0%2C%2064%2C%2064)'%3E%3Csvg%20x%3D'16'%20y%3D'16'%20width%3D'96'%20height%3D'96'%20viewBox%3D'0%200%20576%20512'%3E%3Cpath%20fill%3D'%23ef4444'%20fill-opacity%3D'1'%20d%3D'M64%2064C28.7%2064%200%2092.7%200%20128v64c0%208.8%207.4%2015.7%2015.7%2018.6C34.5%20217.1%2048%20235%2048%20256s-13.5%2038.9-32.3%2045.4C7.4%20304.3%200%20311.2%200%20320v64c0%2035.3%2028.7%2064%2064%2064H512c35.3%200%2064-28.7%2064-64V320c0-8.8-7.4-15.7-15.7-18.6C541.5%20294.9%20528%20277%20528%20256s13.5-38.9%2032.3-45.4c8.3-2.9%2015.7-9.8%2015.7-18.6V128c0-35.3-28.7-64-64-64H64zm64%20112l0%20160c0%208.8%207.2%2016%2016%2016H432c8.8%200%2016-7.2%2016-16V176c0-8.8-7.2-16-16-16H144c-8.8%200-16%207.2-16%2016zM96%20160c0-17.7%2014.3-32%2032-32H448c17.7%200%2032%2014.3%2032%2032V352c0%2017.7-14.3%2032-32%2032H128c-17.7%200-32-14.3-32-32V160z'%20%2F%3E%3C%2Fsvg%3E%3C%2Fg%3E%3C%2Fsvg%3E">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -2754,8 +2757,22 @@ async function loadUpNext() {
                                     // Show is completely caught up
                                     if (!nextEpData || nextEpData.status_code === 34) return null;
 
+                                    // Add comments so I can easily understand what it means and edit it later
+                                    // Check if this is a newly released episode (aired in the last 14 days). 
+                                    // We use >= -1 to account for global timezone differences.
+                                    let isNewRelease = false;
+                                    if (nextEpData.air_date) {
+                                        const airDate = new Date(nextEpData.air_date);
+                                        const now = new Date();
+                                        const daysSinceAir = (now - airDate) / (1000 * 60 * 60 * 24);
+                                        if (daysSinceAir >= -1 && daysSinceAir <= 14) {
+                                            isNewRelease = true;
+                                        }
+                                    }
+
                                     return {
                                         type: 'episode',
+                                        isNewRelease: isNewRelease,
                                         isResume: false,
                                         show: entry.showObj,
                                         episode: {
@@ -2921,12 +2938,17 @@ async function loadUpNext() {
                 const progress = item.progress || 0;
                 let typeBadge = '';
                 if (!isMovie && data.episode_type && data.episode_type !== 'standard') {
-                    const formatType = data.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    let typeColor = 'bg-purple-900/50 text-purple-300 border-purple-800';
-                    if (data.episode_type.includes('finale')) typeColor = 'bg-red-900/50 text-red-300 border-red-800';
-                    if (data.episode_type.includes('premiere')) typeColor = 'bg-blue-900/50 text-blue-300 border-blue-800';
-                    typeBadge = `<span class="text-[9px] ${typeColor} border px-1 py-0.5 rounded uppercase font-bold tracking-wide shadow-sm ml-2 align-middle inline-block">${formatType}</span>`;
-                }
+                                    const formatType = data.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                    let typeColor = 'bg-purple-900/50 text-purple-300 border-purple-800';
+                                    if (data.episode_type.includes('finale')) typeColor = 'bg-red-900/50 text-red-300 border-red-800';
+                                    if (data.episode_type.includes('premiere')) typeColor = 'bg-blue-900/50 text-blue-300 border-blue-800';
+                                    typeBadge = `<span class="text-[9px] ${typeColor} border px-1 py-0.5 rounded uppercase font-bold tracking-wide shadow-sm ml-2 align-middle inline-block">${formatType}</span>`;
+                                }
+                                
+                                // Append the newly released badge to the UI logic if flagged
+                                if (item.isNewRelease) {
+                                    typeBadge += `<span class="text-[9px] bg-[var(--primary)] text-white border border-red-400 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide shadow-[0_0_8px_rgba(237,34,36,0.6)] ml-2 align-middle inline-block animate-pulse"><i class="fa-solid fa-fire mr-1"></i>New</span>`;
+                                }
                 
                 const jsonStr = JSON.stringify({
                     ids: data.ids, 
@@ -5216,7 +5238,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                         ${headerHtml}
                         <div class="card p-3 rounded-xl flex items-center gap-3 md:gap-5 hover:bg-[var(--card)] border border-gray-800 hover:border-gray-500 transition group relative animate-fade bg-[var(--card)]/60 mb-2 shadow-md hover:shadow-xl" onclick="location.hash='${navHash}'">
                             <div class="relative w-24 h-14 md:w-36 md:h-20 flex-shrink-0 overflow-hidden rounded-lg shadow-lg bg-gray-900 border border-gray-800">
-                                <img id="hist-img-${item.id}" src="${img}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                <img id="hist-img-${item.id}" src="${img}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_IMG}'">
                                 <div class="absolute bottom-0 left-0 bg-black/80 text-white text-[9px] px-2 py-1 rounded-tr-lg font-bold uppercase tracking-widest shadow-sm">${type}</div>
                             </div>
                             <div class="flex-grow min-w-0 flex flex-col justify-center">
@@ -8153,18 +8175,24 @@ document.getElementById('modal-title').innerText = data.title;
         });
 
         // Show/hide Back to Top button based on scroll position to improve navigation on long lists
+        // [PERFORMANCE] Throttled scroll listener to prevent continuous layout trashing
+        let scrollTimeout;
         window.addEventListener('scroll', () => {
-            const btt = document.getElementById('back-to-top');
-            if (btt) {
-                if (window.scrollY > 500) {
-                    btt.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
-                    btt.classList.add('opacity-100', 'translate-y-0', 'pointer-events-auto');
-                } else {
-                    btt.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none');
-                    btt.classList.remove('opacity-100', 'translate-y-0', 'pointer-events-auto');
+            if (scrollTimeout) return;
+            scrollTimeout = requestAnimationFrame(() => {
+                const btt = document.getElementById('back-to-top');
+                if (btt) {
+                    if (window.scrollY > 500) {
+                        btt.classList.remove('opacity-0', 'translate-y-10', 'pointer-events-none');
+                        btt.classList.add('opacity-100', 'translate-y-0', 'pointer-events-auto');
+                    } else {
+                        btt.classList.add('opacity-0', 'translate-y-10', 'pointer-events-none');
+                        btt.classList.remove('opacity-100', 'translate-y-0', 'pointer-events-auto');
+                    }
                 }
-            }
-        });
+                scrollTimeout = null;
+            });
+        }, { passive: true });
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
