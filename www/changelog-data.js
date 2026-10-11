@@ -2,6 +2,38 @@
 
 export const changelogData = [
     {
+    version: "v16.76.0-alpha",
+    date: "2026-10-11",
+    changes: [
+        "In Analyser App: Implemented input debouncing for table search and attribute filters to improve typing performance and reduce UI blocking.",
+        "In Analyser App: Refactored table rendering to use DocumentFragment, heavily optimizing DOM reflows for large datasets.",
+        "In Analyser App: Implemented date parsing cache during table sorting to drastically reduce script execution time on large datasets.",
+        "In Analyser App: Added console debugging timing metrics (console.time) for table rendering loops.",
+        "In Analyser App: Built a premium, animated, stackable toast notification system to replace the rigid static message box.",
+        "In Analyser App: Replaced the basic table loading spinner with a modern, shimmering 'skeleton' loader for smoother perceived performance.",
+        "In Analyser App: Added zebra striping to the data table for improved reading legibility across wide screens.",
+        "In Analyser App: Added a 'Clear Search & Tags' button directly into the empty state view to prevent UX dead-ends.",
+        "In Analyser App: Upgraded Chart.js visual configuration to include smooth bezier curves (tension: 0.4), dynamic canvas gradient fills, and highly visible interactive hover points.",
+        "In Analyser App: Redesigned the chart summary stat cards with premium gradient backgrounds, absolute positioning icons, and modern typography.",
+        "In Analyser App: Refactored date range quick filters into a sleek, horizontally scrollable 'pill' menu, saving significant vertical screen space.",
+        "In Analyser App: Added a beautiful frosted-glass 'Empty State' overlay to the main chart that automatically appears when current filters yield zero data.",
+        "In Analyser App: Overhauled the file drag-and-drop zone UI with animated borders, dynamic scaling, cloud icons, and refined typography.",
+        "In Analyser App: Upgraded the table pagination controls to use premium inset containers, pill-shaped indicators, and chevron icons.",
+        "In Analyser App: Engineered an 'Auto-Discovery Insight Engine' that performs matrix math across all possible attribute pairings to automatically surface strong hidden correlations.",
+        "In Analyser App: Implemented 'Cinematic Time-Lapse Playback' allowing users to animate their timeline charts chronologically.",
+        "In Analyser App: Built a real-time Statistical Outlier Detector that automatically flags anomalies (Z-Score > 2) directly in the data table.",
+        "In Analyser App: Developed a hacker-style 'CLI Terminal' for frictionless natural language data logging (e.g. '8 mood' -> submits instantly).",
+        "In Analyser App: Implemented Algorithmic Data Smoothing in the Insights tab. Users can toggle a 7-Day Rolling Average trendline to cut through daily chart noise.",
+        "In Analyser App: Introduced friction-less Excel-style inline editing. Double-clicking any data cell in the table transforms it into an input field for instant database updates.",
+        "In Analyser App: Gamified the Planner tab by writing a historical scanning engine that dynamically calculates and renders real-time consecutive 'streaks' for daily goals.",
+        "In Analyser App: Added a 'Quick Backfill' engine directly into the Triage timeline. When reviewing past days, the app detects incomplete tasks and generates one-click contextual logging buttons.",
+        "In Analyser App: Completely redesigned the Settings interface, migrating from stacked cards to a professional Master-Detail layout with a sticky vertical sidebar navigation.",
+        "In Analyser App: Converted the basic column selection checkboxes into modern, animated iOS-style toggle switches.",
+        "In Analyser App: Built a Global Tag Renamer. Users can now click an edit icon next to any tag to update its string globally across the entire database in a single batched transaction.",
+        "In Analyser App: Added a 'Copy JSON' button to the Data Modal allowing users to easily extract individual row data."
+    ]
+},
+    {
     version: "v16.75.0-alpha",
     date: "2026-10-11",
     changes: [
