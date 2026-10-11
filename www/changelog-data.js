@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v16.77.0-alpha",
+    date: "2026-10-12",
+    changes: [
+                "In TaskTrackr: Built a comprehensive Google Takeout Import Wizard to securely ingest .json backups natively without ongoing API syncing.",
+                "In TaskTrackr: Added selective list importing and dynamic routing strategies (Recreate Original Structure, Merge to New List, Merge to Inbox).",
+                "In TaskTrackr: Added deep data parsing to accurately map Google's proprietary recurrence schedules into standard RRULE formats, intelligently ignoring PAST_HIDDEN instances.",
+                "In TaskTrackr: Mapped precise scheduled times, Gmail creation links, and original creation/completion timestamps directly into imported tasks and their edit histories.",
+                "In TaskTrackr: Implemented Firebase writeBatching in the Import Wizard to safely process thousands of tasks simultaneously without hitting database rate limits.",
+                "In TaskTrackr: Added a 5MB local storage quota safety guard to the import process, gracefully catching capacity errors to prevent app crashes and cache corruption.",
+                "In TaskTrackr: Added asynchronous UI yielding during massive file imports to maintain browser responsiveness and display real-time progress counters.",
+                "In TaskTrackr: Upgraded the Project Deletion tool to perform 'Cascade Deletes' with Firebase batching, safely destroying all nested sub-folders and tasks when a parent folder is deleted without spamming the API.",
+                "In TaskTrackr: Enhanced sidebar routing to maintain the 'Completed' or 'Hidden' context when switching between folders.",
+                "In TaskTrackr: Upgraded the filtering engine to recursively display tasks from all nested sub-folders when a parent folder is selected.",
+                "In TaskTrackr: Implemented safety guardrails preventing the deletion of the master Inbox and automatically appending an '#Imported' tag to ingested tasks."
+    ]
+},
+    {
     version: "v16.76.0-alpha",
     date: "2026-10-11",
     changes: [
