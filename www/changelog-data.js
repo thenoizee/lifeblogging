@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.78.0-alpha",
+    date: "2026-10-14",
+    changes: [
+                "In VidTrackr: Added silent background prefetching for previous and next episodes (including cross-season boundaries, still images, and parent show metadata) for instant 0ms episode navigation.",
+                "In VidTrackr: Updated the Log & Rate modal to automatically hide the rating slider on rewatches (displaying a one-click 'Log Rewatch' button) unless the user opts to update their rating.",
+                "In VidTrackr: Added a persistent per-show state cache ('vt_upnext_show_states_v1') and 18-item early exit in Continue Watching to remember caught-up series and eliminate repetitive 404 TMDB requests.",
+                "In VidTrackr: Extended TMDB 404 negative caching to 30 minutes and silenced expected 404 console errors when checking for unaired episodes.",
+                "In VidTrackr: Unblocked initial app boot by seeding history and profile greeting data from localStorage and moving Firestore/Trakt startup syncs to the background.",
+                "In VidTrackr: Optimized Movie, Show, and Episode detail views to resolve watch history from in-memory caches and replaced sequential Firestore document loops with 4 fast parallel reads.",
+                "In VidTrackr: Fixed composite TMDB episode IDs ('show-season-episode') being truncated by parseInt() when saving, updating, or removing ratings.",
+                "In VidTrackr: Added Left/Right arrow keyboard shortcuts for episode navigation and Escape key support to close active modals.",
+    ]
+    },
+    {
     version: "v16.77.0-alpha",
     date: "2026-10-12",
     changes: [

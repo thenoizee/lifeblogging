@@ -282,6 +282,13 @@ input[type=range]::-moz-range-thumb {
             </div>
             
             <div class="flex-grow pb-1">
+                <!-- Toggle button shown only when an item has already been watched before -->
+                <div id="rewatch-rating-toggle" class="hidden mb-2">
+                    <button type="button" onclick="window.enableRewatchRating()" class="w-full py-2 px-3 rounded-xl border border-dashed border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] text-xs font-bold transition flex items-center justify-center gap-2 bg-[var(--bg)]/50">
+                        <i class="fa-solid fa-star text-yellow-500"></i> Watched before — Want to update rating too?
+                    </button>
+                </div>
+
                 <div class="mb-2 bg-[var(--bg)] p-2 rounded-xl border border-gray-700 transition-colors duration-300" id="rating-container">
                     <div class="flex justify-between items-center mb-1">
                         <label class="text-xs font-bold text-gray-300">Rating</label>
@@ -299,7 +306,8 @@ input[type=range]::-moz-range-thumb {
                         <button class="platform-option px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Netflix">Netflix</button>
                         <button class="platform-option px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Max">Max</button>
                         <button class="platform-option px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Hulu">Hulu</button>
-                        <button class="platform-option px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Disney+">Prime</button>
+                        <button class="platform-option px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Disney+">Disney+</button>
+<button class="platform-option px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Prime Video">Prime</button>
                         <button class="platform-option px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Theater">Theater</button>
                         <button class="platform-option px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Airplane">Plane</button>
                         <button class="platform-option px-2 py-0.5 rounded-full text-[10px] font-bold border border-gray-600 text-gray-400 hover:text-white hover:border-[var(--primary)] transition bg-[var(--bg)]" data-platform="Other">Other</button>
@@ -588,18 +596,18 @@ if (headerRight) {
             const fetchOptions = isSearch ? { cache: 'reload', priority: 'high' } : { priority: 'low' };
             const res = await fetch(url, fetchOptions);
             if (!res.ok) {
-                console.error(`[Debug] TMDB fetch failed for endpoint: ${endpoint} | Status: ${res.status}`);
-                // Add comments so I can easily understand what it means and edit it later
-                // Cache the failure with a 60-second expiration so it can self-heal later
+                // Only log unexpected errors (404s on episode checks are normal when a season/show has ended)
+                if (res.status !== 404 || window.VIDTRACKR_DEBUG) {
+                    console.debug(`[Debug] TMDB status ${res.status} for endpoint: ${endpoint}`);
+                }
+                // Cache 404 Not Found for 30 minutes (since non-existent episodes won't appear in 60s), other errors for 60s
                 if (!isSearch) {
                     try { 
-                        if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Caching TMDB API failure for 60s: ${cacheKey}`);
-                        sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true, expiry: Date.now() + 60000 })); 
-                    } catch(e) {
-                        if (window.VIDTRACKR_DEBUG) console.error('[Debug] Failed to write error cache', e);
-                    }
+                        const ttl = res.status === 404 ? 1800000 : 60000;
+                        sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true, status: res.status, expiry: Date.now() + ttl })); 
+                    } catch(e) {}
                 }
-                throw new Error('TMDB API Error');
+                throw new Error(`TMDB API Error ${res.status}`);
             }
             
             const data = await res.json();
@@ -1302,8 +1310,12 @@ if (headerRight) {
                 if (currentUser) {
                     await deleteDoc(doc(db, `users/${currentUser.uid}/ratings`, String(id)));
                 }
+                // Delete both string (for composite episode IDs like "1399-1-2") and numeric keys
+                userRatings.delete(String(id));
                 userRatings.delete(parseInt(id));
+                userRatingDetails.delete(String(id));
                 userRatingDetails.delete(parseInt(id));
+                if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Rating removed for ID: ${id}`);
                 showToast('Rating removed');
                 
                 // Refresh UI components if active
@@ -1578,57 +1590,226 @@ if (headerRight) {
             }
         };
 
-        
+        // Helper to check if an item has been watched before and configure the modal's rating UI accordingly
+        window.configureScrobbleModalRatingUI = (item, itemType) => {
+            let isPreviouslyWatched = Boolean(item.isWatched);
+            const traktId = String(item.ids?.trakt || '');
+            const tmdbId = String(item.ids?.tmdb || item.id || '');
+            
+            let compositeId = null;
+            const sTmdb = item.show?.ids?.tmdb || item.show?.id;
+            const sNum = item.season !== undefined ? item.season : item.season_number;
+            const eNum = item.number !== undefined ? item.number : item.episode_number;
+            if (itemType === 'episode' && sTmdb && sNum !== undefined && eNum !== undefined) {
+                compositeId = `${sTmdb}-${sNum}-${eNum}`;
+            }
 
-// 1. Standalone function to open the modal (fixes the click propagation issue)
-window.openScrobbleModal = (data) => {
-    // Handle data if passed as string from HTML attribute
-    const item = typeof data === 'string' ? JSON.parse(data) : data;
-    const itemType = item.type || 'movie'; 
-    
-    currentModalItem = { item: item, type: itemType };
-    document.getElementById('custom-progress').value = ''; 
-    document.getElementById('modal-title').innerText = item.title;
-    els.modal.classList.remove('hidden');
+            const existingRating = (compositeId ? userRatings.get(compositeId) : null)
+                || (traktId ? userRatings.get(traktId) || userRatings.get(parseInt(traktId)) : null)
+                || (itemType !== 'episode' && tmdbId ? userRatings.get(tmdbId) || userRatings.get(parseInt(tmdbId)) : null);
 
-    // Reset platform tags when modal opens
-    selectedPlatform = null;
-    document.querySelectorAll('.platform-option').forEach(b => {
-        b.classList.remove('bg-[var(--primary)]', 'text-white', 'border-[var(--primary)]');
-    });
-    
-    // Auto-set date
-    const now = new Date(); 
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    document.getElementById('custom-date').value = now.toISOString().slice(0, 16);
-    selectedDate = new Date().toISOString();
+            if (existingRating) isPreviouslyWatched = true;
 
-    // Auto-fill slider if Resume data exists
-if(item.runtime) {
-     const existing = userPlayback.get(parseInt(item.ids.trakt));
-     const slider = document.getElementById('progress-slider');
-     let currentPct = 0;
-     if(existing) {
-         currentPct = existing.progress;
-         if(slider) {
-             slider.value = Math.round(currentPct);
-             document.getElementById('progress-percent-display').innerText = `${Math.round(currentPct)}%`;
-             document.getElementById('custom-progress').value = Math.round((currentPct/100) * item.runtime);
-         }
-     } else {
-         if (slider) slider.value = 0;
-         document.getElementById('progress-percent-display').innerText = `0%`;
-         document.getElementById('custom-progress').value = '';
-     }
-     if (typeof updateProgressContext !== 'undefined') updateProgressContext(currentPct);
-}
-};
+            if (!isPreviouslyWatched && window.globalHistoryCache && window.globalHistoryCache.length > 0) {
+                isPreviouslyWatched = window.globalHistoryCache.some(h => {
+                    if (h.type !== itemType) return false;
+                    const m = h.media || {};
+                    if (itemType === 'episode') {
+                        const hShowTmdb = m.show?.ids?.tmdb || m.ids?.show_tmdb;
+                        const hS = m.season !== undefined ? m.season : m.season_number;
+                        const hE = m.number !== undefined ? m.number : m.episode_number;
+                        if (sTmdb && hShowTmdb && String(sTmdb) === String(hShowTmdb) && String(sNum) === String(hS) && String(eNum) === String(hE)) {
+                            return true;
+                        }
+                    }
+                    const hTrakt = String(m.ids?.trakt || '');
+                    const hTmdb = String(m.ids?.tmdb || m.id || '');
+                    return (traktId && hTrakt === traktId) || (tmdbId && hTmdb === tmdbId) || (compositeId && h.itemId === compositeId);
+                });
+            }
 
-window.toggleSpecials = () => {
+            const ratingContainer = document.getElementById('rating-container');
+            const rewatchToggle = document.getElementById('rewatch-rating-toggle');
+            const rateOnlyBtn = document.getElementById('confirm-rate-only');
+            const rateLogBtn = document.getElementById('confirm-rate-log');
+            const logOnlyBtn = document.getElementById('confirm-log');
+            const actionGrid = logOnlyBtn?.parentElement;
+
+            if (existingRating && els.ratingSlider) {
+                els.ratingSlider.value = existingRating;
+                els.ratingSlider.dispatchEvent(new Event('input'));
+            } else if (els.ratingSlider) {
+                els.ratingSlider.value = 10;
+                els.ratingSlider.dispatchEvent(new Event('input'));
+            }
+
+            if (isPreviouslyWatched) {
+                if (ratingContainer) ratingContainer.classList.add('hidden');
+                if (rewatchToggle) rewatchToggle.classList.remove('hidden');
+                if (rateOnlyBtn) rateOnlyBtn.classList.add('hidden');
+                if (rateLogBtn) rateLogBtn.classList.add('hidden');
+                if (actionGrid) {
+                    actionGrid.classList.remove('grid-cols-3');
+                    actionGrid.classList.add('grid-cols-1');
+                }
+                if (logOnlyBtn) {
+                    logOnlyBtn.className = "btn-primary py-2.5 rounded-lg font-bold shadow-lg shadow-red-900/30 text-xs w-full";
+                    logOnlyBtn.innerText = "Log Rewatch";
+                }
+            } else {
+                window.enableRewatchRating(false);
+            }
+        };
+
+        // Reveals the rating slider & buttons when the user clicks "Want to update rating too?"
+        window.enableRewatchRating = (isRewatchUpdate = true) => {
+            const ratingContainer = document.getElementById('rating-container');
+            const rewatchToggle = document.getElementById('rewatch-rating-toggle');
+            const rateOnlyBtn = document.getElementById('confirm-rate-only');
+            const rateLogBtn = document.getElementById('confirm-rate-log');
+            const logOnlyBtn = document.getElementById('confirm-log');
+            const actionGrid = logOnlyBtn?.parentElement;
+
+            if (ratingContainer) ratingContainer.classList.remove('hidden');
+            if (rewatchToggle) rewatchToggle.classList.add('hidden');
+            if (rateOnlyBtn) rateOnlyBtn.classList.remove('hidden');
+            if (rateLogBtn) {
+                rateLogBtn.classList.remove('hidden');
+                rateLogBtn.innerText = isRewatchUpdate ? "Update & Log" : "Rate & Log";
+            }
+            if (actionGrid) {
+                actionGrid.classList.remove('grid-cols-1');
+                actionGrid.classList.add('grid-cols-3');
+            }
+            if (logOnlyBtn) {
+                logOnlyBtn.className = "bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold transition text-xs";
+                logOnlyBtn.innerText = "Log Only";
+            }
+        };
+
+        // Store resolved next/prev targets in memory so clicking Next/Prev navigates in 0ms
+        window.adjacentEpisodeCache = new Map();
+
+        // Silently prefetches the previous and next episodes in the background once the current episode has loaded
+        window.prefetchAdjacentEpisodes = async (showId, currentSeason, currentEpisode) => {
+            const s = parseInt(currentSeason);
+            const e = parseInt(currentEpisode);
+            if (!showId || isNaN(s) || isNaN(e)) return;
+
+            await new Promise(r => setTimeout(r, 300));
+
+            const isTMDB = primaryDataSource === 'tmdb';
+            console.debug(`[Prefetch] Starting silent background prefetch for Show ${showId} around S${s}E${e}...`);
+
+            if (isTMDB) {
+                fetchTMDB(`/tv/${showId}?append_to_response=external_ids,aggregate_credits,watch/providers`).catch(() => null);
+            }
+
+            const prefetchSingleEpisode = async (targetS, targetE) => {
+                if (targetS < 1 || targetE < 1) return null;
+                try {
+                    const t0 = performance.now();
+                    let epData = null;
+                    if (isTMDB) {
+                        epData = await fetchTMDB(`/tv/${showId}/season/${targetS}/episode/${targetE}?append_to_response=credits,videos,images,external_ids`);
+                    } else {
+                        epData = await fetchDirect(`/shows/${showId}/seasons/${targetS}/episodes/${targetE}?extended=full`);
+                    }
+                    if (epData && epData.status_code !== 34) {
+                        const imgUrl = getImage(epData, 'episode', true);
+                        if (imgUrl && imgUrl !== PLACEHOLDER_IMG) {
+                            const img = new Image();
+                            img.src = imgUrl;
+                        }
+                        console.debug(`[Prefetch] Ready: S${targetS}E${targetE} ("${epData.name || epData.title}") in ${Math.round(performance.now() - t0)}ms`);
+                        return { season: targetS, number: targetE, data: epData };
+                    }
+                    return null;
+                } catch (err) {
+                    return null;
+                }
+            };
+
+            (async () => {
+                let nextResolved = await prefetchSingleEpisode(s, e + 1);
+                if (!nextResolved) {
+                    nextResolved = await prefetchSingleEpisode(s + 1, 1);
+                }
+                if (nextResolved) {
+                    window.adjacentEpisodeCache.set(`${showId}-${s}-${e + 1}`, nextResolved);
+                }
+            })();
+
+            (async () => {
+                let prevResolved = null;
+                if (e > 1) {
+                    prevResolved = await prefetchSingleEpisode(s, e - 1);
+                } else if (s > 1) {
+                    try {
+                        if (isTMDB) {
+                            const prevSeasonData = await fetchTMDB(`/tv/${showId}/season/${s - 1}`);
+                            if (prevSeasonData?.episodes?.length > 0) {
+                                const lastEpNum = prevSeasonData.episodes[prevSeasonData.episodes.length - 1].episode_number;
+                                prevResolved = await prefetchSingleEpisode(s - 1, lastEpNum);
+                            }
+                        } else {
+                            const prevSeasonData = await fetchDirect(`/shows/${showId}/seasons/${s - 1}?extended=full`);
+                            if (prevSeasonData?.episode_count > 0) {
+                                prevResolved = await prefetchSingleEpisode(s - 1, prevSeasonData.episode_count);
+                            }
+                        }
+                    } catch (err) {}
+                }
+                if (prevResolved) {
+                    window.adjacentEpisodeCache.set(`${showId}-${s}-${e - 1}`, prevResolved);
+                }
+            })();
+        };
+
+        window.openScrobbleModal = (data) => {
+            const item = typeof data === 'string' ? JSON.parse(data) : data;
+            const itemType = item.type || 'movie'; 
+            
+            currentModalItem = { item: item, type: itemType };
+            document.getElementById('custom-progress').value = ''; 
+            document.getElementById('modal-title').innerText = item.title;
+            els.modal.classList.remove('hidden');
+
+            window.configureScrobbleModalRatingUI(item, itemType);
+
+            selectedPlatform = null;
+            document.querySelectorAll('.platform-option').forEach(b => {
+                b.classList.remove('bg-[var(--primary)]', 'text-white', 'border-[var(--primary)]');
+            });
+            
+            const now = new Date(); 
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('custom-date').value = now.toISOString().slice(0, 16);
+            selectedDate = new Date().toISOString();
+
+            if(item.runtime) {
+                const existing = userPlayback.get(parseInt(item.ids.trakt));
+                const slider = document.getElementById('progress-slider');
+                let currentPct = 0;
+                if(existing) {
+                    currentPct = existing.progress;
+                    if(slider) {
+                        slider.value = Math.round(currentPct);
+                        document.getElementById('progress-percent-display').innerText = `${Math.round(currentPct)}%`;
+                        document.getElementById('custom-progress').value = Math.round((currentPct/100) * item.runtime);
+                    }
+                } else {
+                    if (slider) slider.value = 0;
+                    document.getElementById('progress-percent-display').innerText = `0%`;
+                    document.getElementById('custom-progress').value = '';
+                }
+                if (typeof updateProgressContext !== 'undefined') updateProgressContext(currentPct);
+            }
+        };
+
+        window.toggleSpecials = () => {
             showSpecials = !showSpecials;
             localStorage.setItem('vidtrackr_specials', showSpecials);
-            
-            // Reload the view based on where we are
             if (location.hash.startsWith('#detail/show')) {
                 const parts = location.hash.split('/');
                 renderDetail(parts[1], parts[2], parts[4]);
@@ -1636,72 +1817,62 @@ window.toggleSpecials = () => {
             if (document.getElementById('up-next-container')) loadUpNext();
         };
 
-// Add/Update this global function
-window.hideUpNext = async (id, type, title) => {
-    if(!confirm(`Hide ${title || 'this item'} from Up Next?`)) return;
-    let hidden = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
-    // Prevent duplicate entries
-    if (!hidden.some(h => String(h.id) === String(id) && h.type === type)) {
-        hidden.push({ id: parseInt(id), type: type, title: title || `Item ${id}` });
-        localStorage.setItem('vidtrackr_hidden_upnext', JSON.stringify(hidden));
-        // Sync to Firebase if available
-        if (currentUser && typeof db !== 'undefined') {
-            await setDoc(doc(db, `users/${currentUser.uid}/settings`, 'hidden'), { items: hidden }, { merge: true });
-        }
-    }
-    showToast("Hidden from Up Next");
-    loadUpNext();
-};
+        window.hideUpNext = async (id, type, title) => {
+            if(!confirm(`Hide ${title || 'this item'} from Up Next?`)) return;
+            let hidden = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
+            if (!hidden.some(h => String(h.id) === String(id) && h.type === type)) {
+                hidden.push({ id: parseInt(id), type: type, title: title || `Item ${id}` });
+                localStorage.setItem('vidtrackr_hidden_upnext', JSON.stringify(hidden));
+                if (currentUser && typeof db !== 'undefined') {
+                    await setDoc(doc(db, `users/${currentUser.uid}/settings`, 'hidden'), { items: hidden }, { merge: true });
+                }
+            }
+            showToast("Hidden from Up Next");
+            loadUpNext();
+        };
 
-window.unhideItem = async (id, type) => {
-    let hidden = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
-    hidden = hidden.filter(i => String(i.id) !== String(id) || i.type !== type);
-    localStorage.setItem('vidtrackr_hidden_upnext', JSON.stringify(hidden));
-    if (currentUser && typeof db !== 'undefined') {
-        await setDoc(doc(db, `users/${currentUser.uid}/settings`, 'hidden'), { items: hidden }, { merge: true });
-    }
-    showToast("Item restored to Up Next");
-    if (typeof renderHiddenItems === 'function') renderHiddenItems();
-    loadUpNext();
-};
+        window.unhideItem = async (id, type) => {
+            let hidden = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
+            hidden = hidden.filter(i => String(i.id) !== String(id) || i.type !== type);
+            localStorage.setItem('vidtrackr_hidden_upnext', JSON.stringify(hidden));
+            if (currentUser && typeof db !== 'undefined') {
+                await setDoc(doc(db, `users/${currentUser.uid}/settings`, 'hidden'), { items: hidden }, { merge: true });
+            }
+            showToast("Item restored to Up Next");
+            if (typeof renderHiddenItems === 'function') renderHiddenItems();
+            loadUpNext();
+        };
 
-// Unified Toggle for the Detail Pages
-window.toggleHidden = async (id, type, title) => {
-    let hidden = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
-    const exists = hidden.some(h => String(h.id) === String(id) && h.type === type);
-    if (exists) {
-        await window.unhideItem(id, type);
-    } else {
-        await window.hideUpNext(id, type, title);
-    }
-    // Refresh Detail Page to flip the button icon
-    if (location.hash.startsWith('#detail')) {
-         const parts = location.hash.split('/');
-         if(parts[3] === 'season' && parts[4]) window.renderDetail(parts[1], parts[2], parts[4]);
-         else window.renderDetail(parts[1], parts[2]);
-    }
-};
+        window.toggleHidden = async (id, type, title) => {
+            let hidden = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
+            const exists = hidden.some(h => String(h.id) === String(id) && h.type === type);
+            if (exists) {
+                await window.unhideItem(id, type);
+            } else {
+                await window.hideUpNext(id, type, title);
+            }
+            if (location.hash.startsWith('#detail')) {
+                const parts = location.hash.split('/');
+                if(parts[3] === 'season' && parts[4]) window.renderDetail(parts[1], parts[2], parts[4]);
+                else window.renderDetail(parts[1], parts[2]);
+            }
+        };
 
-window.loadUpNext = loadUpNext;
+        window.loadUpNext = loadUpNext;
 
-window.removeProgress = async (playbackId) => {
+        window.removeProgress = async (playbackId) => {
             if(!confirm('Drop this item from your "Continue Watching" list?')) return;
-            
             const btn = document.querySelector(`button[onclick*="${playbackId}"]`);
             if(btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-
             try {
                 if (traktAccessToken && primaryDataSource === 'trakt') {
                     await fetch(`${TRAKT_API_URL}/sync/playback/${playbackId}`, { method: 'DELETE', headers: traktHeader() });
                 }
-                
                 if (currentUser) {
                     await deleteDoc(doc(db, `users/${currentUser.uid}/playback`, String(playbackId)));
                 }
-                
                 userPlayback.delete(parseInt(playbackId));
                 showToast('Item dropped successfully');
-                
                 localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
                 localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
                 loadUpNext(); 
@@ -1711,12 +1882,10 @@ window.removeProgress = async (playbackId) => {
                 showToast('Failed to remove item', 'error');
                 if(btn) btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
             }
-};
+        };
 
-// --- Trailer Helpers ---
         window.openTrailer = (url) => {
             if (!url) return;
-            // Extract Video ID from YouTube URLs
             let videoId = null;
             if (url.includes('youtube.com/watch?v=')) videoId = url.split('v=')[1].split('&')[0];
             else if (url.includes('youtu.be/')) videoId = url.split('.be/')[1];
@@ -1725,33 +1894,41 @@ window.removeProgress = async (playbackId) => {
                 document.getElementById('trailer-frame').src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
                 document.getElementById('trailer-modal').classList.remove('hidden');
             } else {
-                // Fallback for non-YouTube links
                 window.open(url, '_blank'); 
             }
         };
 
         window.closeTrailer = () => {
             document.getElementById('trailer-modal').classList.add('hidden');
-            document.getElementById('trailer-frame').src = ''; // Stop playback
+            document.getElementById('trailer-frame').src = '';
         };
-        // Close modal on background click
         document.getElementById('trailer-modal').addEventListener('click', (e) => {
             if (e.target.id === 'trailer-modal') window.closeTrailer();
         });
 
         window.navigateEpisode = async (showId, currentSeason, targetNumber) => {
+            const isTMDB = primaryDataSource === 'tmdb';
+            const cacheLookupKey = `${showId}-${currentSeason}-${targetNumber}`;
+
+            // FAST PATH: If background prefetch already resolved this target, route in 0ms with no loader!
+            if (window.adjacentEpisodeCache && window.adjacentEpisodeCache.has(cacheLookupKey)) {
+                const cachedTarget = window.adjacentEpisodeCache.get(cacheLookupKey);
+                console.debug(`[Navigate] 0ms instant jump to prefetched S${cachedTarget.season}E${cachedTarget.number}`);
+                if (isTMDB) {
+                    location.hash = `#detail/episode/${showId}-${cachedTarget.season}-${cachedTarget.number}`;
+                } else if (cachedTarget.data?.ids?.trakt) {
+                    location.hash = `#detail/episode/${cachedTarget.data.ids.trakt}`;
+                }
+                return;
+            }
+
             showLoader();
             try {
                 let targetS = currentSeason;
                 let targetE = targetNumber;
-                let isTMDB = primaryDataSource === 'tmdb';
                 let epObj = null;
 
-                // Helper to check if an episode exists
                 const checkEp = async (s, e) => {
-                    // OPTIMIZATION: Match the exact URL parameters renderDetail uses.
-                    // This forces fetchTMDB to store the massive payload in sessionStorage,
-                    // resulting in a 0ms cache hit when the page actually routes and renders!
                     if (isTMDB) return await fetchTMDB(`/tv/${showId}/season/${s}/episode/${e}?append_to_response=credits,videos,images,external_ids`);
                     return await fetchDirect(`/shows/${showId}/seasons/${s}/episodes/${e}?extended=full`);
                 };
@@ -1760,7 +1937,6 @@ window.removeProgress = async (playbackId) => {
                     try {
                         epObj = await checkEp(currentSeason, targetNumber);
                     } catch (err) {
-                        console.log("Next episode in season not found, checking next season...");
                         targetS = currentSeason + 1;
                         targetE = 1;
                         epObj = await checkEp(targetS, targetE);
@@ -1780,7 +1956,6 @@ window.removeProgress = async (playbackId) => {
                     return showToast('No more episodes found', 'error');
                 }
                 
-                // Route to the confirmed episode
                 if (isTMDB) {
                     location.hash = `#detail/episode/${showId}-${targetS}-${targetE}`;
                 } else if (epObj && epObj.ids) {
@@ -1792,6 +1967,10 @@ window.removeProgress = async (playbackId) => {
             }
             hideLoader();
         };
+
+        
+
+
 
         function getImage(item, typeOverride = null, preferLandscape = false) {
             const type = typeOverride || item.type || item.media_type;
@@ -2285,19 +2464,15 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
         }
 
 async function renderDashboard() {
-    let greetingName = '';
-    try {
-        const profileSnap = await getDoc(doc(db, `users/${currentUser.uid}/settings/profile`));
-        if (profileSnap.exists() && profileSnap.data().displayName) {
-            greetingName = `, ${profileSnap.data().displayName}`;
-        }
-    } catch(e) {}
+    // Use cached display name immediately so we never block Dashboard rendering on a Firestore network read
+    const cachedName = localStorage.getItem('vt_user_display_name') || '';
+    const greetingName = cachedName ? `, ${cachedName}` : '';
 
     els.content.innerHTML = `
         <div class="mb-8 p-6 md:p-8 rounded-3xl bg-gradient-to-br from-[var(--primary)] to-purple-900 text-white shadow-2xl relative overflow-hidden animate-fade">
             <div class="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                 <div>
-                    <h1 class="text-3xl md:text-4xl font-bold mb-2">Welcome Back${greetingName}!</h1>
+                    <h1 id="dashboard-greeting" class="text-3xl md:text-4xl font-bold mb-2">Welcome Back${greetingName}!</h1>
                     <p class="opacity-90 text-lg">Your personal media tracking hub.</p>
                 </div>
                 <div id="quick-stats" class="flex gap-4 md:gap-6 text-center bg-black/20 p-4 rounded-xl backdrop-blur-md w-full md:w-auto justify-around md:justify-start"></div>
@@ -2608,9 +2783,13 @@ async function renderDashboard() {
         window.rateDirect = async (id, type, rating, skipLog = false) => {
             if (event) event.stopPropagation();
             
-            // Optimistic UI Update: Instantly apply the rating to the UI state
+            // Optimistic UI Update: Store both String key (for composite episode IDs) and numeric key
+            const nowIso = new Date().toISOString();
+            userRatings.set(String(id), parseInt(rating));
             userRatings.set(parseInt(id), parseInt(rating)); 
-            userRatingDetails.set(parseInt(id), { rating: parseInt(rating), ratedAt: new Date().toISOString() });
+            userRatingDetails.set(String(id), { rating: parseInt(rating), ratedAt: nowIso });
+            userRatingDetails.set(parseInt(id), { rating: parseInt(rating), ratedAt: nowIso });
+            if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Optimistic rating ${rating}/10 applied for ${type} (${id})`);
             
             // Instantly visually refresh UI components before network request finishes
             if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) loadUpNext();
@@ -2708,27 +2887,26 @@ async function loadUpNext() {
                             activeShows = Array.from(showMap.values()).slice(0, 40);
                         }
                         
-                        // Chunk requests to avoid TMDB 429 Rate Limits
-                        // [DEBUG] Track total UpNext processing time
+                        // Per-Show State Cache: Remembers if a show is "caught up" or what its next episode is for 12 hours
+                        // Keyed by showTmdbId + maxSeason + maxEpisode so logging a new episode automatically invalidates only that show!
+                        const showStateCache = JSON.parse(localStorage.getItem('vt_upnext_show_states_v1') || '{}');
+                        const nowMs = Date.now();
+                        let stateCacheDirty = false;
+
                         if (window.VIDTRACKR_DEBUG) console.time('UpNextFetchEngine');
                         const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
-                        // OPTIMIZATION: Increased batch size from 8 to 15. This allows 30 concurrent TMDB requests instead of 16.
-                        const batches = chunk(activeShows, 15);
+                        // Process in fast batches of 10, and stop early once we have 18 valid Up Next items!
+                        const batches = chunk(activeShows, 10);
                         
                         const nextEpisodes = [];
                         for (const batch of batches) {
-                            // Add comments when writing code so can easily understand what it means and edit it later
-                            // ABORT LOOP IF USER LEAVES DASHBOARD: Drops all pending TMDB requests so the network queue is instantly freed up for other tabs (like Search)
                             if (!document.getElementById('up-next-container')) {
-                                if (window.VIDTRACKR_DEBUG) console.debug("[Debug] User left Dashboard. Aborting Up Next fetch loop.");
                                 throw new Error("Navigation Abort");
                             }
 
                             const batchResults = await Promise.all(batch.map(async (entry) => {
                                 try {
                                     let tmdbId = entry.showTmdbId;
-                                    
-                                    // If no TMDB ID, fallback to searching TMDB by title
                                     if (!tmdbId && entry.showTitle) {
                                         const searchRes = await fetchTMDB(`/search/tv?query=${encodeURIComponent(entry.showTitle)}`);
                                         if (searchRes.results && searchRes.results.length > 0) {
@@ -2739,35 +2917,77 @@ async function loadUpNext() {
                                     }
                                     if (!tmdbId) return null;
 
-                                    // OPTIMIZATION: Cut Up Next API calls by 50%.
-                                    // Instead of fetching the parent show details to calculate limits, blindly fetch the next sequential episode.
-                                    // If TMDB returns 34 (Not Found), bump to Episode 1 of the NEXT season.
+                                    // 1. Check Per-Show State Cache (0ms instant hit, skips 404 network calls for finished shows!)
+                                    const stateKey = `${tmdbId}_S${entry.s}E${entry.e}`;
+                                    const cachedState = showStateCache[stateKey];
+                                    if (cachedState && (nowMs - cachedState.ts < 43200000)) { // 12-hour TTL
+                                        if (cachedState.caughtUp) return null;
+                                        if (cachedState.epData) {
+                                            const nextEpData = cachedState.epData;
+                                            let isNewRelease = false;
+                                            if (nextEpData.air_date) {
+                                                const daysSinceAir = (new Date() - new Date(nextEpData.air_date)) / (1000 * 60 * 60 * 24);
+                                                if (daysSinceAir >= -1 && daysSinceAir <= 14) isNewRelease = true;
+                                            }
+                                            return {
+                                                type: 'episode',
+                                                isNewRelease,
+                                                isResume: false,
+                                                show: entry.showObj,
+                                                episode: {
+                                                    ...nextEpData,
+                                                    title: nextEpData.name,
+                                                    season: cachedState.nextS,
+                                                    number: cachedState.nextE,
+                                                    ids: { trakt: `${tmdbId}-${cachedState.nextS}-${cachedState.nextE}`, tmdb: nextEpData.id }
+                                                },
+                                                ids: { trakt: `${tmdbId}-${cachedState.nextS}-${cachedState.nextE}`, tmdb: nextEpData.id },
+                                                title: nextEpData.name,
+                                                watched_at: entry.watchedAt
+                                            };
+                                        }
+                                    }
+
+                                    // 2. Not cached yet: Check TMDB for next episode
                                     let nextS = entry.s;
                                     let nextE = entry.e + 1;
 
                                     let nextEpData = await fetchTMDB(`/tv/${tmdbId}/season/${nextS}/episode/${nextE}`).catch(() => null);
 
                                     if (!nextEpData || nextEpData.status_code === 34) {
-                                        // Season ended. Try S(N+1) E1
                                         nextS += 1;
                                         nextE = 1;
                                         nextEpData = await fetchTMDB(`/tv/${tmdbId}/season/${nextS}/episode/${nextE}`).catch(() => null);
                                     }
 
-                                    // Show is completely caught up
-                                    if (!nextEpData || nextEpData.status_code === 34) return null;
+                                    // Show is completely caught up — save to localStorage so we don't 404 on it again!
+                                    if (!nextEpData || nextEpData.status_code === 34) {
+                                        showStateCache[stateKey] = { caughtUp: true, ts: nowMs };
+                                        stateCacheDirty = true;
+                                        return null;
+                                    }
 
-                                    // Add comments so I can easily understand what it means and edit it later
-                                    // Check if this is a newly released episode (aired in the last 14 days). 
-                                    // We use >= -1 to account for global timezone differences.
+                                    // Cache valid next episode state
+                                    showStateCache[stateKey] = {
+                                        caughtUp: false,
+                                        nextS,
+                                        nextE,
+                                        epData: {
+                                            id: nextEpData.id,
+                                            name: nextEpData.name,
+                                            air_date: nextEpData.air_date,
+                                            still_path: nextEpData.still_path,
+                                            runtime: nextEpData.runtime,
+                                            episode_type: nextEpData.episode_type
+                                        },
+                                        ts: nowMs
+                                    };
+                                    stateCacheDirty = true;
+
                                     let isNewRelease = false;
                                     if (nextEpData.air_date) {
-                                        const airDate = new Date(nextEpData.air_date);
-                                        const now = new Date();
-                                        const daysSinceAir = (now - airDate) / (1000 * 60 * 60 * 24);
-                                        if (daysSinceAir >= -1 && daysSinceAir <= 14) {
-                                            isNewRelease = true;
-                                        }
+                                        const daysSinceAir = (new Date() - new Date(nextEpData.air_date)) / (1000 * 60 * 60 * 24);
+                                        if (daysSinceAir >= -1 && daysSinceAir <= 14) isNewRelease = true;
                                     }
 
                                     return {
@@ -2780,7 +3000,6 @@ async function loadUpNext() {
                                             title: nextEpData.name,
                                             season: nextS,
                                             number: nextE,
-                                            // Map to a combined string ID so the router can load it correctly
                                             ids: { trakt: `${tmdbId}-${nextS}-${nextE}`, tmdb: nextEpData.id }
                                         },
                                         ids: { trakt: `${tmdbId}-${nextS}-${nextE}`, tmdb: nextEpData.id },
@@ -2794,11 +3013,12 @@ async function loadUpNext() {
                             
                             nextEpisodes.push(...batchResults.filter(i => i !== null));
                             
-                            // Respect TMDB rate limits between batches
-                            if (batches.indexOf(batch) < batches.length - 1) {
-                                // OPTIMIZATION: Reduced timeout from 250ms to 150ms to match the new image hydration speeds
-                                await new Promise(r => setTimeout(r, 150));
-                            }
+                            // Stop early as soon as we have 18 active shows to display! No need to query older shows.
+                            if (nextEpisodes.length >= 18) break;
+                        }
+
+                        if (stateCacheDirty) {
+                            try { localStorage.setItem('vt_upnext_show_states_v1', JSON.stringify(showStateCache)); } catch(e) {}
                         }
                         if (window.VIDTRACKR_DEBUG) console.timeEnd('UpNextFetchEngine');
                         
@@ -2810,7 +3030,6 @@ async function loadUpNext() {
                             type: p.type || (p.movie ? 'movie' : 'episode')
                         })).sort((a, b) => new Date(b.paused_at) - new Date(a.paused_at));
 
-                        // Create a set of IDs currently in resume to prevent duplicates
                         const resumeCompositeIds = new Set();
                         resumeItems.forEach(p => {
                             if (p.type === 'episode') {
@@ -2823,8 +3042,6 @@ async function loadUpNext() {
                             if (p.playbackId) resumeCompositeIds.add(String(p.playbackId));
                         });
 
-                        // Create a set of ALL watched episodes to prevent old shows from suggesting already watched episodes
-                        // We use the globalHistoryCache instead of a dedicated database read to save costs and memory
                         const watchedCompositeIds = new Set();
                         if (window.globalHistoryCache) {
                             window.globalHistoryCache.forEach(item => {
@@ -2839,7 +3056,6 @@ async function loadUpNext() {
                             });
                         }
 
-                        // Filter out nextEpisodes that are already partially watched OR fully watched
                         const uniqueNextEpisodes = nextEpisodes.filter(nx => {
                             const sTmdb = nx.show?.ids?.tmdb;
                             const s = nx.episode?.season;
@@ -2851,14 +3067,8 @@ async function loadUpNext() {
                             return true;
                         });
 
-                        // Sort uniqueNextEpisodes by when they were last watched so the most recently engaged shows are first
                         uniqueNextEpisodes.sort((a, b) => new Date(b.watched_at) - new Date(a.watched_at));
-
                         const finalItems = [...resumeItems, ...uniqueNextEpisodes].slice(0, 18);
-                        
-                        // OPTIMIZATION: Do not block returning the data arrays!
-                        // We removed 'await window.enrichTMDBImages' here so the UI renderer fires immediately.
-                        if (window.VIDTRACKR_DEBUG) console.log("Returning Up Next items instantly to UI renderer.");
                         return finalItems;
             } catch(e) {
                 console.error("Local Up Next calculation error:", e);
@@ -3290,70 +3500,61 @@ let listsIn = [];
                     const idsToCheck = [...new Set(rawIds)].slice(0, 10);
                     
                     const items = [];
-                    let usedFallback = false;
 
-                    try {
-                        if (idsToCheck.length > 0) {
-                            // Target index directly (fast, minimal reads)
-                            const q = query(
-                                collection(db, `users/${currentUser.uid}/history`),
-                                where("itemId", "in", idsToCheck)
-                            );
-                            const snap = await getDocs(q);
-                            
-                            snap.forEach(d => {
-                                const data = d.data();
-                                if (data.type !== type) return; // double check type
-                                items.push({ 
-                                    id: d.id, 
-                                    watched_at: data.watchedAt || data.loggedAt, 
-                                    rated_at: data.ratedAt, 
-                                    [type === 'episode' ? 'episode' : type]: data.media, 
-                                    rating: data.rating, 
-                                    _originalItemId: data.itemId 
-                                });
-                            });
-                        }
-                    } catch(e) {
-                        usedFallback = true;
-                    }
+                    // Helper to match a history document against the current item
+                    const matchHistoryRecord = (data, docId) => {
+                        if (data.type !== type) return;
+                        const media = data.media || {};
+                        const histTrakt = String(media.ids?.trakt || '');
+                        const histTmdb = String(media.ids?.tmdb || media.id || '');
+                        const histItemId = String(data.itemId || '');
 
-                    // Safety Fallback for legacy records that might be missing standard 'itemId'
-                    // Limits read depth severely compared to the old unbound code
-                    if (items.length === 0 || usedFallback) {
-                        const fallbackQ = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(200));
-                        const snap = await getDocs(fallbackQ);
-                        
-                        snap.forEach(d => {
-                            const data = d.data();
-                            if (data.type !== type) return;
+                        const isIdMatch = (histItemId && idsToCheck.includes(histItemId)) ||
+                                          (histTrakt && (histTrakt === matchTraktId || histTrakt === matchTmdbId)) ||
+                                          (histTmdb && (histTmdb === matchTmdbId || histTmdb === matchTraktId));
 
-                            const media = data.media || {};
-                            const histTrakt = String(media.ids?.trakt || '');
-                            const histTmdb = String(media.ids?.tmdb || media.id || '');
-                            const histItemId = String(data.itemId || '');
-                            
-                            const isIdMatch = (histTrakt && (histTrakt === matchTraktId || histTrakt === matchTmdbId)) ||
-                                              (histTmdb && (histTmdb === matchTmdbId || histTmdb === matchTraktId)) ||
-                                              (histItemId && (histItemId === matchTraktId || histItemId === matchTmdbId || histItemId === String(id)));
+                        if (type === 'episode') {
+                            const hSeason = String(media.season !== undefined ? media.season : (media.season_number !== undefined ? media.season_number : ''));
+                            const hEp = String(media.number !== undefined ? media.number : (media.episode_number !== undefined ? media.episode_number : ''));
+                            const hShowTitle = String(media.show?.title || media.show?.name || '').toLowerCase().trim();
+                            const hShowTmdbId = String(media.show?.ids?.tmdb || '');
 
-                            if (type === 'episode') {
-                                const hSeason = String(media.season !== undefined ? media.season : (media.season_number !== undefined ? media.season_number : ''));
-                                const hEp = String(media.number !== undefined ? media.number : (media.episode_number !== undefined ? media.episode_number : ''));
-                                const hShowTitle = String(media.show?.title || media.show?.name || '').toLowerCase().trim();
-                                const hShowTmdbId = String(media.show?.ids?.tmdb || '');
-                                
-                                const isShowMatch = (hShowTitle && currentShowTitle && hShowTitle === currentShowTitle) || 
-                                                    (hShowTmdbId && currentShowTmdbId && hShowTmdbId === currentShowTmdbId) ||
-                                                    (media.show?.ids?.trakt && String(media.show.ids.trakt) === String(showInfo?.ids?.trakt));
+                            const isShowMatch = (hShowTitle && currentShowTitle && hShowTitle === currentShowTitle) || 
+                                                (hShowTmdbId && currentShowTmdbId && hShowTmdbId === currentShowTmdbId) ||
+                                                (media.show?.ids?.trakt && String(media.show.ids.trakt) === String(showInfo?.ids?.trakt));
 
-                                if (isIdMatch || (isShowMatch && hSeason === targetSeason && hEp === targetEpNum)) {
-                                    items.push({ id: d.id, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, episode: media, rating: data.rating, _originalItemId: histItemId || histTrakt || histTmdb });
-                                }
-                            } else if (isIdMatch) {
-                                items.push({ id: d.id, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, [type]: media, rating: data.rating, _originalItemId: histItemId || histTrakt || histTmdb });
+                            if (isIdMatch || (isShowMatch && hSeason === targetSeason && hEp === targetEpNum)) {
+                                items.push({ id: docId, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, episode: media, rating: data.rating, _originalItemId: histItemId || histTrakt || histTmdb });
                             }
-                        });
+                        } else if (isIdMatch) {
+                            items.push({ id: docId, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, [type]: media, rating: data.rating, _originalItemId: histItemId || histTrakt || histTmdb });
+                        }
+                    };
+
+                    // FAST 0ms IN-MEMORY CHECK: Use globalHistoryCache or localStorage full history cache instead of waiting on Firestore network round-trips!
+                    let memorySource = window.globalHistoryCache || [];
+                    try {
+                        const cachedFull = localStorage.getItem(`vidtrackr_full_history_${currentUser.uid}`);
+                        if (cachedFull) {
+                            const parsedFull = JSON.parse(cachedFull);
+                            if (parsedFull.length > memorySource.length) memorySource = parsedFull;
+                        }
+                    } catch (e) {}
+
+                    if (!forceAllHistory && memorySource.length > 0) {
+                        memorySource.forEach(d => matchHistoryRecord(d, d._docId || d.id));
+                    } else {
+                        // Only hit Firestore over the network if memory cache is empty or user clicked "Force Load Rest"
+                        try {
+                            if (idsToCheck.length > 0) {
+                                const q = query(
+                                    collection(db, `users/${currentUser.uid}/history`),
+                                    where("itemId", "in", idsToCheck)
+                                );
+                                const snap = await getDocs(q);
+                                snap.forEach(d => matchHistoryRecord(d.data(), d.id));
+                            }
+                        } catch (e) {}
                     }
 
                     // Prevent duplicate visual entries if the same item was picked up by both query types
@@ -3397,8 +3598,13 @@ let listsIn = [];
                         // Request external_ids to capture IMDB IDs for episodes
                         tmdbEndpoint = `/tv/${resolvedShowId}/season/${epSeason}/episode/${epNum}?append_to_response=credits,videos,images,external_ids`;
                         
-                        // Add watch/providers here as well to fetch 'Where to Watch' data for the parent TV show
-                        showInfo = await fetchTMDB(`/tv/${resolvedShowId}?append_to_response=external_ids,aggregate_credits,watch/providers`);
+                        // Fetch the parent TV show and the specific episode in PARALLEL (0ms if prefetched in sessionStorage!)
+                        const [fetchedShow, fetchedEp] = await Promise.all([
+                            fetchTMDB(`/tv/${resolvedShowId}?append_to_response=external_ids,aggregate_credits,watch/providers`),
+                            fetchTMDB(tmdbEndpoint)
+                        ]);
+                        showInfo = fetchedShow;
+                        item = fetchedEp;
                         showPeople = { cast: showInfo.aggregate_credits?.cast || showInfo.credits?.cast || [] };
                         showInfo.title = showInfo.name;
                         showInfo.ids = { tmdb: resolvedShowId, trakt: resolvedShowId, imdb: showInfo.external_ids?.imdb_id }; 
@@ -3408,7 +3614,7 @@ let listsIn = [];
                     }
                     
                     try {
-                        item = await fetchTMDB(tmdbEndpoint);
+                        if (!item) item = await fetchTMDB(tmdbEndpoint);
                     } catch (e) {
                         // If TMDB 404s on a movie/show, translate Trakt ID to TMDB ID
                         if (type !== 'episode') {
@@ -3584,69 +3790,17 @@ let listsIn = [];
                 }
                 } // FIX: Added missing closing bracket for the outer Trakt API 'else' block
 
-                // --- UNIVERSAL LOCAL DOC RESOLUTION ---
-                if (currentUser) {
-                    const checkDoc = async (col) => {
-                        const idsToCheck = new Set([canonicalId, id]);
-                        if (item && item.ids) {
-                            if (item.ids.tmdb) idsToCheck.add(String(item.ids.tmdb));
-                            if (item.ids.trakt) idsToCheck.add(String(item.ids.trakt));
-                        }
-                        if (type === 'episode') {
-                            const s = item?.season || item?.season_number;
-                            const e = item?.number || item?.episode_number;
-                            const showTmdb = showInfo?.ids?.tmdb;
-                            if (showTmdb && s !== undefined && e !== undefined) {
-                                idsToCheck.add(`${showTmdb}-${s}-${e}`);
-                            }
-                        }
-                        for (const testId of idsToCheck) {
-                            if (!testId) continue;
-                            const snap = await getDoc(doc(db, `users/${currentUser.uid}/${col}`, `${type}_${testId}`));
-                            if (snap.exists()) return snap;
-                        }
-                        return null;
-                    };
-
+                // --- FAST UNIVERSAL LOCAL DOC RESOLUTION (Eliminates 40+ sequential Firestore Listen/channel loops) ---
+                if (currentUser && canonicalId) {
+                    const primaryDocKey = `${type}_${canonicalId}`;
+                    // Check only the primary canonical document ID in parallel (4 fast parallel reads instead of 40+ sequential reads)
                     [notes, localWlSnap, localColSnap, localCommentSnap] = await Promise.all([
-                        checkDoc('notes'),
-                        checkDoc('watchlist'),
-                        checkDoc('collections'),
-                        checkDoc('comments')
+                        getDoc(doc(db, `users/${currentUser.uid}/notes`, primaryDocKey)).catch(() => null),
+                        getDoc(doc(db, `users/${currentUser.uid}/watchlist`, primaryDocKey)).catch(() => null),
+                        getDoc(doc(db, `users/${currentUser.uid}/collections`, primaryDocKey)).catch(() => null),
+                        getDoc(doc(db, `users/${currentUser.uid}/comments`, primaryDocKey)).catch(() => null)
                     ]);
-                    
-                    // Fetch which custom lists this item is in natively (Checking all ID variations for legacy matches)
-                    if (currentUser) {
-                        try {
-                            const listsSnap = await getDocs(collection(db, `users/${currentUser.uid}/lists`));
-                            const idsToCheck = new Set([canonicalId, id]);
-                            if (item && item.ids) {
-                                if (item.ids.tmdb) idsToCheck.add(String(item.ids.tmdb));
-                                if (item.ids.trakt) idsToCheck.add(String(item.ids.trakt));
-                            }
-                            if (type === 'episode') {
-                                const s = item?.season || item?.season_number;
-                                const e = item?.number || item?.episode_number;
-                                const showTmdb = showInfo?.ids?.tmdb;
-                                if (showTmdb && s !== undefined && e !== undefined) {
-                                    idsToCheck.add(`${showTmdb}-${s}-${e}`);
-                                }
-                            }
 
-                            for (const lDoc of listsSnap.docs) {
-                                for (const testId of idsToCheck) {
-                                    if (!testId || testId === 'undefined') continue;
-                                    const iSnap = await getDoc(doc(db, `users/${currentUser.uid}/lists/${lDoc.id}/items`, `${type}_${testId}`));
-                                    if (iSnap.exists()) {
-                                        listsIn.push({ id: lDoc.id, name: lDoc.data().name });
-                                        break; // Found it in this list, stop checking IDs and move to next list
-                                    }
-                                }
-                            }
-                        } catch(e) {}
-                    }
-                    
-                    // Ensure noteKey always maps back to the existing document ID so updates overwrite the original note instead of duplicating it
                     if (notes && notes.exists()) noteKey = notes.id;
                 }
 
@@ -3830,10 +3984,10 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     statusBadge = `<span class="bg-gray-800 text-gray-400 border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center"><i class="fa-regular fa-circle mr-2"></i> Not Watched</span>`;
                 }
 
-                // Allow rating editing by turning the rating badge into a clickable button
+                // Allow rating editing by turning the rating badge into a clickable button (forceRate ensures the rating slider shows if clicked directly)
                 const myRatingHtml = myRating 
                     ? `<button onclick="window.openQuickRate('${id}', '${type}', '${fullTitle.replace(/'/g, "\\'")}', true)" class="bg-yellow-500/20 hover:bg-yellow-500/40 text-yellow-500 border border-yellow-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center transition shadow-[0_0_15px_rgba(234,179,8,0.2)]" title="Edit Rating"><i class="fa-solid fa-star mr-2"></i> ${myRating}</button>`
-                    : `<button class="scrobble-btn bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: type, runtime: item.runtime}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
+                    : `<button class="scrobble-btn bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: type, runtime: item.runtime, forceRate: true}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
 
                 // History List HTML
                 let historyHtml = '';
@@ -3963,14 +4117,17 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
 
                 if (isEpisode) {
                     let bgImg = getImage(item, 'episode', true); 
+                    // Only call Trakt proxy for fallback images if Trakt is the primary data source; in TMDB mode fall back to the parent show's backdrop
                     if ((bgImg.includes('placehold.co') || !bgImg) && showInfo) {
-                        try {
-                            const freshEp = await fetchDirect(`/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}?extended=images`);
-                            const freshImg = getImage(freshEp, 'episode', true);
-                            if (freshImg && !freshImg.includes('placehold.co')) {
-                                bgImg = freshImg;
-                            }
-                        } catch(e) { console.warn("Could not fetch fallback episode image"); }
+                        if (primaryDataSource === 'trakt') {
+                            try {
+                                const freshEp = await fetchDirect(`/shows/${showInfo.ids.trakt}/seasons/${item.season}/episodes/${item.number}?extended=images`);
+                                const freshImg = getImage(freshEp, 'episode', true);
+                                if (freshImg && !freshImg.includes('placehold.co')) bgImg = freshImg;
+                            } catch(e) {}
+                        } else {
+                            bgImg = getImage(showInfo, 'show', true);
+                        }
                     }
 
                     html += `
@@ -4024,7 +4181,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 <div class="bg-[var(--card)] shadow-lg rounded-2xl p-4 border border-gray-700">
                                     <h4 class="text-[10px] uppercase font-bold text-gray-400 mb-3"><i class="fa-solid fa-clipboard-check mr-1 text-[var(--primary)]"></i> Tracking</h4>
                                     <div class="grid grid-cols-2 gap-2">
-                                        <button class="col-span-2 scrobble-btn bg-[#ed2224] hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-md flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, name: item.title, type: 'episode', runtime: item.runtime, season: item.season, number: item.number, still_path: item.still_path, show: { title: showInfo.title, ids: showInfo.ids, poster_path: showInfo.poster_path, backdrop_path: showInfo.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'}"></i> ${isWatched ? 'Log Rewatch' : 'Log Watch'}</button>
+                                        <button class="col-span-2 scrobble-btn bg-[#ed2224] hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-md flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, name: item.title, type: 'episode', runtime: item.runtime, season: item.season, number: item.number, still_path: item.still_path, isWatched: isWatched, show: { title: showInfo.title, ids: showInfo.ids, poster_path: showInfo.poster_path, backdrop_path: showInfo.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'}"></i> ${isWatched ? 'Log Rewatch' : 'Log Watch'}</button>
                                         
                                         <button onclick="window.checkIn('${item.ids.trakt}', 'episode', ${item.runtime || 0}, '${checkInSafeJson}')" class="col-span-2 bg-purple-900/20 hover:bg-purple-900/40 text-purple-400 py-2.5 rounded-lg font-bold text-xs transition border border-purple-900/50 flex items-center justify-center gap-1.5"><i class="fa-solid fa-map-pin"></i> Check In</button>
                                         
@@ -4102,7 +4259,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             <!-- Poster -->
                             <div class="rounded-2xl overflow-hidden shadow-2xl relative group border border-gray-800 mb-6">
                                 <img src="${img}" class="w-full object-cover aspect-[2/3]">
-                                ${type === 'movie' ? `<div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm"><button class="scrobble-btn ${getBgColor(type)} text-white px-8 py-3 rounded-full font-bold transform scale-90 group-hover:scale-100 transition shadow-xl" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime, backdrop_path: item.backdrop_path, poster_path: item.poster_path}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'} mr-2"></i> ${isWatched ? 'Log Rewatch' : 'Log Movie'}</button></div>` : ''}
+                                ${type === 'movie' ? `<div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-sm"><button class="scrobble-btn ${getBgColor(type)} text-white px-8 py-3 rounded-full font-bold transform scale-90 group-hover:scale-100 transition shadow-xl" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime, isWatched: isWatched, backdrop_path: item.backdrop_path, poster_path: item.poster_path}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-${isWatched ? 'rotate-right' : 'check'} mr-2"></i> ${isWatched ? 'Log Rewatch' : 'Log Movie'}</button></div>` : ''}
                                 ${navPrev ? `<div class="nav-btn nav-prev" onclick="location.hash='#detail/movie/${navPrev.ids.trakt}'" title="Previous: ${navPrev.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-left"></i></div>` : ''}
                                 ${navNext ? `<div class="nav-btn nav-next" onclick="location.hash='#detail/movie/${navNext.ids.trakt}'" title="Next: ${navNext.title.replace(/"/g, '&quot;')}"><i class="fa-solid fa-chevron-right"></i></div>` : ''}
                             </div>
@@ -4114,7 +4271,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 <h4 class="text-[10px] uppercase font-bold text-gray-400 mb-3"><i class="fa-solid fa-clipboard-check mr-1 text-[var(--primary)]"></i> Tracking</h4>
                                 <div class="grid grid-cols-2 gap-2">
                                     ${type === 'movie' ? `
-                                    <button class="col-span-2 scrobble-btn bg-[#ed2224] hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-md flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime, backdrop_path: item.backdrop_path, poster_path: item.poster_path}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-calendar-plus"></i> Log Past Watch</button>` : ''}
+                                    <button class="col-span-2 scrobble-btn bg-[#ed2224] hover:bg-red-700 text-white py-2.5 rounded-lg font-bold text-xs transition shadow-md flex items-center justify-center gap-2" data-json='${JSON.stringify({ids: item.ids, title: item.title, type: type, runtime: item.runtime, isWatched: isWatched, backdrop_path: item.backdrop_path, poster_path: item.poster_path}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-solid fa-calendar-plus"></i> Log Past Watch</button>` : ''}
                                     
                                     <button onclick="window.checkIn('${item.ids.trakt}', '${type}', ${item.runtime || 0}, '${checkInSafeJson}')" class="col-span-2 bg-purple-900/20 hover:bg-purple-900/40 text-purple-400 py-2.5 rounded-lg font-bold text-xs transition border border-purple-900/50 flex items-center justify-center gap-1.5"><i class="fa-solid fa-map-pin"></i> Check In</button>
                                     
@@ -4170,13 +4327,26 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                     if (traktAccessToken && primaryDataSource === 'trakt') {
                                         showProgress = await fetchDirect(`/shows/${targetTraktId}/progress/watched?hidden=false&specials=${showSpecials}&count_specials=${showSpecials}&extended=full,images`);
                                     } else if (currentUser) {
-                                        // Local Calculation mirroring 'calculateLocalSeriesProgress'
-                                        const snap = await getDocs(collection(db, `users/${currentUser.uid}/history`));
+                                        // Fast Local Calculation: Use cached history in memory/localStorage first to avoid downloading entire Firestore history collection
+                                        let historyDocs = window.globalHistoryCache || [];
+                                        try {
+                                            const cachedFull = localStorage.getItem(`vidtrackr_full_history_${currentUser.uid}`);
+                                            if (cachedFull) {
+                                                const parsed = JSON.parse(cachedFull);
+                                                if (parsed.length > historyDocs.length) historyDocs = parsed;
+                                            }
+                                        } catch (e) {}
+
+                                        if (historyDocs.length === 0) {
+                                            const snap = await getDocs(query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(1500)));
+                                            historyDocs = [];
+                                            snap.forEach(d => historyDocs.push(d.data()));
+                                        }
+
                                         let watchedEps = new Set();
                                         let maxS = 0, maxE = 0;
                                         
-                                        snap.forEach(d => {
-                                            const data = d.data();
+                                        historyDocs.forEach(data => {
                                             if (data.type === 'episode' && data.media) {
                                                 const sTmdb = String(data.media.show?.ids?.tmdb || data.media.ids?.tmdb || '');
                                                 const sTrakt = String(data.media.show?.ids?.trakt || data.media.ids?.trakt || '');
@@ -4343,6 +4513,12 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                         els.content.innerHTML = html;
                     }
                     if (window.appNav) window.appNav.setSyncState('synced');
+
+                    // Silently prefetch previous and next episodes in the background once current episode is loaded
+                    if (isEpisode && showInfo) {
+                        const prefetchShowId = primaryDataSource === 'tmdb' ? (showInfo.ids?.tmdb || showInfo.ids?.trakt) : showInfo.ids?.trakt;
+                        window.prefetchAdjacentEpisodes(prefetchShowId, item.season, item.number);
+                    }
                 }
 
                 // Bind Note Save Button
@@ -4622,7 +4798,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 <div class="flex gap-2">
                                     <button class="text-xs ${isEpHidden ? 'bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white border-red-900/50 hover:border-red-600' : 'bg-gray-800 text-gray-400 hover:bg-gray-600 hover:text-white border-gray-700 hover:border-gray-500'} px-3 py-2 rounded-lg transition shadow-md border flex items-center justify-center" onclick="event.stopPropagation(); window.toggleHidden('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="${isEpHidden ? 'Unhide Episode' : 'Hide Episode'}"><i class="fa-solid ${isEpHidden ? 'fa-eye' : 'fa-eye-slash'}"></i></button>
                                     <button class="text-xs bg-yellow-900/30 text-yellow-500 hover:bg-yellow-500 hover:text-black border border-yellow-900/50 hover:border-yellow-500 px-3 py-2 rounded-lg transition shadow-md flex items-center justify-center" onclick="event.stopPropagation(); window.openQuickRate('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}', true)" title="Rate Episode"><i class="fa-solid fa-star"></i></button>
-                                    <button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, name: ep.title, type: 'episode', runtime: item.runtime, season: seasonNum, number: ep.number, still_path: ep.still_path, show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-check mr-2"></i> Log</button>
+                                    <button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, name: ep.title, type: 'episode', runtime: item.runtime, season: seasonNum, number: ep.number, still_path: ep.still_path, isWatched: epHistoryLogs.length > 0, show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-check mr-2"></i> Log</button>
                                 </div></div></div></div>`;
                             }).join('')}</div>`;
                             mount.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5269,6 +5445,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                         loadMoreContainer.innerHTML = `<p class="text-gray-600 text-sm italic opacity-50">End of history.</p>`;
                     }
                     
+                    // Update timestamp so the 60s visibilitychange rate-limiter works properly
+                    lastHistoryFetch = Date.now();
                     isFetchingHistory = false; hideLoader();
 
                     // --- NEW: Non-Blocking Background Hydration (1-by-1) ---
@@ -7035,8 +7213,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     } else {
                         renderGrid('', data, false, 'wl-grid'); 
                         
-                        // Lazy Hydrate TMDB Images
-                window.enrichTMDBImages(items, (itemId, enrichedData, rawItem) => {
+                        // Lazy Hydrate TMDB Images (Fixed variable reference from 'items' to 'data')
+                        window.enrichTMDBImages(data, (itemId, enrichedData, rawItem) => {
                     const dataObj = rawItem[rawItem.type] || rawItem;
                     const fallbackId = dataObj.ids?.trakt || dataObj.ids?.tmdb || dataObj.id || itemId;
                     
@@ -7261,7 +7439,13 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     }
                 }
                 
-                // Bust all progress, history, and Up Next caches so all tabs update immediately
+                // Keep in-memory globalHistoryCache in sync for instant Dashboard & Detail updates
+                if (!isImport && window.globalHistoryCache) {
+                    window.globalHistoryCache.unshift({ ...payload, _docId: docId || docRef.id });
+                }
+
+                // Bust detail view HTML cache & progress caches so all tabs update immediately
+                if (window.invalidateDetailCache) window.invalidateDetailCache(type, targetId);
                 window.invalidateProgressCaches();
                 
                 return true;
@@ -7306,8 +7490,13 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     if (currentUser) {
                         await setDoc(doc(db, `users/${currentUser.uid}/ratings`, String(traktId)), { rating: rating, ratedAt: new Date().toISOString() }, { merge: true });
                     }
+                    // Save both String and numeric keys so composite TMDB episode IDs ("show-s-e") don't get truncated by parseInt
+                    const ratedNow = new Date().toISOString();
+                    userRatings.set(String(traktId), rating);
                     userRatings.set(parseInt(traktId), rating); 
-                    userRatingDetails.set(parseInt(traktId), { rating: rating, ratedAt: new Date().toISOString() });
+                    userRatingDetails.set(String(traktId), { rating: rating, ratedAt: ratedNow });
+                    userRatingDetails.set(parseInt(traktId), { rating: rating, ratedAt: ratedNow });
+                    if (window.invalidateDetailCache) window.invalidateDetailCache(type, traktId);
                     if(actionType === 'rate-only') showToast(`Rated ${rating}/10`);
                 }
 
@@ -7922,51 +8111,43 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
         }
 
         function handleRoute() {
-        const hash = location.hash || '#dashboard';
-        
-        // FIX: Only update Nav Highlight if we are on a main tab
-        const rootTab = hash.split('/')[0].replace('#', '');
-        const mainTabs = ['dashboard', 'library', 'progress', 'history', 'settings'];
-        
-        if (mainTabs.includes(rootTab)) {
-            nav.switchTab(rootTab);
-        }
-
-        // Render Page Content
-        if(hash.startsWith('#dashboard')) renderDashboard();
-        else if(hash.startsWith('#library')) renderLibrary(); 
-        else if(hash.startsWith('#watchlist')) renderLibrary('watchlist'); 
-        else if(hash.startsWith('#upcoming')) renderUpcoming();
-        else if(hash.startsWith('#history')) renderHistory();
-        else if(hash.startsWith('#progress')) renderProgress();
-        else if(hash.startsWith('#settings')) renderSettings();
-        else if(hash === '#lists') renderLibrary('lists'); 
-        else if(hash.startsWith('#lists/')) renderListItems(hash.split('/')[1]);
-        // Extract the full query string past the '#search/' prefix, preserving inner slashes
-        else if(hash.startsWith('#search/')) loadSearch(hash.substring(8));
-        else if(hash.startsWith('#detail')) {
-            const parts = hash.split('/');
-            // FIX: Prevent loading if IDs are undefined
-            if (parts[1] === 'undefined' || parts[2] === 'undefined' || !parts[2]) {
-                console.error("Invalid Route Parameters detected. Redirecting to dashboard.");
-                location.hash = '#dashboard';
-                return;
+            const hash = location.hash || '#dashboard';
+            
+            // Update Nav Highlight if we are on a main tab (including 'upcoming')
+            const rootTab = hash.split('/')[0].replace('#', '');
+            const mainTabs = ['dashboard', 'library', 'upcoming', 'progress', 'history', 'settings'];
+            
+            if (mainTabs.includes(rootTab)) {
+                nav.switchTab(rootTab);
             }
 
-            if (parts[1] === 'person') renderPerson(parts[2]);
-            else if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
-            else renderDetail(parts[1], parts[2]);
-        }
-    }
-        window.addEventListener('hashchange', handleRoute);
-
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                if (location.hash.startsWith('#history')) {
-                    renderHistory(1); 
+            // Render Page Content
+            if(hash.startsWith('#dashboard')) renderDashboard();
+            else if(hash.startsWith('#library')) renderLibrary(); 
+            else if(hash.startsWith('#watchlist')) renderLibrary('watchlist'); 
+            else if(hash.startsWith('#upcoming')) renderUpcoming();
+            else if(hash.startsWith('#history')) renderHistory();
+            else if(hash.startsWith('#progress')) renderProgress();
+            else if(hash.startsWith('#settings')) renderSettings();
+            else if(hash === '#lists') renderLibrary('lists'); 
+            else if(hash.startsWith('#lists/')) renderListItems(hash.split('/')[1]);
+            // Extract the full query string past the '#search/' prefix, preserving inner slashes
+            else if(hash.startsWith('#search/')) loadSearch(hash.substring(8));
+            else if(hash.startsWith('#detail')) {
+                const parts = hash.split('/');
+                // Prevent loading if IDs are undefined
+                if (parts[1] === 'undefined' || parts[2] === 'undefined' || !parts[2]) {
+                    console.error("[Debug] Invalid Route Parameters detected. Redirecting to dashboard.");
+                    location.hash = '#dashboard';
+                    return;
                 }
+
+                if (parts[1] === 'person') renderPerson(parts[2]);
+                else if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
+                else renderDetail(parts[1], parts[2]);
             }
-        });
+        }
+        window.addEventListener('hashchange', handleRoute);
 
         // --- Progress Slider Logic ---
 const slider = document.getElementById('progress-slider');
@@ -8119,18 +8300,33 @@ modalContent.addEventListener('touchend', () => {
                 const itemType = data.type || (btn.dataset.type === 'show' ? 'episode' : 'movie');
                 
                 currentModalItem = { item: data, type: itemType };
-                document.getElementById('custom-progress').value = ''; // Add this line
-document.getElementById('modal-title').innerText = data.title;
+                document.getElementById('custom-progress').value = '';
+                document.getElementById('modal-title').innerText = data.title;
                 els.modal.classList.remove('hidden');
+
+                // Configure rating section visibility (hide if watched before, unless user clicked "Rate" button directly)
+                if (data.forceRate) {
+                    window.enableRewatchRating(false);
+                } else {
+                    window.configureScrobbleModalRatingUI(data, itemType);
+                }
+
+                // Reset platform tags when modal opens
+                selectedPlatform = null;
+                document.querySelectorAll('.platform-option').forEach(b => {
+                    b.classList.remove('bg-[var(--primary)]', 'text-white', 'border-[var(--primary)]');
+                });
+
                 if(data.runtime) {
-        // Check if we have existing progress in userPlayback map
-        const existing = userPlayback.get(parseInt(data.ids.trakt));
-        const currentPct = existing ? existing.progress : 0;
-        
-        slider.value = Math.round(currentPct);
-        percentDisplay.innerText = `${Math.round(currentPct)}%`;
-        numInput.value = Math.round((currentPct/100) * data.runtime);
-    }
+                    // Check if we have existing progress in userPlayback map
+                    const existing = userPlayback.get(parseInt(data.ids.trakt));
+                    const currentPct = existing ? existing.progress : 0;
+                    
+                    slider.value = Math.round(currentPct);
+                    percentDisplay.innerText = `${Math.round(currentPct)}%`;
+                    numInput.value = Math.round((currentPct/100) * data.runtime);
+                    if (typeof updateProgressContext !== 'undefined') updateProgressContext(currentPct);
+                }
                 const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
                 document.getElementById('custom-date').value = now.toISOString().slice(0, 16);
                 selectedDate = new Date().toISOString();
@@ -8207,6 +8403,33 @@ document.getElementById('modal-title').innerText = data.title;
             }
         });
 
+       // Keyboard navigation shortcuts: Escape closes modals, Left/Right arrows navigate episodes
+        document.addEventListener('keydown', (e) => {
+            // Ignore shortcuts if typing inside an input or textarea
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+
+            if (e.key === 'Escape') {
+                els.modal.classList.add('hidden');
+                document.getElementById('list-modal')?.classList.add('hidden');
+                document.getElementById('quick-rate-modal')?.classList.add('hidden');
+                if (!document.getElementById('trailer-modal')?.classList.contains('hidden')) window.closeTrailer();
+            } else if (location.hash.startsWith('#detail/episode/')) {
+                if (e.key === 'ArrowLeft') {
+                    const prevBtn = document.querySelector('.nav-prev');
+                    if (prevBtn) {
+                        if (window.VIDTRACKR_DEBUG) console.debug('[Debug] Left Arrow pressed: navigating to previous episode');
+                        prevBtn.click();
+                    }
+                } else if (e.key === 'ArrowRight') {
+                    const nextBtn = document.querySelector('.nav-next');
+                    if (nextBtn) {
+                        if (window.VIDTRACKR_DEBUG) console.debug('[Debug] Right Arrow pressed: navigating to next episode');
+                        nextBtn.click();
+                    }
+                }
+            }
+        });
+
        // --- AUTH LISTENER ---
     onAuthStateChanged(auth, async user => {
         currentUser = user;
@@ -8222,62 +8445,53 @@ document.getElementById('modal-title').innerText = data.title;
                 document.getElementById('search-input').addEventListener('input', searchHandler);
             }
 
-            // Sync Trakt Token (Existing Logic)
+            // 1. Seed globalHistoryCache from localStorage immediately (0ms) so Dashboard & Up Next can render without waiting on Firestore!
             try {
-                const snap = await getDoc(doc(db, 'users', user.uid, 'services', 'trakt'));
-                if (snap.exists() && snap.data().accessToken) { 
-                    const dbToken = snap.data().accessToken;
-                    if (traktAccessToken !== dbToken) {
-                        traktAccessToken = dbToken;
-                        localStorage.setItem('trakt_token', traktAccessToken);
-                    }
-                } else if (traktAccessToken) {
-                    await setDoc(doc(db, 'users', user.uid, 'services', 'trakt'), { 
-                        accessToken: traktAccessToken, updatedAt: new Date()
-                    }, { merge: true });
+                const cachedHist = localStorage.getItem(`vidtrackr_full_history_${user.uid}`);
+                if (cachedHist) {
+                    window.globalHistoryCache = JSON.parse(cachedHist).slice(0, 200);
                 }
-            } catch(e) { console.warn("Firestore sync error", e); }
+            } catch (e) {}
 
-            // Non-blocking background data syncs.
-            // By NOT awaiting this block, the global loader drops instantly 
-            // and the app routes to the Dashboard immediately.
-            const backgroundSyncs = async () => {
-                if (traktAccessToken) { 
-                    await Promise.all([syncUserRatings(), syncPlayback()]);
-                }
-                await syncHiddenItems();
-                
-                // Silently refresh the localized UI once syncs are complete
-                if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) {
-                    if (typeof loadUpNext === 'function') loadUpNext();
-                }
-                if (document.getElementById('last-watched-container') && !document.getElementById('last-watched-container').classList.contains('hidden')) {
-                    if (typeof loadLastWatched === 'function') loadLastWatched();
-                }
-            };
-            backgroundSyncs();
-
-            // FIX: Replaced expensive real-time onSnapshot listener with a single lightweight getDocs fetch.
-            // onSnapshot actively holds open a WebChannel connection (channel?VER=8) which can infinitely loop 
-            // and spam the network tab with 20ms polling requests if the browser cache lock gets stuck.
-            // Since we manually update globalHistoryCache locally during check-ins, polling is unnecessary.
-            if (globalHistoryListener) {
-                globalHistoryListener(); 
-                globalHistoryListener = null;
-            }
-            
-            const qHistory = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(200));
-            const snapshot = await getDocs(qHistory);
-            window.globalHistoryCache = [];
-            snapshot.forEach(doc => {
-                window.globalHistoryCache.push({ ...doc.data(), _docId: doc.id });
-            });
-            
-            if (document.getElementById('last-watched-container') && !document.getElementById('last-watched-container').classList.contains('hidden')) loadLastWatched();
-            if (document.getElementById('up-next-container') && !document.getElementById('up-next-container').classList.contains('hidden')) loadUpNext();
-            
-            checkActiveWatching();
+            // 2. Route and render the UI IMMEDIATELY (0ms boot!)
             handleRoute();
+            checkActiveWatching();
+
+            // 3. Run all Firestore & Trakt syncs in the background without blocking initial page render
+            (async () => {
+                try {
+                    const qHistory = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(200));
+                    const [traktSnap, historySnap] = await Promise.all([
+                        getDoc(doc(db, 'users', user.uid, 'services', 'trakt')).catch(() => null),
+                        getDocs(qHistory).catch(() => null)
+                    ]);
+
+                    if (traktSnap && traktSnap.exists() && traktSnap.data().accessToken) {
+                        const dbToken = traktSnap.data().accessToken;
+                        if (traktAccessToken !== dbToken) {
+                            traktAccessToken = dbToken;
+                            localStorage.setItem('trakt_token', traktAccessToken);
+                        }
+                    } else if (traktAccessToken) {
+                        setDoc(doc(db, 'users', user.uid, 'services', 'trakt'), {
+                            accessToken: traktAccessToken, updatedAt: new Date()
+                        }, { merge: true }).catch(() => {});
+                    }
+
+                    if (historySnap) {
+                        window.globalHistoryCache = [];
+                        historySnap.forEach(d => window.globalHistoryCache.push({ ...d.data(), _docId: d.id }));
+                    }
+
+                    await Promise.all([syncUserRatings(), syncPlayback(), syncHiddenItems()]);
+
+                    // Refresh Dashboard sections if user is still on Dashboard
+                    if (document.getElementById('last-watched-container')) loadLastWatched();
+                    if (document.getElementById('up-next-container')) loadUpNext();
+                } catch (e) {
+                    console.warn("[Debug] Background startup sync warning:", e);
+                }
+            })();
         } else {
             if (globalHistoryListener) {
                 globalHistoryListener(); // Unsubscribe to prevent memory leaks
