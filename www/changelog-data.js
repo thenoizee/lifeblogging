@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.80.0-alpha",
+    date: "2026-10-14",
+    changes: [
+        "In Dashboard: Overhauled the Garden widget with 4 smart filter tabs (Due, Soon, Late, All) and an interactive location dropdown filter populated from plant locations.",
+        "In Dashboard: Added one-click quick-watering and 3-day snooze actions directly to individual plant cards in the Garden widget.",
+        "In Dashboard: Upgraded the Tasks widget with a project switcher dropdown, a quick-add inline task form, and Focus vs. Later task filtering tabs.",
+        "In Dashboard: Fixed a date-formatting ReferenceError and optimized plant logging queries to support large plant collections smoothly."
+    ]
+},
+    {
     version: "v16.79.0-alpha",
     date: "2026-10-14",
     changes: [
