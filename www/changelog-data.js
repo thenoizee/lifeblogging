@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.79.0-alpha",
+    date: "2026-10-14",
+    changes: [
+        "In FoodTrackr: Removed the bottom site footer banner, injected mobile bottom navigation bar, and floating mobile form action banner for a cleaner layout.",
+        "In FoodTrackr: Added a quick-clear ('X') button to the food search bar, global Escape key support to dismiss open modals or exit bulk mode, and decimal keypad support (inputmode='decimal') on micronutrient inputs.",
+        "In FoodTrackr: Improved performance by updating the Macros Chart in-place instead of destroying the canvas, batching History Table DOM renders with DocumentFragment, and adding lazy-loading to product thumbnails.",
+        "In FoodTrackr: Added AbortController support to cancel stale in-flight Open Food Facts search requests and capped the search cache at 50 entries to reduce memory usage.",
+        "In FoodTrackr: Fixed a bug where product modal click listeners stacked across multiple views, prevented editing a Favorite Food from hijacking the main log form, and ensured all Firestore listeners unsubscribe cleanly on logout."
+    ]
+},
+    {
     version: "v16.78.0-alpha",
     date: "2026-10-14",
     changes: [
