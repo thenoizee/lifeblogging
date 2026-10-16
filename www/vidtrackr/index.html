@@ -603,8 +603,11 @@ if (headerRight) {
                 // Cache 404 Not Found for 30 minutes (since non-existent episodes won't appear in 60s), other errors for 60s
                 if (!isSearch) {
                     try { 
-                        const ttl = res.status === 404 ? 1800000 : 60000;
-                        sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true, status: res.status, expiry: Date.now() + ttl })); 
+                        // FIX: Never cache 429 Too Many Requests errors so the app can instantly self-heal on the next retry
+                        if (res.status !== 429) {
+                            const ttl = res.status === 404 ? 1800000 : 60000;
+                            sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true, status: res.status, expiry: Date.now() + ttl })); 
+                        }
                     } catch(e) {}
                 }
                 throw new Error(`TMDB API Error ${res.status}`);
@@ -1342,10 +1345,10 @@ if (headerRight) {
                 let deletedItemData = null;
 
                 // 1. Delete from Firebase (Primary DB)
-                // Firebase IDs are alphanumeric strings, Trakt IDs are numbers. We check if it's a string/Firebase ID.
-                if (currentUser && historyId && isNaN(Number(historyId))) {
+                // Fix: Removed isNaN check so numeric document IDs (e.g., imported from Trakt) are properly fetched and deleted, allowing the Up Next rollback to succeed
+                if (currentUser && historyId) {
                     // Fetch the document first so we know which show to rollback in the progress table
-                    const docRef = doc(db, `users/${currentUser.uid}/history`, historyId);
+                    const docRef = doc(db, `users/${currentUser.uid}/history`, String(historyId));
                     const docSnap = await getDoc(docRef);
                     if (docSnap.exists()) deletedItemData = docSnap.data();
                     
@@ -1649,7 +1652,7 @@ if (headerRight) {
                 if (rateOnlyBtn) rateOnlyBtn.classList.add('hidden');
                 if (rateLogBtn) rateLogBtn.classList.add('hidden');
                 if (actionGrid) {
-                    actionGrid.classList.remove('grid-cols-3');
+                    actionGrid.classList.remove('grid-cols-2', 'grid-cols-3');
                     actionGrid.classList.add('grid-cols-1');
                 }
                 if (logOnlyBtn) {
@@ -1657,12 +1660,14 @@ if (headerRight) {
                     logOnlyBtn.innerText = "Log Rewatch";
                 }
             } else {
-                window.enableRewatchRating(false);
+                // Fix: Hide the "Rate Only" option for episodes the user hasn't seen yet to simplify UI
+                const hideRateOnly = (itemType === 'episode');
+                window.enableRewatchRating(false, hideRateOnly);
             }
         };
 
         // Reveals the rating slider & buttons when the user clicks "Want to update rating too?"
-        window.enableRewatchRating = (isRewatchUpdate = true) => {
+        window.enableRewatchRating = (isRewatchUpdate = true, hideRateOnly = false) => {
             const ratingContainer = document.getElementById('rating-container');
             const rewatchToggle = document.getElementById('rewatch-rating-toggle');
             const rateOnlyBtn = document.getElementById('confirm-rate-only');
@@ -1672,14 +1677,18 @@ if (headerRight) {
 
             if (ratingContainer) ratingContainer.classList.remove('hidden');
             if (rewatchToggle) rewatchToggle.classList.add('hidden');
-            if (rateOnlyBtn) rateOnlyBtn.classList.remove('hidden');
+            if (rateOnlyBtn) {
+                // Fix: Hide the Rate Only button if requested to prevent clutter on unseen episodes
+                if (hideRateOnly) rateOnlyBtn.classList.add('hidden');
+                else rateOnlyBtn.classList.remove('hidden');
+            }
             if (rateLogBtn) {
                 rateLogBtn.classList.remove('hidden');
                 rateLogBtn.innerText = isRewatchUpdate ? "Update & Log" : "Rate & Log";
             }
             if (actionGrid) {
-                actionGrid.classList.remove('grid-cols-1');
-                actionGrid.classList.add('grid-cols-3');
+                actionGrid.classList.remove('grid-cols-1', 'grid-cols-2', 'grid-cols-3');
+                actionGrid.classList.add(hideRateOnly ? 'grid-cols-2' : 'grid-cols-3');
             }
             if (logOnlyBtn) {
                 logOnlyBtn.className = "bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold transition text-xs";
@@ -3531,7 +3540,10 @@ let listsIn = [];
                         }
                     };
 
-                    // FAST 0ms IN-MEMORY CHECK: Use globalHistoryCache or localStorage full history cache instead of waiting on Firestore network round-trips!
+                    // CHECK BOTH: Merge local memory cache (historical) AND fresh Firestore entries (new logs)
+                    const unifiedHistoryMap = new Map();
+
+                    // 1. Ingest local in-memory & cached historical records
                     let memorySource = window.globalHistoryCache || [];
                     try {
                         const cachedFull = localStorage.getItem(`vidtrackr_full_history_${currentUser.uid}`);
@@ -3539,26 +3551,52 @@ let listsIn = [];
                             const parsedFull = JSON.parse(cachedFull);
                             if (parsedFull.length > memorySource.length) memorySource = parsedFull;
                         }
-                    } catch (e) {}
-
-                    if (!forceAllHistory && memorySource.length > 0) {
-                        memorySource.forEach(d => matchHistoryRecord(d, d._docId || d.id));
-                    } else {
-                        // Only hit Firestore over the network if memory cache is empty or user clicked "Force Load Rest"
-                        try {
-                            if (idsToCheck.length > 0) {
-                                const q = query(
-                                    collection(db, `users/${currentUser.uid}/history`),
-                                    where("itemId", "in", idsToCheck)
-                                );
-                                const snap = await getDocs(q);
-                                snap.forEach(d => matchHistoryRecord(d.data(), d.id));
-                            }
-                        } catch (e) {}
+                    } catch (e) {
+                        if (window.VIDTRACKR_DEBUG) console.warn("[Debug] Could not parse cached full history", e);
                     }
 
-                    // Prevent duplicate visual entries if the same item was picked up by both query types
-                    const uniqueItems = Array.from(new Map(items.map(it => [it.id, it])).values());
+                    memorySource.forEach(d => {
+                        const docKey = d._docId || d.id || `${d.itemId}_${d.watchedAt || d.loggedAt}`;
+                        if (docKey) unifiedHistoryMap.set(docKey, d);
+                    });
+
+                    // 2. Ingest latest Firestore documents to catch new watches/edits not yet in localStorage
+                    try {
+                        // Check both the indexed itemId query and latest watchedAt to capture new entries
+                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(2500));
+                        const snap = await getDocs(q);
+                        snap.forEach(docSnap => {
+                            const data = docSnap.data();
+                            unifiedHistoryMap.set(docSnap.id, { ...data, _docId: docSnap.id });
+                        });
+
+                        // Keep local cache up-to-date with the combined data
+                        try {
+                            const mergedArr = Array.from(unifiedHistoryMap.values());
+                            localStorage.setItem(`vidtrackr_full_history_${currentUser.uid}`, JSON.stringify(mergedArr));
+                        } catch (e) {}
+                    } catch (e) {
+                        console.error("[Debug] Error querying Firestore in localHistoryFetch:", e);
+                    }
+
+                    // 3. Process the merged list against the target item
+                    unifiedHistoryMap.forEach((entry, docId) => {
+                        matchHistoryRecord(entry, docId);
+                    });
+
+                    // Add comments so I can easily understand what it means and edit it later
+                    // Deduplicate same-day watches for this specific item.
+                    // This fixes the "double counting" bug where old logs have both a rating timestamp and a watch timestamp on the same day.
+                    const uniqueItemsMap = new Map();
+                    items.forEach(it => {
+                        const dateStr = new Date(it.watched_at).toDateString();
+                        // If we already have a watch for this day, prefer the entry that contains the rating to consolidate them
+                        if (!uniqueItemsMap.has(dateStr) || (!uniqueItemsMap.get(dateStr).rating && it.rating)) {
+                            uniqueItemsMap.set(dateStr, it);
+                        }
+                    });
+                    
+                    const uniqueItems = Array.from(uniqueItemsMap.values());
                     return uniqueItems.sort((a, b) => new Date(b.watched_at) - new Date(a.watched_at));
                 };
 
@@ -4698,6 +4736,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                     try { specialsData = await fetchTMDB(`/tv/${tmdbShowId}/season/0`); } catch(e) {}
                                 }
 
+                                // Fix: Generate composite Trakt ID to prevent episode TMDB IDs from colliding with movie ratings
                                 episodes = seasonData.episodes.map(ep => ({
                                     ...ep,
                                     title: ep.name,
@@ -4705,7 +4744,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                     season: ep.season_number,
                                     overview: ep.overview,
                                     rating: ep.vote_average,
-                                    ids: { tmdb: ep.id, trakt: ep.id }
+                                    ids: { tmdb: ep.id, trakt: `${tmdbShowId}-${ep.season_number}-${ep.episode_number}` }
                                 }));
                                 
                                 // Interlace Specials
@@ -4713,6 +4752,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                     const firstAir = new Date(episodes[0].air_date || '2099-01-01');
                                     const lastAir = new Date(episodes[episodes.length - 1].air_date || '2099-01-01');
                                     
+                                    // Fix: Generate composite Trakt ID for interlaced specials to prevent rating collisions
                                     const relevantSpecials = specialsData.episodes.filter(sp => {
                                         if (!sp.air_date) return false;
                                         const spDate = new Date(sp.air_date);
@@ -4724,7 +4764,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                         season: ep.season_number,
                                         overview: ep.overview,
                                         rating: ep.vote_average,
-                                        ids: { tmdb: ep.id, trakt: ep.id },
+                                        ids: { tmdb: ep.id, trakt: `${tmdbShowId}-${ep.season_number}-${ep.episode_number}` },
                                         episode_type: 'special'
                                     }));
                                     
@@ -5233,6 +5273,32 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             console.warn("Trakt history fallback failed", err);
                         }
                     }
+
+                    // Add comments so I can easily understand what it means and edit it later
+                    // Deduplicate global history feed: Merge same-day duplicates for the exact same item
+                    // caused by old imported ratings and history logs overlapping.
+                    const uniqueHistoryMap = new Map();
+                    data.forEach(item => {
+                        const mediaObj = item.type === 'episode' ? item.episode : item.movie;
+                        const targetId = mediaObj?.ids?.tmdb || mediaObj?.ids?.trakt || mediaObj?.id;
+                        
+                        // For episodes, safely capture the season/episode combo to prevent collisions
+                        let compositeId = targetId;
+                        if (item.type === 'episode') {
+                            const s = mediaObj?.season || mediaObj?.season_number;
+                            const e = mediaObj?.number || mediaObj?.episode_number;
+                            const showTmdb = mediaObj?.show?.ids?.tmdb || item.show?.ids?.tmdb;
+                            if (showTmdb && s !== undefined && e !== undefined) compositeId = `${showTmdb}-${s}-${e}`;
+                        }
+                        
+                        const dateStr = new Date(item.watched_at).toDateString();
+                        const dedupKey = `${compositeId}_${dateStr}`;
+                        
+                        if (!uniqueHistoryMap.has(dedupKey) || (!uniqueHistoryMap.get(dedupKey).rating && item.rating)) {
+                            uniqueHistoryMap.set(dedupKey, item);
+                        }
+                    });
+                    data = Array.from(uniqueHistoryMap.values());
 
                     // Client-side filter for history types
                     const fetchedCount = data.length; // Capture pre-filter count

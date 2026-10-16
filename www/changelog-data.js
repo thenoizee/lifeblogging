@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.81.0-alpha",
+    date: "2026-10-16",
+    changes: [
+                "In VidTrackr: Fixed the Log & Rate modal to hide the 'Rate Only' button for unseen episodes, simplifying the interface.",
+                "In VidTrackr: Fixed Up Next queue recalculation failures by removing strict string checks, allowing numeric document IDs (Trakt imports) to be properly fetched and deleted.",
+                "In VidTrackr: Fixed missing watch history on Detail pages by properly merging the local memory cache with fresh Firestore logs.",
+                "In VidTrackr: Fixed 'ghost ratings' appearing on unseen episodes in the Season view by generating proper composite IDs to prevent collisions with TMDB movie IDs.",
+    ]
+},
+    {
     version: "v16.80.0-alpha",
     date: "2026-10-14",
     changes: [
