@@ -1672,16 +1672,24 @@ window.importGoogleTakeout = (event) => {
                 const tasks = listObj.items || [];
                 
                 // 1. Build list-level Recurrence Map
+                // Added deeper heuristic parsing to catch various undocumented Google Tasks JSON structures
                 const recurrenceMap = {};
                 if (listObj.recurrences && Array.isArray(listObj.recurrences)) {
                     listObj.recurrences.forEach(rec => {
                         let rrule = '';
-                        if (rec.schedule && rec.schedule.interval) {
-                            const intv = rec.schedule.interval;
-                            const freq = intv.daily ? 'DAILY' : intv.weekly ? 'WEEKLY' : intv.monthly ? 'MONTHLY' : intv.yearly ? 'YEARLY' : '';
-                            const multi = intv.interval_multiplier || 1;
+                        if (rec.schedule) {
+                            console.log(`[TaskTrackr Debug] Parsing recurrence schedule:`, rec.schedule); // Debugging recurrence object
+                            const intv = rec.schedule.interval || rec.schedule; // Sometimes nested, sometimes flat
+                            let freq = '';
+                            if (intv.daily || intv.daily_interval || rec.schedule.daily) freq = 'DAILY';
+                            else if (intv.weekly || intv.weekly_interval || rec.schedule.weekly) freq = 'WEEKLY';
+                            else if (intv.monthly || intv.monthly_interval || rec.schedule.monthly) freq = 'MONTHLY';
+                            else if (intv.yearly || intv.yearly_interval || rec.schedule.yearly) freq = 'YEARLY';
+                            
+                            const multi = intv.interval_multiplier || intv.interval || 1;
                             if (freq) rrule = `RRULE:FREQ=${freq};INTERVAL=${multi}`;
                         }
+                        if (rec.rrule) rrule = rec.rrule; // Direct RRULE string fallback
                         recurrenceMap[rec.id] = rrule;
                     });
                 }
@@ -1696,10 +1704,21 @@ window.importGoogleTakeout = (event) => {
                         const isHistorical = isCompleted || isPastHidden;
 
                         // Attach RRULE only to active, non-historical instances
-                        if (task.task_recurrence_id && recurrenceMap[task.task_recurrence_id]) {
-                            if (!isHistorical) {
-                                task._mappedRrule = recurrenceMap[task.task_recurrence_id];
-                            }
+                        // Checks standard mapping, plus direct recurrence arrays/strings that GTasks occasionally exports
+                        let rrule = '';
+                        if (task.recurrence && Array.isArray(task.recurrence)) {
+                            rrule = task.recurrence[0];
+                        } else if (typeof task.recurrence === 'string') {
+                            rrule = task.recurrence;
+                        } else if (task.task_recurrence_id && recurrenceMap[task.task_recurrence_id]) {
+                            rrule = recurrenceMap[task.task_recurrence_id];
+                        } else if (task.recurrenceInfo || task.recurrence_rule) {
+                            rrule = task.recurrenceInfo || task.recurrence_rule;
+                        }
+                        
+                        if (rrule && !isHistorical) {
+                            task._mappedRrule = rrule.startsWith('RRULE:') ? rrule : `RRULE:${rrule}`;
+                            console.log(`[TaskTrackr Debug] Mapped RRULE to task "${task.title}":`, task._mappedRrule); // Debug mapping success
                         }
 
                         // Treat skipped PAST_HIDDEN instances as historical completions
@@ -3274,8 +3293,20 @@ const formatTaskPayload = (task) => {
                 if(icon) icon.className = 'fa-solid fa-circle-check text-blue-400 text-xl drop-shadow-md'; 
                 updateBulkToolbar(); 
             } 
+            
+            // Add custom drag ghost for Bulk Actions to visualize the multi-drag state clearly
+            if (selectedTasks.size > 1) {
+                console.log(`[TaskTrackr Debug] Initiating bulk drag for ${selectedTasks.size} items`);
+                const dragGhost = document.createElement('div');
+                dragGhost.className = 'bg-blue-600 text-white px-4 py-2 rounded-xl font-bold shadow-2xl z-[100000] fixed top-[-1000px] flex items-center gap-2';
+                dragGhost.innerHTML = `<i class="fa-solid fa-layer-group text-lg"></i> Moving ${selectedTasks.size} tasks`;
+                document.body.appendChild(dragGhost);
+                e.dataTransfer.setDragImage(dragGhost, 20, 20);
+                setTimeout(() => dragGhost.remove(), 100); // Cleanup ghost from DOM immediately after generation
+            }
+            
             taskEl.classList.add('dragging'); 
-            e.dataTransfer.effectAllowed = 'move'; 
+            e.dataTransfer.effectAllowed = 'move';
             const tasksData = JSON.stringify(Array.from(selectedTasks)); 
             e.dataTransfer.setData('text/plain', tasksData); 
         };
@@ -4392,7 +4423,8 @@ const renderTaskCard = (task) => {
             let shouldRemoveDate = false; 
             let newProjectId = null;
             let newPriority = null;
-            const now = new Date(); 
+            let newContextMode = null; // Added state to track bulk context changes
+            const now = new Date();
 
             if (action === 'today') { newDateISO = now.toISOString(); } 
             else if (action === 'tomorrow') { const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1); newDateISO = tmrw.toISOString(); } 
@@ -4404,8 +4436,9 @@ const renderTaskCard = (task) => {
             else if (action === 'specific' && value) { newDateISO = new Date(value).toISOString(); }
             else if (action === 'project' && value) { newProjectId = value; }
             else if (action === 'priority' && value !== null) { newPriority = parseInt(value); }
+            else if (action === 'context' && value) { newContextMode = value; } // Maps the context action
             
-            try { 
+            try {
                 await Promise.all(tasksToUpdate.map(async (tid) => { 
                     const task = taskCache.find(t => t.id === tid); 
                     if (!task) return; 
@@ -4467,6 +4500,13 @@ const renderTaskCard = (task) => {
                             task.priority = newPriority;
                         }
 
+                        // Apply the context categorisation update
+                        if (newContextMode) {
+                            console.log(`[TaskTrackr Debug] Bulk updating context to ${newContextMode} for task: ${task.id}`);
+                            window.logTaskAudit(task, 'Changed Context', task.contextMode, newContextMode);
+                            task.contextMode = newContextMode;
+                        }
+
                         // [FIX] Force Full Payload to avoid the API wiping unprovided properties and replacing task name with "Unknown"
                         const payload = formatTaskPayload(task);
 
@@ -4508,8 +4548,11 @@ const renderTaskCard = (task) => {
                 if (prjSel) prjSel.value = "";
                 const priSel = document.getElementById('bulk-priority-select');
                 if (priSel) priSel.value = "";
+                // Reset the new context select dropdown back to default
+                const ctxSel = document.getElementById('bulk-context-select');
+                if (ctxSel) ctxSel.value = "";
 
-                renderApp(); 
+                renderApp();
                 if (window.renderFocusNowTasks) window.renderFocusNowTasks();
                 
                 if (currentSidePaneTaskId && tasksToUpdate.includes(currentSidePaneTaskId)) {
@@ -7357,6 +7400,15 @@ document.addEventListener('keydown', (e) => {
         
         <select id="bulk-project-select" onchange="window.bulkAction('project', this.value)" class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs font-bold border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 outline-none focus:border-purple-500 transition cursor-pointer max-w-[130px] truncate shadow-sm">
             </select>
+
+        <select id="bulk-context-select" onchange="window.bulkAction('context', this.value)" class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs font-bold border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition cursor-pointer max-w-[110px] shadow-sm">
+            <!-- Context categorisation selector for bulk updates -->
+            <option value="" disabled selected>Context</option>
+            <option value="inherit">Inherit</option>
+            <option value="both">Uncategorised</option>
+            <option value="work">Work</option>
+            <option value="personal">Personal</option>
+        </select>
 
         <select id="bulk-priority-select" onchange="window.bulkAction('priority', this.value)" class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs font-bold border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 outline-none focus:border-orange-500 transition cursor-pointer max-w-[90px] shadow-sm">
             <option value="" disabled selected>Priority</option>

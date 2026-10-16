@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.82.0-alpha",
+    date: "2026-10-16",
+    changes: [
+                "In TaskTrackr: Added a Context categorisation dropdown (Work/Personal) to the bulk selection toolbar.",
+                "In TaskTrackr: Enhanced the drag-and-drop feedback to display a badge showing the number of tasks being moved when dragging a bulk selection to a folder.",
+                "In TaskTrackr: Improved the Google Tasks Takeout parser to detect and correctly map a wider variety of undocumented recurring task structures."
+    ]
+},
+    {
     version: "v16.81.0-alpha",
     date: "2026-10-16",
     changes: [
