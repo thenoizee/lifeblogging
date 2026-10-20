@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.83.0-alpha",
+    date: "2026-10-20",
+    changes: [
+        "In VidTrackr: Removed 'truncate', 'line-clamp-1', and 'line-clamp-2' classes from title elements across dashboard grids, episode lists, favorites, and history pages.",
+        "In VidTrackr: Added 'break-words whitespace-normal' classes to ensure long titles naturally wrap to new lines instead of cutting off.",
+        "In VidTrackr: Removed redundant hover tooltips (title attributes) from card titles.",
+        "In VidTrackr: Added CSS 'content-visibility: auto' to .card elements to virtualize layout and reduce DOM painting overhead.",
+        "In VidTrackr: Replaced external HTTP image placeholders with an instant inline SVG data URI to eliminate network congestion.",
+        "In VidTrackr: Added speculative prefetching on mouse hover in createCardHtml for sub-50ms detail page loads.",
+    ]
+},
+    {
     version: "v16.82.0-alpha",
     date: "2026-10-16",
     changes: [
