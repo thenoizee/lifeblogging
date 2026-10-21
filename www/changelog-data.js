@@ -2,6 +2,21 @@
 
 export const changelogData = [
     {
+    version: "v16.84.0-alpha",
+    date: "2026-10-22",
+    changes: [
+        "In TaskTrackr: Fixed the sync payload formatter to ensure the 'completedAt' timestamp is safely preserved and synced to the primary local_tasks database instead of being accidentally stripped out.",
+        "In TaskTrackr: Added backwards compatibility for older completed tasks lacking a 'completedAt' property to gracefully fall back to their 'updated', 'created', or 'dueDate' timestamps.",
+        "In TaskTrackr: Fixed an issue where switching views or filters (like opening the Completed list) would retain the previous scroll position. The content area now automatically snaps to the top when navigating.",
+        "In TaskTrackr: Patched a major memory leak caused by SortableJS instances remaining active in the background. The app now properly destroys detached drag-and-drop listeners during tab switches, drastically reducing RAM usage over long sessions.",
+        "In TaskTrackr: Implemented Search Debouncing. The app will now wait until you pause typing before rebuilding the task list, eliminating UI stuttering when searching quickly.",
+        "In TaskTrackr: Drastically improved list rendering and tab-switching performance by removing the synchronous Markdown parser (marked.js) from the main card previews, relying on a lightweight RegEx stripper instead.",
+        "In TaskTrackr: Applied modern CSS 'content-visibility: auto' to all task cards, allowing the browser to skip rendering calculations for tasks that are currently scrolled off-screen.",
+        "In TaskTrackr: Prevented the browser from freezing on accounts with massive histories by capping the 'Completed' tab to only render the 150 most recent tasks at a time, and updated the header counter to display '150+' when capped.",
+        "In TaskTrackr: Eliminated a severe 1-second UI freeze when switching tabs by optimizing the visual subtask tree builder, converting a heavy O(N²) Array.find() loop into a lightning-fast O(1) Set lookup."
+    ]
+},
+    {
     version: "v16.83.0-alpha",
     date: "2026-10-20",
     changes: [

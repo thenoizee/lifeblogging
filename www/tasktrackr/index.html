@@ -63,7 +63,7 @@ body {
     width: 100vw;
 }
 
-        .card { transition: all 0.2s; position: relative; overflow: hidden; }
+        .card { transition: all 0.2s; position: relative; overflow: hidden; content-visibility: auto; contain-intrinsic-size: 0 80px; }
         .btn-primary { background-color: var(--primary); color: white; transition: 0.2s; }
         /* Fix double tap by wrapping custom hover states in media query */
         @media (hover: hover) {
@@ -1135,7 +1135,11 @@ import {
         // Search Listener
         const searchInput = document.getElementById('nav-search-input');
         if (searchInput) {
-            searchInput.addEventListener('input', (e) => window.handleSearch(e.target.value));
+            let searchTimeout;
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => window.handleSearch(e.target.value), 200);
+            });
         }
 
         const API_BASE = 'https://us-central1-sammy-7298f.cloudfunctions.net/tickTickProxy/open/v1';
@@ -1273,6 +1277,7 @@ window.addEventListener('WidgetAction', (e) => {
     }
 });
         
+        let activeSortables = [];
         let taskCache = [];
         let historyCache = [];
         try { const cached = localStorage.getItem('ticktrackr_tasks'); if (cached) taskCache = JSON.parse(cached); } catch(e) { console.error(e); }
@@ -2047,7 +2052,14 @@ window.syncPendingTasks = async () => {
                 if (!auth.currentUser) throw new Error("Not logged in");
                 const realDocRef = isTemp ? doc(collection(db, 'users', auth.currentUser.uid, 'local_tasks')) : doc(db, 'users', auth.currentUser.uid, 'local_tasks', tempId);
                 const realDocId = realDocRef.id;
-                const taskData = { ...payload, id: realDocId, updated: new Date(), source: 'local' };
+                // [DEBUG] Include completedAt and handle both new tasks and completions cleanly
+                const taskData = { 
+                    ...payload, 
+                    id: realDocId, 
+                    updated: new Date(), 
+                    source: 'local',
+                    completedAt: mergedTask.completedAt || payload.completedAt || null
+                };
                 if (!isEdit) taskData.created = new Date();
                 
                 await fetchWithTimeout(setDoc(realDocRef, taskData, { merge: true }));
@@ -2665,18 +2677,27 @@ const fetchAllData = async () => {
                     if (data.contextMode) existingTask.contextMode = data.contextMode; 
                     // FIX: Re-attach local edit history so cloud syncs don't wipe it
                     if (data.editHistory) existingTask.editHistory = data.editHistory;
+                    // [DEBUG] Preserve completedAt if mirrored in local_tasks
+                    if (data.completedAt) existingTask.completedAt = data.completedAt.toDate ? data.completedAt.toDate().toISOString() : data.completedAt;
                 }
                 return;
             }
 
                 const cleanDate = (d) => d && d.toDate ? d.toDate().toISOString() : d;
                 
+                // [DEBUG] Backwards-compatibility: If task status is completed (2) but completedAt is missing, fall back to updated or created timestamp
+                let resolvedCompletedAt = cleanDate(data.completedAt);
+                if (!resolvedCompletedAt && data.status === 2) {
+                    resolvedCompletedAt = cleanDate(data.updated) || cleanDate(data.created) || new Date().toISOString();
+                }
+
                 allActiveTasks.push({
                     ...data,
                     id: doc.id,
                     source: data.source || 'local', // FIXED: Retain original source so the UI formats it correctly
                     startDate: cleanDate(data.startDate),
-                    dueDate: cleanDate(data.dueDate)
+                    dueDate: cleanDate(data.dueDate),
+                    completedAt: resolvedCompletedAt || null
                 });
             });
         } catch (e) { console.error("Error fetching Firebase data:", e); }
@@ -2741,7 +2762,6 @@ const fetchAllData = async () => {
     // SILENT REFRESH: Only rebuild the DOM if the visual cloud data is actually different from our local cache
     if (oldSig !== getCacheSignature(taskCache)) {
         renderApp();
-        window.renderProjectSidebar();
     }
     
     // Sync the side pane to the newly fetched data
@@ -2779,6 +2799,8 @@ const formatTaskPayload = (task) => {
         isAllDay: !!task.isAllDay,
         startDate: cleanDate(task.startDate),
         dueDate: cleanDate(task.dueDate),
+        // [DEBUG] Preserve completion timestamp across formatting
+        completedAt: task.completedAt || null,
         repeatFlag: task.repeatFlag || null, 
         status: task.status || 0,
         items: (task.items || []).map(item => {
@@ -3475,6 +3497,9 @@ const formatTaskPayload = (task) => {
             if(view === 'calendar' || view === 'timeline') quickAdd.classList.add('hidden'); 
             else quickAdd.classList.remove('hidden');
 
+            // [FIX] Reset scroll position to top when switching views
+            if (els.content) els.content.scrollTop = 0;
+
             renderApp();
         };
         // Add these functions
@@ -3521,6 +3546,9 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active')); 
             const btn = document.querySelector(`button[onclick="window.setFilter('${filter}')"]`); 
             if(btn) btn.classList.add('active'); 
+
+            // [FIX] Reset scroll position to top when switching filters
+            if (els.content) els.content.scrollTop = 0;
 
             if (filter === 'completed') {
                 renderApp(); 
@@ -3578,6 +3606,7 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             // Map the base cache array
             let tasks = taskCache;
             
+            window._hasMoreCompleted = 0;
             if (activeFilter === 'completed') {
                 // Combine cloud history and permanently stored local completed tasks
                 const localCompleted = taskCache.filter(t => t.status === 2);
@@ -3589,6 +3618,11 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
                 
                 // Deduplicate to ensure no UI cloning conflicts
                 tasks = Array.from(new Map(tasks.map(t => [t.id, t])).values());
+                
+                // [FIX] Cap completed tasks to the most recent 150 to prevent massive DOM freezing
+                tasks.sort((a,b) => new Date(b.completedAt || b.updated || 0) - new Date(a.completedAt || a.updated || 0));
+                if (tasks.length > 150) window._hasMoreCompleted = tasks.length - 150;
+                tasks = tasks.slice(0, 150);
             }
 
             // --- SOURCE FILTERING ---
@@ -3692,28 +3726,38 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             // --> INJECT NESTED CHILDREN <--
             // Ensure that if a parent task is visible, ALL its nested child tasks (even if completed or missing a due date)
             // are pulled into the view so they can be rendered underneath it and un-completed if necessary.
-            let addedNew = true;
-            while (addedNew) {
-                addedNew = false;
-                const currentIds = new Set(tasks.map(t => t.id));
-                const extraChildren = [];
-                
-                // FIXED: Scan combined task storage so completed items are safely re-nested
-                const combinedTasks = [...taskCache, ...historyCache];
-                const uniqueTasks = Array.from(new Map(combinedTasks.map(t => [t.id, t])).values());
-                
-                uniqueTasks.forEach(t => {
-                    if (t.parentId && currentIds.has(t.parentId) && !currentIds.has(t.id)) {
-                        // Do not inject hidden tasks unless we are viewing hidden tasks
-                        if (activeFilter !== 'hidden' && t.hidden) return;
-                        extraChildren.push(t);
-                        addedNew = true;
-                    }
-                });
-                
-                if (extraChildren.length > 0) {
-                    tasks = [...tasks, ...extraChildren];
+            // [FIX] O(N) optimization to eliminate tab-switching lag by pre-computing children map
+            const combinedTasks = [...taskCache, ...historyCache];
+            const childrenLookup = new Map();
+            combinedTasks.forEach(t => {
+                if (t.parentId) {
+                    if (!childrenLookup.has(t.parentId)) childrenLookup.set(t.parentId, []);
+                    childrenLookup.get(t.parentId).push(t);
                 }
+            });
+
+            const currentIds = new Set(tasks.map(t => t.id));
+            const extraChildren = [];
+            const queue = [...tasks];
+            
+            while (queue.length > 0) {
+                const parent = queue.shift();
+                const children = childrenLookup.get(parent.id);
+                if (children) {
+                    children.forEach(child => {
+                        if (!currentIds.has(child.id)) {
+                            if (activeFilter !== 'hidden' && child.hidden) return;
+                            currentIds.add(child.id);
+                            extraChildren.push(child);
+                            queue.push(child);
+                        }
+                    });
+                }
+            }
+            if (extraChildren.length > 0) {
+                tasks = [...tasks, ...extraChildren];
+                // Deduplicate one final time just in case of history/cache overlaps
+                tasks = Array.from(new Map(tasks.map(t => [t.id, t])).values());
             }
 
             // --- SORTING ---
@@ -3751,8 +3795,11 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             const rootTasks = [];
             const childrenMap = {};
             
+            // [FIX] Use an O(1) Set lookup instead of an O(N) Array.find inside the loop to kill the 1-second lag
+            const sortedTaskIds = new Set(sortedTasks.map(t => t.id));
+            
             sortedTasks.forEach(t => {
-                if (t.parentId && sortedTasks.find(p => p.id === t.parentId)) {
+                if (t.parentId && sortedTaskIds.has(t.parentId)) {
                     if (!childrenMap[t.parentId]) childrenMap[t.parentId] = [];
                     childrenMap[t.parentId].push(t);
                 } else {
@@ -4021,6 +4068,12 @@ window.toggleRepeatOptions = () => {
         const renderApp = () => { 
             if(!document.getElementById('content')) return; 
             
+            // Clean up old Sortable instances to prevent memory leaks during tab/filter switches
+            if (window.activeSortables) {
+                window.activeSortables.forEach(s => s.destroy());
+            }
+            window.activeSortables = [];
+            
             // --- Unified Mobile Nav Highlights ---
             document.querySelectorAll('.mobile-nav-item').forEach(btn => btn.classList.remove('active-nav'));
             
@@ -4115,10 +4168,10 @@ window.toggleRepeatOptions = () => {
         
         const tasks = getFilteredTasks();
         // Try to find the element dynamically, as SharedNav might re-render it
-const counterEl = document.getElementById('header-task-count') || els.taskCounter;
-if (counterEl) {
-    counterEl.textContent = tasks.length;
-}
+        const counterEl = document.getElementById('header-task-count') || els.taskCounter;
+        if (counterEl) {
+            counterEl.textContent = (currentState.filter === 'completed' && window._hasMoreCompleted > 0) ? `${tasks.length}+` : tasks.length;
+        }
         if (currentState.view === 'eisenhower') renderEisenhower(tasks); else if (currentState.view === 'classic') renderClassic(tasks); else if (currentState.view === 'calendar') renderCalendar(tasks); else if (currentState.view === 'kanban') renderKanban(tasks); else if (currentState.view === 'timeline') renderTimeline(tasks); else if (currentState.view === 'agenda') renderAgenda(tasks); };
         // Timebox functionality completely removed.
         window.renderApp = renderApp;
@@ -4186,9 +4239,12 @@ const renderTaskCard = (task) => {
     // Format options to explicitly show the year
     const dateOpts = { year: 'numeric', month: 'short', day: 'numeric' };
 
-    if (task.status === 2 && task.completedAt) {
+    // [DEBUG] Backwards-compatible date resolution for completed tasks
+    const effectiveCompletionDate = task.completedAt || (task.status === 2 ? (task.updated || task.dueDate) : null);
+
+    if (task.status === 2 && effectiveCompletionDate) {
         // If completed, show the completion date instead of the due date
-        const compDate = new Date(task.completedAt);
+        const compDate = new Date(effectiveCompletionDate);
         const compStr = compDate.toLocaleDateString(undefined, dateOpts);
         dateBadgeHtml = `<span class="flex items-center gap-1 font-bold whitespace-nowrap shrink-0 text-green-600 dark:text-green-500"><i class="fa-solid fa-check-double"></i> Done ${compStr}</span>`;
         dateIsPill = true;
@@ -4354,8 +4410,8 @@ const renderTaskCard = (task) => {
                 <div class="flex items-start gap-3 flex-grow min-w-0"> 
                     <div class="pt-1 flex-shrink-0 relative cursor-pointer z-20" onclick="window.toggleTaskSelection('${task.id}', event)" title="Select Task"> ${selectIcon} </div>
                     <div class="min-w-0 flex-grow"> 
-                        <h3 class="font-bold text-lg leading-tight text-gray-900 dark:text-white mb-1"><span class="task-title-text ${task.status === 2 ? 'is-done' : ''}">${escapeHtml(task.title)}</span></h3>${task.content ? `<div class="desc-preview text-xs text-gray-600 dark:text-gray-400 line-clamp-1 mb-2 prose prose-sm dark:prose-invert [&>*]:m-0 [&>*]:leading-normal">${marked.parse(task.content, { breaks: true })}</div>` : ''}
-                    </div> 
+                        <h3 class="font-bold text-lg leading-tight text-gray-900 dark:text-white mb-1"><span class="task-title-text ${task.status === 2 ? 'is-done' : ''}">${escapeHtml(task.title)}</span></h3>${task.content ? `<div class="desc-preview text-xs text-gray-600 dark:text-gray-400 line-clamp-1 mb-2 truncate">${escapeHtml(task.content.replace(/[*_~`#>\[\]]/g, ' '))}</div>` : ''}
+                    </div>
                 </div> 
                 <div class="card-meta flex flex-wrap items-center text-xs ml-8 mt-2 sm:ml-0 sm:mt-0 text-gray-500 dark:text-gray-400"> 
                     ${finalMetaHtml}
@@ -4860,7 +4916,11 @@ const renderTaskCard = (task) => {
                     </div>`;
                 });
                 
-                els.content.innerHTML = `<div id="completed-list" class="pb-8">${html}</div>`;
+                const moreIndicator = window._hasMoreCompleted > 0 
+                    ? `<div class="text-center py-4 mt-6 mb-2 text-xs font-bold text-gray-400 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">+ ${window._hasMoreCompleted} older tasks hidden to maintain performance</div>` 
+                    : '';
+
+                els.content.innerHTML = `<div id="completed-list" class="pb-8">${html}${moreIndicator}</div>`;
                 return;
             }
             
@@ -4922,7 +4982,7 @@ const renderTaskCard = (task) => {
             html += renderSection('completed', 'Completed'); 
             html += '</div>';
             els.content.innerHTML = html; 
-            setTimeout(() => { ['overdue', 'today', 'tomorrow', 'later', 'noDate', 'completed'].forEach(key => { const el = document.getElementById(`group-${key}`); if (el) { const opts = window.getSortableOptions(window.handleSortableDrop); opts.group = 'classic-view'; new Sortable(el, opts); } }); }, 50); 
+            setTimeout(() => { ['overdue', 'today', 'tomorrow', 'later', 'noDate', 'completed'].forEach(key => { const el = document.getElementById(`group-${key}`); if (el) { const opts = window.getSortableOptions(window.handleSortableDrop); opts.group = 'classic-view'; window.activeSortables.push(new Sortable(el, opts)); } }); }, 50); 
         };
         
         const renderEisenhower = (tasks) => { 
@@ -5921,7 +5981,8 @@ const renderKanban = (tasks) => {
         
         setTimeout(() => { 
             visibleCols.forEach(p => { 
-                new Sortable(document.getElementById(`col-${p}`), window.getSortableOptions(async (evt) => { 
+                const el = document.getElementById(`col-${p}`);
+                const opts = window.getSortableOptions(async (evt) => { 
                     const taskId = evt.item.dataset.taskId; 
                     const newVal = evt.to.dataset.group; 
                     const oldVal = evt.from.dataset.group;
@@ -5937,7 +5998,8 @@ const renderKanban = (tasks) => {
                         } catch(e) { showToast('Failed to move task', 'error'); task.projectId = oldVal; }
                         renderApp(); hideLoader(); 
                     } 
-                })); 
+                });
+                window.activeSortables.push(new Sortable(el, opts));
             }); 
         }, 100);
 
@@ -5991,7 +6053,8 @@ const renderKanban = (tasks) => {
         
         setTimeout(() => { 
             visibleCols.forEach(p => { 
-                new Sortable(document.getElementById(`col-${p}`), window.getSortableOptions(async (evt) => { 
+                const el = document.getElementById(`col-${p}`);
+                const opts = window.getSortableOptions(async (evt) => { 
                     const taskId = evt.item.dataset.taskId; 
                     const newVal = evt.to.dataset.group; 
                     const oldVal = evt.from.dataset.group;
@@ -5999,7 +6062,6 @@ const renderKanban = (tasks) => {
                         const task = taskCache.find(t => t.id === taskId); 
                         showLoader(); 
                         window.logTaskAudit(task, 'Changed Department', oldVal, newVal);
-                        // Assign to the top level of the newly dropped department
                         task.projectId = newVal;
                         try {
                             if (auth.currentUser && task.source === 'local') await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { projectId: newVal, updated: new Date() }, { merge: true });
@@ -6008,7 +6070,8 @@ const renderKanban = (tasks) => {
                         } catch(e) { showToast('Failed to move task', 'error'); task.projectId = oldVal; }
                         renderApp(); hideLoader(); 
                     } 
-                })); 
+                });
+                window.activeSortables.push(new Sortable(el, opts));
             }); 
         }, 100);
 
@@ -6052,7 +6115,8 @@ const renderKanban = (tasks) => {
         
         setTimeout(() => { 
             visibleCols.forEach(p => { 
-                new Sortable(document.getElementById(`col-${p}`), window.getSortableOptions(async (evt) => { 
+                const el = document.getElementById(`col-${p}`);
+                const opts = window.getSortableOptions(async (evt) => { 
                     const taskId = evt.item.dataset.taskId; 
                     const newVal = evt.to.dataset.group; 
                     const oldVal = evt.from.dataset.group;
@@ -6068,9 +6132,10 @@ const renderKanban = (tasks) => {
                         } catch(e) { showToast('Failed to move task', 'error'); task.projectId = oldVal; }
                         renderApp(); hideLoader(); 
                     } 
-                })); 
+                });
+                window.activeSortables.push(new Sortable(el, opts));
             }); 
-        }, 100); 
+        }, 100);
 
     // --- PRIORITY GROUPING MODE ---
     } else if (mode === 'priority') {
@@ -6107,7 +6172,8 @@ const renderKanban = (tasks) => {
 
         setTimeout(() => {
             [5, 3, 1, 0].forEach(p => {
-                new Sortable(document.getElementById(`col-${p}`), window.getSortableOptions(async (evt) => {
+                const el = document.getElementById(`col-${p}`);
+                const opts = window.getSortableOptions(async (evt) => {
                     const taskId = evt.item.dataset.taskId;
                     const newVal = parseInt(evt.to.dataset.group);
                     const oldVal = parseInt(evt.from.dataset.group);
@@ -6122,7 +6188,6 @@ const renderKanban = (tasks) => {
                             } else if (task.source === 'google' || task.kind === 'google') {
                                 // Google Tasks don't map priorities, ignore API
                             } else {
-                                // [FIX] Full Payload extraction
                                 const payload = formatTaskPayload(task);
                                 await api(`/task/${taskId}`, 'POST', payload);
                             }
@@ -6130,7 +6195,8 @@ const renderKanban = (tasks) => {
                         } catch(e) { showToast('Failed to update priority', 'error'); task.priority = oldVal; }
                         renderApp(); hideLoader();
                     }
-                }));
+                });
+                window.activeSortables.push(new Sortable(el, opts));
             });
         }, 100);
     }
@@ -6470,7 +6536,7 @@ window.renderSidePaneChecklist = (task) => {
     setTimeout(() => {
         const internalList = document.getElementById('sp-internal-checklist');
         if (internalList) {
-            new Sortable(internalList, {
+            const opts = {
                 animation: 150,
                 handle: '.drag-handle',
                 onEnd: async (evt) => {
@@ -6501,7 +6567,8 @@ window.renderSidePaneChecklist = (task) => {
                         showToast("Failed to save order", "error");
                     }
                 }
-            });
+            };
+            window.activeSortables.push(new Sortable(internalList, opts));
         }
     }, 50);
 };
