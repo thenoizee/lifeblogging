@@ -2,6 +2,25 @@
 
 export const changelogData = [
     {
+    version: "v16.86.0-alpha",
+    date: "2026-10-23",
+    changes: [
+        "In PlantTrackr: Added a debounce utility to plant and history search inputs to prevent DOM reflow lag on keystrokes.",
+        "In PlantTrackr: Unified card styling with rounded-2xl corners, softer ambient shadows, and subtle hover accents.",
+        "In PlantTrackr: Upgraded input fields with sleek focus rings and soft inner shadows.",
+        "In PlantTrackr: Overrode scattered inline Tailwind button classes to enforce a unified gradient, shadow, and hover lift effect on all primary and secondary buttons.",
+        "In PlantTrackr: Implemented a global click delegator to automatically close custom dropdown menus when clicking outside their bounds.",
+        "In PlantTrackr: Refactored the toggleDisplay engine to rely entirely on CSS classes for hardware-accelerated transitions.",
+        "In PlantTrackr: Optimized history log rendering by batching DOM inserts using DocumentFragment.",
+        "In PlantTrackr: Added global mousedown listeners to modal overlays to allow users to click the background to dismiss modals.",
+        "In PlantTrackr: Reverted the global typography font-family back to Inter.",
+        "In PlantTrackr: Fixed the sticky footer in the Add Plant modal by adjusting negative margins to offset container padding.",
+        "In PlantTrackr: Replaced standard message alerts with premium, pill-shaped toast notifications that slide up with backdrop blur and dynamic icons.",
+        "In PlantTrackr: Added a graceful CSS fade-out transition for the initial loading screen.",
+        "In PlantTrackr: Added a global error handler to automatically replace broken Firebase images with a neutral SVG placeholder."
+    ]
+},
+    {
     version: "v16.85.0-alpha",
     date: "2026-10-23",
     changes: [
