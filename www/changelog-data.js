@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.85.0-alpha",
+    date: "2026-10-23",
+    changes: [
+        "In TaskTrackr: Transitioned task hierarchy rendering from a flattened visual tree (using `_depth` and `margin-left` indentation) to a nested DOM model where subtasks render directly inside the parent card.",
+        "In TaskTrackr: Unified simple checklist items (`task.items`) and true linked tasks (`task._nestedTasks`) to display together within a single `.subtasks-container` inside the parent card.",
+        "In TaskTrackr: Updated the card progress bar and completion fraction badge to aggregate both simple checklist items and true nested tasks into one unified total.",
+        "In TaskTrackr: Completely overhauled Compact Mode CSS ('Ultimate Compact Mode') to use flex-column stacking, allowing subtasks to remain visible rather than being force-hidden.",
+        "In TaskTrackr: Added rich inline UI badges (Priority flags and relative Due Dates like 'Tomorrow') directly to the nested task rows displayed within the parent card.",
+        "In TaskTrackr: Removed the standalone 'Subtask' level-up arrow badge and removed `_parentDueDate` clustering fallbacks, as child tasks no longer render as independent rows in the main list views.",
+        "In TaskTrackr: Adjusted global CSS for `.task-group > .card` to strip double-spacing margins and tighten the gap between main list items."
+    ]
+},
+    {
     version: "v16.84.0-alpha",
     date: "2026-10-22",
     changes: [
