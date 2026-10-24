@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.87.0-alpha",
+    date: "2026-10-24",
+    changes: [
+        "In JournalTrackr: Added an 'Unsaved Changes' dirty-state tracker to the Editor to intercept accidental tab navigation and prevent data loss.",
+        "In JournalTrackr: Upgraded Timeline entry cards with a premium glassmorphism effect, semi-transparent background blurs, and glowing indicator dots.",
+        "In JournalTrackr: Redesigned the history calendar into an iOS-style widget featuring pill-shaped date highlights, a bold current-day ring, and glowing gradient bubbles for active days.",
+        "In JournalTrackr: Upgraded Insights stat cards with vibrant gradient backgrounds.",
+        "In JournalTrackr: Restyled the Explorer tab's Notebooks and Tags tree into a premium IDE-style sidebar with hover-state chevrons and rounded active states.",
+        "In JournalTrackr: Relocated notification toasts to the top-center of the screen, redesigning them into a 'Dynamic Island' pill format with a shrinking timer progress bar."
+    ]
+},
+    {
     version: "v16.86.0-alpha",
     date: "2026-10-23",
     changes: [
