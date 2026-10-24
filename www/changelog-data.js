@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.88.0-alpha",
+    date: "2026-10-25",
+    changes: [
+        "In VidTrackr: Made the scrobble modal scrollable with constrained heights to fit iPad and mobile screens safely.",
+        "In VidTrackr: Disabled heavy GPU CSS blurs on mobile devices to free up RAM.",
+        "In VidTrackr: Implemented dynamic TMDB image sizing to request lower resolution images on smaller screens.",
+        "In VidTrackr: Added memory-aware dynamic fetch chunking to prevent browser crashes on low-RAM devices.",
+        "In VidTrackr: Replaced fixed aspect ratios with cinematic aspect ratios (21:9, 3:1) for hero images to prevent vertical stretching on tablets and large monitors.",
+        "In VidTrackr: Compacted the Cast & Guests UI with smaller avatars and refined typography.",
+        "In VidTrackr: Transformed the Private Notes UI from a bulky card into a clean, focus-driven text block."
+    ]
+},
+    {
     version: "v16.87.0-alpha",
     date: "2026-10-24",
     changes: [

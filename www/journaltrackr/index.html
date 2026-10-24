@@ -447,10 +447,31 @@
             if (activeContent) activeContent.classList.remove('hidden');
         };
 
+        // DEBUG: Initialize dirty state tracker for the editor
+        window.isEditorDirty = false;
+
         // AppNavigation hook
         window.addEventListener('tab-changed', (e) => {
             const tabId = e.detail.tabId;
-            // Removed the hardcoded if-statement so any valid tab can open
+            console.log(`[Navigation] Tab change requested to: ${tabId}`);
+            
+            // Check if we are leaving the editor tab AND there are unsaved changes
+            const currentTabContent = document.getElementById('tab-content-editor');
+            if (!currentTabContent.classList.contains('hidden') && tabId !== 'editor' && window.isEditorDirty) {
+                console.log("[Warning] User attempting to leave dirty editor.");
+                const confirmLeave = confirm("You have unsaved changes! Are you sure you want to leave without saving?");
+                if (!confirmLeave) {
+                    console.log("[Navigation] Tab change cancelled by user.");
+                    // Optional: If your shared-nav highlights the clicked tab, force it back to editor visually
+                    if (window.nav && typeof window.nav.setActiveTab === 'function') {
+                        window.nav.setActiveTab('editor');
+                    }
+                    return; // Stop the tab switch
+                }
+            }
+            
+            // Reset dirty state if we are cleanly leaving or confirmed the wipe
+            window.isEditorDirty = false;
             window.switchTab(tabId);
         });
         
@@ -970,7 +991,11 @@
             els.dateInput.value = now.toISOString().slice(0, 16);
         };
 
-        els.cancelBtn.addEventListener('click', () => { resetForm(); nav.switchTab('timeline'); });
+        els.cancelBtn.addEventListener('click', () => { 
+            window.isEditorDirty = false; // Reset dirty flag on cancel
+            resetForm(); 
+            nav.switchTab('timeline'); 
+        });
 
         els.form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1021,6 +1046,7 @@
                 }
                 
                 localStorage.removeItem('journaltrackr_draft'); // Clear draft on successful save
+                window.isEditorDirty = false; // Clear dirty flag since we saved
                 resetForm();
                 nav.switchTab('timeline');
             } catch (err) {
@@ -1207,6 +1233,7 @@
         // Auto-save Indicator Logic
         let autosaveTimeout;
         els.form.addEventListener('input', () => {
+            window.isEditorDirty = true; // Mark editor as having unsaved changes
             const indicator = document.getElementById('autosave-indicator');
             if(indicator) {
                 indicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Saving...';

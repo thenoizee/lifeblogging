@@ -62,7 +62,19 @@
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             /* Enable hardware acceleration for mobile glass effect rendering */
             transform: translateZ(0); 
-            will-change: transform, backdrop-filter;
+            will-change: transform; /* PERFORMANCE FIX: removed backdrop-filter from will-change as it eats GPU RAM */
+        }
+        
+        /* PERFORMANCE FIX: Drastically reduce GPU memory footprint on mobile/iPad by shrinking blur radiuses */
+        @media (max-width: 1024px) {
+            .card {
+                backdrop-filter: blur(4px);
+                -webkit-backdrop-filter: blur(4px);
+            }
+            .bg-\[var\(--card\)\] {
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+            }
         }
         .card:hover {
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
@@ -268,7 +280,8 @@ input[type=range]::-moz-range-thumb {
         </div>
     </div>
 
-    <main class="flex-grow container mx-auto px-4 py-8">
+    <!-- UI FIX: Reduced massive py-8 padding to pt-2 pb-8 to eliminate the gaping space at the top of the app -->
+    <main class="flex-grow container mx-auto px-4 pt-2 md:pt-4 pb-8">
         <div id="content" class="min-h-[50vh]"></div>
     </main>
 
@@ -279,8 +292,10 @@ input[type=range]::-moz-range-thumb {
     <div id="loader" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 hidden transition-opacity">
         <div class="animate-spin rounded-full h-14 w-14 border-[5px] border-[var(--primary)] border-t-transparent"></div>
     </div>
+    <!-- Added debugging: log when modal opens to trace memory -->
     <div id="scrobble-modal" class="fixed inset-0 bg-black/80 flex flex-col justify-end md:justify-center items-center z-[9999] hidden backdrop-blur-sm px-2 pb-6 md:pb-0">
-        <div id="scrobble-modal-content" class="card p-3 md:p-6 rounded-2xl shadow-2xl max-w-sm w-full border border-gray-700 animate-fade flex flex-col relative transition-transform duration-300">
+        <!-- Made modal scrollable (max-h-[90vh], overflow-y-auto) to fit iPad/mobile screens safely -->
+        <div id="scrobble-modal-content" class="card p-3 md:p-5 rounded-2xl shadow-2xl max-w-sm md:max-w-md w-full border border-gray-700 animate-fade flex flex-col relative transition-transform duration-300 max-h-[90vh] overflow-y-auto hide-scroll">
             <div class="w-12 h-1.5 bg-gray-600 rounded-full mx-auto mb-2 opacity-50 cursor-grab active:cursor-grabbing md:hidden"></div>
             <div class="flex-shrink-0">
                 <h3 class="text-lg font-bold mb-0">Log & Rate</h3>
@@ -762,8 +777,14 @@ if (headerRight) {
             // [DEBUG] Track total time spent hydrating images
             if (window.VIDTRACKR_DEBUG) console.time('enrichTMDBImages');
             const chunks = [];
-            // OPTIMIZATION: Increased chunk size from 10 to 25 to maximize TMDB's 50 req/sec limit
-            for (let i = 0; i < toFetch.length; i += 25) chunks.push(toFetch.slice(i, i + 25));
+            
+            // PERFORMANCE FIX: Check for low device memory and dynamically adjust chunk sizes to prevent iPad/Mobile browser crashes
+            const isLowMem = navigator.deviceMemory && navigator.deviceMemory < 4;
+            const chunkSize = isLowMem ? 10 : 25;
+            if (window.VIDTRACKR_DEBUG && isLowMem) console.debug("[Debug] Low memory device detected. Reducing TMDB fetch chunk size.");
+            
+            // OPTIMIZATION: Maximize TMDB's 50 req/sec limit (reduced on low RAM devices)
+            for (let i = 0; i < toFetch.length; i += chunkSize) chunks.push(toFetch.slice(i, i + chunkSize));
 
             for (const chunk of chunks) {
                 await Promise.all(chunk.map(async ({ item, type, data, tmdbId, traktId, cacheKey, needsShowTitle }) => {
@@ -2015,27 +2036,33 @@ if (headerRight) {
             // --- 1. TMDB IMAGE LOGIC ---
             if (primaryDataSource === 'tmdb' || data.poster_path || data.backdrop_path || data.still_path || data.profile_path || (data.images && data.images.backdrops)) {
                 const tmdbBaseUrl = 'https://image.tmdb.org/t/p/';
+                // PERFORMANCE FIX: Dynamically shrink image resolution on low RAM or smaller screens (mobile/iPad) to save memory
+                const isMobile = window.innerWidth <= 768;
+                const landRes = isMobile ? 'w500' : 'w780';
+                const portRes = isMobile ? 'w342' : 'w500';
                 
+                if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Requesting TMDB images at landscape: ${landRes}, portrait: ${portRes}`);
+
                 if (preferLandscape) {
                     // Hunt for all TMDB landscape variations first
-                    if (data.backdrop_path) url = `${tmdbBaseUrl}w780${data.backdrop_path}`;
-                    else if (data.still_path) url = `${tmdbBaseUrl}w780${data.still_path}`;
-                    else if (data.images?.backdrops?.length > 0) url = `${tmdbBaseUrl}w780${data.images.backdrops[0].file_path}`;
-                    else if (data.images?.stills?.length > 0) url = `${tmdbBaseUrl}w780${data.images.stills[0].file_path}`;
+                    if (data.backdrop_path) url = `${tmdbBaseUrl}${landRes}${data.backdrop_path}`;
+                    else if (data.still_path) url = `${tmdbBaseUrl}${landRes}${data.still_path}`;
+                    else if (data.images?.backdrops?.length > 0) url = `${tmdbBaseUrl}${landRes}${data.images.backdrops[0].file_path}`;
+                    else if (data.images?.stills?.length > 0) url = `${tmdbBaseUrl}${landRes}${data.images.stills[0].file_path}`;
                 }
                 
                 // If landscape failed OR we wanted portrait, hunt for TMDB portrait variations
                 if (!url) {
-                    if (type === 'person' && data.profile_path) url = `${tmdbBaseUrl}w500${data.profile_path}`;
-                    else if (data.poster_path) url = `${tmdbBaseUrl}w500${data.poster_path}`;
-                    else if (data.images?.posters?.length > 0) url = `${tmdbBaseUrl}w500${data.images.posters[0].file_path}`;
-                    else if (data.images?.profiles?.length > 0) url = `${tmdbBaseUrl}w500${data.images.profiles[0].file_path}`;
+                    if (type === 'person' && data.profile_path) url = `${tmdbBaseUrl}${portRes}${data.profile_path}`;
+                    else if (data.poster_path) url = `${tmdbBaseUrl}${portRes}${data.poster_path}`;
+                    else if (data.images?.posters?.length > 0) url = `${tmdbBaseUrl}${portRes}${data.images.posters[0].file_path}`;
+                    else if (data.images?.profiles?.length > 0) url = `${tmdbBaseUrl}${portRes}${data.images.profiles[0].file_path}`;
                     
                     // Final TMDB safety net: If portrait failed but landscape exists, use it anyway to avoid a broken UI
-                    else if (data.backdrop_path) url = `${tmdbBaseUrl}w780${data.backdrop_path}`;
-                    else if (data.still_path) url = `${tmdbBaseUrl}w780${data.still_path}`;
+                    else if (data.backdrop_path) url = `${tmdbBaseUrl}${landRes}${data.backdrop_path}`;
+                    else if (data.still_path) url = `${tmdbBaseUrl}${landRes}${data.still_path}`;
                 }
-            } 
+            }
             
             // --- 2. TRAKT IMAGE LOGIC ---
             if (!url && data && data.images) {
@@ -3408,9 +3435,9 @@ async function renderPerson(id) {
                 const img = getImage(person, 'person');
                 els.content.innerHTML = `
                 <div class="animate-fade">
-                    <button onclick="history.back()" class="mb-6 text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition w-fit"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                    <button onclick="history.back()" class="mb-3 text-sm text-gray-400 hover:text-white flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition w-fit"><i class="fa-solid fa-arrow-left"></i> Back</button>
                     
-                    <div class="flex flex-col md:flex-row gap-8 mb-12">
+                    <div class="flex flex-col md:flex-row gap-6 mb-10">
                         <div class="md:w-1/3 lg:w-1/4 flex-shrink-0 text-center md:text-left">
                             <div class="rounded-2xl overflow-hidden shadow-2xl border border-gray-800 mb-6 mx-auto md:mx-0 max-w-[200px] md:max-w-none">
                                 <img src="${img}" class="w-full object-cover aspect-[2/3]" onerror="this.src='${PLACEHOLDER_IMG}'">
@@ -3471,6 +3498,9 @@ async function renderPerson(id) {
             window.renderDetail = renderDetail; // Expose globally for inline onclick
             const historyLimit = forceAllHistory ? 10000 : 100;
             const currentHash = location.hash;
+
+            // FIX: Prevent detail views from opening at the bottom of the page if navigating from a long list
+            window.scrollTo({ top: 0, behavior: 'instant' });
 
             // --- STALE-WHILE-REVALIDATE DETAIL CACHE ---
             // If the user previously opened this episode/movie, load it with 0ms delay
@@ -4137,28 +4167,28 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     }
 
                     if (combinedMembers.length > 0) {
-                        castHtml = `
-                        <h3 class="text-xs font-bold text-[var(--primary)] mb-4 uppercase tracking-widest mt-8">Top Cast & Guests</h3>
-                        <div class="flex gap-4 overflow-x-auto pb-6 hide-scroll">
-                            ${combinedMembers.slice(0, 20).map(person => {
-                                 const pImg = getImage(person.normPerson, 'person'); 
-                                 const charName = person.character || (person.characters ? person.characters[0] : 'Unknown');
-                                 const roleStyle = person.role_type.includes('Guest') ? 'text-amber-400 bg-amber-900/20 border border-amber-500/30' : 'text-[var(--primary)] bg-[var(--primary)]/10 border border-[var(--primary)]/30';
+                                castHtml = `
+                                <h3 class="text-[10px] font-bold text-gray-400 mb-4 uppercase tracking-widest mt-8"><i class="fa-solid fa-users mr-1 text-[var(--primary)]"></i> Top Cast & Guests</h3>
+                                <div class="flex gap-4 overflow-x-auto pb-6 hide-scroll">
+                                    ${combinedMembers.slice(0, 20).map(person => {
+                                         const pImg = getImage(person.normPerson, 'person'); 
+                                         const charName = person.character || (person.characters ? person.characters[0] : 'Unknown');
+                                         const roleStyle = person.role_type.includes('Guest') ? 'text-amber-400 bg-amber-900/20 border border-amber-500/30' : 'text-[var(--primary)] bg-[var(--primary)]/10 border border-[var(--primary)]/30';
 
-                                 return `
-                                 <div class="flex-shrink-0 w-28 group relative cursor-pointer" onclick="location.hash='#detail/person/${person.normId}'" title="View Filmography">
-                                    <div class="w-24 h-24 mx-auto rounded-full bg-gray-800 border-2 border-gray-700 overflow-hidden mb-3 shadow-lg group-hover:border-[var(--primary)] transition transform group-hover:scale-105">
-                                         <img src="${pImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">
-                                    </div>
-                                    <div class="text-center flex flex-col items-center">
-                                        <p class="font-bold text-xs truncate w-full text-white group-hover:text-[var(--primary)] transition">${person.normPerson.name}</p>
-                                        <span class="text-[9px] uppercase font-bold ${roleStyle} px-1.5 py-0.5 rounded-full mt-1 mb-0.5">${person.role_type}</span>
-                                        <p class="text-xs text-gray-500 truncate w-full" title="${charName}">${charName}</p>
-                                    </div>
-                                 </div>`
-                            }).join('')}
-                        </div>`;
-                    }
+                                         return `
+                                         <div class="flex-shrink-0 w-24 group relative cursor-pointer" onclick="location.hash='#detail/person/${person.normId}'" title="View Filmography">
+                                            <div class="w-20 h-20 mx-auto rounded-full bg-gray-900 border border-gray-700 overflow-hidden mb-2 shadow-lg group-hover:border-[var(--primary)] transition transform group-hover:scale-105">
+                                                 <img src="${pImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                            </div>
+                                            <div class="text-center flex flex-col items-center">
+                                                <p class="font-bold text-xs truncate w-full text-gray-200 group-hover:text-white transition">${person.normPerson.name}</p>
+                                                <span class="text-[8px] uppercase font-bold ${roleStyle} px-1.5 py-0.5 rounded-full mt-1 mb-0.5">${person.role_type}</span>
+                                                <p class="text-[10px] text-gray-500 truncate w-full" title="${charName}">${charName}</p>
+                                            </div>
+                                         </div>`
+                                    }).join('')}
+                                </div>`;
+                            }
                 }
 
                 // --- BUILD HTML ---
@@ -4185,52 +4215,59 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     }
 
                     html += `
-                    <button onclick="history.back()" class="mb-6 text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition w-fit border border-transparent hover:border-gray-700"><i class="fa-solid fa-arrow-left"></i> Back</button>
-                    <div class="relative w-full aspect-video md:min-h-[200px] md:h-auto rounded-3xl overflow-hidden shadow-2xl border border-gray-800 group mb-6 bg-black">
-                        <img src="${bgImg}" class="w-full h-full md:h-auto md:max-h-[50vh] object-cover md:object-contain mx-auto">
+                    <!-- UI FIX: Removed negative margin that was causing clipping. -->
+                    <div>
+                        <button onclick="history.back()" class="mb-4 text-xs md:text-sm text-gray-400 hover:text-white flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition w-fit border border-transparent hover:border-gray-700"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                    </div>
+                    
+                    <!-- UI FIX: Use cinematic aspect ratios (21:9, 3:1) instead of fixed pixel heights so it scales properly on large desktop screens -->
+                    <div class="relative w-full aspect-video md:aspect-[21/9] lg:aspect-[3/1] max-h-[500px] rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border border-gray-800 group mb-6 bg-black">
+                        <img src="${bgImg}" class="w-full h-full object-cover object-center opacity-80 md:opacity-100 mx-auto">
                         <div class="absolute inset-0 bg-gradient-to-t from-[var(--bg)] via-black/40 to-transparent pointer-events-none md:via-transparent"></div>
                         <div class="nav-btn nav-prev" onclick="window.navigateEpisode('${showInfo.ids.trakt}', ${item.season}, ${item.number - 1})"><i class="fa-solid fa-chevron-left"></i></div>
                         <div class="nav-btn nav-next" onclick="window.navigateEpisode('${showInfo.ids.trakt}', ${item.season}, ${item.number + 1})"><i class="fa-solid fa-chevron-right"></i></div>
-                        <div class="absolute bottom-0 left-0 p-4 md:p-10 w-full bg-gradient-to-t from-black via-black/80 md:via-black/50 to-transparent">
-                            <h4 class="text-sm md:text-xl font-bold text-gray-300 mb-1 flex items-center gap-2">
-                                <span class="bg-[var(--primary)] text-white px-2 py-0.5 rounded text-[10px] md:text-xs">EPISODE</span> 
+                        
+                        <div class="absolute bottom-0 left-0 p-3 md:p-5 w-full bg-gradient-to-t from-black via-black/80 to-transparent">
+                            <h4 class="text-xs md:text-sm font-bold text-gray-300 mb-1 flex items-center gap-2">
+                                <span class="bg-[var(--primary)] text-white px-2 py-0.5 rounded text-[9px] md:text-[10px] tracking-wider uppercase">EPISODE</span> 
                                 <a href="#detail/show/${showInfo.ids.trakt}" class="hover:text-white hover:underline transition truncate">${showInfo.title}</a>
                             </h4>
-                            <h1 class="text-2xl md:text-5xl font-bold text-white mb-2 md:mb-4 leading-tight shadow-black drop-shadow-md truncate">${titleText}</h1>
-                            <div class="hidden md:flex flex-wrap items-center gap-3 text-sm font-medium">
-                                <a href="#detail/show/${showInfo.ids.trakt}/season/${item.season}" class="bg-gray-800/80 hover:bg-gray-700 backdrop-blur text-white px-3 py-1 rounded border border-gray-600 transition">Season ${item.season}</a>
-                                <span class="bg-gray-800/80 backdrop-blur text-gray-300 px-3 py-1 rounded border border-gray-600">Ep ${item.number}</span>
+                            <h1 class="text-xl md:text-2xl lg:text-3xl font-bold text-white mb-1.5 leading-tight shadow-black drop-shadow-md truncate">${titleText}</h1>
+                            <div class="hidden md:flex flex-wrap items-center gap-2 text-xs font-medium">
+                                <a href="#detail/show/${showInfo.ids.trakt}/season/${item.season}" class="bg-gray-800/80 hover:bg-gray-700 backdrop-blur text-white px-2.5 py-1 rounded border border-gray-600 transition">Season ${item.season}</a>
+                                <span class="bg-gray-800/80 backdrop-blur text-gray-300 px-2.5 py-1 rounded border border-gray-600">Ep ${item.number}</span>
                                 ${epTypeBadgeHtml}
                                 ${statusBadge} ${myRatingHtml}
                             </div>
                         </div>
                     </div>
-                    <div class="md:hidden flex flex-wrap items-center gap-2 text-xs font-medium mb-6 px-2">
+                    <div class="md:hidden flex flex-wrap items-center gap-2 text-[10px] font-medium mb-4 px-2">
                         <a href="#detail/show/${showInfo.ids.trakt}/season/${item.season}" class="bg-gray-800 text-white px-2 py-1 rounded border border-gray-700">S${item.season} E${item.number}</a>
                         ${epTypeBadgeHtml}
                         ${statusBadge} ${myRatingHtml}
                     </div>
                     <div class="w-full">
                         <div class="w-full">
-                             <div class="flex flex-wrap gap-4 mb-6 text-sm text-gray-400 border-b border-gray-800 pb-4">
-                                <span class="flex items-center"><i class="fa-regular fa-clock mr-2"></i> ${runtimeStr}</span>
-                                <span class="flex items-center"><i class="fa-regular fa-calendar mr-2"></i> First aired:</i> ${new Date(item.first_aired).toLocaleDateString()}</span>
+                            <!-- UI FIX: Tightened margins and shrank font sizes to bring action boxes higher -->
+                            <div class="flex flex-wrap gap-4 mb-3 text-xs text-gray-400 border-b border-gray-800 pb-3">
+                                <span class="flex items-center"><i class="fa-regular fa-clock mr-1"></i> ${runtimeStr}</span>
+                                <span class="flex items-center"><i class="fa-regular fa-calendar mr-1"></i> First aired: ${new Date(item.first_aired).toLocaleDateString()}</span>
                             </div>
-                            <h3 class="text-xs font-bold text-[var(--primary)] mb-2 uppercase tracking-widest">Overview</h3>
+                            <h3 class="text-[10px] font-bold text-[var(--primary)] mb-1.5 uppercase tracking-widest">Overview</h3>
                             ${!isWatched && item.overview ? 
-                                `<div class="relative mb-8 cursor-pointer group rounded-lg overflow-hidden" onclick="this.querySelector('p').classList.remove('blur-md', 'select-none'); this.querySelector('.spoiler-overlay').remove()">
-                                    <p class="text-lg text-gray-300 leading-relaxed blur-md select-none transition duration-500">${item.overview}</p>
+                                `<div class="relative mb-4 cursor-pointer group rounded-lg overflow-hidden" onclick="this.querySelector('p').classList.remove('blur-md', 'select-none'); this.querySelector('.spoiler-overlay').remove()">
+                                    <p class="text-sm text-gray-300 leading-relaxed blur-md select-none transition duration-500">${item.overview}</p>
                                     <div class="spoiler-overlay absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition">
                                         <span class="text-xs font-bold text-gray-400 border border-gray-500 px-3 py-1 rounded-full uppercase tracking-widest group-hover:text-white group-hover:border-white transition"><i class="fa-solid fa-eye-slash mr-2"></i> Spoiler Warning</span>
                                     </div>
                                 </div>` 
-                                : `<p class="text-lg text-gray-300 leading-relaxed mb-8">${item.overview || 'No overview available.'}</p>`
+                                : `<p class="text-sm text-gray-300 leading-relaxed mb-4">${item.overview || 'No overview available.'}</p>`
                             }
                             ${progressHtml}
                             ${historyHtml}
                             
                             <!-- Action Buttons Groups (Episode) -->
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-6">
                                 <!-- Group 1: Tracking -->
                                 <div class="bg-[var(--card)] shadow-lg rounded-2xl p-4 border border-gray-700">
                                     <h4 class="text-[10px] uppercase font-bold text-gray-400 mb-3"><i class="fa-solid fa-clipboard-check mr-1 text-[var(--primary)]"></i> Tracking</h4>
@@ -4281,24 +4318,28 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 </div>
                             </div>
                             
-                            <div class="mb-6 space-y-1 text-sm text-gray-400">
-                                ${director !== 'N/A' ? `<p><strong class="text-gray-300">Director:</strong> ${director}</p>` : ''}
-                                ${network !== 'N/A' ? `<p><strong class="text-gray-300">Network:</strong> ${network}</p>` : ''}
-                                ${language !== 'EN' ? `<p><strong class="text-gray-300">Language:</strong> ${language}</p>` : ''}
-                                ${plays > 0 ? `<p><strong class="text-gray-300">Watch Count:</strong> ${plays} play${plays > 1 ? 's' : ''}</p><p><strong class="text-gray-300">Last Watched:</strong> ${history.length > 0 ? new Date(history[0].watched_at).toLocaleDateString() : 'Unknown'}</p>` : `<p><strong class="text-gray-300">Watch Count:</strong> 0 plays</p>`}
+                            <!-- Sleek Metadata Grid -->
+                            <div class="flex flex-wrap gap-3 mb-8 mt-4 pt-6 border-t border-gray-800/50">
+                                ${director !== 'N/A' ? `<div class="bg-gray-800/30 border border-gray-700/50 rounded-xl px-4 py-2 min-w-[120px]"><span class="text-[9px] uppercase font-bold tracking-widest text-gray-500 block mb-0.5">Director</span><span class="text-sm font-bold text-gray-200 truncate block">${director}</span></div>` : ''}
+                                ${network !== 'N/A' ? `<div class="bg-gray-800/30 border border-gray-700/50 rounded-xl px-4 py-2 min-w-[120px]"><span class="text-[9px] uppercase font-bold tracking-widest text-gray-500 block mb-0.5">Network</span><span class="text-sm font-bold text-gray-200 truncate block">${network}</span></div>` : ''}
+                                <div class="bg-gray-800/30 border border-gray-700/50 rounded-xl px-4 py-2 min-w-[120px]"><span class="text-[9px] uppercase font-bold tracking-widest text-gray-500 block mb-0.5">Watch Count</span><span class="text-sm font-bold text-gray-200 truncate block">${plays} play${plays === 1 ? '' : 's'}</span></div>
+                                ${plays > 0 && history.length > 0 ? `<div class="bg-gray-800/30 border border-gray-700/50 rounded-xl px-4 py-2 min-w-[120px]"><span class="text-[9px] uppercase font-bold tracking-widest text-gray-500 block mb-0.5">Last Watched</span><span class="text-sm font-bold text-gray-200 truncate block">${new Date(history[0].watched_at).toLocaleDateString()}</span></div>` : ''}
                             </div>
                             
-                            <!-- Removed providersHtml from here -->
+                            <!-- Inject Where to Watch Providers here -->
 
                             ${castHtml}
 
-                            <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8">
-                                <h3 class="font-bold mb-3 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
-                                <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-3 text-sm outline-none resize-none" rows="2" placeholder="Private note...">${userNote}</textarea>
-                                <div class="flex justify-end mt-3"><button id="save-note" class="text-xs bg-gray-700 hover:bg-[var(--primary)] text-white px-5 py-2 rounded-md transition font-bold shadow">Save</button></div>
+                            <!-- Sleek Private Note Box -->
+                            <div class="bg-gray-900/40 p-5 rounded-2xl border border-gray-800 mb-8 mt-6 transition-colors hover:border-gray-600 focus-within:border-[var(--primary)] focus-within:ring-1 focus-within:ring-[var(--primary)]/50">
+                                <div class="flex justify-between items-center mb-3">
+                                    <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-400 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-[var(--primary)]"></i> Private Note</h3>
+                                    <button id="save-note" class="text-[10px] bg-gray-800 hover:bg-[var(--primary)] text-white px-3 py-1 rounded transition font-bold shadow-sm uppercase tracking-wider border border-gray-700 hover:border-transparent">Save Note</button>
+                                </div>
+                                <textarea id="note-input" class="w-full bg-transparent border-0 focus:ring-0 p-0 text-sm md:text-base outline-none resize-none transition text-gray-200 placeholder-gray-600 min-h-[40px]" rows="2" placeholder="Add your thoughts or thoughts on this...">${userNote}</textarea>
                             </div>
                         </div>
-                        </div>`;
+                    </div>`;
 
                 } else {
                     // MOVIE / SHOW HTML
@@ -4306,8 +4347,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     
                     // Construct structural layout matching image_666e40.jpg
                     html += `
-                    <button onclick="history.back()" class="mb-6 text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition w-fit"><i class="fa-solid fa-arrow-left"></i> Back</button>
-                    <div class="flex flex-col md:flex-row gap-8 mb-12">
+                    <button onclick="history.back()" class="mb-3 text-sm text-gray-400 hover:text-white flex items-center gap-2 transition w-fit"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                    <div class="relative w-full aspect-video md:min-h-[200px] md:h-auto rounded-3xl overflow-hidden shadow-2xl border border-gray-800 group mb-6 bg-black">
                         <!-- LEFT SIDEBAR -->
                         <div class="w-full md:w-1/3 lg:w-1/4 flex-shrink-0 mx-auto max-w-[220px] sm:max-w-[280px] md:max-w-none md:mx-0">
                             <!-- Poster -->
@@ -4496,28 +4537,31 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             ${genresHtml ? `<div class="flex flex-wrap gap-2 mb-6">${genresHtml}</div>` : '<div class="mb-6"></div>'}
                             
                             <!-- Info Text -->
-                            <div class="mb-8 space-y-2 text-sm text-gray-400">
-                                ${director !== 'N/A' ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Director:</strong> ${director}</p>` : ''}
-                                ${studios !== 'N/A' ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Studio:</strong> ${studios}</p>` : ''}
-                                ${network !== 'N/A' ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Network:</strong> ${network}</p>` : ''}
-                                ${type === 'show' ? '' : (plays > 0 ? `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Watch Count:</strong> ${plays} play${plays > 1 ? 's' : ''}</p>` : `<p><strong class="text-gray-300 text-xs uppercase tracking-wider">Watch Count:</strong> 0 plays</p>`)}
+                            <div class="flex flex-wrap gap-3 mb-6">
+                                ${director !== 'N/A' ? `<div class="bg-gray-800/40 border border-gray-700/50 rounded-lg px-3 py-1.5 min-w-[100px]"><span class="text-[9px] uppercase tracking-wider text-gray-500 block mb-0.5">Director</span><span class="text-sm font-bold text-gray-200 truncate block">${director}</span></div>` : ''}
+                                ${studios !== 'N/A' ? `<div class="bg-gray-800/40 border border-gray-700/50 rounded-lg px-3 py-1.5 min-w-[100px]"><span class="text-[9px] uppercase tracking-wider text-gray-500 block mb-0.5">Studio</span><span class="text-sm font-bold text-gray-200 truncate block">${studios}</span></div>` : ''}
+                                ${network !== 'N/A' ? `<div class="bg-gray-800/40 border border-gray-700/50 rounded-lg px-3 py-1.5 min-w-[100px]"><span class="text-[9px] uppercase tracking-wider text-gray-500 block mb-0.5">Network</span><span class="text-sm font-bold text-gray-200 truncate block">${network}</span></div>` : ''}
+                                ${type === 'show' ? '' : `<div class="bg-gray-800/40 border border-gray-700/50 rounded-lg px-3 py-1.5 min-w-[100px]"><span class="text-[9px] uppercase tracking-wider text-gray-500 block mb-0.5">Watch Count</span><span class="text-sm font-bold text-gray-200 truncate block">${plays} play${plays === 1 ? '' : 's'}</span></div>`}
+                                ${type !== 'show' && plays > 0 && history.length > 0 ? `<div class="bg-gray-800/40 border border-gray-700/50 rounded-lg px-3 py-1.5 min-w-[100px]"><span class="text-[9px] uppercase tracking-wider text-gray-500 block mb-0.5">Last Watched</span><span class="text-sm font-bold text-gray-200 truncate block">${new Date(history[0].watched_at).toLocaleDateString()}</span></div>` : ''}
                             </div>
                             
                             <!-- Inject Where to Watch Providers here -->
                             ${providersHtml}
                             
                             <!-- Overview Text -->
-                            <p class="text-gray-300 text-sm md:text-base leading-relaxed mb-10 max-w-3xl">${item.overview || 'No overview available.'}</p>
+                            <p class="text-gray-300 text-sm md:text-base leading-relaxed mb-8 max-w-3xl">${item.overview || 'No overview available.'}</p>
                             
                             ${castHtml}
                             ${progressHtml}
                             ${historyHtml}
                             
                             <!-- Notes -->
-                            <div class="bg-[var(--card)] p-6 rounded-2xl border border-gray-700 shadow-lg mb-8 mt-10">
-                                <h3 class="font-bold mb-3 flex items-center text-gray-200"><i class="fa-solid fa-note-sticky mr-2 text-yellow-500"></i> Notes</h3>
-                                <textarea id="note-input" class="w-full bg-[var(--bg)] border border-gray-700 rounded-lg p-4 text-sm outline-none resize-none focus:border-[var(--primary)] transition" rows="3" placeholder="Your thoughts...">${userNote}</textarea>
-                                <div class="flex justify-end mt-3"><button id="save-note" class="text-xs bg-gray-700 hover:bg-[var(--primary)] text-white px-6 py-2 rounded-md transition font-bold shadow-md">Save</button></div>
+                            <div class="bg-gray-900/40 p-4 rounded-xl border border-gray-800 mb-8 mt-6 flex flex-col group transition hover:border-gray-600">
+                                <div class="flex justify-between items-center mb-2">
+                                    <h3 class="text-xs font-bold uppercase tracking-widest text-gray-400 flex items-center"><i class="fa-solid fa-note-sticky mr-2 text-[var(--primary)]"></i> Private Note</h3>
+                                    <button id="save-note" class="text-[10px] bg-gray-800 hover:bg-[var(--primary)] text-white px-3 py-1 rounded transition font-bold shadow-sm uppercase tracking-wider">Save</button>
+                                </div>
+                                <textarea id="note-input" class="w-full bg-transparent border-0 border-b border-gray-800 focus:border-[var(--primary)] focus:ring-0 p-1 text-sm outline-none resize-none transition text-gray-200 placeholder-gray-600" rows="1" placeholder="Add your thoughts...">${userNote}</textarea>
                             </div>
                         </div>
                     </div>
@@ -8195,6 +8239,9 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
         function handleRoute() {
             const hash = location.hash || '#dashboard';
             
+            // FIX: Ensure the browser always snaps to the top of the page on any navigation
+            window.scrollTo({ top: 0, behavior: 'instant' });
+            
             // Update Nav Highlight if we are on a main tab (including 'upcoming')
             const rootTab = hash.split('/')[0].replace('#', '');
             const mainTabs = ['dashboard', 'library', 'upcoming', 'progress', 'history', 'settings'];
@@ -8384,6 +8431,9 @@ modalContent.addEventListener('touchend', () => {
                 currentModalItem = { item: data, type: itemType };
                 document.getElementById('custom-progress').value = '';
                 document.getElementById('modal-title').innerText = data.title;
+                
+                // Added debugging so I can easily understand what it means and edit it later
+                if (window.VIDTRACKR_DEBUG) console.debug(`[Debug] Opening scrobble modal for ${itemType}: ${data.title}`);
                 els.modal.classList.remove('hidden');
 
                 // Configure rating section visibility (hide if watched before, unless user clicked "Rate" button directly)
