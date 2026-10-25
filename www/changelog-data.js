@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v16.89.0-alpha",
+    date: "2026-10-25",
+    changes: [
+                "In Analyser: Implemented string-based DOM construction and event delegation in the main data table to eliminate DOM thrashing and improve rendering speed.",
+                "In Analyser: Introduced App Shell architecture to instantly drop the global loader upon authentication and render the layout progressively.",
+                "In Analyser: Added a debounce function to batch Firebase snapshot updates, preventing 'Waterfall Freeze' during initial data hydration.",
+                "In Analyser: Added premium skeleton loaders to the dashboard stats cards to prevent layout shifts while data is loading.",
+                "In Analyser: Implemented a global persistent date cache (getCachedDate) to drastically reduce CPU load from repetitive regex parsing during sorting and chart generation.",
+                "In Analyser: Refactored Chart.js rendering to use smart data mutation (chart.update()) instead of destroying and recreating the canvas, eliminating GC pauses.",
+                "In Analyser: Refactored the Daily Plan sidebar to use string-based DOM assembly, preventing layout micro-reflows.",
+                "In Analyser: Added a YIQ contrast calculator (getContrastTextColor) to automatically swap attribute badge text between white and dark slate based on the generated background hex color.",
+                "In Analyser: Updated warning text colors from unreadable yellow-500 to adaptive amber-600 (light mode) and amber-400 (dark mode) for perfect WCAG contrast.",
+                "In Analyser: Enhanced dark mode table headers (Slate-800/95) and zebra striping for cleaner visibility and contrast.",
+                "In Analyser: Enforced CSS background and text colors for <select> and <option> elements to fix native browser white-on-white rendering bugs in dark mode."
+    ]
+},
+    {
     version: "v16.88.0-alpha",
     date: "2026-10-25",
     changes: [

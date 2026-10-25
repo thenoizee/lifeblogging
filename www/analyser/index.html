@@ -136,6 +136,10 @@ body {
             border: 1px solid var(--border-color);
             transition: all 0.2s ease;
         }
+        select option {
+            background-color: var(--card-bg-color);
+            color: var(--text-color-primary);
+        }
         input:focus, select:focus {
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
             border-color: #6366f1;
@@ -679,7 +683,7 @@ legend {
             <div class="overflow-hidden bg-[var(--card-bg-color)] rounded-xl shadow-sm border border-[var(--border-color)] flex flex-col">
                 <div class="overflow-x-auto max-h-[70vh] custom-scrollbar max-w-[100vw] md:max-w-full">
                     <table class="min-w-full relative border-collapse text-sm">
-                        <thead class="sticky top-0 z-20 bg-gray-50 dark:bg-gray-700/90 backdrop-blur-sm text-xs uppercase tracking-wider text-[var(--text-color-secondary)] font-semibold shadow-sm">
+                        <thead class="sticky top-0 z-20 bg-gray-50 dark:bg-slate-800/95 backdrop-blur-sm text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300 font-bold shadow-sm border-b border-gray-200 dark:border-slate-700">
                             <tr id="data-table-header"></tr>
                         </thead>
                         <tbody id="data-table-body" class="divide-y divide-[var(--border-color)]">
@@ -992,7 +996,7 @@ legend {
     <div class="modal-content w-4/5 max-w-4xl mx-auto p-5 rounded-lg shadow-lg">
         <span class="close-btn float-right text-3xl font-bold cursor-pointer">&times;</span>
         <h2 class="text-xl font-bold mb-4">Data Point Details</h2>
-        <p id="modal-read-only-message" class="text-sm text-yellow-500 mb-2 font-semibold hidden">This is a read-only view. Click the button below to make changes.</p>
+        <p id="modal-read-only-message" class="text-sm text-amber-600 dark:text-amber-400 mb-2 font-semibold hidden">This is a read-only view. Click the button below to make changes.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mb-4">
             <p>Collection: <strong id="modal-source-display"></strong></p>
             <p>Original File Name: <strong id="modal-file-source-display"></strong></p>
@@ -1175,6 +1179,14 @@ legend {
     let rowsPerPage = 50;
     let loadingSourceIds = new Set(); // <--- ADD THIS
 
+    // [PERFORMANCE] Global persistent cache for date parsing
+    const globalDateCache = new Map();
+    const getCachedDate = (val) => {
+        if (!val) return null;
+        if (!globalDateCache.has(val)) globalDateCache.set(val, parseDate(val));
+        return globalDateCache.get(val);
+    };
+
     let plannerState = {
         dailyPlan: [], currentDate: new Date(), currentView: 'month', reviewDate: new Date(),
         assignedLogIds: new Set(), dailyAssignments: new Map(), reviewedDays: new Set(),
@@ -1353,6 +1365,13 @@ legend {
                         columnPreferences = columnPrefsDoc.data();
                     } else {
                         columnPreferences = {};
+                    }
+
+                    // [UX UPGRADE] Instantly reveal the App Shell!
+                    const globalLoader = document.getElementById('global-loader');
+                    if (globalLoader) {
+                        globalLoader.style.opacity = '0';
+                        setTimeout(() => globalLoader.remove(), 300);
                     }
 
                     document.getElementById('auth-container').style.display = 'none';
@@ -1843,15 +1862,6 @@ toggleFilterBtn.addEventListener('click', () => {
             // Load all collection sources by default
             selectedSources = availableSources.map(s => s.id);
             updateAllData();
-            
-            // If there are no sources, remove global loader immediately
-            if (availableSources.length === 0) {
-                const globalLoader = document.getElementById('global-loader');
-                if (globalLoader) {
-                    globalLoader.style.opacity = '0';
-                    setTimeout(() => globalLoader.remove(), 500);
-                }
-            }
 
             updateSourcesCheckboxes(); // This will now show all sources as checked
             updateUploadSourceSelect();
@@ -1948,11 +1958,18 @@ toggleFilterBtn.addEventListener('click', () => {
         }
     }
 
+    // [PERFORMANCE] Batch UI updates to prevent main thread locking during initial data hydration
+    const debouncedUIUpdate = debounce(() => {
+        console.log("[DEBUG] Batched UI Update Executing");
+        updateUIWithNewData();
+        dataLoadingStatus.classList.add('hidden');
+    }, 250);
+
     function updateAllData() {
         if (!userId) return;
-    
+
         const activeListeners = Object.keys(sourceListeners);
-    
+
         const sourcesToDetach = activeListeners.filter(sourceId => !selectedSources.includes(sourceId));
         sourcesToDetach.forEach(sourceId => {
             if (sourceListeners[sourceId]) {
@@ -1961,7 +1978,7 @@ toggleFilterBtn.addEventListener('click', () => {
                 delete currentDataCache[sourceId];
             }
         });
-    
+
         const sourcesToAttach = selectedSources.filter(sourceId => !activeListeners.includes(sourceId));
         
         // Mark these sources as loading
@@ -1969,7 +1986,7 @@ toggleFilterBtn.addEventListener('click', () => {
         
         if (loadingSourceIds.size > 0) {
             dataLoadingStatus.classList.remove('hidden');
-            renderDataTable(); // Render immediately to show spinner in table
+            renderDataTable(); // Render immediately to show skeleton in table
         }
 
         sourcesToAttach.forEach(sourceId => {
@@ -1987,35 +2004,19 @@ toggleFilterBtn.addEventListener('click', () => {
                 // Remove from loading set
                 loadingSourceIds.delete(sourceId);
                 
-                // Hide top loading bar only if ALL sources are done
-                if (loadingSourceIds.size === 0) {
-                    dataLoadingStatus.classList.add('hidden');
-                    const globalLoader = document.getElementById('global-loader');
-                    if (globalLoader) {
-                        globalLoader.style.opacity = '0';
-                        setTimeout(() => globalLoader.remove(), 500);
-                    }
-                }
-
-                updateUIWithNewData();
+                // Trigger the debounced UI update instead of rendering instantly
+                debouncedUIUpdate();
     
             }, (error) => {
                 console.error(`Error listening to source ${sourceId}:`, error);
-                loadingSourceIds.delete(sourceId); // Ensure we don't get stuck loading
-                if (loadingSourceIds.size === 0) {
-                    dataLoadingStatus.classList.add('hidden');
-                    const globalLoader = document.getElementById('global-loader');
-                    if (globalLoader) {
-                        globalLoader.style.opacity = '0';
-                        setTimeout(() => globalLoader.remove(), 500);
-                    }
-                }
+                loadingSourceIds.delete(sourceId); 
+                debouncedUIUpdate(); // Ensure UI still unlocks if a source fails
                 showMessage(`Failed to load live data for ${sourceId}.`, 'error');
             });
         });
-    
+        
         if (sourcesToDetach.length > 0 && sourcesToAttach.length === 0) {
-            updateUIWithNewData();
+            debouncedUIUpdate();
         }
     }
 
@@ -2081,12 +2082,6 @@ toggleFilterBtn.addEventListener('click', () => {
 
     function renderDataTable() {
     const visibleDataPoints = getVisibleDataPoints();
-    // [PERFORMANCE] Cache parsed dates to avoid running regex/Date constructors thousands of times during sorting
-    const dateCache = new Map();
-    const getCachedDate = (val) => {
-        if (!dateCache.has(val)) dateCache.set(val, parseDate(val));
-        return dateCache.get(val);
-    };
     console.log("[DEBUG] Sorting table by column:", sortColumn, "Direction:", sortDirection);
 
     const sortedDataPoints = [...visibleDataPoints].sort((a, b) => {
@@ -2105,8 +2100,8 @@ toggleFilterBtn.addEventListener('click', () => {
         }
 
         if (sortColumn === 'date' && comparison === 0) {
-            const aCreatedAt = parseDate(a.createdAt);
-            const bCreatedAt = parseDate(b.createdAt);
+            const aCreatedAt = getCachedDate(a.createdAt);
+            const bCreatedAt = getCachedDate(b.createdAt);
             if (!aCreatedAt || isNaN(aCreatedAt)) return 1;
             if (!bCreatedAt || isNaN(bCreatedAt)) return -1;
             comparison = aCreatedAt.getTime() - bCreatedAt.getTime();
@@ -2243,70 +2238,119 @@ toggleFilterBtn.addEventListener('click', () => {
         dataTableHeader.appendChild(th);
     });
 
-    const fragment = document.createDocumentFragment();
-
-    paginatedData.forEach((dp, index) => {
-        const row = document.createElement('tr');
-        // [UI] Calculate alternating background classes for zebra striping
-        const zebraClass = index % 2 === 0 ? 'bg-[var(--card-bg-color)]' : 'bg-gray-50 dark:bg-gray-800/50';
-        row.className = `${zebraClass} hover:bg-blue-50/50 dark:hover:bg-gray-700/30 transition-colors group cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-0`;
+    // [PERFORMANCE UPGRADE] McMaster-Carr Style Event Delegation
+    // Binds a single event listener to the table body instead of attaching thousands to the individual generated cells/rows.
+    if (!dataTableBody.dataset.delegated) {
+        dataTableBody.dataset.delegated = 'true';
         
-        row.addEventListener('click', (e) => {
-            if (e.target.type === 'checkbox' || e.target.classList.contains('tag') || e.target.closest('.tag')) {
-                return; 
+        // Handle Clicks (Checkboxes & Row Modals)
+        dataTableBody.addEventListener('click', (e) => {
+            const checkbox = e.target.closest('.bulk-item-checkbox');
+            if (checkbox) {
+                const id = checkbox.dataset.id;
+                if (checkbox.checked) {
+                    selectedDataPointIds.add(id);
+                } else {
+                    selectedDataPointIds.delete(id);
+                    document.getElementById('bulk-select-all').checked = false;
+                }
+                updateBulkActionsVisibility();
+                return;
             }
-            showDataModal(dp);
+            
+            // Ignore clicks directly on tags or inputs so they don't pop up the modal
+            if (e.target.closest('.tag') || e.target.tagName === 'INPUT') return;
+            
+            const row = e.target.closest('tr[data-id]');
+            if (row) {
+                const dpId = row.dataset.id;
+                const allDataPoints = Object.values(currentDataCache).flat();
+                const dp = allDataPoints.find(d => d.id === dpId);
+                if (dp) showDataModal(dp);
+            }
         });
 
-        // Bulk Checkbox Cell (Sticky)
-        const cbTd = document.createElement('td');
-        cbTd.className = 'p-4 text-center sticky left-0 z-10 shadow-[1px_0_0_0_var(--border-color)] bg-white dark:bg-[#2d3748] group-hover:bg-blue-50/50 dark:group-hover:bg-gray-700/30 transition-colors align-middle';
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.className = 'bulk-item-checkbox w-4 h-4 cursor-pointer accent-blue-600';
-        cb.dataset.id = dp.id;
-        cb.checked = selectedDataPointIds.has(dp.id);
-        cb.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                selectedDataPointIds.add(dp.id);
-            } else {
-                selectedDataPointIds.delete(dp.id);
-                document.getElementById('bulk-select-all').checked = false;
-            }
-            updateBulkActionsVisibility();
+        // Handle Double Clicks (Inline Editing via Delegation)
+        dataTableBody.addEventListener('dblclick', (e) => {
+            const td = e.target.closest('.editable-cell');
+            if (!td || td.querySelector('input')) return; // Exit if not editable or already editing
+            
+            e.stopPropagation();
+            const dpId = td.dataset.id;
+            const sourceId = td.dataset.source;
+            const currentVal = td.dataset.val;
+            
+            // Inject inline editing UI
+            td.innerHTML = `<input type="text" value="${currentVal}" class="w-24 bg-white dark:bg-gray-900 border-2 border-indigo-500 rounded px-2 py-1 text-sm font-bold text-indigo-700 dark:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 shadow-lg z-50 relative">`;
+            const input = td.querySelector('input');
+            input.focus();
+            input.select();
+            
+            const saveEdit = async () => {
+                const newVal = input.value.trim();
+                if (newVal !== currentVal) {
+                    input.disabled = true;
+                    try {
+                        const docRef = doc(db, `users/${userId}/sources/${sourceId}/data/${dpId}`);
+                        await setDoc(docRef, { attributeValue: newVal, datapointUpdatedTime: serverTimestamp() }, { merge: true });
+                        showMessage(`Updated to ${newVal}`);
+                    } catch (err) {
+                        showMessage("Failed to update inline", "error");
+                        renderDataTable(); // Fallback to raw redraw
+                    }
+                } else {
+                    renderDataTable(); // Redraw immediately if unchanged
+                }
+            };
+            
+            input.addEventListener('blur', saveEdit);
+            input.addEventListener('keydown', (ev) => {
+                if(ev.key === 'Enter') { input.blur(); }
+                if(ev.key === 'Escape') { renderDataTable(); } // Abort changes
+            });
         });
-        cbTd.appendChild(cb);
-        row.appendChild(cbTd);
+    }
+
+    // [PERFORMANCE UPGRADE] McMaster-Carr Style String Layout Assembly
+    // Building a raw HTML string avoids expensive memory allocation from document.createElement
+    let tableHtml = '';
+    
+    paginatedData.forEach((dp, index) => {
+        // Clearer contrast for Zebra striping
+        const zebraClass = index % 2 === 0 ? 'bg-transparent' : 'bg-slate-50/50 dark:bg-slate-800/50';
+        const isChecked = selectedDataPointIds.has(dp.id) ? 'checked' : '';
+        let isOutlierRow = false;
+
+        let cellsHtml = `
+        <td class="p-4 text-center sticky left-0 z-10 shadow-[1px_0_0_0_var(--border-color)] bg-white dark:bg-[#2d3748] group-hover:bg-blue-50/50 dark:group-hover:bg-gray-700/30 transition-colors align-middle">
+            <input type="checkbox" class="bulk-item-checkbox w-4 h-4 cursor-pointer accent-blue-600" data-id="${dp.id}" ${isChecked}>
+        </td>`;
 
         visibleHeaders.forEach(header => {
-            const td = document.createElement('td');
-            td.className = 'p-4 align-middle whitespace-nowrap text-xs sm:text-sm';
-            
+            let cellContent = '';
+            let cellClasses = 'p-4 align-middle whitespace-nowrap text-xs sm:text-sm';
+            let cellAttributes = '';
+
             if (header === 'tags') {
                 if (dp.tags && Array.isArray(dp.tags)) {
-                    const tagsContainer = document.createElement('div');
-                    tagsContainer.className = 'flex flex-wrap gap-1';
-                    dp.tags.forEach(tag => {
-                        const tagSpan = document.createElement('span');
-                        tagSpan.className = 'tag bg-gray-100 text-gray-700 border border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 px-1.5 py-0.5 rounded-[4px] font-medium text-[10px] sm:text-xs tracking-wide uppercase';
-                        tagSpan.textContent = tag;
-                        tagsContainer.appendChild(tagSpan);
-                    });
-                    td.appendChild(tagsContainer);
+                    cellContent = `<div class="flex flex-wrap gap-1">` + 
+                        dp.tags.map(tag => `<span class="tag bg-gray-100 text-gray-700 border border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 px-1.5 py-0.5 rounded-[4px] font-medium text-[10px] sm:text-xs tracking-wide uppercase">${tag}</span>`).join('') +
+                        `</div>`;
                 }
             } else if (header === 'date' || header === 'createdAt') {
                 const val = dp[header];
-                const d = parseDate(val);
-                td.textContent = d && !isNaN(d) ? d.toLocaleString(undefined, {
+                const d = getCachedDate(val); // Re-uses the cache map already present above sorting
+                cellContent = (d && !isNaN(d)) ? d.toLocaleString(undefined, {
                     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
                 }) : String(val || '');
             } else if (header === 'attributeName') {
                 const val = dp[header] || '';
                 const color = attributeColors[val];
                 if (color) {
-                     td.innerHTML = `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-bold text-[10px] uppercase text-white shadow-sm" style="background-color: ${color};">${val}</span>`;
+                     const textColor = getContrastTextColor(color);
+                     cellContent = `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-bold text-[10px] uppercase shadow-sm" style="background-color: ${color}; color: ${textColor};">${val}</span>`;
                 } else {
-                     td.innerHTML = `<span class="font-semibold text-[var(--text-color-primary)]">${val}</span>`;
+                     cellContent = `<span class="font-semibold text-[var(--text-color-primary)]">${val}</span>`;
                 }
             } else if (header === 'attributeValue') {
                 const valStr = dp[header] || '';
@@ -2315,55 +2359,36 @@ toggleFilterBtn.addEventListener('click', () => {
                 
                 if (statsCache[attr] && statsCache[attr].stdDev > 0 && !isNaN(parseFloat(valStr))) {
                     const zScore = Math.abs((parseFloat(valStr) - statsCache[attr].mean) / statsCache[attr].stdDev);
-                    if (zScore >= 2) isOutlier = true; // Value is beyond 2 standard deviations
+                    if (zScore >= 2) {
+                        isOutlier = true;
+                        isOutlierRow = true;
+                    }
                 }
+
+                // Append specific delegation identifiers to the cell container directly
+                cellClasses += ' editable-cell cursor-text';
+                cellAttributes = `data-id="${dp.id}" data-source="${dp.source}" data-val="${valStr}"`;
 
                 if (isOutlier) {
-                    td.innerHTML = `<span class="font-black text-rose-600 dark:text-rose-400 text-sm sm:text-base bg-rose-100 dark:bg-rose-900/30 px-2 py-0.5 rounded shadow-sm border border-rose-200 dark:border-rose-800 editable-value" title="Double-click to edit"><i class="fa-solid fa-fire-flame-curved mr-1 text-xs"></i>${valStr}</span>`;
-                    row.classList.add('bg-rose-50/50', 'dark:bg-rose-900/10'); // Highlight the whole row lightly
+                    cellContent = `<span class="font-black text-rose-600 dark:text-rose-400 text-sm sm:text-base bg-rose-100 dark:bg-rose-900/30 px-2 py-0.5 rounded shadow-sm border border-rose-200 dark:border-rose-800 editable-value" title="Double-click to edit"><i class="fa-solid fa-fire-flame-curved mr-1 text-xs"></i>${valStr}</span>`;
                 } else {
-                    td.innerHTML = `<span class="font-bold text-blue-600 dark:text-blue-400 text-sm sm:text-base editable-value cursor-text hover:underline decoration-dashed underline-offset-4" title="Double-click to edit inline">${valStr}</span>`;
+                    cellContent = `<span class="font-bold text-blue-600 dark:text-blue-400 text-sm sm:text-base editable-value hover:underline decoration-dashed underline-offset-4" title="Double-click to edit inline">${valStr}</span>`;
                 }
-
-                // [INGENIOUS FEATURE] Excel-style Inline Editing
-                td.addEventListener('dblclick', (e) => {
-                    e.stopPropagation();
-                    if(td.querySelector('input')) return; // Already editing
-                    const currentVal = valStr;
-                    td.innerHTML = `<input type="text" value="${currentVal}" class="w-24 bg-white dark:bg-gray-900 border-2 border-indigo-500 rounded px-2 py-1 text-sm font-bold text-indigo-700 dark:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 shadow-lg z-50 relative">`;
-                    const input = td.querySelector('input');
-                    input.focus();
-                    input.select();
-                    
-                    const saveEdit = async () => {
-                        const newVal = input.value.trim();
-                        if (newVal !== currentVal) {
-                            input.disabled = true;
-                            try {
-                                const docRef = doc(db, `users/${userId}/sources/${dp.source}/data/${dp.id}`);
-                                await setDoc(docRef, { attributeValue: newVal, datapointUpdatedTime: serverTimestamp() }, { merge: true });
-                                showMessage(`Updated to ${newVal}`);
-                            } catch (err) {
-                                showMessage("Failed to update inline", "error");
-                                renderDataTable(); // Restore old value
-                            }
-                        } else {
-                            renderDataTable(); // Redraw if unchanged
-                        }
-                    };
-                    
-                    input.addEventListener('blur', saveEdit);
-                    input.addEventListener('keydown', (ev) => {
-                        if(ev.key === 'Enter') { input.blur(); }
-                        if(ev.key === 'Escape') { renderDataTable(); } // Abort
-                    });
-                });
-                td.textContent = dp[header] !== undefined ? dp[header] : '';
+            } else {
+                cellContent = dp[header] !== undefined ? dp[header] : '';
             }
-            row.appendChild(td);
+
+            cellsHtml += `<td class="${cellClasses}" ${cellAttributes}>${cellContent}</td>`;
         });
-        dataTableBody.appendChild(row);
+
+        const rowHighlightClass = isOutlierRow ? 'bg-rose-50/50 dark:bg-rose-900/10' : zebraClass;
+        tableHtml += `<tr class="${rowHighlightClass} hover:bg-blue-50/50 dark:hover:bg-gray-700/30 transition-colors group cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-0" data-id="${dp.id}">
+            ${cellsHtml}
+        </tr>`;
     });
+    
+    // Inject fully finalized HTML chunk into the DOM only once
+    dataTableBody.innerHTML = tableHtml;
 
     renderPagination(sortedDataPoints.length);
 
@@ -2506,10 +2531,6 @@ function formatLabel(str) {
     }
 
     function renderChart() {
-        if (chart) {
-            chart.destroy();
-        }
-
         const selectedAttributeName1 = currentChartKey;
         const selectedAttributeName2 = currentChartKey2;
         const allDataPoints = getVisibleDataPoints();
@@ -2521,7 +2542,7 @@ function formatLabel(str) {
 
             const filteredData = allDataPoints
                 .filter(dp => dp.attributeName === selectedAttributeName && dp.attributeValue !== undefined && !isNaN(parseFloat(dp.attributeValue)))
-                .sort((a, b) => parseDate(a.date) - parseDate(b.date));
+                .sort((a, b) => getCachedDate(a.date) - getCachedDate(b.date));
             
             chartDataPoints = [...new Set([...chartDataPoints, ...filteredData])];
 
@@ -2538,7 +2559,7 @@ function formatLabel(str) {
             datasets.push({
                 label: selectedAttributeName,
                 data: filteredData.map(dp => ({
-                    x: parseDate(dp.date).getTime(),
+                    x: getCachedDate(dp.date).getTime(),
                     y: parseFloat(dp.attributeValue)
                 })),
                 borderColor: color,
@@ -2562,7 +2583,7 @@ function formatLabel(str) {
                     const startIdx = Math.max(0, i - windowSize + 1);
                     const subset = filteredData.slice(startIdx, i + 1);
                     const avg = subset.reduce((sum, dp) => sum + parseFloat(dp.attributeValue), 0) / subset.length;
-                    rollingData.push({ x: parseDate(filteredData[i].date).getTime(), y: avg });
+                    rollingData.push({ x: getCachedDate(filteredData[i].date).getTime(), y: avg });
                 }
                 datasets.push({
                     label: `${selectedAttributeName} (7-Day Avg)`,
@@ -2613,11 +2634,19 @@ function formatLabel(str) {
             });
         }
         
-        chart = new Chart(chartCanvas, {
-            type: currentChartType,
-            data: chartData,
-            options: chartOptions
-        });
+        // [PERFORMANCE] Smart Update vs Rebuild
+        if (chart) {
+            chart.options.scales.y1.display = datasets.length > 1; // Toggle dual axes if needed
+            chart.config.type = currentChartType; // Update type dynamically
+            chart.data = chartData;
+            chart.update(); // Smoothly animate to new data
+        } else {
+            chart = new Chart(chartCanvas, {
+                type: currentChartType,
+                data: chartData,
+                options: chartOptions
+            });
+        }
 
         // [UX UPGRADE] Toggle Empty State overlay if no data is present in the active datasets
         const emptyStateEl = document.getElementById('chart-empty-state');
@@ -2676,26 +2705,25 @@ function formatLabel(str) {
     }
     
     function calculateStats(data) {
-        if (data.length === 0) {
-            statsAvg.textContent = '-';
-            statsMedian.textContent = '-';
-            statsSum.textContent = '-';
-            if(statsMin) statsMin.textContent = '-';
-            if(statsMax) statsMax.textContent = '-';
+        const els = [statsAvg, statsMedian, statsSum, statsMin, statsMax].filter(Boolean);
+        
+        // If data is loading or empty, show skeleton state
+        if (!data || data.length === 0) {
+            const skeletonHtml = '<div class="h-8 w-20 bg-gray-200 dark:bg-gray-700 rounded skeleton-pulse mt-1"></div>';
+            els.forEach(el => el.innerHTML = skeletonHtml);
             return;
         }
         
         const sum = data.reduce((a, b) => a + b, 0);
-        statsSum.textContent = sum.toFixed(2);
-        
         const avg = sum / data.length;
-        statsAvg.textContent = avg.toFixed(2);
-        
         const sortedData = [...data].sort((a, b) => a - b);
         const mid = Math.floor(sortedData.length / 2);
         const median = sortedData.length % 2 !== 0 ? sortedData[mid] : (sortedData[mid - 1] + sortedData[mid]) / 2;
-        statsMedian.textContent = median.toFixed(2);
 
+        // Apply real data values
+        statsSum.textContent = sum.toFixed(2);
+        statsAvg.textContent = avg.toFixed(2);
+        statsMedian.textContent = median.toFixed(2);
         if(statsMin) statsMin.textContent = sortedData[0].toFixed(2);
         if(statsMax) statsMax.textContent = sortedData[sortedData.length - 1].toFixed(2);
     }
@@ -3884,6 +3912,21 @@ function formatLabel(str) {
         return color;
     }
 
+    // [UI/UX UPGRADE] Automatically determine if text should be black or white based on background hex
+    function getContrastTextColor(hexcolor) {
+        // If it's a short hex code, expand it
+        hexcolor = hexcolor.replace('#', '');
+        if (hexcolor.length === 3) {
+            hexcolor = hexcolor.split('').map(x => x + x).join('');
+        }
+        const r = parseInt(hexcolor.substr(0, 2), 16);
+        const g = parseInt(hexcolor.substr(2, 2), 16);
+        const b = parseInt(hexcolor.substr(4, 2), 16);
+        // YIQ equation from W3C
+        const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        return (yiq >= 128) ? '#0f172a' : '#ffffff'; // slate-900 or white
+    }
+
     function renderAttributeColorsUI() {
         const allDataPoints = Object.values(currentDataCache).flat();
         const allAttributeNames = new Set(allDataPoints.map(dp => dp.attributeName).filter(Boolean));
@@ -4181,10 +4224,10 @@ function formatLabel(str) {
                 checkDate.setDate(checkDate.getDate() - 1);
             }
             const streakHtml = currentStreak >= 2 ? `<span class="ml-3 text-orange-500 font-bold text-xs bg-orange-100 dark:bg-orange-900/30 px-2 py-0.5 rounded-full shadow-sm"><i class="fa-solid fa-fire text-orange-600 dark:text-orange-400"></i> ${currentStreak}</span>` : '';
-
-            const el = document.createElement('div'); el.className = 'flex justify-between items-center p-3 bg-[var(--input-bg-color)] border border-[var(--border-color)] rounded-lg shadow-sm';
             const color = attributeColors[task.attributeName] || '#64748b';
-            el.innerHTML = `
+            
+            return `
+            <div class="flex justify-between items-center p-3 bg-[var(--input-bg-color)] border border-[var(--border-color)] rounded-lg shadow-sm">
                 <div class="flex items-center">
                     <span class="w-3 h-3 rounded-full mr-3" style="background-color: ${color};"></span>
                     <div>
@@ -4196,9 +4239,52 @@ function formatLabel(str) {
                 <div>
                     <button class="text-blue-500 hover:text-blue-700 mr-3 transition" onclick="editTask(${i})"><i class="fa-solid fa-edit"></i></button>
                     <button class="text-red-500 hover:text-red-700 transition" onclick="deleteTask(${i})"><i class="fa-solid fa-trash"></i></button>
-                </div>`;
-            list.appendChild(el);
+                </div>
+            </div>`;
         });
+        
+        // [PERFORMANCE] Inject all tasks in one single DOM write
+        list.innerHTML = plannerState.dailyPlan.map((task, i) => processTaskHtml(task, i)).join('');
+    };
+
+    // Helper for above mapping
+    const processTaskHtml = (task, i) => {
+        let currentStreak = 0;
+        const checkDate = new Date();
+        checkDate.setHours(0,0,0,0);
+        
+        const todayStr = toYYYYMMDD(checkDate);
+        const todayLogs = logsByDay[todayStr] || [];
+        if (todayLogs.filter(l => l.attributeName === task.attributeName).length >= parseInt(task.count)) currentStreak++;
+        
+        checkDate.setDate(checkDate.getDate() - 1);
+        for(let lookback=0; lookback < 60; lookback++) {
+            const dateStr = toYYYYMMDD(checkDate);
+            const dayLogs = (logsByDay[dateStr] || []).concat(plannerState.dailyAssignments.get(dateStr) || []);
+            if(dayLogs.filter(l => l.attributeName === task.attributeName).length >= parseInt(task.count)) {
+                currentStreak++;
+            } else {
+                break;
+            }
+            checkDate.setDate(checkDate.getDate() - 1);
+        }
+        
+        const streakHtml = currentStreak >= 2 ? `<span class="ml-3 text-orange-500 font-bold text-xs bg-orange-100 dark:bg-orange-900/30 px-2 py-0.5 rounded-full shadow-sm"><i class="fa-solid fa-fire text-orange-600 dark:text-orange-400"></i> ${currentStreak}</span>` : '';
+        const color = attributeColors[task.attributeName] || '#64748b';
+        return `<div class="flex justify-between items-center p-3 bg-[var(--input-bg-color)] border border-[var(--border-color)] rounded-lg shadow-sm">
+            <div class="flex items-center">
+                <span class="w-3 h-3 rounded-full mr-3" style="background-color: ${color};"></span>
+                <div>
+                    <span class="font-semibold text-[var(--text-color-primary)]">${task.attributeName}</span>
+                    <span class="text-xs ml-2 text-[var(--text-color-secondary)] bg-[var(--card-bg-color)] px-2 py-0.5 rounded border border-[var(--border-color)]">x${task.count}</span>
+                    ${streakHtml}
+                </div>
+            </div>
+            <div>
+                <button class="text-blue-500 hover:text-blue-700 mr-3 transition" onclick="editTask(${i})"><i class="fa-solid fa-edit"></i></button>
+                <button class="text-red-500 hover:text-red-700 transition" onclick="deleteTask(${i})"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        </div>`;
     };
 
     window.deleteTask = async (i) => { 
