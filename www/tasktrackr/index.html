@@ -121,12 +121,18 @@ body {
             }
             .side-pane-mobile.open { transform: translateX(0) !important; }
         }
+        /* Eisenhower Matrix View */
+        .eisenhower-grid { display: grid; grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 1rem; padding-bottom: 2rem; }
+        @media (min-width: 768px) { .eisenhower-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); height: calc(100vh - 120px); } }
+        .quadrant { display: flex; flex-direction: column; border-radius: 1rem; padding: 1rem; border-width: 1px; }
+        .quadrant-body { flex-grow: 1; overflow-y: auto; min-height: 200px; }
+
+        /* FAB Button (Desktop) */
+        .fab-add { position: fixed; bottom: 2rem; right: 2rem; width: 4rem; height: 4rem; background: linear-gradient(135deg, var(--primary), #2563eb); color: white; border-radius: 50%; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5); z-index: 90; transition: transform 0.2s, box-shadow 0.2s; border: 4px solid var(--bg); cursor: pointer; }
+        .fab-add:hover { transform: scale(1.05) translateY(-2px); box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.5); }
+
         @media (min-width: 1024px) {
-            .fab-add {
-        display: flex; /* Show only on desktop */
-    }
-            .side-pane-desktop { 
-                position: static; 
+            .side-pane-desktop {
                 width: 0; 
                 opacity: 0; 
                 overflow: hidden; 
@@ -4339,6 +4345,9 @@ const renderTaskCard = (task) => {
                         ${badges}
                     </div>
                 </div>
+                <button onclick="window.unnestTask('${child.id}', event)" class="text-gray-400 hover:text-[var(--primary)] opacity-0 group-hover/subtask:opacity-100 transition-opacity p-1 shrink-0" title="Un-nest Task">
+                    <i class="fa-solid fa-turn-up -rotate-90"></i>
+                </button>
             </div>
             `;
         }).join('');
@@ -6508,7 +6517,40 @@ if (task.content) {
     [100, 200, 300, 400, 500].forEach(ms => setTimeout(adjustTitleHeight, ms));
 };
         
+window.unnestTask = async (taskId, event) => {
+    if (event) event.stopPropagation();
+    const task = taskCache.find(t => t.id === taskId);
+    if (!task) return;
+    
+    const oldParentId = task.parentId;
+    task.parentId = null;
+    
+    window.updateTaskCardDOM(taskId);
+    if (oldParentId) window.updateTaskCardDOM(oldParentId);
+    
+    if (window.currentSidePaneTaskId === oldParentId) {
+        window.openSidePane(oldParentId);
+    } else if (window.currentSidePaneTaskId === taskId) {
+        window.openSidePane(taskId);
+    }
+    
+    renderApp();
 
+    try {
+        if (auth.currentUser && task.source === 'local') {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { parentId: null, updated: new Date() }, { merge: true });
+        } else if (task.source !== 'local') {
+            const payload = formatTaskPayload(task);
+            await api(`/task/${task.id}`, 'POST', payload);
+        }
+        showToast("Task un-nested", "success");
+    } catch(e) {
+        console.error("Unnest error:", e);
+        showToast("Failed to un-nest", "error");
+        task.parentId = oldParentId;
+        renderApp();
+    }
+};
 
 window.promoteSubtask = async (taskId, itemIndex) => {
     const task = taskCache.find(t => t.id === taskId);
@@ -6598,9 +6640,12 @@ window.renderSidePaneChecklist = (task) => {
                     const textClass = child.status === 2 ? 'line-through text-gray-500 dark:text-gray-600' : 'text-gray-700 dark:text-gray-300 font-medium';
                     
                     html += `
-                    <div class="flex items-center gap-3 p-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition" onclick="window.openSidePane('${child.id}')">
+                    <div class="flex items-center gap-3 p-2 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition group/sp-child" onclick="window.openSidePane('${child.id}')">
                         <i class="${icon} transition-colors text-lg" onclick="window.completeTask('${child.projectId}', '${child.id}', null, event)"></i>
                         <span class="text-sm ${textClass} flex-grow truncate">${escapeHtml(child.title)}</span>
+                        <button onclick="window.unnestTask('${child.id}', event)" class="text-gray-400 hover:text-[var(--primary)] opacity-0 group-hover/sp-child:opacity-100 transition-opacity p-1" title="Un-nest Task">
+                            <i class="fa-solid fa-turn-up -rotate-90"></i>
+                        </button>
                     </div>`;
                 });
                 html += `</div>`;

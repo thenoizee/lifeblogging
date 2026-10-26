@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.91.0-alpha",
+    date: "2026-10-26",
+    changes: [
+        "In TaskTrackr: Fixed the CSS grid layout for the Eisenhower Matrix view to restore proper rendering.",
+        "In TaskTrackr: Restored the desktop 'Add Task' floating action button (FAB) visibility and styling.",
+        "In TaskTrackr: Implemented 'Un-nest' functionality to allow detaching subtasks from their parent tasks.",
+    ]
+},
+    {
     version: "v16.90.0-alpha",
     date: "2026-10-26",
     changes: [
