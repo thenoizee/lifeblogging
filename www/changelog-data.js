@@ -2,6 +2,12 @@
 
 export const changelogData = [
     {
+    version: "v16.90.0-alpha",
+    date: "2026-10-26",
+    changes: [
+        "In VidTrackr: Fixed the movie detail view layout by wrapping the left sidebar and right main content inside a proper responsive flex row container (`flex-col md:flex-row`) to fix alignment issues.",    ]
+},
+    {
     version: "v16.89.0-alpha",
     date: "2026-10-25",
     changes: [
