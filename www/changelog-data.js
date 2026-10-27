@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.92.0-alpha",
+    date: "2026-10-27",
+    changes: [
+        "In Loggr: Extended the 'Recent Activity Combos' extraction window from 7 days to 30 days to provide more accurate quick-logging suggestions.",
+        "In Loggr: Implemented dual-tracking for the 'Last Log' timestamp, now dynamically displaying both the physical action time and the assigned set time (e.g., 'Logged just now (set 3 hrs ago)').",
+        "In Loggr: Fixed the Edit and Undo functions to dynamically recalculate and roll back the dual 'Last Log' timers."
+    ]
+},
+    {
     version: "v16.91.0-alpha",
     date: "2026-10-26",
     changes: [

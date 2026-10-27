@@ -1079,21 +1079,40 @@
       };
       
   const updateLastLogTime = () => {
-          const lastLog = localStorage.getItem('last_log_timestamp');
           const el = document.getElementById('last-log-time');
-          if (!lastLog || !el) return;
+          if (!el) return;
           
-          const diffMs = Date.now() - parseInt(lastLog);
-          const diffMins = Math.floor(diffMs / 60000);
-          const diffHours = Math.floor(diffMins / 60);
+          const actionLog = localStorage.getItem('last_action_time');
+          const setLog = localStorage.getItem('last_set_time');
           
-          let text = '';
-          if (diffMins < 1) text = 'just now';
-          else if (diffMins < 60) text = `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
-          else if (diffHours < 24) text = `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
-          else text = `${Math.floor(diffHours / 24)} days ago`;
+          if (!actionLog || !setLog) {
+              el.classList.add('hidden');
+              return;
+          }
           
-          el.innerHTML = `<i class="fa-solid fa-clock-rotate-left"></i> Last log was ${text}`;
+          const parsedAction = parseInt(actionLog);
+          const parsedSet = parseInt(setLog);
+          if (isNaN(parsedAction) || isNaN(parsedSet)) {
+              el.classList.add('hidden');
+              return;
+          }
+          
+          const formatTime = (timestamp) => {
+              const diffMs = Date.now() - timestamp;
+              const isFuture = diffMs < 0;
+              const absMins = Math.floor(Math.abs(diffMs) / 60000);
+              const absHours = Math.floor(absMins / 60);
+              
+              let text = '';
+              if (absMins < 1) return 'just now';
+              else if (absMins < 60) text = `${absMins} min${absMins !== 1 ? 's' : ''}`;
+              else if (absHours < 24) text = `${absHours} hr${absHours !== 1 ? 's' : ''}`;
+              else text = `${Math.floor(absHours / 24)} days`;
+              
+              return isFuture ? `in ${text}` : `${text} ago`;
+          };
+          
+          el.innerHTML = `<i class="fa-solid fa-clock-rotate-left"></i> Logged ${formatTime(parsedAction)} (set ${formatTime(parsedSet)})`;
           el.classList.remove('hidden');
       };
       setInterval(updateLastLogTime, 60000);
@@ -1395,20 +1414,47 @@
                       await Promise.race([deleteDoc(docRef), timeout]);
                   }
                   
+                  const updateTimeAfterUndo = () => {
+                      sessionLogs.splice(index, 1);
+                      if (sessionLogs.length > 0) {
+                          const lastItem = sessionLogs[sessionLogs.length - 1];
+                          
+                          let newSetTime = new Date(lastItem.date.replace(" ", "T")).getTime();
+                          if (isNaN(newSetTime)) {
+                              const p = lastItem.date.split(/[\s/:-T]+/);
+                              if (p.length >= 3) newSetTime = new Date(p[2], p[1] - 1, p[0], p[3] || 0, p[4] || 0).getTime();
+                          }
+                          
+                          const newActionTime = lastItem.createdAt && lastItem.createdAt.seconds 
+                              ? (lastItem.createdAt.seconds * 1000) 
+                              : (lastItem.createdAt ? lastItem.createdAt : Date.now()); 
+
+                          if (!isNaN(newSetTime) && newSetTime > 0) {
+                              localStorage.setItem('last_action_time', newActionTime);
+                              localStorage.setItem('last_set_time', newSetTime);
+                          }
+                          updateLastLogTime();
+                      } else {
+                          localStorage.removeItem('last_action_time');
+                          localStorage.removeItem('last_set_time');
+                          updateLastLogTime(); // Hides the stale text immediately
+                          
+                          // Fetch the true global last log from the database to restore the timer
+                          fetchUnifiedAppData(); 
+                      }
+                      renderSessionLogs();
+                  };
+
                   updateConnectivityStatus('online');
-                  sessionLogs.splice(index, 1);
-                  renderSessionLogs();
+                  updateTimeAfterUndo();
                   showMessage("Log successfully undone.", "success");
-                  fetchLogsForDateRange(); 
               } catch (err) {
                   console.error("Error undoing log:", err);
                   updateConnectivityStatus('offline');
                   showMessage("Network is slow. Undo queued by offline cache.", "info");
                   
                   // Still optimistically remove it from the UI session logs
-                  sessionLogs.splice(index, 1);
-                  renderSessionLogs();
-                  fetchLogsForDateRange(); 
+                  updateTimeAfterUndo();
               }
           } else {
               showMessage("Cannot undo. Log is missing a database ID or collection name.", "error");
@@ -1510,7 +1556,8 @@
         // This guarantees zero data loss if the user backs out of the app before Firebase commits.
         saveLocally(!navigator.onLine); 
         
-        localStorage.setItem('last_log_timestamp', Date.now());
+        localStorage.setItem('last_action_time', Date.now());
+        localStorage.setItem('last_set_time', new Date(logDatetimeString).getTime());
         updateLastLogTime();
         
         setDefaultDateTime(); // Reset UI immediately
@@ -1604,6 +1651,23 @@
           const updatedIndex = sessionLogs.findIndex(log => log.docId === docId);
           if (updatedIndex !== -1) {
              sessionLogs[updatedIndex] = { ...sessionLogs[updatedIndex], ...logEntryUpdate };
+             
+             // Dynamically update the Last Log timer if you edit the most recent entry
+             let latestActionMs = 0;
+             sessionLogs.forEach(l => {
+                 const ms = l.createdAt && l.createdAt.seconds ? (l.createdAt.seconds * 1000) : (l.createdAt || 0);
+                 if (ms > latestActionMs) latestActionMs = ms;
+             });
+             
+             const editedMs = sessionLogs[updatedIndex].createdAt && sessionLogs[updatedIndex].createdAt.seconds 
+                 ? (sessionLogs[updatedIndex].createdAt.seconds * 1000) 
+                 : (sessionLogs[updatedIndex].createdAt || 0);
+             
+             if (editedMs >= latestActionMs) {
+                 localStorage.setItem('last_action_time', Date.now());
+                 localStorage.setItem('last_set_time', new Date(formattedDate).getTime());
+                 updateLastLogTime();
+             }
           }
           renderSessionLogs();
           exitEditMode(); 
@@ -1640,9 +1704,6 @@
             
             const d30 = new Date(); d30.setDate(d30.getDate() - 30);
             const startDate30Str = toYYYYMMDD(d30);
-            
-            const d7 = new Date(); d7.setDate(d7.getDate() - 7);
-            const startDate7Str = toYYYYMMDD(d7);
 
             appState.attributeNames.clear();
             
@@ -1650,23 +1711,48 @@
                 const sourcesRef = collection(db, `users/${appState.user.uid}/sources`);
                 const sourcesSnapshot = await fetchWithTimeout(sourcesRef, 8000);
                 
+                let latestActionTime = 0;
+                let latestSetTime = 0;
+
+                const safeGetTime = (dateStr) => {
+                    if (!dateStr) return 0;
+                    let d = new Date(dateStr.replace(" ", "T"));
+                    if (!isNaN(d.getTime())) return d.getTime();
+                    const parts = dateStr.split(/[\s/:-T]+/);
+                    if (parts.length >= 3) {
+                        const day = parseInt(parts[0]);
+                        const month = parseInt(parts[1]) - 1;
+                        const year = parseInt(parts[2]);
+                        const hours = parts[3] ? parseInt(parts[3]) : 0;
+                        const mins = parts[4] ? parseInt(parts[4]) : 0;
+                        d = new Date(year, month, day, hours, mins);
+                        if (!isNaN(d.getTime())) return d.getTime();
+                    }
+                    return 0;
+                };
+
+                // Optimisation: We fetch exactly the data needed in as few network requests as possible (1 per collection).
                 for (const sourceDoc of sourcesSnapshot.docs) {
                     const dataRef = collection(db, `users/${appState.user.uid}/sources/${sourceDoc.id}/data`);
-                    // Query only the last 30 days ONCE per collection
                     const q = query(dataRef, where("date", ">=", startDate30Str));
                     const dataSnapshot = await fetchWithTimeout(q, 8000);
                     
                     dataSnapshot.forEach(doc => {
                         const log = {id: doc.id, ...doc.data()};
                         
-                        // Populate Tags
-                        if (log.tags) log.tags.forEach(tag => appState.tags.add(tag));
+                        // Track global timestamp natively without holding arrays in memory
+                        // We use createdAt for the physical action time, and date for the set time
+                        const actionTimeMs = log.createdAt ? (log.createdAt.seconds * 1000) : 0;
+                        if (actionTimeMs > latestActionTime) {
+                            latestActionTime = actionTimeMs;
+                            latestSetTime = safeGetTime(log.date);
+                        }
                         
-                        // Populate Attributes
+                        if (log.tags) log.tags.forEach(tag => appState.tags.add(tag));
                         if (log.attributeName) appState.attributeNames.add(log.attributeName);
                         
-                        // Populate 7-day logs for combos
-                        if (log.date && log.date >= startDate7Str) {
+                        // Populate 30-day logs for combos
+                        if (log.date && log.date >= startDate30Str) {
                             try {
                                 const logDate = new Date(log.date.replace(" ", "T"));
                                 if (!isNaN(logDate)) {
@@ -1681,6 +1767,13 @@
                         }
                     });
                 }
+
+                if (latestActionTime > 0) {
+                    localStorage.setItem('last_action_time', latestActionTime);
+                    localStorage.setItem('last_set_time', latestSetTime);
+                    updateLastLogTime();
+                }
+
                 // Save updated tags to local cache for offline usage
                 localStorage.setItem('cachedTags', JSON.stringify(Array.from(appState.tags)));
             } catch (error) {
