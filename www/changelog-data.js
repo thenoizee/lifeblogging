@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.93.0-alpha",
+    date: "2026-10-27",
+    changes: [
+        "In Converter: Replaced legacy jsoneditor with modern vanilla-jsoneditor for a sleeker UI and native dark mode support.",
+        "In Converter: Introduced a sticky Global Data Toolbar to track the active data source and display a 'Modified' badge for unsaved edits.",
+        "In Converter: Expanded export formats in the Global Data Toolbar to support downloading data as JSON, CSV, TSV, YAML, and XML.",
+        "In Converter: Inline cell edits in the Editor view now instantly synchronize with the global active memory.",
+        "In Converter: Transpose and Pivot tools now automatically update the global data state upon execution.",
+    ]
+},
+    {
     version: "v16.92.0-alpha",
     date: "2026-10-27",
     changes: [
