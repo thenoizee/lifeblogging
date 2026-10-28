@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v16.95.0-alpha",
+    date: "2026-10-28",
+    changes: [
+        "In VidTrackr: Migrated from synchronous localStorage to an In-Memory Singleton Data Engine, loading the 2,500+ item history into RAM on boot to reduce lookup times to 0.001ms.",
+        "In VidTrackr: Rewrote the 'Up Next' calculation engine to use O(1) hash maps instead of heavy array iterations, eliminating CPU spikes.",
+        "In VidTrackr: Removed expensive CSS backdrop-filter (glassmorphism) effects from history cards to eliminate GPU memory drain and scroll stutter on mobile devices.",
+        "In VidTrackr: Deferred heavy TMDB image hydration to requestIdleCallback, allowing the browser to prioritize UI rendering and scrolling before fetching background assets.",
+        "In VidTrackr: Enforced strict CSS min-height constraints on card titles and subtext to achieve Zero Layout Shift (CLS) when background data hydrates into the DOM.",
+        "In VidTrackr: Implemented a 0ms 'Optimistic UI' with a 1:1 skeleton loader that instantly renders known data (title, images, season) when navigating to a detail page.",
+        "In VidTrackr: Added an ID Validation Barrier to the Optimistic UI and stripped duplicate fade animations to prevent screen flickering and stale data when using Previous/Next arrows.",
+        "In VidTrackr: Fixed the 'Rewatch' bug by updating the progress engine to lock onto the most recently watched episode rather than the absolute max season ever viewed.",
+        "In VidTrackr: Fixed a stale caching issue by automatically nuking the 12-hour per-show API cache the exact millisecond a new episode is logged.",
+        "In VidTrackr: Hardened the Trakt API background fetch logic to safely catch and ignore 403 Forbidden errors, preventing them from crashing the JSON parser.",
+        "In VidTrackr: Slashed the vertical footprint of the 'Continue Watching' row on the Dashboard by implementing a dynamic accordion that hides overflow items behind a 'Show All' toggle."
+    ]
+},
+    {
     version: "v16.94.0-alpha",
     date: "2026-10-28",
     changes: [

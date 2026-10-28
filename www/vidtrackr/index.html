@@ -31,8 +31,8 @@
     :root {
         --primary: #ed2224; --primary-hover: #c01e1f;
             --bg-dark: #111827; 
-            /* Adaptive layered transparency for main cards (Glassmorphism) */
-            --card-dark: rgba(31, 41, 55, 0.85); 
+            /* Solid colors replacing glassmorphism for maximum GPU rendering speed */
+        --card-dark: rgba(31, 41, 55, 0.98);
             --text-dark: #f9fafb;
             --bg-light: #f3f4f6; 
             /* Light mode adaptive transparency */
@@ -53,11 +53,11 @@
     body { padding-bottom: 0 !important; margin-bottom: 0 !important; }
 }
 
-        /* Glassmorphism effect for main UI cards (layered depth processing) */
+        /* High-performance standard cards */
         .card { 
             background-color: var(--card); 
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            /* backdrop-filter: blur(12px); Removed to save GPU memory */
+            /* -webkit-backdrop-filter: blur(12px); */
             border-bottom: 2px solid rgba(0,0,0,0.05); /* Create extra bottom depth */
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             /* Enable hardware acceleration for mobile glass effect rendering */
@@ -107,10 +107,9 @@
 
         /* Background var glassmorphism applied to containers automatically */
         .bg-\[var\(--card\)\] {
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            /* Enable hardware acceleration for mobile glass effect rendering */
-            transform: translateZ(0);
+            background-color: var(--card-dark);
+            /* backdrop-filter: blur(16px); */
+            /* -webkit-backdrop-filter: blur(16px); */
         }
 
         .nav-link.active { color: var(--primary); border-bottom: 2px solid var(--primary); }
@@ -229,6 +228,15 @@ input[type=range]::-moz-range-thumb {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
+        }
+        
+        /* McMaster Fix: Strict Pre-allocation. Forces title and subtext areas to be a fixed height 
+           even before text populates, preventing layout shifts when hydration completes. */
+        .card h3, .card h4 {
+            min-height: 2.5rem; /* Enough room for 2 lines of text */
+        }
+        .card .text-xs.text-gray-500 {
+            min-height: 1rem; /* Enough room for the subtitle */
         }
 
         .nav-btn {
@@ -1952,6 +1960,10 @@ if (headerRight) {
             if (window.adjacentEpisodeCache && window.adjacentEpisodeCache.has(cacheLookupKey)) {
                 const cachedTarget = window.adjacentEpisodeCache.get(cacheLookupKey);
                 console.debug(`[Navigate] 0ms instant jump to prefetched S${cachedTarget.season}E${cachedTarget.number}`);
+                
+                // Clear stale optimistic data so the new page doesn't flash the old episode
+                sessionStorage.removeItem('vt_optimistic');
+                
                 if (isTMDB) {
                     location.hash = `#detail/episode/${showId}-${cachedTarget.season}-${cachedTarget.number}`;
                 } else if (cachedTarget.data?.ids?.trakt) {
@@ -1994,6 +2006,9 @@ if (headerRight) {
                     return showToast('No more episodes found', 'error');
                 }
                 
+                // Clear stale optimistic data before jumping
+                sessionStorage.removeItem('vt_optimistic');
+
                 if (isTMDB) {
                     location.hash = `#detail/episode/${showId}-${targetS}-${targetE}`;
                 } else if (epObj && epObj.ids) {
@@ -2118,14 +2133,18 @@ if (headerRight) {
                 return ''; 
             }
             
+            // Inject known data into fast storage so the next page can render instantly without waiting for the network
+            const optimisticPayload = encodeURIComponent(JSON.stringify(data).replace(/'/g, "%27"));
+            const setOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${optimisticPayload}')); `;
+            
             const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
-            let clickHandler = targetId ? `location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
+            let clickHandler = targetId ? `${setOpt} location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
             
             if (targetId && type === 'episode' && primaryDataSource === 'tmdb') {
                 const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
                 const sNum = data.season || data.season_number;
                 const eNum = data.number || data.episode_number;
-                if (showTmdb && sNum !== undefined) clickHandler = `location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
+                if (showTmdb && sNum !== undefined) clickHandler = `${setOpt} location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
             }
 
             const img = getImage(data, type);
@@ -2179,10 +2198,21 @@ if (headerRight) {
             const myRatingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 ${ratingVal > 0 ? 'ml-2 border-l border-white/20 pl-2' : ''}"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
             const ratingHtml = `<div class="flex items-center">${tmdbRatingHtml}${myRatingHtml}</div>`;
 
-            // Added comments so I can easily understand what it means and edit it later
-            // Prefetch endpoint into sessionStorage cache on hover for sub-50ms navigations
-            const prefetchEndpoint = type === 'episode' ? '' : `/${type === 'show' ? 'tv' : 'movie'}/${targetId}?append_to_response=credits,videos,recommendations,external_ids,watch/providers`;
-            const hoverPrefetch = prefetchEndpoint ? `onmouseenter="if(window.fetchTMDB) window.fetchTMDB('${prefetchEndpoint}').catch(()=>{});"` : '';
+            // McMaster Fix: Silent Prefetching for ALL media types
+            // Downloads the data instantly into fast RAM the millisecond the user hovers/touches the card.
+            let hoverPrefetch = '';
+            if (type === 'episode') {
+                const sTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
+                const sNum = data.season || data.season_number;
+                const eNum = data.number || data.episode_number;
+                if (sTmdb && sNum !== undefined && eNum !== undefined) {
+                    // Prefetch BOTH the episode details and the parent show details so the detail page opens in 0ms
+                    hoverPrefetch = `onmouseenter="if(window.fetchTMDB) { window.fetchTMDB('/tv/${sTmdb}?append_to_response=external_ids,aggregate_credits,watch/providers').catch(()=>{}); window.fetchTMDB('/tv/${sTmdb}/season/${sNum}/episode/${eNum}?append_to_response=credits,videos,images,external_ids').catch(()=>{}); }"`;
+                }
+            } else {
+                const prefetchEndpoint = `/${type === 'show' ? 'tv' : 'movie'}/${targetId}?append_to_response=credits,videos,recommendations,external_ids,watch/providers`;
+                hoverPrefetch = `onmouseenter="if(window.fetchTMDB) window.fetchTMDB('${prefetchEndpoint}').catch(()=>{});"`;
+            }
 
             return `
             <div class="group relative card rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-[1.02] transition duration-300 cursor-pointer border border-gray-800" onclick="${clickHandler}" ${hoverPrefetch}>
@@ -2894,45 +2924,33 @@ async function loadUpNext() {
                     if (!currentUser) return [];
 
                     try {
-                        // Fetch the pre-aggregated Series Progress from Firebase NoSQL Denormalization
-                        const q = query(collection(db, `users/${currentUser.uid}/series_progress`), orderBy("lastWatchedAt", "desc"), limit(40));
-                        const snapshot = await getDocs(q);
-                        
-                        // Fallback to history array if the denormalized collection is empty (e.g. they haven't logged anything since the update)
                         let activeShows = [];
-                        if (!snapshot.empty) {
-                            snapshot.forEach(docSnap => {
-                                const p = docSnap.data();
-                                activeShows.push({
-                                    showTmdbId: p.showTmdbId,
-                                    showTitle: p.showObj?.title,
-                                    showObj: p.showObj,
-                                    s: p.maxSeason,
-                                    e: p.maxEpisode,
-                                    watchedAt: p.lastWatchedAt
-                                });
-                            });
-                        } else {
-                            // Run the legacy fallback grouping just in case so the app doesn't break
-                            const hq = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(500));
-                            const hSnap = await getDocs(hq);
+                        
+                        // McMaster Fix: Calculate Up Next pointers instantly from RAM (0ms).
+                        // Since the memory cache is strictly sorted by date (newest first), 
+                        // the VERY FIRST episode we see for a show is the one you watched most recently!
+                        // This perfectly supports "Rewatching" older seasons without breaking.
+                        if (window.fullHistoryMemoryCache && window.fullHistoryMemoryCache.length > 0) {
                             const showMap = new Map();
-                            hSnap.forEach(docSnap => {
-                                const item = docSnap.data();
+                            window.fullHistoryMemoryCache.forEach(item => {
                                 if (item.type !== 'episode' || !item.media) return;
                                 const media = item.media;
-                                const showObj = media.show;
+                                const showObj = media.show || item.show;
                                 if (!showObj) return;
-                                const tmdbId = showObj.ids?.tmdb || media.ids?.tmdb;
+                                
+                                const tmdbId = showObj.ids?.tmdb || media.ids?.tmdb || showObj.ids?.trakt;
                                 const identifier = String(tmdbId || showObj.title).trim();
                                 if (!identifier || identifier === 'undefined') return;
-                                const currentS = parseInt(media.season !== undefined ? media.season : (media.season_number !== undefined ? media.season_number : 1));
-                                const currentE = parseInt(media.number !== undefined ? media.number : (media.episode_number !== undefined ? media.episode_number : 1));
+                                
                                 if (!showMap.has(identifier)) {
-                                    showMap.set(identifier, { showTmdbId: tmdbId, showTitle: showObj.title, showObj: showObj, s: currentS, e: currentE, watchedAt: item.watchedAt || item.loggedAt });
-                                } else {
-                                    const entry = showMap.get(identifier);
-                                    if (currentS > entry.s || (currentS === entry.s && currentE > entry.e)) { entry.s = currentS; entry.e = currentE; }
+                                    showMap.set(identifier, {
+                                        showTmdbId: tmdbId,
+                                        showTitle: showObj.title || showObj.name,
+                                        showObj: showObj,
+                                        s: parseInt(media.season !== undefined ? media.season : (media.season_number !== undefined ? media.season_number : 1)),
+                                        e: parseInt(media.number !== undefined ? media.number : (media.episode_number !== undefined ? media.episode_number : 1)),
+                                        watchedAt: item.watchedAt || item.loggedAt
+                                    });
                                 }
                             });
                             activeShows = Array.from(showMap.values()).slice(0, 40);
@@ -3248,8 +3266,17 @@ async function loadUpNext() {
                     </div>`;
                 }
 
+                const setOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${encodeURIComponent(jsonStr).replace(/'/g, "%27")}')); `;
+                let clickTargetId = (primaryDataSource === 'tmdb') ? (data.ids.tmdb || data.ids.trakt) : data.ids.trakt;
+                if (item.type === 'episode' && primaryDataSource === 'tmdb') {
+                    const s = data.season || data.season_number;
+                    const e = data.number || data.episode_number;
+                    const sTmdb = item.show?.ids?.tmdb;
+                    if (sTmdb && s !== undefined && e !== undefined) clickTargetId = `${sTmdb}-${s}-${e}`;
+                }
+                
                 return `
-                <div class="card p-0 rounded-xl flex flex-row overflow-hidden border ${item.isResume ? 'border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.15)]' : 'border-gray-800'} hover:border-[var(--primary)] transition cursor-pointer shadow-lg group relative animate-fade" onclick="location.hash='#detail/${item.type}/${data.ids.trakt}'">
+                <div class="card p-0 rounded-xl flex flex-row overflow-hidden border ${item.isResume ? 'border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.15)]' : 'border-gray-800'} hover:border-[var(--primary)] transition cursor-pointer shadow-lg group relative animate-fade" onclick="${setOpt} location.hash='#detail/${item.type}/${clickTargetId}'">
                     
                     <div class="w-[40%] sm:w-1/3 aspect-video relative bg-gray-900 flex-shrink-0">
                         <img src="${img}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_IMG}'">
@@ -3270,13 +3297,33 @@ async function loadUpNext() {
                 </div>`;
             };
 
-            // Updated Grid: Changed to lg:grid-cols-2 and xl:grid-cols-3 so the horizontal cards have enough room to breathe
-            const html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2><div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">${items.map(createCard).join('')}</div>`;
+            // Accordion Logic: Show top 3 items, hide the rest
+            const VISIBLE_COUNT = 3;
+            const topItems = items.slice(0, VISIBLE_COUNT);
+            const overflowItems = items.slice(VISIBLE_COUNT);
+
+            let html = `<h2 class="text-2xl font-bold mb-6 px-2 border-l-4 border-blue-500">Continue Watching</h2>`;
+            html += `<div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">${topItems.map(createCard).join('')}</div>`;
+
+            if (overflowItems.length > 0) {
+                html += `
+                    <div id="hidden-upnext" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mt-6 hidden transition-all duration-500">
+                        ${overflowItems.map(createCard).join('')}
+                    </div>
+                    <div class="mt-6 flex justify-center">
+                        <button onclick="const el = document.getElementById('hidden-upnext'); el.classList.toggle('hidden'); this.innerHTML = el.classList.contains('hidden') ? 'Show All (${items.length}) <i class=\\'fa-solid fa-chevron-down ml-2\\'></i>' : 'Show Less <i class=\\'fa-solid fa-chevron-up ml-2\\'></i>'" 
+                            class="bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold py-2 px-6 rounded-full transition border border-gray-700 shadow-lg">
+                            Show All (${items.length}) <i class="fa-solid fa-chevron-down ml-2"></i>
+                        </button>
+                    </div>
+                `;
+            }
+
             container.innerHTML = html;
             container.classList.remove('hidden');
 
-            // ASYNC HYDRATION: Fetch images dynamically in the background without blocking the initial UI draw.
-            window.enrichTMDBImages(items, (itemId, enrichedData, rawItem) => {
+            // ASYNC HYDRATION: Deferred to requestIdleCallback to completely unblock the main thread
+            const hydrateUpNext = () => window.enrichTMDBImages(items, (itemId, enrichedData, rawItem) => {
                 const fallbackId = rawItem.ids?.trakt || rawItem.ids?.tmdb || rawItem.id || itemId;
                 const linkTarget = `location.hash='#detail/${rawItem.type}/${fallbackId}'`;
                 
@@ -3293,6 +3340,9 @@ async function loadUpNext() {
                     }
                 }
             });
+            
+            if ('requestIdleCallback' in window) requestIdleCallback(hydrateUpNext);
+            else setTimeout(hydrateUpNext, 200);
         }
     );
 }
@@ -3507,6 +3557,7 @@ async function renderPerson(id) {
             const detailCacheKey = `vt_detail_v1_${type}_${id}${initialSeason ? `_s${initialSeason}` : ''}`;
             const cachedHtml = sessionStorage.getItem(detailCacheKey);
             let hasRenderedCache = false;
+            let hasRenderedOptimistic = false;
 
             if (cachedHtml && !forceAllHistory) {
                 console.debug(`[renderDetail] Instant cache hit for ${type} ${id}`);
@@ -3515,8 +3566,129 @@ async function renderPerson(id) {
                 hideLoader(); // Kill any pending spinner immediately
                 if (window.appNav) window.appNav.setSyncState('synced');
             } else {
-                showLoader(); 
-                els.content.innerHTML = '';
+                // McMaster Fix: True Skeleton Optimistic UI
+                // Draws the EXACT structural layout of the detail page with pulsing placeholders 
+                // for missing data, preventing layout shift and eliminating the "loading" feeling.
+                let optHtml = '';
+                try {
+                    const optData = JSON.parse(sessionStorage.getItem('vt_optimistic') || 'null');
+                    
+                    // McMaster Fix: ID Validation Barrier
+                    // Prevents stale optimistic data from being drawn if the user navigates via Prev/Next arrows
+                    let isOptimisticMatch = false;
+                    if (optData) {
+                        const optTrakt = String(optData.ids?.trakt || '');
+                        const optTmdb = String(optData.ids?.tmdb || optData.id || '');
+                        const reqId = String(id);
+                        // Accept if it's an exact match, or if it's a composite TMDB episode ID (1234-1-2) that contains the requested ID
+                        if (reqId === optTrakt || reqId === optTmdb || optTrakt.includes(reqId) || reqId.includes(optTrakt)) {
+                            isOptimisticMatch = true;
+                        }
+                    }
+
+                    if (optData && isOptimisticMatch) {
+                        const optImg = getImage(optData, type, true); // (Fixed 'window.getImage' crash)
+                        const isEp = type === 'episode';
+                        
+                        if (isEp) {
+                            const sTitle = optData.show?.title || optData.show?.name || 'TV Show';
+                            const eTitle = optData.title || optData.name || 'Loading...';
+                            const eSeason = optData.season !== undefined ? optData.season : (optData.season_number || '?');
+                            const eNum = optData.number !== undefined ? optData.number : (optData.episode_number || '?');
+                            
+                            optHtml = `
+                                <div class="fixed inset-0 z-[0] pointer-events-none opacity-20 transition-opacity duration-1000">
+                                    <img src="${optImg}" class="w-full h-full object-cover blur-[100px] scale-110" onerror="this.style.display='none'">
+                                </div>
+                                <div class="animate-fade max-w-6xl mx-auto relative z-10 mt-4">
+                                    <div>
+                                        <button onclick="history.back()" class="mb-4 text-xs md:text-sm text-gray-400 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition w-fit border border-transparent"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                                    </div>
+                                    <div class="relative w-full aspect-video md:aspect-[21/9] lg:aspect-[3/1] max-h-[500px] rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border border-gray-800 group mb-6 bg-black">
+                                        <img src="${optImg}" class="w-full h-full object-cover object-center opacity-80 md:opacity-100 mx-auto">
+                                        <div class="absolute inset-0 bg-gradient-to-t from-[var(--bg)] via-black/40 to-transparent pointer-events-none md:via-transparent"></div>
+                                        <div class="absolute bottom-0 left-0 p-3 md:p-5 w-full bg-gradient-to-t from-black via-black/80 to-transparent">
+                                            <h4 class="text-xs md:text-sm font-bold text-gray-300 mb-1 flex items-center gap-2">
+                                                <span class="bg-[var(--primary)] text-white px-2 py-0.5 rounded text-[9px] md:text-[10px] tracking-wider uppercase">EPISODE</span> 
+                                                <span class="truncate">${sTitle}</span>
+                                            </h4>
+                                            <h1 class="text-xl md:text-2xl lg:text-3xl font-bold text-white mb-1.5 leading-tight shadow-black drop-shadow-md truncate">${eTitle}</h1>
+                                            <div class="hidden md:flex flex-wrap items-center gap-2 text-xs font-medium">
+                                                <span class="bg-gray-800/80 backdrop-blur text-white px-2.5 py-1 rounded border border-gray-600">Season ${eSeason}</span>
+                                                <span class="bg-gray-800/80 backdrop-blur text-gray-300 px-2.5 py-1 rounded border border-gray-600">Ep ${eNum}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="w-full animate-pulse px-2">
+                                        <div class="flex gap-4 mb-4 border-b border-gray-800 pb-4">
+                                            <div class="h-4 bg-gray-800 rounded w-16"></div>
+                                            <div class="h-4 bg-gray-800 rounded w-32"></div>
+                                        </div>
+                                        <div class="h-4 bg-gray-800 rounded w-1/4 mb-4"></div>
+                                        <div class="space-y-2 mb-8">
+                                            <div class="h-3 bg-gray-800 rounded w-full"></div>
+                                            <div class="h-3 bg-gray-800 rounded w-5/6"></div>
+                                            <div class="h-3 bg-gray-800 rounded w-4/6"></div>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div class="h-32 bg-gray-800 rounded-2xl"></div>
+                                            <div class="h-32 bg-gray-800 rounded-2xl"></div>
+                                            <div class="h-32 bg-gray-800 rounded-2xl"></div>
+                                        </div>
+                                    </div>
+                                </div>`;
+                        } else {
+                            const dTitle = optData.title || optData.name || 'Loading...';
+                            const optPoster = getImage(optData, type, false); 
+                            const optBg = getImage(optData, type, true); // Background landscape
+                            
+                            optHtml = `
+                                <div class="fixed inset-0 z-[0] pointer-events-none opacity-20 transition-opacity duration-1000">
+                                    <img src="${optBg}" class="w-full h-full object-cover blur-[100px] scale-110" onerror="this.style.display='none'">
+                                </div>
+                                <div class="animate-fade max-w-6xl mx-auto relative z-10 mt-4">
+                                    <button onclick="history.back()" class="mb-4 text-xs md:text-sm text-gray-400 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition w-fit border border-transparent"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                                    <div class="flex flex-col md:flex-row gap-6 md:gap-8 mb-10">
+                                        <div class="w-full md:w-1/3 lg:w-1/4 flex-shrink-0 mx-auto max-w-[220px] sm:max-w-[280px] md:max-w-none md:mx-0">
+                                            <div class="rounded-2xl overflow-hidden shadow-2xl relative border border-gray-800 mb-6 bg-gray-900 aspect-[2/3]">
+                                                <img src="${optPoster}" class="w-full h-full object-cover">
+                                            </div>
+                                            <div class="h-40 bg-gray-800 rounded-2xl mb-5 animate-pulse"></div>
+                                        </div>
+                                        
+                                        <div class="md:w-2/3 lg:w-3/4 mt-4 md:mt-0 px-2 md:px-0 w-full overflow-hidden">
+                                            <h1 class="text-4xl md:text-5xl font-bold mb-4 leading-tight tracking-tight text-white truncate">${dTitle}</h1>
+                                            
+                                            <div class="flex gap-4 mb-6 animate-pulse border-b border-gray-800/50 pb-4">
+                                                <div class="h-6 bg-gray-800 rounded w-16"></div>
+                                                <div class="h-6 bg-gray-800 rounded w-20"></div>
+                                                <div class="h-6 bg-gray-800 rounded w-24"></div>
+                                            </div>
+                                            
+                                            <div class="flex gap-3 mb-6 animate-pulse">
+                                                <div class="h-8 bg-gray-800 rounded-lg w-20"></div>
+                                                <div class="h-8 bg-gray-800 rounded-lg w-20"></div>
+                                            </div>
+                                            
+                                            <div class="space-y-3 mb-8 animate-pulse">
+                                                <div class="h-4 bg-gray-800 rounded w-full"></div>
+                                                <div class="h-4 bg-gray-800 rounded w-[90%]"></div>
+                                                <div class="h-4 bg-gray-800 rounded w-[80%]"></div>
+                                                <div class="h-4 bg-gray-800 rounded w-[60%]"></div>
+                                            </div>
+                                            
+                                            <div class="h-24 bg-gray-800 rounded-xl mb-6 animate-pulse w-[150px]"></div>
+                                        </div>
+                                    </div>
+                                </div>`;
+                        }
+                    }
+                } catch(e) { console.warn("Failed to generate optimistic UI", e); }
+                
+                els.content.innerHTML = optHtml || '';
+                if (optHtml) hasRenderedOptimistic = true; // Mark as true so we can kill the double-animation later
+                if (!optHtml) showLoader();
                 if (window.appNav) window.appNav.setSyncState('syncing');
             }
 
@@ -3661,14 +3833,17 @@ let listsIn = [];
 
                     // If we receive a raw Trakt ID for an episode from the history log, translate it to a TMDB ID first
                     if (type === 'episode' && !id.includes('-')) {
-                        const searchRes = await fetch(`${TRAKT_API_URL}/search/trakt/${id}?type=episode`, { headers: { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': TRAKT_CLIENT_ID } });
-                        const searchData = await searchRes.json();
-                        if (searchData && searchData[0]) {
-                            resolvedShowId = searchData[0].show.ids.tmdb;
-                            epSeason = searchData[0].episode.season;
-                            epNum = searchData[0].episode.number;
-                            tmdbId = searchData[0].episode.ids.tmdb;
-                            isResolvedEpisode = true;
+                        try {
+                            const searchData = await fetchDirect(`/search/trakt/${id}?type=episode`);
+                            if (searchData && searchData[0]) {
+                                resolvedShowId = searchData[0].show.ids.tmdb;
+                                epSeason = searchData[0].episode.season;
+                                epNum = searchData[0].episode.number;
+                                tmdbId = searchData[0].episode.ids.tmdb;
+                                isResolvedEpisode = true;
+                            }
+                        } catch (e) {
+                            console.warn("Could not resolve bare Trakt episode ID", e);
                         }
                     }
 
@@ -4192,12 +4367,17 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                 }
 
                 // --- BUILD HTML ---
-                const tintImg = isEpisode ? getImage(item, 'episode', true) : getImage(item, null, true);
-                let html = `
-                <div class="fixed inset-0 z-[0] pointer-events-none opacity-20 transition-opacity duration-1000">
-                    <img src="${tintImg}" class="w-full h-full object-cover blur-[100px] scale-110" onerror="this.style.display='none'">
-                </div>
-                <div class="animate-fade max-w-6xl mx-auto relative z-10">`;
+                const tintImg = isEpisode ? getImage(item, 'episode', true) : getImage(item, null, true);
+                
+                // Prevent the "double-pop" flicker by stripping out the fade animation if we already painted the Optimistic UI
+                const fadeClass = (hasRenderedCache || hasRenderedOptimistic) ? '' : 'animate-fade';
+                const mtClass = (!isEpisode && hasRenderedOptimistic) ? 'mt-4' : ''; 
+
+                let html = `
+                <div class="fixed inset-0 z-[0] pointer-events-none opacity-20 transition-opacity duration-1000">
+                    <img src="${tintImg}" class="w-full h-full object-cover blur-[100px] scale-110" onerror="this.style.display='none'">
+                </div>
+                <div class="${fadeClass} ${mtClass} max-w-6xl mx-auto relative z-10">`;
 
                 if (isEpisode) {
                     let bgImg = getImage(item, 'episode', true); 
@@ -4490,9 +4670,16 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                         
                                         // Populate season progress so the Season Grid displays it correctly
                                         if (item.seasons) {
+                                            // McMaster Fix: O(1) Hash Map pre-calculation. 
+                                            // Iterate the watched episodes exactly ONCE instead of mapping them repeatedly per season.
+                                            const seasonCounts = {};
+                                            watchedEps.forEach(epStr => {
+                                                const sNum = epStr.split('E')[0].substring(1); // Extracts "1" from "S1E2"
+                                                seasonCounts[sNum] = (seasonCounts[sNum] || 0) + 1;
+                                            });
+
                                             item.seasons.forEach(s => {
-                                                let sCompleted = 0;
-                                                watchedEps.forEach(epStr => { if (epStr.startsWith(`S${s.season_number}E`)) sCompleted++; });
+                                                const sCompleted = seasonCounts[s.season_number] || 0;
                                                 showProgress.seasons.push({ number: s.season_number, aired: s.episode_count, completed: sCompleted });
                                             });
                                         }
@@ -4510,7 +4697,13 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                         const fallbackId = nx.ids?.trakt || nx.ids?.tmdb;
                                         const clickHash = targetId && primaryDataSource === 'tmdb' ? `#detail/episode/${item.ids?.tmdb}-${nx.season}-${nx.number}` : `#detail/episode/${targetId || fallbackId}`;
 
-                                        nextEpHtml = `<div class="mb-6 bg-[var(--bg)] rounded-xl p-4 border border-gray-700 hover:border-[var(--primary)] flex items-center gap-4 cursor-pointer transition shadow-lg group" onclick="location.hash='${clickHash}'"><div class="w-24 h-14 md:w-32 md:h-18 flex-shrink-0 rounded-lg overflow-hidden bg-gray-900 relative"><img src="${nxImg}" class="w-full h-full object-cover group-hover:scale-110 transition duration-300" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-1 left-1 bg-[var(--primary)] text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shadow-sm">Up Next</div></div><div class="flex-grow min-w-0"><p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">Season ${nx.season} <span class="mx-1">•</span> Episode ${nx.number}</p><h4 class="font-bold text-sm md:text-base text-gray-200 truncate group-hover:text-[var(--primary)] transition">${nx.title || 'Next Episode'}</h4></div><div class="hidden sm:flex items-center text-xs text-gray-500 font-bold mr-2">Continue Watching <i class="fa-solid fa-circle-play text-[var(--primary)] text-xl ml-2"></i></div></div>`; 
+                                        const nxOpt = encodeURIComponent(JSON.stringify({
+                                            ids: nx.ids, title: nx.title, type: 'episode', season: nx.season, number: nx.number, still_path: nx.still_path,
+                                            show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path }
+                                        })).replace(/'/g, "%27");
+                                        const nxSetOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${nxOpt}')); `;
+
+                                        nextEpHtml = `<div class="mb-6 bg-[var(--bg)] rounded-xl p-4 border border-gray-700 hover:border-[var(--primary)] flex items-center gap-4 cursor-pointer transition shadow-lg group" onclick="${nxSetOpt} location.hash='${clickHash}'"><div class="w-24 h-14 md:w-32 md:h-18 flex-shrink-0 rounded-lg overflow-hidden bg-gray-900 relative"><img src="${nxImg}" class="w-full h-full object-cover group-hover:scale-110 transition duration-300" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-1 left-1 bg-[var(--primary)] text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shadow-sm">Up Next</div></div><div class="flex-grow min-w-0"><p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">Season ${nx.season} <span class="mx-1">•</span> Episode ${nx.number}</p><h4 class="font-bold text-sm md:text-base text-gray-200 truncate group-hover:text-[var(--primary)] transition">${nx.title || 'Next Episode'}</h4></div><div class="hidden sm:flex items-center text-xs text-gray-500 font-bold mr-2">Continue Watching <i class="fa-solid fa-circle-play text-[var(--primary)] text-xl ml-2"></i></div></div>`;
                                     } 
                                     return `<div class="mb-6 bg-gray-800 rounded-full h-4 w-full overflow-hidden border border-gray-700 relative group"><div class="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-1000" style="width: ${percent}%"></div><div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">${percent}% WATCHED</div></div>${nextEpHtml}`; 
                                 } catch(e){ 
@@ -4598,19 +4791,35 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
 
                 html += `</div>`;
 
-                // [DEBUG] Cache the completed detail view HTML for instant return visits
+                // McMaster Fix: Self-Cleaning Cache
+                // Cache the completed detail view HTML for instant return visits.
+                // If the 5MB browser quota fills up, automatically flush older pages to make room.
                 try {
                     sessionStorage.setItem(detailCacheKey, html);
                 } catch(e) {
-                    console.warn("[renderDetail] Could not cache detail HTML to sessionStorage:", e);
+                    if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+                        // The storage bucket is full. Sweep out all old detail caches.
+                        const keysToRemove = [];
+                        for (let i = 0; i < sessionStorage.length; i++) {
+                            const k = sessionStorage.key(i);
+                            if (k && k.startsWith('vt_detail_')) keysToRemove.push(k);
+                        }
+                        keysToRemove.forEach(k => sessionStorage.removeItem(k));
+                        
+                        // Try saving the current page one more time now that the bucket is empty
+                        try { sessionStorage.setItem(detailCacheKey, html); } catch(err) {}
+                    } else {
+                        console.warn("[renderDetail] Could not cache detail HTML:", e);
+                    }
                 }
 
                 // If user is still viewing this exact item, update DOM seamlessly
-                if (location.hash === currentHash) {
-                    if (!hasRenderedCache || els.content.innerHTML !== html) {
-                        els.content.innerHTML = html;
-                    }
-                    if (window.appNav) window.appNav.setSyncState('synced');
+                    if (location.hash === currentHash) {
+                        // Skip rewriting the DOM if we already hit the local cache perfectly, to prevent image flickering
+                        if (!hasRenderedCache) {
+                            els.content.innerHTML = html;
+                        }
+                        if (window.appNav) window.appNav.setSyncState('synced');
 
                     // Silently prefetch previous and next episodes in the background once current episode is loaded
                     if (isEpisode && showInfo) {
@@ -4703,8 +4912,14 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                     });
                                     const watchedDateStr = epHist ? `<span class="text-[10px] md:text-xs text-green-500 ml-3 bg-green-900/20 px-2 py-1 rounded border border-green-800"><i class="fa-solid fa-calendar-check mr-1"></i> ${new Date(epHist.watched_at).toLocaleDateString()}</span>` : '';
                                     
+                                    const epOpt = encodeURIComponent(JSON.stringify({
+                                        ids: ep.ids, title: ep.title, type: 'episode', season: ep.season, number: ep.number, still_path: ep.still_path,
+                                        show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path }
+                                    })).replace(/'/g, "%27");
+                                    const epSetOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${epOpt}')); `;
+                                    
                                     html += `
-                                    <div class="card p-3 rounded-xl flex flex-col sm:flex-row gap-4 border-l-4 border-r border-t border-b border-gray-800 hover:border-gray-500 ${sColor} transition cursor-pointer bg-gray-900/40" onclick="location.hash='${epLink}'">
+                                    <div class="card p-3 rounded-xl flex flex-col sm:flex-row gap-4 border-l-4 border-r border-t border-b border-gray-800 hover:border-gray-500 ${sColor} transition cursor-pointer bg-gray-900/40" onclick="${epSetOpt} location.hash='${epLink}'">
                                         <div class="flex-grow min-w-0 flex flex-col justify-center">
                                             <div class="flex items-center justify-between mb-1">
                                                 <h4 class="font-bold text-gray-200 break-words pr-2 text-sm md:text-base"><span class="text-gray-500 font-mono mr-2">S${ep.season}E${ep.number}</span> ${ep.title}</h4>
@@ -4768,7 +4983,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             if (currentUser) {
                                 try {
                                     const histCacheKey = `vidtrackr_full_history_${currentUser.uid}`;
-                                    let fullHist = JSON.parse(localStorage.getItem(histCacheKey) || '[]');
+                                    // McMaster Fix: 0ms RAM lookup instead of blocking JSON.parse
+                                    let fullHist = window.fullHistoryMemoryCache || []; 
                                     if (!fullHist.length) {
                                         const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(1500));
                                         const snap = await getDocs(q);
@@ -4846,6 +5062,12 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 const tmdbShowId = item.ids.tmdb || id;
                                 const epLink = primaryDataSource === 'tmdb' ? `#detail/episode/${tmdbShowId}-${seasonNum}-${ep.number}` : `#detail/episode/${ep.ids.trakt}`;
                                 
+                                const epOpt = encodeURIComponent(JSON.stringify({
+                                    ids: ep.ids, title: ep.title, type: 'episode', season: seasonNum, number: ep.number, still_path: ep.still_path,
+                                    show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path }
+                                })).replace(/'/g, "%27");
+                                const epSetOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${epOpt}')); `;
+                                
                                 // Resolving local ratings natively so they appear even if an episode wasn't logged as watched
                                 const cId = `${tmdbShowId}-${seasonNum}-${ep.number}`;
                                 const tId = String(ep.ids?.trakt || '');
@@ -4894,7 +5116,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 }
 
                                 // FIX: Passed true to getImage so it uses still_path landscape ratio for episode thumbnails
-                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition ${epHiddenClass}"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="location.hash='${epLink}'"><img src="${getImage(ep, 'episode', true)}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><div class="flex items-center"><h4 class="font-bold text-lg text-gray-100 break-words hover:text-yellow-500 cursor-pointer transition" onclick="location.hash='${epLink}'">${ep.title || 'Episode ' + ep.number}</h4>${typeBadge}${hiddenBadge}</div><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}${watchedDateStr}</div>
+                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition ${epHiddenClass}"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="${epSetOpt} location.hash='${epLink}'"><img src="${getImage(ep, 'episode', true)}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><div class="flex items-center"><h4 class="font-bold text-lg text-gray-100 break-words hover:text-yellow-500 cursor-pointer transition" onclick="${epSetOpt} location.hash='${epLink}'">${ep.title || 'Episode ' + ep.number}</h4>${typeBadge}${hiddenBadge}</div><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}${watchedDateStr}</div>
                                 <div class="flex gap-2">
                                     <button class="text-xs ${isEpHidden ? 'bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white border-red-900/50 hover:border-red-600' : 'bg-gray-800 text-gray-400 hover:bg-gray-600 hover:text-white border-gray-700 hover:border-gray-500'} px-3 py-2 rounded-lg transition shadow-md border flex items-center justify-center" onclick="event.stopPropagation(); window.toggleHidden('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="${isEpHidden ? 'Unhide Episode' : 'Hide Episode'}"><i class="fa-solid ${isEpHidden ? 'fa-eye' : 'fa-eye-slash'}"></i></button>
                                     <button class="text-xs bg-yellow-900/30 text-yellow-500 hover:bg-yellow-500 hover:text-black border border-yellow-900/50 hover:border-yellow-500 px-3 py-2 rounded-lg transition shadow-md flex items-center justify-center" onclick="event.stopPropagation(); window.openQuickRate('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}', true)" title="Rate Episode"><i class="fa-solid fa-star"></i></button>
@@ -5576,8 +5798,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     isFetchingHistory = false; hideLoader();
 
                     // --- NEW: Non-Blocking Background Hydration (1-by-1) ---
-                    // Silently fetches missing TMDB images and updates the UI instantly per-item
-                    window.enrichTMDBImages(data, (itemId, enrichedData, rawItem) => {
+                    // Silently fetches missing TMDB images and defers to CPU idle time
+                    const hydrateHistory = () => window.enrichTMDBImages(data, (itemId, enrichedData, rawItem) => {
                         const displayImageObj = rawItem.type === 'episode' ? rawItem.episode : rawItem.movie;
                         const newImg = getImage(displayImageObj, rawItem.type, true);
                         const imgEl = document.getElementById(`hist-img-${itemId}`);
@@ -5620,6 +5842,9 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             }
                         }
                     });
+                    
+                    if ('requestIdleCallback' in window) requestIdleCallback(hydrateHistory);
+                    else setTimeout(hydrateHistory, 200);
 
                 } catch (e) {
                     console.error("Firebase History Fetch Error:", e);
@@ -6787,6 +7012,9 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     const watchTime = item.watchedAt || item.loggedAt || new Date().toISOString();
 
                     if (!showMap.has(identifier)) {
+                        // FIX: Because the history array is sorted by date (newest first), 
+                        // the VERY FIRST episode we process for a show is the one watched most recently.
+                        // We set this as the permanent pointer to fully support rewatches of older seasons!
                         showMap.set(identifier, {
                             showTmdbId: tmdbId,
                             showTitle: showObj.title,
@@ -6801,12 +7029,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     const entry = showMap.get(identifier);
                     entry.watchedEps.add(epString); // Add to Set to prevent duplicate counts for rewatches
                     
-                    // Track max season/ep to find what's next
-                    if (s > entry.maxSeason || (s === entry.maxSeason && e > entry.maxEpisode)) {
-                        entry.maxSeason = s;
-                        entry.maxEpisode = e;
-                    }
-                    
+                    // Removed the absolute maxSeason check here! The pointer is locked to the most recent watch.
                     // Keep the most recent watch timestamp for accurate sorting in Up Next
                     if (new Date(watchTime) > new Date(entry.watchedAt)) {
                         entry.watchedAt = watchTime;
@@ -6922,7 +7145,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             }).join('')}
                         </div>
                         <div class="mt-4 text-center">
-                            <button onclick="sessionStorage.removeItem('vidtrackr_local_progress'); window.calculateLocalSeriesProgress(this)" class="text-xs text-gray-500 hover:text-white bg-gray-800/50 hover:bg-gray-700 px-3 py-1.5 rounded transition border border-gray-700 shadow-md"><i class="fa-solid fa-rotate-right mr-1"></i> Refresh Progress</button>
+                            <button onclick="window.invalidateProgressCaches(); window.calculateLocalSeriesProgress(this)" class="text-xs text-gray-500 hover:text-white bg-gray-800/50 hover:bg-gray-700 px-3 py-1.5 rounded transition border border-gray-700 shadow-md"><i class="fa-solid fa-rotate-right mr-1"></i> Refresh Progress</button>
                         </div>
                     </div>`;
                 } else {
@@ -6961,16 +7184,11 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                 const histTimeKey = `${histCacheKey}_time`;
                 const now = Date.now();
                 
-                const cachedHistoryStr = localStorage.getItem(histCacheKey);
                 const lastHistoryFetchTime = parseInt(localStorage.getItem(histTimeKey) || '0');
                 
-                // Use cached history if valid and less than 2 minutes old
-                if (cachedHistoryStr && (now - lastHistoryFetchTime < 120000)) {
-                    try {
-                        localHistory = JSON.parse(cachedHistoryStr);
-                    } catch(e) {
-                        localHistory = [];
-                    }
+                // McMaster Fix: 0ms RAM lookup
+                if (window.fullHistoryMemoryCache && window.fullHistoryMemoryCache.length > 0 && (now - lastHistoryFetchTime < 120000)) {
+                    localHistory = window.fullHistoryMemoryCache;
                 }
                 
                 // If cache is missing or expired, fetch fresh history from Firebase
@@ -7158,7 +7376,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                             }).join('')}
                                         </div>
                                         <div class="mt-4 text-center">
-                                            <button onclick="sessionStorage.removeItem('vidtrackr_local_progress'); window.calculateLocalSeriesProgress(this)" class="text-xs text-gray-500 hover:text-white bg-gray-800/50 hover:bg-gray-700 px-3 py-1.5 rounded transition border border-gray-700 shadow-md"><i class="fa-solid fa-rotate-right mr-1"></i> Refresh Progress</button>
+                                            <button onclick="window.invalidateProgressCaches(); window.calculateLocalSeriesProgress(this)" class="text-xs text-gray-500 hover:text-white bg-gray-800/50 hover:bg-gray-700 px-3 py-1.5 rounded transition border border-gray-700 shadow-md"><i class="fa-solid fa-rotate-right mr-1"></i> Refresh Progress</button>
                                         </div>
                                     ` : `
                                         <div class="card p-6 md:p-8 rounded-xl border border-gray-800 text-center flex flex-col items-center shadow-lg bg-gray-900/30">
@@ -7445,6 +7663,9 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
             
             // 2. Invalidate Session Progress Snapshot so Progress tab re-evaluates
             sessionStorage.removeItem('vidtrackr_local_progress');
+            
+            // 3. FIX: Nuke the 12-hour per-show state cache so it instantly recalculates the new Next Episode pointer!
+            localStorage.removeItem('vt_upnext_show_states_v1');
         };
 
         // HELPER: Flushes cached detail HTML when items are logged, rated, or modified
@@ -7524,15 +7745,28 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                 // Smartly update the local full history cache to prevent aggressive invalidations
                 try {
                     const histCacheKey = `vidtrackr_full_history_${currentUser.uid}`;
-                    const cachedHist = localStorage.getItem(histCacheKey);
-                    if (cachedHist) {
-                        let histArr = JSON.parse(cachedHist);
-                        histArr.unshift({ ...payload, _docId: docId });
-                        if (histArr.length > 2500) histArr = histArr.slice(0, 2500);
-                        localStorage.setItem(histCacheKey, JSON.stringify(histArr));
+                    // McMaster Fix: Update the fast RAM array directly
+                    if (window.fullHistoryMemoryCache) {
+                        window.fullHistoryMemoryCache.unshift({ ...payload, _docId: docId });
+                        if (window.fullHistoryMemoryCache.length > 2500) {
+                            window.fullHistoryMemoryCache = window.fullHistoryMemoryCache.slice(0, 2500);
+                        }
+                        
+                        // Defer the heavy stringify/write to idle time to save the state
+                        if ('requestIdleCallback' in window) {
+                            requestIdleCallback(() => localStorage.setItem(histCacheKey, JSON.stringify(window.fullHistoryMemoryCache)));
+                        } else {
+                            setTimeout(() => localStorage.setItem(histCacheKey, JSON.stringify(window.fullHistoryMemoryCache)), 200);
+                        }
                     }
                 } catch(e) { console.warn("Failed to update history cache locally", e); }
-                
+                        // so it doesn't interrupt the user clicking buttons or scrolling.
+                        if ('requestIdleCallback' in window) {
+                            requestIdleCallback(() => localStorage.setItem(histCacheKey, JSON.stringify(histArr)));
+                        } else {
+                            setTimeout(() => localStorage.setItem(histCacheKey, JSON.stringify(histArr)), 200);
+                        }
+                            
                 // --- NoSQL Denormalization for Series Progress ---
                 // We only execute this if it's NOT a bulk import to protect your database read costs.
                 if (type === 'episode' && progress >= 100 && !isImport) {
@@ -7542,24 +7776,15 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     
                     if (showTmdbId && !isNaN(s) && !isNaN(e)) {
                         const progressRef = doc(db, `users/${currentUser.uid}/series_progress`, String(showTmdbId));
-                        const pSnap = await getDoc(progressRef);
-                        let maxS = s, maxE = e;
                         
-                        if (pSnap.exists()) {
-                            const pData = pSnap.data();
-                            maxS = pData.maxSeason || 1;
-                            maxE = pData.maxEpisode || 1;
-                            if (s > maxS || (s === maxS && e > maxE)) {
-                                maxS = s;
-                                maxE = e;
-                            }
-                        }
-                        
+                        // FIX: Directly overwrite maxSeason and maxEpisode with the newly logged episode.
+                        // This perfectly supports "Rewatching" older seasons by moving the Up Next pointer 
+                        // to the most recently watched episode, rather than the absolute highest episode ever seen.
                         await setDoc(progressRef, {
                             showTmdbId: showTmdbId,
                             showObj: item.show,
-                            maxSeason: maxS,
-                            maxEpisode: maxE,
+                            maxSeason: s,
+                            maxEpisode: e,
                             lastWatchedAt: date || new Date().toISOString()
                         }, { merge: true });
                     }
@@ -8577,11 +8802,14 @@ modalContent.addEventListener('touchend', () => {
                 document.getElementById('search-input').addEventListener('input', searchHandler);
             }
 
-            // 1. Seed globalHistoryCache from localStorage immediately (0ms) so Dashboard & Up Next can render without waiting on Firestore!
+            // McMaster Fix: Load the ENTIRE history into fast RAM once on boot.
+            // Never call JSON.parse on the full history string again during navigation.
+            window.fullHistoryMemoryCache = [];
             try {
                 const cachedHist = localStorage.getItem(`vidtrackr_full_history_${user.uid}`);
                 if (cachedHist) {
-                    window.globalHistoryCache = JSON.parse(cachedHist).slice(0, 200);
+                    window.fullHistoryMemoryCache = JSON.parse(cachedHist);
+                    window.globalHistoryCache = window.fullHistoryMemoryCache.slice(0, 200);
                 }
             } catch (e) {}
 
