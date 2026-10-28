@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.94.0-alpha",
+    date: "2026-10-28",
+    changes: [
+        "In FoodTrackr: Redesigned the toast notification system to use a top-right utilitarian styling with sharp edges, replacing the bottom floating banner.",
+        "In FoodTrackr: Implemented infinite scrolling via IntersectionObserver on the History tab to prevent browser freezing by rendering items in optimized chunks.",
+        "In FoodTrackr: Replaced the 'Load More' button in OpenFoodFacts search results with an IntersectionObserver-based infinite scroll for seamless browsing.",
+        "In FoodTrackr: Added haptic feedback (navigator.vibrate) to toast notifications to provide tactile hardware responses on supported mobile devices."
+    ]
+},
+    {
     version: "v16.93.0-alpha",
     date: "2026-10-27",
     changes: [
