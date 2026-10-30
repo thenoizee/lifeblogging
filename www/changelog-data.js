@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v16.96.0-alpha",
+    date: "2026-10-30",
+    changes: [
+        "In PlantTrackr: Upgraded all mobile modals to premium native-style bottom sheets with frosted glass sticky headers and drag handles.",
+        "In PlantTrackr: Redesigned the Spaces tab with dashboard-style cards and categorized the Add Space modal into distinct sections (Basic Info, Micro-Zones, Environment Profile).",
+        "In PlantTrackr: Replaced the comma-separated text input for zones with an interactive Zone Tag Builder UI.",
+        "In PlantTrackr: Changed the Plant Data Check icon from a stethoscope to a clipboard to prevent confusion with health diagnostics.",
+        "In PlantTrackr: Added a new Spaces Profile Check tool to identify and prompt fixes for locations missing environmental data (Temp, Humidity, Drafts).",
+        "In PlantTrackr: Added premium illustrated empty states for the Garden and Spaces tabs.",
+        "In PlantTrackr: Expanded Soil Type options in edit/repot modals to include Loamy, Sandy, Heavy Clay, and Chalky.",
+        "In PlantTrackr: Updated the Smart Watering Engine math to dynamically adjust watering frequencies based on the new granular soil types.",
+        "In PlantTrackr: Added dynamic, color-coded badges to Garden plant cards displaying Mapped Spaces, Micro-Zones, Soil Type, and Pot Saucers.",
+        "In PlantTrackr: Renamed legacy locations to 'Unmapped Space' and applied a dashed-border warning badge to highlight them.",
+        "In PlantTrackr: Renamed legacy propagation statuses to 'Propagating (Unspecified Method)'."
+    ]
+},
+    {
     version: "v16.95.0-alpha",
     date: "2026-10-28",
     changes: [
@@ -239,32 +256,32 @@ export const changelogData = [
     version: "v16.76.0-alpha",
     date: "2026-10-11",
     changes: [
-        "In Analyser App: Implemented input debouncing for table search and attribute filters to improve typing performance and reduce UI blocking.",
-        "In Analyser App: Refactored table rendering to use DocumentFragment, heavily optimizing DOM reflows for large datasets.",
-        "In Analyser App: Implemented date parsing cache during table sorting to drastically reduce script execution time on large datasets.",
-        "In Analyser App: Added console debugging timing metrics (console.time) for table rendering loops.",
-        "In Analyser App: Built a premium, animated, stackable toast notification system to replace the rigid static message box.",
-        "In Analyser App: Replaced the basic table loading spinner with a modern, shimmering 'skeleton' loader for smoother perceived performance.",
-        "In Analyser App: Added zebra striping to the data table for improved reading legibility across wide screens.",
-        "In Analyser App: Added a 'Clear Search & Tags' button directly into the empty state view to prevent UX dead-ends.",
-        "In Analyser App: Upgraded Chart.js visual configuration to include smooth bezier curves (tension: 0.4), dynamic canvas gradient fills, and highly visible interactive hover points.",
-        "In Analyser App: Redesigned the chart summary stat cards with premium gradient backgrounds, absolute positioning icons, and modern typography.",
-        "In Analyser App: Refactored date range quick filters into a sleek, horizontally scrollable 'pill' menu, saving significant vertical screen space.",
-        "In Analyser App: Added a beautiful frosted-glass 'Empty State' overlay to the main chart that automatically appears when current filters yield zero data.",
-        "In Analyser App: Overhauled the file drag-and-drop zone UI with animated borders, dynamic scaling, cloud icons, and refined typography.",
-        "In Analyser App: Upgraded the table pagination controls to use premium inset containers, pill-shaped indicators, and chevron icons.",
-        "In Analyser App: Engineered an 'Auto-Discovery Insight Engine' that performs matrix math across all possible attribute pairings to automatically surface strong hidden correlations.",
-        "In Analyser App: Implemented 'Cinematic Time-Lapse Playback' allowing users to animate their timeline charts chronologically.",
-        "In Analyser App: Built a real-time Statistical Outlier Detector that automatically flags anomalies (Z-Score > 2) directly in the data table.",
-        "In Analyser App: Developed a hacker-style 'CLI Terminal' for frictionless natural language data logging (e.g. '8 mood' -> submits instantly).",
-        "In Analyser App: Implemented Algorithmic Data Smoothing in the Insights tab. Users can toggle a 7-Day Rolling Average trendline to cut through daily chart noise.",
-        "In Analyser App: Introduced friction-less Excel-style inline editing. Double-clicking any data cell in the table transforms it into an input field for instant database updates.",
-        "In Analyser App: Gamified the Planner tab by writing a historical scanning engine that dynamically calculates and renders real-time consecutive 'streaks' for daily goals.",
-        "In Analyser App: Added a 'Quick Backfill' engine directly into the Triage timeline. When reviewing past days, the app detects incomplete tasks and generates one-click contextual logging buttons.",
-        "In Analyser App: Completely redesigned the Settings interface, migrating from stacked cards to a professional Master-Detail layout with a sticky vertical sidebar navigation.",
-        "In Analyser App: Converted the basic column selection checkboxes into modern, animated iOS-style toggle switches.",
-        "In Analyser App: Built a Global Tag Renamer. Users can now click an edit icon next to any tag to update its string globally across the entire database in a single batched transaction.",
-        "In Analyser App: Added a 'Copy JSON' button to the Data Modal allowing users to easily extract individual row data."
+        "In Analyser: Implemented input debouncing for table search and attribute filters to improve typing performance and reduce UI blocking.",
+        "In Analyser: Refactored table rendering to use DocumentFragment, heavily optimizing DOM reflows for large datasets.",
+        "In Analyser: Implemented date parsing cache during table sorting to drastically reduce script execution time on large datasets.",
+        "In Analyser: Added console debugging timing metrics (console.time) for table rendering loops.",
+        "In Analyser: Built a premium, animated, stackable toast notification system to replace the rigid static message box.",
+        "In Analyser: Replaced the basic table loading spinner with a modern, shimmering 'skeleton' loader for smoother perceived performance.",
+        "In Analyser: Added zebra striping to the data table for improved reading legibility across wide screens.",
+        "In Analyser: Added a 'Clear Search & Tags' button directly into the empty state view to prevent UX dead-ends.",
+        "In Analyser: Upgraded Chart.js visual configuration to include smooth bezier curves (tension: 0.4), dynamic canvas gradient fills, and highly visible interactive hover points.",
+        "In Analyser: Redesigned the chart summary stat cards with premium gradient backgrounds, absolute positioning icons, and modern typography.",
+        "In Analyser: Refactored date range quick filters into a sleek, horizontally scrollable 'pill' menu, saving significant vertical screen space.",
+        "In Analyser: Added a beautiful frosted-glass 'Empty State' overlay to the main chart that automatically appears when current filters yield zero data.",
+        "In Analyser: Overhauled the file drag-and-drop zone UI with animated borders, dynamic scaling, cloud icons, and refined typography.",
+        "In Analyser: Upgraded the table pagination controls to use premium inset containers, pill-shaped indicators, and chevron icons.",
+        "In Analyser: Engineered an 'Auto-Discovery Insight Engine' that performs matrix math across all possible attribute pairings to automatically surface strong hidden correlations.",
+        "In Analyser: Implemented 'Cinematic Time-Lapse Playback' allowing users to animate their timeline charts chronologically.",
+        "In Analyser: Built a real-time Statistical Outlier Detector that automatically flags anomalies (Z-Score > 2) directly in the data table.",
+        "In Analyser: Developed a hacker-style 'CLI Terminal' for frictionless natural language data logging (e.g. '8 mood' -> submits instantly).",
+        "In Analyser: Implemented Algorithmic Data Smoothing in the Insights tab. Users can toggle a 7-Day Rolling Average trendline to cut through daily chart noise.",
+        "In Analyser: Introduced friction-less Excel-style inline editing. Double-clicking any data cell in the table transforms it into an input field for instant database updates.",
+        "In Analyser: Gamified the Planner tab by writing a historical scanning engine that dynamically calculates and renders real-time consecutive 'streaks' for daily goals.",
+        "In Analyser: Added a 'Quick Backfill' engine directly into the Triage timeline. When reviewing past days, the app detects incomplete tasks and generates one-click contextual logging buttons.",
+        "In Analyser: Completely redesigned the Settings interface, migrating from stacked cards to a professional Master-Detail layout with a sticky vertical sidebar navigation.",
+        "In Analyser: Converted the basic column selection checkboxes into modern, animated iOS-style toggle switches.",
+        "In Analyser: Built a Global Tag Renamer. Users can now click an edit icon next to any tag to update its string globally across the entire database in a single batched transaction.",
+        "In Analyser: Added a 'Copy JSON' button to the Data Modal allowing users to easily extract individual row data."
     ]
 },
     {
@@ -494,10 +511,10 @@ export const changelogData = [
     version: "v16.57.0-alpha",
     date: "2026-09-16",
     changes: [
-        "In shared-nav.js: Overhauled the headless command runner into a visual, Spotlight-style Command Palette available across all apps via Ctrl/Cmd+K.",
-        "In shared-nav.js: Updated the Command Palette task creation logic to integrate natively with TaskTrackr's offline queue and live memory cache. Tasks now appear instantly in the UI without requiring a manual refresh.",
-        "In shared-nav.js: Added helpful console debugging for command executions and temporarily disabled the /water command until backend endpoints are ready.",
-        "In hub.html: Added a floating action bolt button to the bottom right of the screen to manually trigger the new global Command Palette.",
+        "In Shared Nav: Overhauled the headless command runner into a visual, Spotlight-style Command Palette available across all apps via Ctrl/Cmd+K.",
+        "In Shared Nav: Updated the Command Palette task creation logic to integrate natively with TaskTrackr's offline queue and live memory cache. Tasks now appear instantly in the UI without requiring a manual refresh.",
+        "In Shared Nav: Added helpful console debugging for command executions and temporarily disabled the /water command until backend endpoints are ready.",
+        "In Hub: Added a floating action bolt button to the bottom right of the screen to manually trigger the new global Command Palette.",
         "In TaskTrackr: Updated the Web Share Target URL parser to safely auto-fill the new Quick Add popup with parameters sent from the Command Palette.",
         "In TaskTrackr: Repurposed the task card action icons so that the far-left circle handles multi-selection, and the inner square handles task completion, keeping the physical layout untouched."
     ]
@@ -732,10 +749,10 @@ export const changelogData = [
     version: "v16.37.0-alpha",
     date: "2026-08-29",
     changes: [
-        "In Shared Navigation: Implemented strict environment detection to apply a 20px safe-area top padding solely to the native Android APK, while hiding the floating corner menu to prevent it from overlapping the profile and notification icons.",
-        "In Shared Navigation: Removed mouseenter and mouseleave listeners from the Hub dropdown to fix an Android WebView double-tap bug, and established a strict min-w-[32px] boundary on the toggle to prevent accidental routing to the Home page.",
-        "In Shared Navigation: Disabled physical CSS active state transformations (such as scaling and translateY) on touch devices to stop buttons from physically shifting out from under the user's finger during a tap.",
-        "In Shared Navigation: Engineered a URL formatting helper for the native build that automatically appends /index.html to internal routes, ensuring reliable navigation within Capacitor's strict local file server."
+        "In SharedNav: Implemented strict environment detection to apply a 20px safe-area top padding solely to the native Android APK, while hiding the floating corner menu to prevent it from overlapping the profile and notification icons.",
+        "In SharedNav: Removed mouseenter and mouseleave listeners from the Hub dropdown to fix an Android WebView double-tap bug, and established a strict min-w-[32px] boundary on the toggle to prevent accidental routing to the Home page.",
+        "In SharedNav: Disabled physical CSS active state transformations (such as scaling and translateY) on touch devices to stop buttons from physically shifting out from under the user's finger during a tap.",
+        "In SharedNav: Engineered a URL formatting helper for the native build that automatically appends /index.html to internal routes, ensuring reliable navigation within Capacitor's strict local file server."
     ]
 },
     {
@@ -765,8 +782,8 @@ export const changelogData = [
         "In Android Widget: Replaced standard Unicode emojis with exact FontAwesome SVG vector paths (Angry, Frown, Meh, Smile, Laugh Beam) to perfectly mirror the web app's UI.",
         "In Android Widget: Added tap-to-log functionality, allowing users to click anywhere on the widget background to instantly open and deep-link directly to the Loggr.",
         "In Android Widget: Updated error state fallbacks (Auth Blocked, Network Sleeping, Server Timeout) to use native Android system icons instead of generic emojis.",
-        "In Android Wrapper: Implemented a smart cold-boot watchdog to prevent Capacitor's default SPA router from hijacking the widget's deep-link clicks upon app launch.",
-        "In Android Wrapper: Added a warm-start JavaScript injection that smoothly navigates to the Loggr without a jarring hard reload if the app is already open in the background."
+        "In Android Widget: Implemented a smart cold-boot watchdog to prevent Capacitor's default SPA router from hijacking the widget's deep-link clicks upon app launch.",
+        "In Android Widget: Added a warm-start JavaScript injection that smoothly navigates to the Loggr without a jarring hard reload if the app is already open in the background."
     ]
 },
     {
@@ -829,7 +846,7 @@ export const changelogData = [
     version: "v16.31.0-alpha",
     date: "2026-08-24",
     changes: [
-                "In Account Page: Integrated Dreo account linking and management settings.",
+                "In Account: Integrated Dreo account linking and management settings.",
                 "In Dashboard: Introduced real-time Dreo smart fan integration to monitor live device power and settings.",
                 "In Dashboard: Implemented smart device targeting to automatically identify and connect to the Air Circulator over other connected devices.",
                 "In Dashboard: Added a dynamic visual progress bar calibrated to reflect the fan's active setting across its 1-9 speed range."
@@ -1405,11 +1422,11 @@ export const changelogData = [
     version: "v15.141.0-alpha",
     date: "2026-07-25",
     changes: [
-        "In Dashboard: Upgraded the layout to replace rigid solid-colored headers with sleek, modern headers featuring soft shadows, blurred background layers, and floating icons.",
-        "In Dashboard: Updated the dynamic generation of Medication Cards and the Contact Lenses summary card to utilize an expressive, blurred-blob styling with layered depth.",
-        "In Settings: Redesigned the Data Management section, replacing the basic fieldset with an expressive card design featuring animated background blur accents.",
-        "In Medications: Upgraded the Manage Medications list cards to inherit the expressive UI layout and smoother hover transitions.",
-        "Across App: Refined headers for All Logs Overview, Left/Right Eye, Eye Health Records, and Grooming History to replace solid color blocks with cleaner typography and floating icon accents."
+        "In MediManagr: Upgraded the layout to replace rigid solid-colored headers with sleek, modern headers featuring soft shadows, blurred background layers, and floating icons.",
+        "In MediManagr: Updated the dynamic generation of Medication Cards and the Contact Lenses summary card to utilize an expressive, blurred-blob styling with layered depth.",
+        "In MediManagr: Redesigned the Data Management section, replacing the basic fieldset with an expressive card design featuring animated background blur accents.",
+        "In MediManagr: Upgraded the Manage Medications list cards to inherit the expressive UI layout and smoother hover transitions.",
+        "In MediManagr: Refined headers for All Logs Overview, Left/Right Eye, Eye Health Records, and Grooming History to replace solid color blocks with cleaner typography and floating icon accents."
     ]
 },
     {
@@ -1431,8 +1448,8 @@ export const changelogData = [
     version: "v15.139.0-alpha",
     date: "2026-07-25",
     changes: [
-        "In shared-nav.js: Extracted the premium button transition CSS from Analyser and injected it globally for `.nav-tab-btn` and `.mobile-nav-btn` to replicate the smooth, tactile button animations across all apps.",
-        "In shared-nav.js: Implemented a global 'Hide Nav' feature that translates the header and mobile nav off-screen. Added a floating 'Show Nav' button to restore it.",
+        "In SharedNav: Extracted the premium button transition CSS from Analyser and injected it globally for `.nav-tab-btn` and `.mobile-nav-btn` to replicate the smooth, tactile button animations across all apps.",
+        "In : Implemented a global 'Hide Nav' feature that translates the header and mobile nav off-screen. Added a floating 'Show Nav' button to restore it.",
     ]
 },
     {
@@ -1482,12 +1499,12 @@ export const changelogData = [
     version: "v15.134.0-alpha",
     date: "2026-07-20",
     changes: [
-        "In Label Generator: Added multi-page support to automatically generate and print subsequent pages for large CSV or generated data.",
-        "In Label Generator: Fixed the CSS layout to properly map text horizontal and vertical alignment regardless of portrait or landscape orientation.",
-        "In Label Generator: Converted the left configuration panel to a sticky sidebar so it remains visible while scrolling down the generated label sheets.",
-        "In Label Generator: Added a new Live Label Preview box directly under the text template box.",
-        "In Label Generator: Fixed an issue where clicking on settings would inadvertently clear uploaded CSV data.",
-        "In Label Generator: Compressed the UI footprint of the Layout tab to completely eliminate inner sidebar scrolling."
+        "In LabelGenerator: Added multi-page support to automatically generate and print subsequent pages for large CSV or generated data.",
+        "In LabelGenerator: Fixed the CSS layout to properly map text horizontal and vertical alignment regardless of portrait or landscape orientation.",
+        "In LabelGenerator: Converted the left configuration panel to a sticky sidebar so it remains visible while scrolling down the generated label sheets.",
+        "In LabelGenerator: Added a new Live Label Preview box directly under the text template box.",
+        "In LabelGenerator: Fixed an issue where clicking on settings would inadvertently clear uploaded CSV data.",
+        "In LabelGenerator: Compressed the UI footprint of the Layout tab to completely eliminate inner sidebar scrolling."
     ]
 },
     {
@@ -1515,9 +1532,9 @@ export const changelogData = [
     changes: [
         "In LabelGenerator: Migrated Firebase initialization to Modular SDK v11.6.1 and implemented 'browserLocalPersistence' to prevent unexpected sign-outs.",
         "In PDF Tools: Fixed critical module specifier errors in Firebase imports caused by malformed URL formatting.",
-        "In PDF Tools (Organise & SplitMultiple): Replaced restrictive full-screen CSS takeover with a robust HD Preview toggle. This injects a high-resolution canvas viewer directly into the editing flow without breaking page layouts.",
-        "In PDF Tools (Organise): Implemented two-way state syncing. HD Preview now honors rotation and deletion statuses, and these changes are reflected instantly back in the main grid thumbnail view.",
-        "In PDF Tools (All): Added 'min-height: 0' flexbox layout guards to ensure canvas elements remain responsive and visible during view mode transitions."
+        "In PDF Tools: Replaced restrictive full-screen CSS takeover with a robust HD Preview toggle. This injects a high-resolution canvas viewer directly into the editing flow without breaking page layouts.",
+        "In PDF Tools: Implemented two-way state syncing. HD Preview now honors rotation and deletion statuses, and these changes are reflected instantly back in the main grid thumbnail view.",
+        "In PDF Tools: Added 'min-height: 0' flexbox layout guards to ensure canvas elements remain responsive and visible during view mode transitions."
     ]
 },
     {
@@ -2308,10 +2325,10 @@ changes: [
     version: "v15.59.0-alpha",
     date: "2026-05-13",
     changes: [
-        "In Hub (index.html): Implemented dynamic time-based greetings (e.g., Good morning, Good afternoon) based on the user's local time.",
-        "In AppNavigation (shared-nav.js): Added dynamic time-based greetings to the user avatar hover tooltip across all applications.",
-        "In Service Worker (sw.js): Bumped cache version to v2.0.10.",
-        "In Service Worker (sw.js): Added Last.fm (ws.audioscrobbler.com) and TickTick (api.ticktick.com) APIs to the cache bypass list to prevent stale data and ensure live fetching on desktop browsers."
+        "In Hub: Implemented dynamic time-based greetings (e.g., Good morning, Good afternoon) based on the user's local time.",
+        "In AppNavigation: Added dynamic time-based greetings to the user avatar hover tooltip across all applications.",
+        "In Service Worker: Bumped cache version to v2.0.10.",
+        "In Service Worker: Added Last.fm (ws.audioscrobbler.com) and TickTick (api.ticktick.com) APIs to the cache bypass list to prevent stale data and ensure live fetching on desktop browsers."
     ]
 },
     {
@@ -2795,7 +2812,7 @@ changes: [
     changes: [
         "In SharedNav: Updated light mode styles to dynamically inject the app's themeColor into backgrounds, borders, and active tabs instead of defaulting to plain white.",
         "In Service Worker: Bumped version number to force a global cache refresh for PWAs so UI updates apply to all apps immediately.",
-        "In Hub/Changelog/Analyser/Account/TaskTrackr/VidTrackr: Added specific Tailwind config safelists to index.html files to prevent dynamic themeColor light-mode classes from being purged during compilation.",
+        "In Various: Added specific Tailwind config safelists to index.html files to prevent dynamic themeColor light-mode classes from being purged during compilation.",
         "In MoneyManagr: Swapped Firebase 'getAuth' for 'initializeAuth' with 'browserLocalPersistence' to match the authentication logic used in other newer apps.",
         "In Analyser: Fixed a race condition crashing the app by ensuring Firebase configuration and initialization fires before the AppNavigation module is instantiated.",
         "In Analyser: Fixed an 'auth/already-initialized' error by removing redundant Firebase auth initializations.",
@@ -3213,7 +3230,7 @@ changes: [
         version: "v14.6.0-alpha",
         date: "2026-03-20",
         changes: [
-            "Introduced BookTrackr: A brand new digital reading hub to track book progress, personal ratings, and library collections.",
+            "Launched BookTrackr: A brand new digital reading hub to track book progress, personal ratings, and library collections.",
             "In Dashboard: Added a new dynamic 'Reading' widget that automatically syncs and displays your active book progress or total books read.",
             "In BookTrackr: Integrated the OpenLibrary API to automatically fetch high-res covers, author tags, and page counts when searching for books.",
             "In BookTrackr: Built a StoryGraph CSV importer allowing users to instantly migrate their existing reading history.",
@@ -3349,7 +3366,7 @@ changes: [
         version: "v13.6.0-alpha", 
         date: "2026-03-11",
         changes: [
-            "Global Notifications: Added the ability to expand notifications for more details, delete individual alerts, and clear all notifications from a specific app. Also added dates to timestamps.",
+            "In SharedNav: Added the ability to expand notifications for more details, delete individual alerts, and clear all notifications from a specific app. Also added dates to timestamps.",
             "In MediManagr: Implemented automated notifications for low medication stock, expiring batches, and missed scheduled doses (including a 1-hour grace period to prevent spam).",
             "In TaskTrackr: Integrated the Web Share Target API, allowing users to share text and URLs directly from other apps straight into the TaskTrackr quick-add input.",
         ]
@@ -3393,8 +3410,8 @@ changes: [
     version: "v13.2.0-alpha", 
     date: "2026-03-08",
     changes: [
-        "System-Wide: Upgraded the notification bell to persist alerts across page reloads and apps using local storage, complete with instant cross-tab synchronization.",
-        "System-Wide: Introduced actionable notifications that support clickable links and routing, allowing alerts to direct users to specific apps to resolve issues.",
+        "In All: Upgraded the notification bell to persist alerts across page reloads and apps using local storage, complete with instant cross-tab synchronization.",
+        "In All: Introduced actionable notifications that support clickable links and routing, allowing alerts to direct users to specific apps to resolve issues.",
         "In TaskTrackr: Added actionable alerts that trigger when TickTick or Google Tasks sessions expire, providing a direct link to reconnect the services."
     ]
     },
@@ -3434,7 +3451,7 @@ changes: [
     version: "v11.45.1-alpha", 
     date: "2026-03-05",
     changes: [
-        "In Label Generator: Bug fix.",
+        "In LabelGenerator: Bug fix.",
     ]
     },
     {
@@ -3630,13 +3647,13 @@ changes: [
     version: "v11.27.0-alpha",
     date: "2026-02-24",
     changes: [
-        "In Label Generator: Added a direct 'Export as PDF' feature using html2pdf.js to generate high-quality label sheets natively without routing through the browser print dialog.",
-        "In Label Generator: Upgraded the data import panel with a dedicated drop-zone, allowing users to drag and drop CSV files directly to load variables.",
-        "In Label Generator: Added the Montserrat web font to the typography module options.",
-        "In Label Generator: Integrated live dynamic layout thumbnails into the Settings and Manual Grid panels to provide real-time visual feedback on layout density.",
-        "In Label Generator: Added a 'Reset to Default' failsafe button to safely clear customized layout constraints and restore standard sheet defaults.",
-        "In Label Generator: Fixed a visual bug where the right and bottom grid lines were missing by converting conditional boundaries to CSS outlines.",
-        "In Label Generator: Updated the initialization sequence to default to calculating layout dimensions by Grid (Rows/Columns) rather than arbitrary Label Sizes."
+        "In LabelGenerator: Added a direct 'Export as PDF' feature using html2pdf.js to generate high-quality label sheets natively without routing through the browser print dialog.",
+        "In LabelGenerator: Upgraded the data import panel with a dedicated drop-zone, allowing users to drag and drop CSV files directly to load variables.",
+        "In LabelGenerator: Added the Montserrat web font to the typography module options.",
+        "In LabelGenerator: Integrated live dynamic layout thumbnails into the Settings and Manual Grid panels to provide real-time visual feedback on layout density.",
+        "In LabelGenerator: Added a 'Reset to Default' failsafe button to safely clear customized layout constraints and restore standard sheet defaults.",
+        "In LabelGenerator: Fixed a visual bug where the right and bottom grid lines were missing by converting conditional boundaries to CSS outlines.",
+        "In LabelGenerator: Updated the initialization sequence to default to calculating layout dimensions by Grid (Rows/Columns) rather than arbitrary Label Sizes."
     ]
     },
     {
@@ -3909,8 +3926,8 @@ changes: [
     version: "v11.0.0-alpha",
     date: "2026-02-16",
     changes: [
-        "Project Architecture: Migrated all web assets into a dedicated 'www' directory to implement a unified Capacitor-based project structure.",
-        "Android: Formally integrated the native Android project into the main repository, enabling single-source-of-truth version control for both the web app and native components.",
+        "In All: Migrated all web assets into a dedicated 'www' directory to implement a unified Capacitor-based project structure.",
+        "In Android: Formally integrated the native Android project into the main repository, enabling single-source-of-truth version control for both the web app and native components.",
         "Mood Widget: Complete overhaul of the Android home screen widget with a new layout featuring dynamic background colors mapped to mood levels.",
         "Mood Widget: Added a manual synchronization button to the widget interface for instant data refreshing.",
         "Mood Widget: Implemented emoji mapping and 'Last Updated' timestamps for improved visual feedback on the home screen.",
@@ -4291,7 +4308,7 @@ changes: [
     version: "v10.38.1-alpha",
     date: "2026-02-02",
     changes: [
-        "In Label Generator: Updated favicon.",
+        "In LabelGenerator: Updated favicon.",
         "In FoodTrackr: Bug fix.",
     ]
     },
@@ -4333,10 +4350,10 @@ changes: [
     version: "v10.35.0-alpha",
     date: "2026-02-02",
     changes: [
-        "In Data Tools: Added a new 'String Utilities' section to the converter hub.",
-        "In Data Tools: Implemented a Binary Converter to translate text to binary strings and vice versa.",
-        "In Data Tools: Added Base64, Hexadecimal, and URL Encode/Decode tools for quick string manipulation.",
-        "In Data Tools: Added a 'Use Result' swap button to easily move output data back into the input field for chained conversions."
+        "In Converter: Added a new 'String Utilities' section to the converter hub.",
+        "In Converter: Implemented a Binary Converter to translate text to binary strings and vice versa.",
+        "In Converter: Added Base64, Hexadecimal, and URL Encode/Decode tools for quick string manipulation.",
+        "In Converter: Added a 'Use Result' swap button to easily move output data back into the input field for chained conversions."
     ]
     },
     {
@@ -4409,7 +4426,7 @@ changes: [
     date: "2026-01-28",
     changes: [
         "In FoodTrackr: Updated 'Quick Star' functionality to search results, allowing users to instantly toggle favourites.",
-        "In PDFTools: Implemented a 'Continue Editing' workflow, allowing users to pass a processed file directly to another tool without downloading and re-uploading.",
+        "In PDF Tools: Implemented a 'Continue Editing' workflow, allowing users to pass a processed file directly to another tool without downloading and re-uploading.",
     ]
     },
     {
@@ -4622,10 +4639,10 @@ changes: [
     version: "v10.5.0-alpha",
     date: "2026-01-19",
     changes: [
-        "In Label Generator: Enabled full manual editing capabilities, allowing users to type text or paste images directly into any label on the grid, overriding the default template.",
-        "In Label Generator: Added interactive on-label controls to 'Deselect' specific labels or 'Clear' manual overrides individually.",
-        "In Label Generator: Improved text editing UX by isolating content layers to prevent UI controls from interfering with typing or cursor focus.",
-        "In Label Generator: Added a 'Clear Manual Edits' button to the Print tab to globally reset all manual changes."
+        "In LabelGenerator: Enabled full manual editing capabilities, allowing users to type text or paste images directly into any label on the grid, overriding the default template.",
+        "In LabelGenerator: Added interactive on-label controls to 'Deselect' specific labels or 'Clear' manual overrides individually.",
+        "In LabelGenerator: Improved text editing UX by isolating content layers to prevent UI controls from interfering with typing or cursor focus.",
+        "In LabelGenerator: Added a 'Clear Manual Edits' button to the Print tab to globally reset all manual changes."
     ]
     },
     {
@@ -4750,9 +4767,9 @@ changes: [
     version: "v9.143.0-alpha",
     date: "2026-01-16",
     changes: [
-        "In PDFTools: Fixed the 'Re-create Scanned Book' tool which was outputting blank pages; implemented logic to correctly copy, split landscape pages into two portrait pages, and re-order them from booklet format (e.g., 20-1) to linear order.",
-        "In PDFTools: Implemented the previously missing 'Flatten PDF' functionality to merge form fields and annotations into the document content.",
-        "In PDFTools: Implemented the 'PDF to Images' tool, allowing users to render and download PDF pages as high-quality images using PDF.js.",
+        "In PDF Tools: Fixed the 'Re-create Scanned Book' tool which was outputting blank pages; implemented logic to correctly copy, split landscape pages into two portrait pages, and re-order them from booklet format (e.g., 20-1) to linear order.",
+        "In PDF Tools: Implemented the previously missing 'Flatten PDF' functionality to merge form fields and annotations into the document content.",
+        "In PDF Tools: Implemented the 'PDF to Images' tool, allowing users to render and download PDF pages as high-quality images using PDF.js.",
         "In PDFTools: Refined the 'ADF Tablet to Booklet Scan Fixer' to specifically rotate every second page by 180 degrees to correct common ADF scanning errors."
     ]
     },
@@ -5881,12 +5898,12 @@ changes: [
   "version": "v9.33.0-alpha",
   "date": "2025-11-13",
   "changes": [
-    "In Label Generator: Overhauled the UI, replacing the long list of settings with a clear 4-step 'wizard' interface (Template, Layout, Content, Print).",
-    "In Label Generator: Clarified layout controls by replacing the 'Maximize' checkbox with 'Define by Grid' and 'Define by Label Size' radio buttons.",
-    "In Label Generator: Replaced the grid alignment dropdown with a 3x3 visual icon grid for more intuitive control.",
-    "In Label Generator: Added direct label editing. Users can now type directly into the first label in the preview grid, with content syncing to the main template box.",
-    "In Label Generator: Improved selection logic. Users can now select or deselect any label, and the print function will print *only* the selected labels.",
-    "In Label Generator: Fixed a bug where the first label in the grid could not be deselected.",
+    "In LabelGenerator: Overhauled the UI, replacing the long list of settings with a clear 4-step 'wizard' interface (Template, Layout, Content, Print).",
+    "In LabelGenerator: Clarified layout controls by replacing the 'Maximize' checkbox with 'Define by Grid' and 'Define by Label Size' radio buttons.",
+    "In LabelGenerator: Replaced the grid alignment dropdown with a 3x3 visual icon grid for more intuitive control.",
+    "In LabelGenerator: Added direct label editing. Users can now type directly into the first label in the preview grid, with content syncing to the main template box.",
+    "In LabelGenerator: Improved selection logic. Users can now select or deselect any label, and the print function will print *only* the selected labels.",
+    "In LabelGenerator: Fixed a bug where the first label in the grid could not be deselected.",
   ]
 },
     {
@@ -5919,11 +5936,11 @@ changes: [
     "version": "v9.30.0-alpha",
     "date": "2025-11-04",
     "changes": [
-      "In Label Generator: Custom preset saving upgraded to use your Firebase account for cloud storage.",
-      "In Label Generator: Fixed printing alignment issue; labels now correctly honor vertical/horizontal alignment.",
-      "In Label Generator: Fixed manual data input bug; manual text now only fills selected labels in the grid.",
-      "In Label Generator: Fixed visual bug for the right and bottom borders of the preview grid, restoring the complete grid.",
-      "In Label Generator: Advanced content features added, including Field Mapping for CSV columns, Barcode/QR Code generation, and Serial Number Auto-Increment.",
+      "In LabelGenerator: Custom preset saving upgraded to use your Firebase account for cloud storage.",
+      "In LabelGenerator: Fixed printing alignment issue; labels now correctly honor vertical/horizontal alignment.",
+      "In LabelGenerator: Fixed manual data input bug; manual text now only fills selected labels in the grid.",
+      "In LabelGenerator: Fixed visual bug for the right and bottom borders of the preview grid, restoring the complete grid.",
+      "In LabelGenerator: Advanced content features added, including Field Mapping for CSV columns, Barcode/QR Code generation, and Serial Number Auto-Increment.",
     ]
   },
     {
@@ -6073,20 +6090,20 @@ changes: [
     version: "v9.19.0-alpha",
     date: "2025-10-14",
     changes: [
-    "In Label Generator: Added multi-page printing capability to handle large CSV imports across all templates.",
-    "In Label Generator: Introduced an 'Envelope' template for printing directly onto standard envelope sizes.",
-    "In Label Generator: Added a dedicated 'Suspension File Tab' template with presets for plain card and pre-punched sheets.",
-    "In Label Generator: Included a 'Print Cut Lines' option for the Suspension File Tab template.",
-    "In Label Generator: Added a 'First row is a header' checkbox to ignore header rows in CSV imports.",
-    "In Label Generator: The UI now dynamically shows/hides controls relevant to the selected template type.",
-    "In Label Generator: Reorganized presets into logical groups for easier navigation.",
-    "In Label Generator: In Envelope mode, the label is now selected by default to streamline workflow.",
-    "In Label Generator: Fixed a critical issue that prevented multi-page printing from CSV data.",
-    "In Label Generator: Ensured the print output is correctly centered, matching the on-screen preview.",
-    "In Label Generator: Resolved a bug causing incorrect margins on all pages after the first.",
-    "In Label Generator: Corrected print styles to ensure top and bottom margins are equal.",
-    "In Label Generator: Fixed a CSS issue to prevent the main UI from appearing on printed pages.",
-    "In Label Generator: Adjusted presets to prevent extra blank pages from being printed.",
+    "In LabelGenerator: Added multi-page printing capability to handle large CSV imports across all templates.",
+    "In LabelGenerator: Introduced an 'Envelope' template for printing directly onto standard envelope sizes.",
+    "In LabelGenerator: Added a dedicated 'Suspension File Tab' template with presets for plain card and pre-punched sheets.",
+    "In LabelGenerator: Included a 'Print Cut Lines' option for the Suspension File Tab template.",
+    "In LabelGenerator: Added a 'First row is a header' checkbox to ignore header rows in CSV imports.",
+    "In LabelGenerator: The UI now dynamically shows/hides controls relevant to the selected template type.",
+    "In LabelGenerator: Reorganized presets into logical groups for easier navigation.",
+    "In LabelGenerator: In Envelope mode, the label is now selected by default to streamline workflow.",
+    "In LabelGenerator: Fixed a critical issue that prevented multi-page printing from CSV data.",
+    "In LabelGenerator: Ensured the print output is correctly centered, matching the on-screen preview.",
+    "In LabelGenerator: Resolved a bug causing incorrect margins on all pages after the first.",
+    "In LabelGenerator: Corrected print styles to ensure top and bottom margins are equal.",
+    "In LabelGenerator: Fixed a CSS issue to prevent the main UI from appearing on printed pages.",
+    "In LabelGenerator: Adjusted presets to prevent extra blank pages from being printed.",
     ]
     },
     {
@@ -6439,10 +6456,10 @@ changes: [
         date: "2025-09-01",
         changes: [
             "In the Hub: Introduced a dedicated Account page, replacing the previous dropdown menu for a more robust user management experience.",
-            "In the Account Page: Implemented Dark Mode on the new Account page, ensuring theme consistency across the hub.",
-            "In the Account Page: Added a comprehensive Data Management section, allowing users to export all their data from every app into a single JSON file, and import it back.",
-            "In the Account Page: Introduced a secure account deletion feature, allowing users to permanently remove their account and all associated data.",
-            "In the Account Page: Added functionality for linking and unlinking third-party accounts, starting with Google.",
+            "In Account: Implemented Dark Mode on the new Account page, ensuring theme consistency across the hub.",
+            "In Account: Added a comprehensive Data Management section, allowing users to export all their data from every app into a single JSON file, and import it back.",
+            "In Account: Introduced a secure account deletion feature, allowing users to permanently remove their account and all associated data.",
+            "In Account: Added functionality for linking and unlinking third-party accounts, starting with Google.",
         ]
     },
     {
@@ -6797,7 +6814,7 @@ changes: [
         version: "v7.4.0-alpha",
         date: "2025-08-19",
         changes: [
-            "Initial release of MediManager: Create medicines, schedule, track and log medicine, restock and expiry dates. Export functions for full data control.",
+            "Launched MediManager: Create medicines, schedule, track and log medicine, restock and expiry dates. Export functions for full data control.",
         ]
     },
     {
