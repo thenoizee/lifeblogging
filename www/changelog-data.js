@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.99.0-alpha",
+    date: "2026-10-30",
+    changes: [
+        "In TaskTrackr: Revamped the Daily Agenda timeline to accurately span multi-hour calendar events across multiple hourly blocks based on exact start times and durations.",
+        "In TaskTrackr: Updated the Monthly Calendar grid to ensure multi-day events stretch across all applicable days.",
+        "In TaskTrackr: Added individual Google Calendars to the Lists sidebar to allow fine-grained control over which specific calendars are visible.",
+        "In TaskTrackr: Locked down read-only Google Calendar events, adding explicit lock icons/badges and disabling edits, checkboxes, and unsupported context menu actions.",
+        "In TaskTrackr: Updated Source Badges on task cards to clearly communicate storage state ('Read-Only Event', 'Cloud Sync', or 'On Device').",
+        "In TaskTrackr: Fixed completion date parsing for cloud services so legacy completed tasks missing exact timestamps are now grouped under 'Unknown Date' rather than polluting the 'Today' view.",
+        "In TaskTrackr: Significantly improved tab-switching and filtering performance by replacing array spreads with a high-performance hash map and capping history lookups.",
+        "In TaskTrackr: Set Compact Mode to automatically suspend its CSS constraints when viewing the Agenda or Calendar tabs to prevent timeline UI squashing."
+    ]
+},
+    {
     version: "v16.98.0-alpha",
     date: "2026-10-30",
     changes: [

@@ -405,11 +405,11 @@ body {
     </div>
 
     <!-- NEW TOOLS DROPDOWN -->
-    <div class="relative border-l border-gray-200 dark:border-gray-700 pl-1 ml-auto flex items-center gap-1">
+    <div class="relative border-l border-gray-200 dark:border-gray-700 pl-1 ml-auto flex items-center gap-1 shrink-0">
         <button onclick="window.refreshData()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-green-500 transition" title="Force Sync">
             <i class="fa-solid fa-arrows-rotate pointer-events-none"></i>
         </button>
-        <button onclick="event.stopPropagation(); const d = document.getElementById('tools-dropdown'); if(d.parentElement !== document.body) document.body.appendChild(d); if(d.classList.contains('hidden')){ const r = this.getBoundingClientRect(); d.style.position='fixed'; d.style.top=(r.bottom+4)+'px'; d.style.left='auto'; d.style.right=(window.innerWidth - r.right)+'px'; d.style.zIndex=100000; d.classList.remove('hidden'); } else { d.classList.add('hidden'); }" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-blue-500 transition" title="Tools & View">
+        <button onclick="event.stopPropagation(); const d = document.getElementById('tools-dropdown'); if(d.parentElement !== document.body) document.body.appendChild(d); if(d.classList.contains('hidden')){ const r = this.getBoundingClientRect(); d.style.position='fixed'; d.style.top=(r.bottom+4)+'px'; d.style.left='auto'; d.style.right=Math.max(16, window.innerWidth - r.right)+'px'; d.style.zIndex=100000; d.classList.remove('hidden'); } else { d.classList.add('hidden'); }" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-blue-500 transition shrink-0" title="Tools & View">
             <i class="fa-solid fa-ellipsis-vertical pointer-events-none"></i>
         </button>
         <div id="tools-dropdown" class="w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl hidden flex-col z-[100000] p-1.5">
@@ -2321,6 +2321,7 @@ const fetchGoogleData = async () => {
                     content: t.notes || '',
                     projectId: list.id,
                     status: t.status === 'completed' ? 2 : 0,
+                    completedAt: t.completed ? t.completed : null,
                     priority: 0, 
                     dueDate: t.due ? t.due : null,
                     source: 'google',
@@ -2334,7 +2335,7 @@ const fetchGoogleData = async () => {
     try {
         const timeMin = new Date().toISOString(); // From now
         const future = new Date();
-        future.setMonth(future.getMonth() + 3); // 3 months ahead
+        future.setMonth(future.getMonth() + 2); // 2 months ahead (lowered to prevent memory/DOM freeze)
         const timeMax = future.toISOString();
         
         const calListRes = await googleApi('users/me/calendarList', 'GET', null, 'https://www.googleapis.com/calendar/v3/');
@@ -2353,6 +2354,15 @@ const fetchGoogleData = async () => {
 
             for (const cal of calListRes.items) {
                 if (enabledCals.includes(cal.id)) {
+                    // Map individual calendars as sub-lists for finer control
+                    projectMap[cal.id] = {
+                        id: cal.id,
+                        name: cal.summary,
+                        kind: 'google_calendar_list',
+                        color: cal.backgroundColor || '#EA4335',
+                        parentId: 'google_calendar'
+                    };
+
                     const eventsData = await googleApi(`calendars/${encodeURIComponent(cal.id)}/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`, 'GET', null, 'https://www.googleapis.com/calendar/v3/');
                     
                     if (eventsData && eventsData.items) {
@@ -2361,10 +2371,11 @@ const fetchGoogleData = async () => {
                                 id: e.id,
                                 title: e.summary || 'Calendar Event',
                                 content: e.description || '',
-                                projectId: 'google_calendar',
+                                projectId: cal.id, // Assign to the specific calendar sub-list
                                 status: 0,
                                 priority: 0, 
-                                dueDate: e.start?.dateTime || e.start?.date || null,
+                                startDate: e.start?.dateTime || e.start?.date || null, // Real start time
+                                dueDate: e.end?.dateTime || e.end?.date || e.start?.dateTime || e.start?.date || null, // Real end time
                                 isAllDay: !!(e.start && e.start.date),
                                 source: 'google_calendar',
                                 kind: 'google_calendar',
@@ -2422,8 +2433,10 @@ const fetchGoogleData = async () => {
                 const fetchedHistory = querySnapshot.docs.map(doc => { 
                     const data = doc.data(); 
                     const base = data.originalData || {}; 
-                    return { ...base, id: data.taskId || doc.id, title: data.title || base.title || 'Untitled', projectId: data.projectId || base.projectId || 'inbox', status: 2, completedAt: data.completedAt ? (data.completedAt.toDate ? data.completedAt.toDate() : new Date(data.completedAt)) : new Date(), isHistory: true }; 
-                }); 
+                    // Strictly prevent inflating "Today" by leaving missing dates as null
+                    const cDate = data.completedAt ? (data.completedAt.toDate ? data.completedAt.toDate().toISOString() : new Date(data.completedAt).toISOString()) : null;
+                    return { ...base, id: data.taskId || doc.id, title: data.title || base.title || 'Untitled', projectId: data.projectId || base.projectId || 'inbox', status: 2, completedAt: cDate, isHistory: true }; 
+                });
                 
                 // CRITICAL FIX: Preserve recently completed items that haven't hit the database query yet
                 const now = new Date();
@@ -2570,7 +2583,7 @@ const fetchAllData = async () => {
             if (trueInboxId !== 'inbox' && projectMap['inbox']) delete projectMap['inbox'];
 
             if (inboxData && inboxData.tasks) {
-                const mappedTasks = inboxData.tasks.map(t => ({ ...t, projectId: t.projectId || trueInboxId }));
+                const mappedTasks = inboxData.tasks.map(t => ({ ...t, projectId: t.projectId || trueInboxId, completedAt: t.completedTime || t.completedAt || null }));
                 allActiveTasks.push(...mappedTasks);
             }
         } catch (e) { console.warn("Inbox fetch failed", e); }
@@ -2580,7 +2593,7 @@ const fetchAllData = async () => {
             try {
                 const data = await api(`/project/${pid}/data`);
                 if (data && data.tasks) {
-                    const mappedTasks = data.tasks.map(t => ({ ...t, projectId: t.projectId || pid }));
+                    const mappedTasks = data.tasks.map(t => ({ ...t, projectId: t.projectId || pid, completedAt: t.completedTime || t.completedAt || null }));
                     allActiveTasks.push(...mappedTasks);
                 }
             } catch (e) { console.warn(`Failed to fetch tasks for ${pid}`, e); }
@@ -2629,7 +2642,8 @@ const fetchAllData = async () => {
                 // [DEBUG] Backwards-compatibility: If task status is completed (2) but completedAt is missing, fall back to updated or created timestamp
                 let resolvedCompletedAt = cleanDate(data.completedAt);
                 if (!resolvedCompletedAt && data.status === 2) {
-                    resolvedCompletedAt = cleanDate(data.updated) || cleanDate(data.created) || new Date().toISOString();
+                    // Strictly prevent inflating "Today" by leaving missing dates as null
+                    resolvedCompletedAt = null;
                 }
 
                 allActiveTasks.push({
@@ -2787,7 +2801,7 @@ const formatTaskPayload = (task) => {
        window.saveSidePaneChanges = async (field) => {
     if (!currentSidePaneTaskId) return;
     const task = taskCache.find(t => t.id === currentSidePaneTaskId);
-    if (!task) return;
+    if (!task || task.source === 'google_calendar' || task.kind === 'google_calendar') return;
     
     let newValue;
     let oldValue;
@@ -2851,8 +2865,8 @@ const formatTaskPayload = (task) => {
         await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), firestorePayload, { merge: true });
 
         // 2. API Update
-        if (task.source === 'local') {
-            // Already handled by setDoc above
+        if (task.source === 'local' || task.source === 'google_calendar' || task.kind === 'google_calendar') {
+            // Already handled by setDoc above. We do not sync edits upstream to Google Calendar as it is read-only.
         } else if (task.source === 'google' || task.kind === 'google') {
             // GOOGLE API UPDATE
             const gPayload = {};
@@ -3346,7 +3360,7 @@ const formatTaskPayload = (task) => {
             document.body.classList.remove('is-dragging-task');
         });
 
-        window.toggleCompactMode = () => { isCompactMode = !isCompactMode; localStorage.setItem('compactMode', isCompactMode); const icon = document.getElementById('compact-icon'); if(isCompactMode) { els.content.classList.add('compact-mode'); icon.className = "fa-solid fa-expand"; } else { els.content.classList.remove('compact-mode'); icon.className = "fa-solid fa-compress"; } renderApp(); };
+        window.toggleCompactMode = () => { isCompactMode = !isCompactMode; localStorage.setItem('compactMode', isCompactMode); const icon = document.getElementById('compact-icon'); if(isCompactMode) { els.content.classList.add('compact-mode'); if (icon) icon.className = "fa-solid fa-expand"; } else { els.content.classList.remove('compact-mode'); if (icon) icon.className = "fa-solid fa-compress"; } renderApp(); };
 
         let isFullSpread = localStorage.getItem('fullSpread') === 'true';
         window.toggleLayoutSpread = () => {
@@ -3674,15 +3688,29 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             // --> INJECT NESTED CHILDREN <--
             // Ensure that if a parent task is visible, ALL its nested child tasks (even if completed or missing a due date)
             // are pulled into the view so they can be rendered underneath it and un-completed if necessary.
-            // [FIX] O(N) optimization to eliminate tab-switching lag by pre-computing children map
-            const combinedTasks = [...taskCache, ...historyCache];
+            // [FIX] High-performance O(N) optimization to eliminate tab-switching lag
             const childrenLookup = new Map();
-            combinedTasks.forEach(t => {
+            
+            // Fast iterate active cache without spreading arrays
+            for (let i = 0; i < taskCache.length; i++) {
+                const t = taskCache[i];
                 if (t.parentId) {
-                    if (!childrenLookup.has(t.parentId)) childrenLookup.set(t.parentId, []);
-                    childrenLookup.get(t.parentId).push(t);
+                    let arr = childrenLookup.get(t.parentId);
+                    if (!arr) { arr = []; childrenLookup.set(t.parentId, arr); }
+                    arr.push(t);
                 }
-            });
+            }
+            
+            // Fast iterate ONLY recent history (max 500) to prevent DOM lockup on tab switch
+            const recentHistoryLimit = Math.min(historyCache.length, 500);
+            for (let i = 0; i < recentHistoryLimit; i++) {
+                const t = historyCache[i];
+                if (t.parentId) {
+                    let arr = childrenLookup.get(t.parentId);
+                    if (!arr) { arr = []; childrenLookup.set(t.parentId, arr); }
+                    arr.push(t);
+                }
+            }
 
             const currentIds = new Set(tasks.map(t => t.id));
             const extraChildren = [];
@@ -3792,61 +3820,65 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             contextMenuTaskId = taskId;
             const menu = document.getElementById('context-menu');
             
-            // 1. Make visible but transparent to measure dimensions
             menu.style.opacity = '0';
             menu.classList.remove('hidden');
             menu.classList.add('flex');
             
             const rect = menu.getBoundingClientRect();
-            const winW = window.innerWidth;
-            const winH = window.innerHeight;
+            let x = Math.max(0, e.clientX);
+            let y = Math.max(0, e.clientY);
             
-            let x = e.clientX;
-            let y = e.clientY;
-            
-            // X Axis: Flip to left if not enough space on right
-            if (x + rect.width > winW) {
-                x -= rect.width;
-            }
-            
-            // Y Axis: Flip up if not enough space on bottom
-            if (y + rect.height > winH) {
-                y -= rect.height;
-            }
-            
-            // Safety clamp to ensure it's never off-screen (top/left edges)
-            x = Math.max(0, x);
-            y = Math.max(0, y);
+            if (x + rect.width > window.innerWidth) x -= rect.width;
+            if (y + rect.height > window.innerHeight) y -= rect.height;
 
             menu.style.left = `${x}px`;
             menu.style.top = `${y}px`;
-            
-            // 2. Restore Opacity
             menu.style.opacity = '1';
 
-            // Recurrence Button Logic
-            const task = taskCache.find(t => t.id === taskId);
-            if (task) {
-                const completeBtn = menu.querySelector('button[onclick*="complete"]');
-                const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule);
-                
-                if (isRecurring) {
-                    completeBtn.innerHTML = '<i class="fa-solid fa-rotate-right text-xs w-4 text-blue-400"></i> Mark Session as Done';
-                } else {
-                    completeBtn.innerHTML = '<i class="fa-solid fa-check text-xs w-4 text-green-400"></i> Mark Task as Complete';
-                }
+            const task = taskCache.find(t => t.id === taskId) || historyCache.find(t => t.id === taskId);
+            if (!task) return;
 
-                // Toggle Hide/Unhide text dynamically
-                const hideBtn = menu.querySelector('button[onclick*="hide"]');
-                if (hideBtn) {
-                    if (task.hidden) {
-                        hideBtn.innerHTML = '<i class="fa-solid fa-eye text-xs w-4"></i> Unhide Task';
-                        hideBtn.setAttribute('onclick', `window.handleContextAction('unhide')`);
-                    } else {
-                        hideBtn.innerHTML = '<i class="fa-solid fa-eye-slash text-xs w-4"></i> Hide Task';
-                        hideBtn.setAttribute('onclick', `window.handleContextAction('hide')`);
-                    }
-                }
+            const isReadOnly = task.source === 'google_calendar' || task.kind === 'google_calendar';
+            
+            if (isReadOnly) {
+                // STRICT WIPE: Only show Hide option for read-only events
+                menu.innerHTML = `
+                    <div class="px-4 py-3 text-[10px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-lock"></i> Read-Only Event
+                    </div>
+                    <div class="h-px bg-gray-700 my-1"></div>
+                    <button onclick="window.handleContextAction('hide')" class="text-left px-4 py-2 text-sm text-gray-400 hover:bg-gray-700 transition flex items-center gap-2">
+                        <i class="fa-solid fa-eye-slash text-xs w-4"></i> Hide Event
+                    </button>
+                `;
+                return;
+            }
+
+            // Restore Standard Menu
+            menu.innerHTML = `
+                <button onclick="window.handleContextAction('complete')" class="text-left px-4 py-2 text-sm text-green-400 hover:bg-green-900/20 transition flex items-center gap-2"><i class="fa-solid fa-check text-xs w-4"></i> Complete</button>
+                <div class="h-px bg-gray-700 my-1"></div>
+                <button onclick="window.handleContextAction('edit')" class="text-left px-4 py-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white transition flex items-center gap-2"><i class="fa-solid fa-pen text-xs w-4"></i> Edit</button>
+                <button onclick="window.handleContextAction('focus-now')" class="text-left px-4 py-2 text-sm text-gray-200 hover:bg-orange-600 hover:text-white transition flex items-center gap-2"><i class="fa-solid fa-bullseye text-xs w-4 text-orange-400"></i> Toggle Focus Now</button>
+                <div class="h-px bg-gray-700 my-1"></div>
+                <button onclick="window.handleContextAction('inbox')" class="text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 transition flex items-center gap-2"><i class="fa-solid fa-inbox text-xs w-4 text-blue-400"></i> Move to Inbox</button>
+                <button onclick="window.handleContextAction('today')" class="text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 transition flex items-center gap-2"><i class="fa-solid fa-calendar-day text-xs w-4 text-green-400"></i> Set to Today</button>
+                <button onclick="window.handleContextAction('tomorrow')" class="text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 transition flex items-center gap-2"><i class="fa-solid fa-sun text-xs w-4 text-yellow-400"></i> Set to Tomorrow</button>
+                <div class="h-px bg-gray-700 my-1"></div>
+                <div class="px-3 py-1 text-[10px] font-bold text-gray-500 uppercase">Priority</div>
+                <button onclick="window.handleContextAction('priority-5')" class="text-left px-4 py-1.5 text-sm text-red-400 hover:bg-gray-700 transition flex items-center gap-2"><i class="fa-solid fa-flag text-xs w-4"></i> High</button>
+                <button onclick="window.handleContextAction('priority-3')" class="text-left px-4 py-1.5 text-sm text-yellow-400 hover:bg-gray-700 transition flex items-center gap-2"><i class="fa-solid fa-flag text-xs w-4"></i> Medium</button>
+                <button onclick="window.handleContextAction('priority-1')" class="text-left px-4 py-1.5 text-sm text-blue-400 hover:bg-gray-700 transition flex items-center gap-2"><i class="fa-solid fa-flag text-xs w-4"></i> Low</button>
+                <button onclick="window.handleContextAction('priority-0')" class="text-left px-4 py-1.5 text-sm text-gray-400 hover:bg-gray-700 transition flex items-center gap-2"><i class="fa-regular fa-flag text-xs w-4"></i> None</button>
+                <div class="h-px bg-gray-700 my-1"></div>
+                <button onclick="window.handleContextAction('hide')" class="text-left px-4 py-2 text-sm text-gray-400 hover:bg-gray-700 transition flex items-center gap-2"><i class="fa-solid fa-eye-slash text-xs w-4"></i> ${task.hidden ? 'Unhide' : 'Hide'} Task</button>
+                <div class="h-px bg-gray-700 my-1"></div>
+                <button onclick="window.handleContextAction('delete')" class="text-left px-4 py-2 text-sm text-red-400 hover:bg-red-900/20 transition flex items-center gap-2"><i class="fa-solid fa-trash text-xs w-4"></i> Delete</button>
+            `;
+            
+            const completeBtn = menu.querySelector('button[onclick*="complete"]');
+            if (completeBtn && (task.repeatFlag || (task.recurrence && task.recurrence.rule))) {
+                completeBtn.innerHTML = '<i class="fa-solid fa-rotate-right text-xs w-4 text-blue-400"></i> Mark Session as Done';
             }
         };
 
@@ -3862,7 +3894,7 @@ const getSourceConfig = (task) => {
     if (task.source === 'google_calendar' || task.kind === 'google_calendar') {
         return { 
             label: 'Google Calendar', 
-            subLabel: 'Event',
+            subLabel: 'Read-Only Event',
             icon: 'fa-regular fa-calendar', 
             color: '#EA4335', 
             bg: 'rgba(234, 67, 53, 0.1)',
@@ -3886,7 +3918,7 @@ const getSourceConfig = (task) => {
     if (task.source === 'google' || task.kind === 'google') {
         return { 
             label: 'Google Tasks', 
-            subLabel: 'Cloud',
+            subLabel: 'Cloud Sync',
             icon: 'fa-brands fa-google', 
             color: '#4285F4', 
             bg: 'rgba(66, 133, 244, 0.1)',
@@ -3898,9 +3930,9 @@ const getSourceConfig = (task) => {
     if (task.source === 'tasktrackr') {
         return { 
             label: 'TaskTrackr', 
-            subLabel: 'Synced',
-            icon: 'fa-solid fa-check-double', // <--- UPDATED
-            color: '#3b82f6',                 // <--- BLUE
+            subLabel: 'Cloud Sync',
+            icon: 'fa-solid fa-check-double',
+            color: '#3b82f6',                 
             bg: 'rgba(59, 130, 246, 0.1)',
             border: '#3b82f6'
         };
@@ -3909,9 +3941,9 @@ const getSourceConfig = (task) => {
     // 4. TICKTICK (Light Orange / Single Tick)
     return { 
         label: 'TickTick', 
-        subLabel: 'Cloud',
-        icon: 'fa-solid fa-check',        // <--- UPDATED
-        color: '#fb923c',                 // <--- LIGHT ORANGE
+        subLabel: 'Cloud Sync',
+        icon: 'fa-solid fa-check',        
+        color: '#fb923c',                 
         bg: 'rgba(251, 146, 60, 0.1)',
         border: '#fb923c'
     };
@@ -4029,7 +4061,11 @@ window.toggleRepeatOptions = () => {
 
             window.renderProjectSidebar();
             const iconMenu = document.getElementById('compact-icon-menu');
-            if(isCompactMode) { 
+            
+            // Suspend compact mode visually for Calendar & Agenda to prevent squashed UI & overlapping multi-hour blocks
+            const suspendCompact = ['calendar', 'agenda', 'timeline'].includes(currentState.view);
+            
+            if(isCompactMode && !suspendCompact) { 
                 els.content.classList.add('compact-mode'); 
                 if(iconMenu) iconMenu.className = "fa-solid fa-expand text-blue-500 w-4 text-center"; 
             } else { 
@@ -4154,8 +4190,8 @@ window.toggleRepeatOptions = () => {
             try {
                 if (auth.currentUser && task.source === 'local') {
                     await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { priority: newPriority, updated: new Date() }, { merge: true });
-                } else if (task.source === 'google' || task.kind === 'google') {
-                    // [FIX] Google doesn't natively map TickTick priority levels, omit API call to prevent server wiping it out
+                } else if (task.source === 'google' || task.kind === 'google' || task.source === 'google_calendar' || task.kind === 'google_calendar') {
+                    // Google Tasks / Calendar don't natively map TickTick priority levels, omit API call
                 } else {
                     // [FIX] Convert to full payload so the API doesn't strip the task title to 'Unknown'
                     const payload = formatTaskPayload(task);
@@ -4183,15 +4219,16 @@ const renderTaskCard = (task) => {
         const compStr = compDate.toLocaleDateString(undefined, dateOpts);
         dateBadgeHtml = `<span class="flex items-center gap-1 font-bold whitespace-nowrap shrink-0 text-green-600 dark:text-green-500"><i class="fa-solid fa-check-double"></i> Done ${compStr}</span>`;
         dateIsPill = true;
-    } else if (task.dueDate) {
-        const dueDate = new Date(task.dueDate); 
-        dueDate.setHours(0,0,0,0); 
-        const diffTime = dueDate - now; 
+    } else if (task.dueDate || task.startDate) {
+        // Use startDate (event start) for display if available, else dueDate
+        const primaryDate = task.startDate ? new Date(task.startDate) : new Date(task.dueDate);
+        const dueDateForDiff = new Date(primaryDate); 
+        dueDateForDiff.setHours(0,0,0,0); 
+        const diffTime = dueDateForDiff - now; 
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
         isOverdue = diffDays < 0 && task.status !== 2; 
-        const dateObj = new Date(task.dueDate); 
         
-        let dateStr = dateObj.toLocaleDateString(undefined, dateOpts); 
+        let dateStr = primaryDate.toLocaleDateString(undefined, dateOpts); 
         if (diffDays === 0) dateStr = 'Today'; 
         else if (diffDays === 1) dateStr = 'Tomorrow'; 
         else if (diffDays === -1) dateStr = 'Yesterday'; 
@@ -4199,10 +4236,20 @@ const renderTaskCard = (task) => {
         let timeStr = ''; 
         let iconClass = 'fa-regular fa-clock'; 
         if (task.isAllDay) { iconClass = 'fa-solid fa-calendar-day'; } 
-        else { timeStr = ', ' + dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } 
+        else { 
+            timeStr = ', ' + primaryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); 
+            if (task.startDate && task.dueDate && task.startDate !== task.dueDate) {
+                const endDateObj = new Date(task.dueDate);
+                // Only append end time if it's on the same day for brevity, otherwise just show start
+                if (endDateObj.toDateString() === primaryDate.toDateString()) {
+                    timeStr += ' - ' + endDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                }
+            }
+        } 
         
         if (isOverdue) { 
-            dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-500 font-bold whitespace-nowrap shrink-0" title="Due on ${dateObj.toLocaleDateString(undefined, dateOpts)}"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> ${dateStr}${timeStr}</span>`; 
+            // FIXED: Swapped legacy dateObj reference for primaryDate
+            dateBadgeHtml = `<span class="flex items-center px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-500 font-bold whitespace-nowrap shrink-0" title="Due on ${primaryDate.toLocaleDateString(undefined, dateOpts)}"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> ${dateStr}${timeStr}</span>`; 
             dateIsPill = true;
         } else {
             const textClass = task.isAllDay ? 'text-blue-600 dark:text-blue-400' : 'text-indigo-600 dark:text-indigo-400'; 
@@ -4215,7 +4262,23 @@ const renderTaskCard = (task) => {
     : 'bg-[var(--card)] border-gray-200/50 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-lg backdrop-blur-lg select-none shadow-sm hover:-translate-y-0.5 transition-all duration-300 ease-out cursor-default';
     
     const isCompleted = task.status === 2; 
-    const completeIcon = isCompleted ? '<i class="fa-solid fa-square-check text-green-500 text-xl drop-shadow-md"></i>' : '<i class="fa-regular fa-square text-gray-400 hover:text-green-500 dark:text-gray-500 dark:hover:text-green-500 transition-colors text-xl"></i>';
+    const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); 
+    const isReadOnly = task.source === 'google_calendar' || task.kind === 'google_calendar';
+    
+    let checkboxWrapperHtml = '';
+    if (isReadOnly) {
+        checkboxWrapperHtml = `
+        <div class="checkbox-wrapper w-12 flex items-center justify-center relative border-r border-gray-100 dark:border-white/5 flex-shrink-0 ml-1 z-20 cursor-not-allowed bg-gray-50/50 dark:bg-gray-800/30" title="Read-Only Calendar Event"> 
+            <i class="fa-solid fa-lock text-gray-300 dark:text-gray-600 text-lg"></i>
+        </div>`;
+    } else {
+        const completeIcon = isCompleted ? '<i class="fa-solid fa-square-check text-green-500 text-xl drop-shadow-md"></i>' : '<i class="fa-regular fa-square text-gray-400 hover:text-green-500 dark:text-gray-500 dark:hover:text-green-500 transition-colors text-xl"></i>';
+        checkboxWrapperHtml = `
+        <div class="checkbox-wrapper w-12 flex items-center justify-center relative cursor-pointer border-r border-gray-100 dark:border-white/5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0 ml-1 z-20" onclick="window.completeTask('${task.projectId}', '${task.id}', null, event)" title="Mark Completed"> 
+            ${completeIcon}${isRecurring ? '<i class="fa-solid fa-rotate-right text-[10px] absolute right-1 bottom-1 bg-gray-100 dark:bg-gray-800 rounded-full px-0.5 text-yellow-500"></i>' : ''}
+        </div>`;
+    }
+
     const selectIcon = isSelected ? '<i class="fa-solid fa-circle-check text-blue-500 text-lg drop-shadow-md"></i>' : `<i class="fa-regular fa-circle text-gray-400 dark:text-gray-500 text-lg group-hover:text-[var(--primary)] transition-colors priority-${task.priority || 0}"></i>`;
     const project = projectMap[task.projectId] || { name: 'Inbox', color: '#3b82f6' }; 
     const pColor = getProjectColor(task.projectId);
@@ -4283,17 +4346,22 @@ const renderTaskCard = (task) => {
     
     const breadcrumbHtml = breadcrumbItems.join('<span class="meta-divider opacity-30 text-[10px] mx-1.5">•</span>');
         
+    let metaHtmlExtras = '';
+    if (isReadOnly) {
+        metaHtmlExtras = `<span class="flex items-center px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-500 text-[9px] font-bold uppercase tracking-wider ml-1" title="This event is mirrored from Google Calendar and cannot be edited."><i class="fa-solid fa-lock mr-1"></i> Read-Only</span>`;
+    }
+
     let finalMetaHtml = '';
     if (dateIsPill) finalMetaHtml += dateBadgeHtml + '<span class="mr-2"></span>';
     finalMetaHtml += breadcrumbHtml;
     if (focusBadge) finalMetaHtml += focusBadge;
+    finalMetaHtml += metaHtmlExtras;
 
     const starAction = task.priority >= 3 ? 0 : (task.priority === 0 ? 3 : 0);
     const starClass = task.priority === 5 ? 'text-red-500 drop-shadow-sm' : (task.priority === 3 ? 'text-yellow-500 drop-shadow-sm' : 'text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 hover:text-yellow-500');
     const starIconType = task.priority >= 3 ? 'fa-solid' : 'fa-regular';
-    const starIconHtml = `<div class="absolute right-4 top-4 cursor-pointer z-20 transition-all hover:scale-110" onclick="event.stopPropagation(); window.toggleTaskPriority('${task.id}',${starAction})" title="Toggle Importance"><i class="${starIconType} fa-star ${starClass} text-lg"></i></div>`;
+    const starIconHtml = isReadOnly ? '' : `<div class="absolute right-4 top-4 cursor-pointer z-20 transition-all hover:scale-110" onclick="event.stopPropagation(); window.toggleTaskPriority('${task.id}',${starAction})" title="Toggle Importance"><i class="${starIconType} fa-star ${starClass} text-lg"></i></div>`;
 
-    const isRecurring = task.repeatFlag || (task.recurrence && task.recurrence.rule); 
     const clickHandler = `window.handleCardClick(event, '${task.id}',${!!task.isHistory})`; 
 
     let progressBarHtml = '';
@@ -4363,8 +4431,11 @@ const renderTaskCard = (task) => {
         }).join('');
     }
 
+    const customStyle = task._customStyle ? `style="${task._customStyle}"` : '';
+    const customClass = task._customClass || '';
+
     return `
-    <div class="card p-0 rounded-2xl border transition-all duration-200 flex group relative overflow-hidden ${wrapperClass} text-gray-900 dark:text-gray-100 pb-1 w-full mb-2 animate-fade" 
+    <div ${customStyle} class="card p-0 rounded-2xl border transition-all duration-200 flex group relative overflow-hidden ${wrapperClass} ${customClass} text-gray-900 dark:text-gray-100 pb-1 w-full mb-2 animate-fade" 
          draggable="true" 
          ondragstart="window.handleDragStart(event, '${task.id}')" 
          data-task-id="${task.id}" 
@@ -4383,11 +4454,9 @@ const renderTaskCard = (task) => {
         ${progressBarHtml}${starIconHtml}
         <div class="project-color-strip z-10" style="background-color: ${pColor}"></div>
         
-        <div class="checkbox-wrapper w-12 flex items-center justify-center relative cursor-pointer border-r border-gray-100 dark:border-white/5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0 ml-1 z-20" onclick="window.completeTask('${task.projectId}', '${task.id}', null, event)" title="Mark Completed"> 
-            ${completeIcon}${isRecurring ? '<i class="fa-solid fa-rotate-right text-[10px] absolute right-1 bottom-1 bg-gray-100 dark:bg-gray-800 rounded-full px-0.5 text-yellow-500"></i>' : ''}
-        </div> 
+        ${checkboxWrapperHtml}
         
-        <div class="card-inner flex-grow p-4 min-w-0 bg-transparent relative z-10 flex flex-col"> 
+        <div class="card-inner flex-grow p-4 min-w-0 bg-transparent relative z-10 flex flex-col">
             <div class="task-details-wrapper"> 
                 <div class="flex items-start gap-3 flex-grow min-w-0"> 
                     <div class="pt-1 flex-shrink-0 relative cursor-pointer z-20" onclick="window.toggleTaskSelection('${task.id}', event)" title="Select Task"> ${selectIcon} </div>
@@ -4481,7 +4550,7 @@ const renderTaskCard = (task) => {
                         } catch(e) {}
 
                         // 2. Clear from Cloud Provider
-                        if (task.source !== 'local') {
+                        if (task.source !== 'local' && task.source !== 'google_calendar' && task.kind !== 'google_calendar') {
                             if (task.source === 'google' || task.kind === 'google') {
                                 await googleApi(`lists/${task.projectId}/tasks/${task.id}`, 'DELETE');
                             } else {
@@ -4543,12 +4612,12 @@ const renderTaskCard = (task) => {
 
                         const isLocalDest = task.projectId.startsWith('local_proj_') || (projectMap[task.projectId] && projectMap[task.projectId].kind === 'local_list');
                         
-                        if (isLocalDest || task.source === 'local') {
-                            task.source = 'local';
+                        if (isLocalDest || task.source === 'local' || task.source === 'google_calendar' || task.kind === 'google_calendar') {
+                            task.source = task.source === 'google_calendar' || task.kind === 'google_calendar' ? 'google_calendar' : 'local';
                             if (auth.currentUser) {
                                 await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { ...task, updated: new Date() }, { merge: true });
                             }
-                            if (action === 'project' && isLocalDest && oldSource !== 'local') {
+                            if (action === 'project' && isLocalDest && oldSource !== 'local' && oldSource !== 'google_calendar') {
                                 try { 
                                     if (oldSource === 'google') await googleApi(`lists/${oldProjectId}/tasks/${tid}`, 'DELETE');
                                     else {
@@ -4743,14 +4812,21 @@ const renderTaskCard = (task) => {
             const overdue = [];
             const noDate = [];
 
+            const maxAgendaDate = new Date(now);
+            maxAgendaDate.setDate(maxAgendaDate.getDate() + 30); // Prevent DOM freeze by capping agenda horizon
+            
             tasks.forEach(t => {
                 if (t.status === 2) return; // Skip completed
-                if (!t.dueDate) {
+                const primaryDate = t.startDate || t.dueDate;
+                if (!primaryDate) {
                     noDate.push(t);
                     return;
                 }
-                const d = new Date(t.dueDate);
+                const d = new Date(primaryDate);
                 d.setHours(0,0,0,0);
+                
+                if (d > maxAgendaDate) return; // Skip far-future tasks for rendering performance
+                
                 if (d < now) {
                     overdue.push(t);
                 } else {
@@ -4860,27 +4936,44 @@ const renderTaskCard = (task) => {
                 }
                 const groups = {};
                 tasks.forEach(t => {
-                    let d = new Date();
-                    // Fallback to parent's completion date if it's a child task to ensure UI clustering
-                    const refDate = t._depth > 0 ? t._parentCompletedAt : (t.completedAt || t.updated);
-                    if (refDate) d = new Date(refDate);
+                    let refDate = t._depth > 0 ? t._parentCompletedAt : t.completedAt;
                     
-                    const dateKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    // STRICT CHECK: Ensure we only fallback to 'updated' if it's explicitly older than today
+                    if (!refDate && t.updated) {
+                        const ud = new Date(t.updated);
+                        if (ud < new Date().setHours(0,0,0,0)) refDate = t.updated;
+                    }
+
+                    let dateKey = 'Unknown Date';
+                    if (refDate) {
+                        const d = new Date(refDate);
+                        if (!isNaN(d.getTime())) {
+                            dateKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                        }
+                    }
+                    
                     if (!groups[dateKey]) groups[dateKey] = [];
                     groups[dateKey].push(t);
                 });
 
-                const sortedDates = Object.keys(groups).sort((a,b) => new Date(b) - new Date(a));
+                const sortedDates = Object.keys(groups).sort((a,b) => {
+                    if (a === 'Unknown Date') return 1;
+                    if (b === 'Unknown Date') return -1;
+                    return new Date(b) - new Date(a);
+                });
                 
                 let html = '';
                 sortedDates.forEach(dateKey => {
-                    const dateObj = new Date(dateKey + 'T00:00:00');
-                    const diffTime = new Date().setHours(0,0,0,0) - dateObj.getTime();
-                    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    let label = dateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-                    if (diffDays === 0) label = 'Today';
-                    else if (diffDays === 1) label = 'Yesterday';
+                    let label = 'Unknown Date';
+                    if (dateKey !== 'Unknown Date') {
+                        const dateObj = new Date(dateKey + 'T00:00:00');
+                        const diffTime = new Date().setHours(0,0,0,0) - dateObj.getTime();
+                        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+                        
+                        label = dateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                        if (diffDays === 0) label = 'Today';
+                        else if (diffDays === 1) label = 'Yesterday';
+                    }
 
                     html += `
                     <div class="group-header text-gray-500 font-bold uppercase tracking-widest text-[10px] mb-2 mt-6 border-b border-gray-200 dark:border-gray-700 pb-1 flex justify-between">
@@ -6255,11 +6348,33 @@ const renderKanban = (tasks) => {
             const tasksByDate = {}; 
             
             tasks.forEach(t => { 
-                if(!t.dueDate) return; 
-                const dateKey = t.dueDate.split('T')[0]; 
-                if(!tasksByDate[dateKey]) tasksByDate[dateKey] = []; 
-                tasksByDate[dateKey].push(t); 
-            }); 
+                const primaryDate = t.startDate || t.dueDate;
+                if(!primaryDate) return; 
+                
+                const startD = new Date(primaryDate);
+                startD.setHours(0,0,0,0);
+                
+                const end = t.dueDate || t.startDate;
+                const endD = new Date(end);
+                endD.setHours(0,0,0,0);
+                
+                // GCal all-day events set the end date to exactly midnight of the *following* day. 
+                // We bring it back by 1 day so it doesn't spill over into an extra square.
+                if (t.isAllDay && endD > startD) {
+                    endD.setDate(endD.getDate() - 1); 
+                }
+                
+                let currentD = new Date(startD);
+                let safety = 0; // Prevent infinite loops from bad date logic
+                while (currentD <= endD && safety < 1000) {
+                    const dateKey = currentD.toISOString().split('T')[0]; 
+                    if(!tasksByDate[dateKey]) tasksByDate[dateKey] = []; 
+                    tasksByDate[dateKey].push(t); 
+                    
+                    currentD.setDate(currentD.getDate() + 1);
+                    safety++;
+                }
+            });
             
             // Cache tasks early so showDayTasks can use them immediately
             window.dayTasksCache = tasksByDate; 
@@ -6371,15 +6486,34 @@ const renderKanban = (tasks) => {
             } else { parentBreadcrumb.classList.add('hidden'); }
 
             // Fields
+            const isReadOnly = task.source === 'google_calendar' || task.kind === 'google_calendar';
+
             const titleEl = document.getElementById('sp-title-edit'); 
-titleEl.value = task.title;
+            titleEl.value = task.title;
+            titleEl.readOnly = isReadOnly;
+            titleEl.classList.toggle('opacity-70', isReadOnly);
+            titleEl.classList.toggle('pointer-events-none', isReadOnly);
+
             const descEl = document.getElementById('sp-desc');
-if (task.content) {
-    // Parse the markdown into HTML
-    descEl.innerHTML = marked.parse(task.content);
-} else {
-    descEl.innerHTML = "";
-}
+            if (task.content) {
+                descEl.innerHTML = marked.parse(task.content);
+            } else {
+                descEl.innerHTML = "";
+            }
+            descEl.contentEditable = !isReadOnly;
+            descEl.classList.toggle('opacity-70', isReadOnly);
+            
+            const spCheck = document.getElementById('sp-checkbox'); 
+            spCheck.disabled = isReadOnly;
+
+            const editBtn = document.getElementById('sp-edit-btn');
+            if (editBtn) editBtn.style.display = isReadOnly ? 'none' : 'flex';
+            
+            const trashBtn = document.getElementById('sp-trash-btn');
+            if (trashBtn) trashBtn.style.display = isReadOnly ? 'none' : 'flex';
+
+            const spContext = document.getElementById('sp-context');
+            if (spContext) spContext.disabled = isReadOnly;
             
             const pName = projectMap[task.projectId]?.name || 'Inbox';
             const spProj = document.getElementById('sp-project'); 
@@ -6415,8 +6549,7 @@ if (task.content) {
             // Tags
             document.getElementById('sp-tags-container').innerHTML = (task.tags||[]).map(t => `<span class="bg-gray-700/50 text-gray-300 px-2 py-1 rounded-md text-xs border border-gray-600">#${t}</span>`).join(''); 
 
-            // Context
-            const spContext = document.getElementById('sp-context');
+            // Context (spContext is already declared at the top of the function for the read-only check)
             if (spContext) spContext.value = task.contextMode || 'inherit';
 
             // Recurrence & Action Button
@@ -6452,10 +6585,11 @@ if (task.content) {
                 } 
             } 
 
-            // Checkbox & Actions
-            const spCheck = document.getElementById('sp-checkbox'); 
-            spCheck.checked = task.status === 2; 
-            spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); 
+            // Checkbox & Actions (spCheck is already declared at the top for the read-only check)
+            if (spCheck) {
+                spCheck.checked = task.status === 2; 
+                spCheck.onclick = (e) => window.completeTask(task.projectId, task.id, spCheck, e); 
+            }
             
             // Hide Checklist section for Calendar Events entirely
             const checklistSection = document.getElementById('sp-checklist-section');
@@ -7108,26 +7242,58 @@ window.renderSidePaneChecklist = (task) => {
                             selectedDate.getFullYear() === now.getFullYear();
 
             for(let hour = 6; hour <= 23; hour++) {
-                // Find tasks that fall within this specific hour
                 const hourTasks = timeTasks.filter(t => {
-                    const tDate = new Date(t.startDate || t.dueDate);
-                    return tDate.getHours() === hour;
+                    const start = new Date(t.startDate || t.dueDate);
+                    let startHour = start.getHours();
+                    if (startHour < 6) startHour = 6; 
+                    return startHour === hour;
                 });
 
-                // Format the hour for display (e.g. 2 PM)
                 const ampm = hour >= 12 ? 'PM' : 'AM';
                 const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
                 const isCurrentHour = isToday && now.getHours() === hour;
+                const rowZ = 50 - hour; 
 
-                // Render the hour block timeline
+                let cardsHtml = '';
+                if (hourTasks.length > 0) {
+                    cardsHtml = hourTasks.map((t, idx) => {
+                        const start = new Date(t.startDate || t.dueDate);
+                        const end = new Date(t.dueDate || t.startDate);
+                        let durationHours = (end - start) / (1000 * 60 * 60);
+                        
+                        if (durationHours <= 0) durationHours = 0.5; // Min 30 mins for visibility
+                        if (durationHours >= 24) durationHours = 1; // Failsafe for rogue all-day events
+                        
+                        const displayTask = { ...t };
+                        displayTask.content = ''; // Strip descriptions to fit strict timeline height
+                        displayTask.items = []; // Strip subtasks
+                        
+                        const startMins = start.getHours() < 6 ? 0 : start.getMinutes();
+                        const offsetTop = 8 + (startMins / 60) * 70; // 70px per hour mapping
+                        const h = Math.round(durationHours * 70);
+                        const offsetLeft = idx * 12;
+                        
+                        // Enforce absolute positioning and exact mapping offsets
+                        displayTask._customStyle = `height: ${h}px !important; min-height: ${h}px !important; max-height: ${h}px !important; position: absolute !important; top: ${offsetTop}px !important; left: ${offsetLeft}px !important; right: 16px !important; z-index: 50 !important; margin: 0 !important; overflow: hidden !important;`;
+                        
+                        // Hide meta footer if the event is too short to display it
+                        const hideMetaClass = durationHours <= 1 ? '[&_.card-meta]:hidden [&_.card-inner]:!p-2 [&_.card-inner]:justify-center' : '[&_.card-inner]:!p-3';
+                        displayTask._customClass = `shadow-xl ring-1 ring-black/20 hover:z-[60] !mb-0 ${hideMetaClass}`;
+                        
+                        return renderTaskCard(displayTask);
+                    }).join('');
+                } else {
+                    cardsHtml = `<div class="opacity-0 group-hover:opacity-100 text-[10px] uppercase font-bold text-gray-400 pt-2 pl-2 transition-opacity tracking-widest cursor-pointer" onclick="window.openAddTaskWithTime('${k}', ${hour})">Open Time (Click to Add)</div>`;
+                }
+
                 html += `
-                <div class="flex border-b border-gray-200 dark:border-gray-700/50 min-h-[70px] group ${isCurrentHour ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}">
+                <div class="flex border-b border-gray-200 dark:border-gray-700/50 min-h-[70px] group ${isCurrentHour ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}" style="z-index: ${rowZ}; position: relative;">
                     <div class="w-16 flex-shrink-0 text-right pr-4 py-3 text-xs font-bold ${isCurrentHour ? 'text-blue-500' : 'text-gray-400 group-hover:text-blue-400'} transition-colors">
                         ${displayHour} ${ampm}
                     </div>
-                    <div class="flex-grow pl-4 border-l-2 ${isCurrentHour ? 'border-blue-500' : 'border-gray-100 dark:border-gray-800'} py-2 space-y-2 relative" data-hour="${hour}">
-                        ${isCurrentHour ? '<div class="absolute left-[-5px] top-1/2 w-2 h-2 rounded-full bg-blue-500 -mt-1 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>' : ''}
-                        ${hourTasks.length > 0 ? hourTasks.map(renderTaskCard).join('') : `<div class="opacity-0 group-hover:opacity-100 text-[10px] uppercase font-bold text-gray-400 pt-2 pl-2 transition-opacity tracking-widest cursor-pointer" onclick="window.openAddTaskWithTime('${k}', ${hour})">Open Time (Click to Add)</div>`}
+                    <div class="flex-grow pl-4 border-l-2 ${isCurrentHour ? 'border-blue-500' : 'border-gray-100 dark:border-gray-800'} py-2 relative" style="z-index: ${rowZ};" data-hour="${hour}">
+                        ${isCurrentHour ? '<div class="absolute left-[-5px] top-1/2 w-2 h-2 rounded-full bg-blue-500 -mt-1 shadow-[0_0_8px_rgba(59,130,246,0.8)] z-20"></div>' : ''}
+                        ${cardsHtml}
                     </div>
                 </div>`;
             }
