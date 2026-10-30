@@ -19,7 +19,7 @@
         <div id="error-icon" class="hidden text-red-500 text-5xl mb-4"><i class="fa-solid fa-circle-exclamation"></i></div>
         <div id="success-icon" class="hidden text-green-500 text-5xl mb-4"><i class="fa-solid fa-check-circle"></i></div>
         
-        <h2 id="status-title" class="text-xl font-bold mb-2">Connecting to TickTick</h2>
+        <h2 id="status-title" class="text-xl font-bold mb-2">Connecting...</h2>
         <p id="status-message" class="text-gray-400 text-sm">Verifying your account...</p>
         <p id="error-detail" class="text-red-400 text-xs mt-2 hidden font-mono bg-black/20 p-2 rounded"></p>
         
@@ -71,8 +71,9 @@
             const code = params.get('code');
             const state = params.get('state') || '/';
 
-            // Set return link
-            document.getElementById('return-btn').href = state;
+            // Clean up the return URL if it's the Google identifier string
+            const returnUrl = state.endsWith('_google') ? '/tasktrackr/' : state;
+            document.getElementById('return-btn').href = returnUrl;
 
             if (!code) {
                 updateStatus("Error", "No authentication code found.", "error");
@@ -80,70 +81,89 @@
             }
 
             try {
-                updateStatus("Connecting...", "Exchanging code for token...", "loading");
+                // --- GOOGLE AUTHENTICATION ROUTE ---
+                if (state.endsWith('_google')) {
+                    updateStatus("Connecting Google...", "Exchanging code for token...", "loading");
 
-                // Route the request to your secure Firebase Cloud Function
-                const response = await fetch('https://us-central1-sammy-7298f.cloudfunctions.net/exchangeTickTickToken', { 
-                    method: 'POST', 
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }, 
-                    body: JSON.stringify({
-                        code: code, 
-                        redirect_uri: TICKTICK_REDIRECT_URI
-                    }) 
-                });
-                
-                const data = await response.json();
+                    const redirectUri = window.location.origin + "/tasktrackr/callback.html";
 
-                if (!data.access_token) {
-                    throw new Error(data.error_description || "Failed to retrieve access token.");
+                    const response = await fetch('https://us-central1-sammy-7298f.cloudfunctions.net/exchangeGoogleToken', { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify({
+                            code: code, 
+                            redirect_uri: redirectUri
+                        }) 
+                    });
+                    
+                    const data = await response.json();
+
+                    if (!data.access_token) throw new Error(data.error_description || "Failed to retrieve Google access token.");
+
+                    updateStatus("Saving...", "Linking Google Tasks...", "loading");
+                    await setDoc(doc(db, 'users', user.uid, 'services', 'google'), { 
+                        token: data.access_token, 
+                        refreshToken: data.refresh_token || null,
+                        updatedAt: new Date() 
+                    }, { merge: true });
+                    
+                    localStorage.setItem('google_token', data.access_token);
+                    updateStatus("Success!", "Redirecting you back...", "success");
+                    
+                    setTimeout(() => { window.location.href = returnUrl; }, 1500);
+                } 
+                // --- TICKTICK AUTHENTICATION ROUTE ---
+                else {
+                    updateStatus("Connecting TickTick...", "Exchanging code for token...", "loading");
+
+                    const response = await fetch('https://us-central1-sammy-7298f.cloudfunctions.net/exchangeTickTickToken', { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify({
+                            code: code, 
+                            redirect_uri: TICKTICK_REDIRECT_URI
+                        }) 
+                    });
+                    
+                    const data = await response.json();
+
+                    if (!data.access_token) throw new Error(data.error_description || "Failed to retrieve TickTick access token.");
+
+                    updateStatus("Saving...", "Linking to your account...", "loading");
+                    await setDoc(doc(db, 'users', user.uid, 'services', 'ticktick'), { 
+                        token: data.access_token, 
+                        updatedAt: new Date() 
+                    }, { merge: true });
+                    
+                    localStorage.setItem('ticktick_token', data.access_token);
+                    updateStatus("Success!", "Redirecting you back...", "success");
+                    
+                    setTimeout(() => { window.location.href = returnUrl; }, 1500);
                 }
-
-                // Save to Firestore
-                updateStatus("Saving...", "Linking to your account...", "loading");
-                await setDoc(doc(db, 'users', user.uid, 'services', 'ticktick'), { 
-                    token: data.access_token, 
-                    updatedAt: new Date() 
-                }, { merge: true });
-                
-                // Save to LocalStorage
-                localStorage.setItem('ticktick_token', data.access_token);
-                
-                updateStatus("Success!", "Redirecting you back...", "success");
-                
-                setTimeout(() => {
-                    window.location.href = state;
-                }, 1500);
 
             } catch (error) {
                 console.error(error);
-                updateStatus("Connection Failed", "Could not connect to TickTick.", "error", error.message);
+                const serviceName = state.endsWith('_google') ? 'Google' : 'TickTick';
+                updateStatus("Connection Failed", `Could not connect to ${serviceName}.`, "error", error.message);
             }
         };
 
         const init = () => {
             let authTimeout;
             
-            // 1. Set a timeout in case Auth hangs forever (e.g., user is actually logged out)
             authTimeout = setTimeout(() => {
                 updateStatus("Authentication Error", "You do not appear to be logged in.", "error", "Session timeout. Please go back and log in again.");
             }, 8000);
 
-            // 2. Listen for Auth State
             const unsubscribe = onAuthStateChanged(auth, (user) => {
                 if (user) {
-                    // User found! Clear timeout and proceed.
                     clearTimeout(authTimeout);
                     unsubscribe(); 
                     exchangeCode(user);
                 } 
-                // If user is null, we do NOTHING. We wait for the next event or the timeout.
-                // This prevents the "immediate null" error.
             });
         };
 
-        // Start
         init();
     </script>
 </body>

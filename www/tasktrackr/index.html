@@ -2184,10 +2184,10 @@ window.connectGoogle = async () => {
     
     try {
         // Redirect to Google to get an offline authorization code
-        const clientId = "963185683535-mpnnlbgacn90m4ak55h6qllucsm9hn6m.apps.googleusercontent.com"; // Replace with your actual Google Client ID
+        const clientId = "963185683535-mpnnlbgacn90m4ak55h6qllucsm9hn6m.apps.googleusercontent.com"; 
         const redirectUri = window.location.origin + "/tasktrackr/callback.html"; 
         const scope = "https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.readonly";
-        const state = auth.currentUser.uid + "_google"; 
+        const state = auth.currentUser.uid + "_google";
         
         const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&access_type=offline&prompt=consent&state=${state}`;
         
@@ -2253,23 +2253,29 @@ const googleApi = async (endpoint, method = 'GET', body = null, base = 'https://
                     // Fallback if refresh fails
                     localStorage.removeItem('google_token');
             
-            // NEW: Send notification to the bell
-            window.dispatchEvent(new CustomEvent('app-new-notification', { 
-                detail: {
-                    title: 'Google Disconnected',
-                    body: 'Your Google session has expired or was revoked.',
-                    actionUrl: '/tasktrackr', // Uses URL instead of Event
-                    actionText: 'Go to TaskTrackr to Reconnect'
-                } 
-            }));
-            
-            // Show a toast with a "Reconnect" button that triggers the popup
-            showToast(
-                'Google session expired.', 
-                'error', 
-                'Reconnect', 
-                () => window.connectGoogle()
-            );
+            if (!window.hasShownGoogleErrorToast) {
+                window.hasShownGoogleErrorToast = true;
+                
+                // NEW: Send notification to the bell
+                window.dispatchEvent(new CustomEvent('app-new-notification', { 
+                    detail: {
+                        title: 'Google Disconnected',
+                        body: 'Your Google session has expired or was revoked.',
+                        actionUrl: '/tasktrackr', // Uses URL instead of Event
+                        actionText: 'Go to TaskTrackr to Reconnect'
+                    } 
+                }));
+                
+                // Show a toast with a "Reconnect" button that triggers the popup
+                showToast(
+                    'Google session expired.', 
+                    'error', 
+                    'Reconnect', 
+                    () => window.connectGoogle()
+                );
+                
+                setTimeout(() => { window.hasShownGoogleErrorToast = false; }, 10000);
+            }
             return null;
         }
 
@@ -3204,13 +3210,17 @@ const formatTaskPayload = (task) => {
                             
                             if (!keepNested) {
                                 task.parentId = null; // Dragged OUT!
+                                localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
                                 showToast("Task un-nested (moved out of parent)");
                                 
                                 try {
                                     if (task.source === 'local' && auth.currentUser) {
                                         setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { parentId: null, updated: new Date() }, { merge: true });
+                                    } else if (task.source === 'google' || task.kind === 'google') {
+                                        // Google Tasks API doesn't support unnesting easily this way
                                     } else if (task.source !== 'local') {
                                         const payload = formatTaskPayload(task);
+                                        payload.parentId = ""; // TickTick requires empty string to unnest
                                         api(`/task/${task.id}`, 'POST', payload);
                                     }
                                 } catch(e) { console.error("Un-nest save error", e); }
@@ -6525,6 +6535,8 @@ window.unnestTask = async (taskId, event) => {
     const oldParentId = task.parentId;
     task.parentId = null;
     
+    localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
+    
     window.updateTaskCardDOM(taskId);
     if (oldParentId) window.updateTaskCardDOM(oldParentId);
     
@@ -6539,8 +6551,11 @@ window.unnestTask = async (taskId, event) => {
     try {
         if (auth.currentUser && task.source === 'local') {
             await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', task.id), { parentId: null, updated: new Date() }, { merge: true });
+        } else if (task.source === 'google' || task.kind === 'google') {
+            // Google Tasks API doesn't support unnesting easily this way
         } else if (task.source !== 'local') {
             const payload = formatTaskPayload(task);
+            payload.parentId = ""; // TickTick requires empty string to unnest
             await api(`/task/${task.id}`, 'POST', payload);
         }
         showToast("Task un-nested", "success");
@@ -6548,6 +6563,7 @@ window.unnestTask = async (taskId, event) => {
         console.error("Unnest error:", e);
         showToast("Failed to un-nest", "error");
         task.parentId = oldParentId;
+        localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
         renderApp();
     }
 };

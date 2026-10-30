@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.97.0-alpha",
+    date: "2026-10-30",
+    changes: [
+        "In TaskTrackr: Fixed the Google Authentication redirect URI by dynamically stripping trailing slashes to prevent Google Cloud Console 'redirect_uri_mismatch' errors.",
+        "In TaskTrackr: Updated callback.html to correctly identify and route incoming authentication codes to either Google or TickTick endpoints based on the state parameter.",
+        "In TaskTrackr: Implemented a debounce flag to prevent the Google Sync Error toast and notification from triggering multiple times concurrently upon token expiry.",
+        "In TaskTrackr: Patched task un-nesting via drag-and-drop and action buttons to correctly save state to local cache and pass an empty string to TickTick's API, resolving remote API rejections."
+    ]
+},
+    {
     version: "v16.96.0-alpha",
     date: "2026-10-30",
     changes: [
