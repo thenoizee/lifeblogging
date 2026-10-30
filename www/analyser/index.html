@@ -309,7 +309,7 @@ legend {
             background-color: #6366f1;
         }
         .toggle-checkbox {
-            right: 0;
+            right: 1.25rem; /* Fix: Start the toggle dot on the left side */
             z-index: 1;
             border-color: #e2e8f0;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -469,7 +469,7 @@ legend {
 
 <div id="main-app-container" class="container" style="display: none;">
 
-    <div class="card">
+    <div class="card" id="global-filter-card">
         <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg transition-all duration-300">
             <legend class="text-2xl font-semibold px-2 mb-0 cursor-pointer w-full flex justify-between items-center select-none hover:text-indigo-600" id="toggle-filter-btn">
                 <span>Filter, Sort & Search</span>
@@ -599,11 +599,15 @@ legend {
     
 <div id="tab-data" class="hidden">
     <div class="card">
-        <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg">
-            <legend class="text-2xl font-semibold px-2 mb-4">Manually Add Data</legend>
-            <p class="mb-4 flex items-center">
-                Use this section to add any data point, such as a journal entry, a mood score, or a custom metric like "cups of coffee".
-            </p>
+        <fieldset class="border-2 border-gray-200 dark:border-gray-600 p-4 rounded-lg transition-all duration-300">
+            <legend class="text-2xl font-semibold px-2 mb-0 cursor-pointer w-full flex justify-between items-center select-none hover:text-indigo-600" id="toggle-manual-add-btn">
+                <span>Manually Add Data</span>
+                <i class="fa-solid fa-chevron-down transition-transform duration-300" id="manual-add-arrow" style="transform: rotate(0deg)"></i>
+            </legend>
+            <div id="manual-add-content" class="hidden overflow-hidden transition-all duration-300 mt-4">
+                <p class="mb-4 flex items-center">
+                    Use this section to add any data point, such as a journal entry, a mood score, or a custom metric like "cups of coffee".
+                </p>
             <!-- [INGENIOUS FEATURE] CLI Quick Logger -->
             <div class="mb-6 p-4 bg-slate-900 rounded-xl shadow-inner border border-slate-700 relative overflow-hidden">
                 <div class="absolute top-0 left-0 w-2 h-full bg-indigo-500"></div>
@@ -646,9 +650,10 @@ legend {
                 <button id="manual-add-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out shadow-lg"><i class="fa-solid fa-plus-square mr-2"></i>Add Data Point</button>
             </div>
             <div id="manual-tags-section" class="mt-4">
-                <p class="font-semibold mb-2">Existing Tags:</p>
-                <div id="manual-tags-list" class="flex flex-wrap gap-2"></div>
-            </div>
+                    <p class="font-semibold mb-2">Existing Tags:</p>
+                    <div id="manual-tags-list" class="flex flex-wrap gap-2"></div>
+                </div>
+            </div> <!-- Closes manual-add-content -->
         </fieldset>
     </div>
 
@@ -2183,11 +2188,19 @@ toggleFilterBtn.addEventListener('click', () => {
     headers.push('tags');
 
     const visibleHeaders = headers.filter(header => {
-        const source = sortedDataPoints[0]?.source;
-        if (source && columnPreferences[source]) {
-            return columnPreferences[source][header] !== false; 
-        }
-        return true; 
+        // Hide the column ONLY if the user explicitly unchecked it in a source that actively possesses this data field.
+        const isExplicitlyHidden = selectedSources.some(sourceId => {
+            const prefs = columnPreferences[sourceId];
+            if (!prefs) return false; // No saved preferences yet, defaults to visible
+            
+            // Verify this source actually has data for this column in the current cache
+            const sourceHasHeader = (currentDataCache[sourceId] || []).some(dp => dp[header] !== undefined);
+            
+            // If the source possesses the column, but it's not in the saved preferences, it was explicitly hidden.
+            return sourceHasHeader && !prefs.includes(header);
+        });
+        
+        return !isExplicitlyHidden;
     });
 
     // Bulk action checkbox in header (Sticky)
@@ -4019,11 +4032,14 @@ function formatLabel(str) {
                 const div = document.createElement('div');
                 div.className = 'flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm';
                 
+                // Strip spaces/special characters to guarantee the label targets the checkbox correctly
+                const safeId = `col-${sourceId.replace(/[^a-zA-Z0-9]/g, '')}-${column.replace(/[^a-zA-Z0-9]/g, '')}`;
+                
                 div.innerHTML = `
-                    <label for="col-${sourceId}-${column}" class="font-medium text-sm text-gray-700 dark:text-gray-300 cursor-pointer truncate mr-4" title="${column}">${column}</label>
+                    <label for="${safeId}" class="font-medium text-sm text-gray-700 dark:text-gray-300 cursor-pointer truncate mr-4" title="${column}">${column}</label>
                     <div class="relative inline-block w-10 h-5 align-middle select-none shrink-0">
-                        <input type="checkbox" id="col-${sourceId}-${column}" value="${column}" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer" ${isChecked ? 'checked' : ''}/>
-                        <label for="col-${sourceId}-${column}" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 dark:bg-gray-600 cursor-pointer"></label>
+                        <input type="checkbox" id="${safeId}" data-source="${sourceId}" data-col="${column}" class="col-pref-checkbox toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer" ${isChecked ? 'checked' : ''}/>
+                        <label for="${safeId}" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 dark:bg-gray-600 cursor-pointer"></label>
                     </div>
                 `;
                 grid.appendChild(div);
@@ -4031,25 +4047,29 @@ function formatLabel(str) {
             fieldset.appendChild(grid);
             columnSelectionContainer.appendChild(fieldset);
         });
-
-        document.getElementById('save-column-prefs-btn').classList.remove('hidden');
     }
 
-    document.getElementById('save-column-prefs-btn').addEventListener('click', async () => {
+    // [FEATURE] Auto-save column preferences instantly on toggle
+    document.getElementById('column-selection-container').addEventListener('change', async (e) => {
+        if (!e.target.classList.contains('col-pref-checkbox')) return;
+        
         const newPrefs = {};
-        selectedSources.forEach(sourceId => {
-            const selectedColumns = [];
-            document.querySelectorAll(`#column-selection-container input[id^="col-${sourceId}-"]:checked`).forEach(checkbox => {
-                selectedColumns.push(checkbox.value);
-            });
-            newPrefs[sourceId] = selectedColumns;
+        
+        // Extract data safely straight from DOM attributes
+        document.querySelectorAll('.col-pref-checkbox').forEach(checkbox => {
+            const source = checkbox.dataset.source;
+            const col = checkbox.dataset.col;
+            
+            if (!newPrefs[source]) newPrefs[source] = [];
+            if (checkbox.checked) newPrefs[source].push(col);
         });
 
         try {
             await setDoc(columnPrefsDocRef, newPrefs, { merge: true });
             columnPreferences = newPrefs;
             renderDataTable();
-            showMessage("Column preferences saved!", "success");
+            // Shorter notification time since it happens frequently
+            showMessage("Column visibility updated!", "success", 1500); 
         } catch (error) {
             console.error("Error saving column preferences:", error);
             showMessage("Could not save column preferences.", "error");
@@ -4244,11 +4264,11 @@ function formatLabel(str) {
         });
         
         // [PERFORMANCE] Inject all tasks in one single DOM write
-        list.innerHTML = plannerState.dailyPlan.map((task, i) => processTaskHtml(task, i)).join('');
+        list.innerHTML = plannerState.dailyPlan.map((task, i) => processTaskHtml(task, i, logsByDay)).join('');
     };
 
     // Helper for above mapping
-    const processTaskHtml = (task, i) => {
+    const processTaskHtml = (task, i, logsByDay) => {
         let currentStreak = 0;
         const checkDate = new Date();
         checkDate.setHours(0,0,0,0);
@@ -4577,6 +4597,40 @@ function formatLabel(str) {
         renderDailyDataReview(); 
     });
     
+    // --- Tab Visibility Logic for Global Filter ---
+    const globalFilterCard = document.getElementById('global-filter-card');
+    const tabObserver = new MutationObserver(() => {
+        const isPlanner = !document.getElementById('tab-planner').classList.contains('hidden');
+        const isSettings = !document.getElementById('tab-settings').classList.contains('hidden');
+        
+        if (isPlanner || isSettings) {
+            globalFilterCard.style.display = 'none';
+        } else {
+            globalFilterCard.style.display = 'block';
+        }
+    });
+
+    ['tab-planner', 'tab-settings', 'tab-charts', 'tab-data'].forEach(tabId => {
+        const tabEl = document.getElementById(tabId);
+        if (tabEl) tabObserver.observe(tabEl, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    // --- Manual Add Data Toggle Logic ---
+    const toggleManualAddBtn = document.getElementById('toggle-manual-add-btn');
+    const manualAddContent = document.getElementById('manual-add-content');
+    const manualAddArrow = document.getElementById('manual-add-arrow');
+
+    if (toggleManualAddBtn) {
+        toggleManualAddBtn.addEventListener('click', () => {
+            manualAddContent.classList.toggle('hidden');
+            if (manualAddContent.classList.contains('hidden')) {
+                manualAddArrow.style.transform = 'rotate(0deg)';
+            } else {
+                manualAddArrow.style.transform = 'rotate(180deg)';
+            }
+        });
+    }
+
     // Initializer
     initFirebase();
     // --- Sync Theme Button to Firebase ---

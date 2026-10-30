@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.98.0-alpha",
+    date: "2026-10-30",
+    changes: [
+                "In Analyser App: Fixed the CSS transition for '.toggle-checkbox' so the toggle dot animates side-to-side correctly.",
+                "In Analyser App: Eliminated the Column Preferences manual 'Save' button, converting the setting to auto-save instantly on toggle.",
+                "In Analyser App: Hid the Global 'Filter, Sort & Search' container automatically when navigating to the Planner and Settings tabs.",
+                "In Analyser App: Converted the 'Manually Add Data' section into a collapsible accordion to save space on the Data Editor tab."
+    ]
+},
+    {
     version: "v16.97.0-alpha",
     date: "2026-10-30",
     changes: [
