@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v16.103.0-alpha",
+    date: "2026-11-01",
+    changes: [
+        "In PlantTrackr: Improved Journal History layout by changing plant photos into full-width modern timeline images instead of small thumbnails.",
+        "In PlantTrackr: Updated the Quick Log modal so that logging a plant's size/height update automatically syncs and updates the main plant profile record.",
+        "In PlantTrackr: Fixed mobile layout bugs where save buttons and toast notification boxes were hidden behind mobile browser toolbars and navigation bars."
+    ]
+},
+    {
     version: "v16.102.0-alpha",
     date: "2026-11-01",
     changes: [
