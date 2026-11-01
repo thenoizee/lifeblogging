@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.101.0-alpha",
+    date: "2026-11-01",
+    changes: [
+        "In PlantTrackr: Fixed filter bars and Garden View tabs overflowing the mobile viewport by converting horizontally scrolling containers to flex-wrap.",
+        "In PlantTrackr: Prevented bottom-sheet modals (like Bulk Water) from getting trapped under the mobile navigation bar by increasing the mobile bottom padding to 100px.",
+        "In PlantTrackr: Lifted the floating Bulk Selection action bar (to bottom-24) on mobile so it no longer overlaps the bottom navigation.",
+        "In PlantTrackr: Increased the invisible touch target size for modal close buttons to improve mobile accessibility.",
+        "In PlantTrackr: Fixed awkward button stacking in the View Plant modal by replacing the rigid 2-column grid with a flexible wrapping layout.",
+        "In PlantTrackr: Prevented long plant names from breaking the Spaces Map view by adding text truncation and a maximum width to the plant marker labels."
+    ]
+},
+    {
     version: "v16.100.0-alpha",
     date: "2026-11-01",
     changes: [
