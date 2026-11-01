@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.100.0-alpha",
+    date: "2026-11-01",
+    changes: [
+        "In VehicleManagr: Merged the 6 separate log windows (Fuel, Service, Consumables, Expense, Health, Trips) into a single Unified Log Entry card controlled by a master dropdown selector.",
+        "In VehicleManagr: Added a new 'Miles Between Fueling' bar chart to the dashboard to visualize the distance driven between full fill-ups.",
+        "In VehicleManagr: Updated the Floating Action Button (FAB) and Quick Fuel modal navigation logic to correctly route to and display the targeted category within the new Unified Log form.",
+        "In VehicleManagr: Expanded the appState charts object to include 'tankDist' for storing and rendering segment distances."
+    ]
+},
+    {
     version: "v16.99.0-alpha",
     date: "2026-10-30",
     changes: [
