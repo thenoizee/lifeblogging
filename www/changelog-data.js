@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.102.0-alpha",
+    date: "2026-11-01",
+    changes: [
+        "In TaskTrackr: Redesigned Google Calendar events with a distinct, read-only UI block to separate them visually from native tasks.",
+        "In TaskTrackr: Upgraded the day/timeline calendar view to render concurrent events side-by-side and intelligently stack long-duration events over subsequent hours.",
+        "In TaskTrackr: Optimized tab and filter switching with asynchronous thread yielding and aggressive DOM garbage collection to drastically reduce RAM usage on mobile devices.",
+        "In TaskTrackr: Updated the side pane properties layout to a flat, streamlined design to match the rest of the application interface.",
+        "In TaskTrackr: Enhanced calendar event details in the side pane to explicitly display full start and end time ranges instead of a single due date.",
+        "In TaskTrackr: Added specific Google and Calendar icons to synced lists in the sidebar for clearer visual organization.",
+        "In TaskTrackr: Added a bulk context selector to the multi-select toolbar to categorize multiple tasks at once.",
+        "In TaskTrackr: Enhanced the Quick Add feature to automatically inherit the active workspace context (Work/Personal) of the current view."
+    ]
+},
+    {
     version: "v16.101.0-alpha",
     date: "2026-11-01",
     changes: [
