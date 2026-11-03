@@ -448,9 +448,16 @@ body {
         
         <div class="flex-grow p-6 overflow-y-auto space-y-8 custom-scrollbar">
             <div id="sp-parent-breadcrumb" class="hidden -mb-4"></div>
+
+            <!-- NEW READONLY BANNER -->
+            <div id="sp-readonly-banner" class="hidden -mb-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/50 text-blue-700 dark:text-blue-400 text-xs font-bold flex items-center gap-2">
+                <i class="fa-solid fa-calendar-check text-base"></i>
+                This is a synced Calendar Event. It cannot be edited here.
+            </div>
+
             <!-- Title Row -->
-            <div class="flex items-start gap-4">
-                <input type="checkbox" id="sp-checkbox" class="task-checkbox mt-1.5 shrink-0 w-6 h-6 rounded-md">
+            <div class="flex items-start gap-4" id="sp-title-row">
+                <input type="checkbox" id="sp-checkbox" class="task-checkbox mt-1.5 shrink-0 w-6 h-6 rounded-md transition-all">
                 <div class="flex-grow min-w-0">
                      <textarea id="sp-title-edit" onblur="window.saveSidePaneChanges('title')" class="w-full bg-transparent border border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg text-2xl font-bold text-gray-900 dark:text-white outline-none resize-none px-2 py-1 focus:bg-white dark:focus:bg-[#1a202c] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 leading-snug transition-colors shadow-sm" rows="1" oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
                 </div>
@@ -4869,13 +4876,17 @@ const renderTaskCard = (task) => {
                 
                 const color = getProjectColor(t.projectId);
                 const isOverdue = normEnd < normToday && t.status !== 2;
-                
+                const isReadOnly = t.source === 'google_calendar' || t.kind === 'google_calendar';
+                const checkIcon = isReadOnly 
+                    ? `<button class="shrink-0 text-gray-300 dark:text-gray-600 cursor-not-allowed" title="Read-Only Event"><i class="fa-solid fa-lock text-sm"></i></button>`
+                    : `<button onclick="window.completeTask('${t.projectId}', '${t.id}', null, event)" class="shrink-0 text-gray-400 hover:text-green-500 transition"><i class="fa-regular fa-square text-lg"></i></button>`;
+
                 html += `
                 <div class="grid border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition group z-10 relative items-center min-h-[48px]" style="${gridStyle}">
                     
                     <!-- Task Label (Sticky Left) -->
                     <div class="sticky left-0 z-20 bg-inherit border-r border-gray-200 dark:border-gray-700 shadow-[2px_0_5px_rgba(0,0,0,0.02)] px-3 py-2 flex items-center gap-3 w-[250px] h-full min-w-0">
-                        <button onclick="window.completeTask('${t.projectId}', '${t.id}', null, event)" class="shrink-0 text-gray-400 hover:text-green-500 transition"><i class="fa-regular fa-square text-lg"></i></button>
+                        ${checkIcon}
                         <span class="text-xs font-bold truncate text-gray-800 dark:text-gray-200 cursor-pointer hover:text-blue-500 transition flex-grow min-w-0" onclick="window.openSidePane('${t.id}')">${escapeHtml(t.title)}</span>
                         ${isOverdue ? '<i class="fa-solid fa-triangle-exclamation text-red-500 text-[10px] shrink-0" title="Overdue"></i>' : ''}
                     </div>
@@ -5920,6 +5931,9 @@ window.openModal = (isEdit, taskId = null) => {
     return `${dateStr} (in ${diffDays} days)`;
 };
         window.handleCardClick = (e, taskId, isHistory) => {
+    // CRITICAL: Stop propagation so clicking a task doesn't trigger the hourly background click!
+    if (e) e.stopPropagation();
+
     // Prevent opening pane if the app is currently showing the main syncing overlay
     const loader = document.getElementById('app-loader');
     if (loader && !loader.classList.contains('hidden')) return;
@@ -5946,6 +5960,12 @@ window.completeTask = async (pid, tid, checkbox, event) => {
     }
     
     if(!task) return;
+
+    // [CRITICAL GUARD] Prevent completion of read-only calendar events
+    if (task.source === 'google_calendar' || task.kind === 'google_calendar') {
+        if (typeof showToast === 'function') showToast("Calendar events are read-only and cannot be completed.", "error");
+        return;
+    }
 
     const oldStatus = task.status;
     const newStatus = oldStatus === 2 ? 0 : 2;
@@ -6611,11 +6631,28 @@ const renderKanban = (tasks) => {
             const spContext = document.getElementById('sp-context');
             if (spContext) spContext.disabled = isReadOnly;
             
-            const pName = projectMap[task.projectId]?.name || 'Inbox';
             const spProj = document.getElementById('sp-project'); 
-            spProj.textContent = pName; 
             const pDot = document.getElementById('sp-project-dot');
-            if(pDot) pDot.style.backgroundColor = getProjectColor(task.projectId);
+            // Removed the duplicate const spCheck declaration here
+            const roBanner = document.getElementById('sp-readonly-banner');
+
+            if (isReadOnly) {
+                if (roBanner) roBanner.classList.remove('hidden');
+                spProj.textContent = 'CALENDAR EVENT';
+                spProj.className = 'text-xs font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400';
+                if (pDot) pDot.style.backgroundColor = '#EA4335';
+                if (spCheck) spCheck.style.display = 'none';
+            } else {
+                if (roBanner) roBanner.classList.add('hidden');
+                const pName = projectMap[task.projectId]?.name || 'Inbox';
+                spProj.textContent = pName;
+                spProj.className = 'text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400';
+                if (pDot) pDot.style.backgroundColor = getProjectColor(task.projectId);
+                if (spCheck) {
+                    spCheck.style.display = 'block';
+                    spCheck.disabled = false;
+                }
+            }
             
             // Format Due and Completed Dates with explicit years
             const timeOpts = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
@@ -6673,33 +6710,40 @@ const renderKanban = (tasks) => {
             const compBtn = document.getElementById('sp-complete-btn'); 
             const stopBtn = document.getElementById('sp-stop-repeat-btn'); 
 
-            if(isRecurring) { 
-                document.getElementById('sp-recurring-container').classList.remove('hidden'); 
-                stopBtn.classList.remove('hidden'); 
-                stopBtn.onclick = () => window.stopRepeating(task.id); 
+            if (isReadOnly) {
+                if (compBtn) compBtn.style.display = 'none';
+                if (stopBtn) stopBtn.classList.add('hidden');
+            } else {
+                if (compBtn) compBtn.style.display = ''; // Reset display so flex classes work
                 
-                if (task.status === 2) { 
-                    compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
-                    compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; 
+                if(isRecurring) { 
+                    document.getElementById('sp-recurring-container').classList.remove('hidden'); 
+                    stopBtn.classList.remove('hidden'); 
+                    stopBtn.onclick = () => window.stopRepeating(task.id); 
+                    
+                    if (task.status === 2) { 
+                        compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
+                        compBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Session Done'; 
+                    } else { 
+                        compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
+                        compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; 
+                        compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
+                    } 
                 } else { 
-                    compBtn.className = "flex-grow bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
-                    compBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Complete Session'; 
-                    compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
-                } 
-            } else { 
-                document.getElementById('sp-recurring-container').classList.add('hidden'); 
-                stopBtn.classList.add('hidden'); 
-                
-                if (task.status === 2) { 
-                    compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
-                    compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; 
-                    compBtn.onclick = null; 
-                } else { 
-                    compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
-                    compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; 
-                    compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
-                } 
-            } 
+                    document.getElementById('sp-recurring-container').classList.add('hidden'); 
+                    stopBtn.classList.add('hidden'); 
+                    
+                    if (task.status === 2) { 
+                        compBtn.className = "flex-grow bg-gray-700 text-gray-400 py-3 rounded-xl font-bold cursor-not-allowed"; 
+                        compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Completed'; 
+                        compBtn.onclick = null; 
+                    } else { 
+                        compBtn.className = "flex-grow bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition"; 
+                        compBtn.innerHTML = '<i class="fa-solid fa-check"></i> Complete'; 
+                        compBtn.onclick = () => { window.completeTask(task.projectId, task.id, null); window.closeSidePane(); }; 
+                    } 
+                }
+            }
 
             // Checkbox & Actions (spCheck is already declared at the top for the read-only check)
             if (spCheck) {
@@ -7352,12 +7396,16 @@ window.renderSidePaneChecklist = (task) => {
             }
 
             // Display Hourly Schedule from 6 AM to 11 PM
-            html += '<div class="space-y-0">';
+            html += '<div class="relative border-t border-gray-200 dark:border-gray-700/50 mt-4">';
             const now = new Date();
             // Check if the selected calendar day is today to highlight current hour
             const isToday = selectedDate.getDate() === now.getDate() && 
                             selectedDate.getMonth() === now.getMonth() && 
                             selectedDate.getFullYear() === now.getFullYear();
+
+            let gridHtml = '';
+            // Overlay layer that sits perfectly on top of the grid to hold events without blocking background clicks
+            let overlayHtml = '<div class="absolute top-0 bottom-0 z-30 pointer-events-none pr-4" style="left: 66px; right: 0; padding-left: 16px;">';
 
             for(let hour = 6; hour <= 23; hour++) {
                 const hourTasks = timeTasks.filter(t => {
@@ -7370,16 +7418,12 @@ window.renderSidePaneChecklist = (task) => {
                 const ampm = hour >= 12 ? 'PM' : 'AM';
                 const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
                 const isCurrentHour = isToday && now.getHours() === hour;
-                
-                // [FIX] Invert the row index. Later hours sit ON TOP of earlier hours, 
-                // preventing long events (like 7am-8pm) from burying shorter afternoon tasks.
-                const rowZ = hour; 
 
-                let cardsHtml = '';
+                // Build Tasks for the Overlay
                 if (hourTasks.length > 0) {
                     const colWidth = 100 / Math.max(1, hourTasks.length);
 
-                    cardsHtml = hourTasks.map((t, idx) => {
+                    overlayHtml += hourTasks.map((t, idx) => {
                         const start = new Date(t.startDate || t.dueDate);
                         const end = new Date(t.dueDate || t.startDate);
                         let durationHours = (end - start) / (1000 * 60 * 60);
@@ -7392,19 +7436,20 @@ window.renderSidePaneChecklist = (task) => {
                         displayTask.items = []; // Strip subtasks
                         
                         const startMins = start.getHours() < 6 ? 0 : start.getMinutes();
-                        // [FIX] Removed the arbitrary 8px offset that was pushing events down past the hour line
-                        const offsetTop = (startMins / 60) * 70; // 70px per hour mapping
+                        // Top offset is relative to the ENTIRE grid, not just the hour block
+                        const offsetTop = ((hour - 6) * 70) + ((startMins / 60) * 70); 
                         const h = Math.round(durationHours * 70);
                         
                         const leftPct = idx * colWidth;
                         const isLast = idx === hourTasks.length - 1;
-                        const widthCalc = isLast ? `calc(${colWidth}% - 12px)` : `calc(${colWidth}% - 4px)`;
+                        // Leave a guaranteed 48px gutter on the right so users can ALWAYS click the hour background!
+                        const widthCalc = isLast ? `calc(${colWidth}% - 48px)` : `calc(${colWidth}% - 4px)`;
                         
-                        // [FIX] Dynamic Z-Index within the same hour. Shorter tasks get a higher z-index.
+                        // Dynamic Z-Index based on duration so short events sit above long events
                         const cardZ = Math.round(50 - Math.min(24, durationHours));
 
-                        // Enforce absolute positioning and exact mapping offsets (places concurrent events side-by-side)
-                        displayTask._customStyle = `height: ${h}px !important; min-height: ${h}px !important; max-height: ${h}px !important; position: absolute !important; top: ${offsetTop}px !important; left: ${leftPct}% !important; width: ${widthCalc} !important; z-index: ${cardZ} !important; margin: 0 !important; overflow: hidden !important;`;
+                        // Enforce absolute positioning and pointer-events-auto to re-enable clicking on the card itself
+                        displayTask._customStyle = `height: ${h}px !important; min-height: ${h}px !important; max-height: ${h}px !important; position: absolute !important; top: ${offsetTop}px !important; left: ${leftPct}% !important; width: ${widthCalc} !important; z-index: ${cardZ} !important; margin: 0 !important; overflow: hidden !important; pointer-events: auto !important;`;
                         
                         // Hide meta footer if the event is too short to display it
                         const hideMetaClass = durationHours <= 1 ? '[&_.card-meta]:hidden [&_.card-inner]:!p-2 [&_.card-inner]:justify-center' : '[&_.card-inner]:!p-3';
@@ -7412,22 +7457,28 @@ window.renderSidePaneChecklist = (task) => {
                         
                         return renderTaskCard(displayTask);
                     }).join('');
-                } else {
-                    cardsHtml = `<div class="opacity-0 group-hover:opacity-100 text-[10px] uppercase font-bold text-gray-400 pt-2 pl-2 transition-opacity tracking-widest cursor-pointer" onclick="window.openAddTaskWithTime('${k}', ${hour})">Open Time (Click to Add)</div>`;
                 }
 
-                html += `
-                <div class="flex border-b border-gray-200 dark:border-gray-700/50 min-h-[70px] group ${isCurrentHour ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}" style="z-index: ${rowZ}; position: relative;">
-                    <div class="w-16 flex-shrink-0 text-right pr-4 py-3 text-xs font-bold ${isCurrentHour ? 'text-blue-500' : 'text-gray-400 group-hover:text-blue-400'} transition-colors">
+                // Build Background Grid Row
+                gridHtml += `
+                <div class="flex border-b border-gray-200 dark:border-gray-700/50 h-[70px] group/hour ${isCurrentHour ? 'bg-blue-50/30 dark:bg-blue-900/10' : 'hover:bg-gray-50/50 dark:hover:bg-gray-800/20'} transition-colors cursor-pointer relative z-10" onclick="window.openAddTaskWithTime('${k}', ${hour})">
+                    <div class="w-16 flex-shrink-0 text-right pr-4 py-3 text-xs font-bold ${isCurrentHour ? 'text-blue-500' : 'text-gray-400 group-hover/hour:text-blue-400'} transition-colors pointer-events-none">
                         ${displayHour} ${ampm}
                     </div>
-                    <div class="flex-grow pl-4 border-l-2 ${isCurrentHour ? 'border-blue-500' : 'border-gray-100 dark:border-gray-800'} py-2 relative" style="z-index: ${rowZ};" data-hour="${hour}">
-                        ${isCurrentHour ? '<div class="absolute left-[-5px] top-1/2 w-2 h-2 rounded-full bg-blue-500 -mt-1 shadow-[0_0_8px_rgba(59,130,246,0.8)] z-20"></div>' : ''}
-                        ${cardsHtml}
+                    <div class="flex-grow pl-4 border-l-2 ${isCurrentHour ? 'border-blue-500' : 'border-gray-100 dark:border-gray-800'} relative">
+                        <!-- Interactive + button that appears on hover for empty OR occupied hours -->
+                        <div class="absolute right-3 top-2 opacity-0 group-hover/hour:opacity-100 transition-opacity z-50">
+                            <div class="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm">
+                                <i class="fa-solid fa-plus text-[12px] pointer-events-none"></i>
+                            </div>
+                        </div>
+                        ${isCurrentHour ? '<div class="absolute left-[-5px] top-1/2 w-2 h-2 rounded-full bg-blue-500 -mt-1 shadow-[0_0_8px_rgba(59,130,246,0.8)] z-20 pointer-events-none"></div>' : ''}
                     </div>
                 </div>`;
             }
-            html += '</div></div>'; // Close hourly wrapper and max-w-3xl
+            
+            overlayHtml += '</div>';
+            html += gridHtml + overlayHtml + '</div></div></div>'; // Close grid wrapper, daily wrapper, and max-w-3xl
 
             els.content.innerHTML = html; 
         };

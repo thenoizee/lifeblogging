@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.104.0-alpha",
+    date: "2026-11-03",
+    changes: [
+        "In TaskTrackr: Upgraded the Side Pane for Google Calendar events to display a prominent blue 'Read-Only Event' banner and hide all completion buttons.",
+        "In TaskTrackr: Blocked read-only calendar events from being marked as 'completed' globally (side pane, timeline view, context menus, and bulk actions).",
+        "In TaskTrackr: Replaced the standard checkbox with a lock icon for Google Calendar Events in the Timeline view.",
+        "In TaskTrackr: Fixed a click propagation bug on the Calendar tab where clicking an event accidentally triggered the background time-slot creation.",
+        "In TaskTrackr: Redesigned the Calendar/Agenda view to render events on a separate transparent overlay layer, fixing z-index overlapping issues.",
+        "In TaskTrackr: Added a guaranteed 48px clickable gutter on the right side of Calendar rows so users can always add tasks to occupied hours.",
+        "In TaskTrackr: Resolved a syntax error (spCheck redeclaration) that was crashing the side pane upon opening."
+    ]
+},
+    {
     version: "v16.103.0-alpha",
     date: "2026-11-01",
     changes: [
