@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.105.0-alpha",
+    date: "2026-11-03",
+    changes: [
+        "In FoodTrackr: Replaced the brutalist 'McMaster-Carr' styling across all modals (Create Meal, Split/Leftovers, Meal Preview, Quick Log, Edit Item) with modern, rounded Tailwind UI components.",
+        "In FoodTrackr: Added an 'Edit Meal' button to the Meal Preview modal to allow quick editing of saved composite meals.",
+        "In FoodTrackr: Upgraded the 'Saved Meals' list to display a dynamic 2x2 image grid of the meal's actual ingredients instead of a generic utensils icon.",
+        "In FoodTrackr: Updated the Move/Copy logic so extracting a single item from a grouped meal strips the 'Meal:' tag, converting it to a standalone entry and breaking the UI group lock.",
+        "In FoodTrackr: Removed the legacy inline 'Manual' and 'Leftovers' subtabs in favor of the modern modal-driven and dropdown workflows.",
+        "In FoodTrackr: Replaced the native browser confirm() popup for Smart Re-Logging (API checks) with a modern custom modal.",
+    ]
+},
+    {
     version: "v16.104.0-alpha",
     date: "2026-11-03",
     changes: [
