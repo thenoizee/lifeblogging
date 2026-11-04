@@ -2,7 +2,21 @@
 
 export const changelogData = [
     {
-    version: "v16.105.0-alpha",
+    version: "v16.107.0-alpha",
+    date: "2026-11-04",
+    changes: [
+        "In shared-nav: Upgraded the toast notification system with a sleek, iOS/Linear style dark frosted-glass pill UI.",
+        "In shared-nav: Added dynamic layout to the toast notifications so they automatically perfectly center the text if there's no action button, and expand to fit if there is.",
+        "In shared-nav: Added 'Undo' action support for toast notifications, rendering a crisp, solid white pill button.",
+        "In shared-nav: Added a smart hover-to-pause feature to toast notifications, pausing the timer progress bar and preventing auto-dismissal while the mouse is hovering over it.",
+        "In shared-nav: Added a smooth, cubic-bezier spring animation to toast notifications for a premium entrance effect.",
+        "In shared-nav: Adjusted the desktop positioning of toast notifications to appear cleanly below the main navigation header.",
+        "In shared-nav: Replaced persistent Firebase onSnapshot listeners for Profile and Theme syncing with a single getDoc fetch that runs once every 12 hours, drastically reducing database read costs.",
+        "In shared-nav: Implemented localStorage caching for the user's avatar icon/image to eliminate visual flickering on page load and navigation across different apps."
+    ]
+},
+    {
+    version: "v16.106.0-alpha",
     date: "2026-11-04",
     changes: [
                 "In PlantTrackr: Implemented an `uploadWithTimeout` wrapper for Firebase storage to prevent infinite 'saving log...' hangs on restricted or weak mobile networks.",
@@ -13,7 +27,7 @@ export const changelogData = [
     ]
 },
     {
-    version: "v16.105.0-alpha",
+    version: "v16.10.0-alpha",
     date: "2026-11-03",
     changes: [
         "In FoodTrackr: Replaced the brutalist 'McMaster-Carr' styling across all modals (Create Meal, Split/Leftovers, Meal Preview, Quick Log, Edit Item) with modern, rounded Tailwind UI components.",

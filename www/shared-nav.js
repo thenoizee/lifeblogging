@@ -1,6 +1,6 @@
 import { getApps } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs, deleteDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs, deleteDoc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { changelogData } from './changelog-data.js';
 
 const escapeHtml = (unsafe) => !unsafe ? "" : String(unsafe).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -86,7 +86,8 @@ export class AppNavigation {
         
         // Expose universally for inline HTML onclick handlers in any app
         window.switchTab = this.switchTab.bind(this);
-        window.toggleNavBar = this.toggleNavBar.bind(this); // Added global nav toggle
+        window.toggleNavBar = this.toggleNavBar.bind(this);
+        window.showToast = this.showToast.bind(this); // <-- ADD THIS LINE
 
         this.init();
     }
@@ -343,6 +344,123 @@ export class AppNavigation {
         });
     }
 
+    showToast(message, type = 'success', options = {}) {
+        const duration = options.duration || 3000;
+        
+        let container = document.getElementById('global-toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'global-toast-container';
+            container.className = 'fixed top-4 md:top-20 left-1/2 -translate-x-1/2 z-[999999] flex flex-col items-center gap-3 pointer-events-none w-full max-w-[90vw] md:max-w-md';
+            document.body.appendChild(container);
+        }
+
+        const toast = document.createElement('div');
+        const isError = type === 'error';
+        
+        const iconClass = isError ? 'fa-circle-exclamation text-red-400' : `fa-check-circle text-${this.themeColor}-400`;
+        const barColorClass = isError ? 'bg-red-400' : `bg-${this.themeColor}-400`;
+        
+        // Smart Layout: Wide with button on right, or snug and perfectly centered without button
+        const layoutClasses = options.action 
+            ? 'w-full flex items-center justify-between pl-4 pr-1.5 py-1.5' 
+            : 'w-max flex items-center justify-center px-5 py-3';
+
+        // Ultra-premium snappy spring animation (cubic-bezier) and deep shadow
+        toast.className = `pointer-events-auto relative overflow-hidden bg-gray-900/95 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.2)] text-white transform transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] -translate-y-10 opacity-0 scale-90 ${layoutClasses}`;
+
+        let actionHtml = '';
+        if (options.action) {
+            // Solid, inverted pill button for premium contrast
+            actionHtml = `<button id="toast-action-btn" class="ml-3 px-3.5 py-1.5 rounded-full text-xs font-bold text-gray-900 bg-white hover:bg-gray-200 transition-colors active:scale-95 shrink-0 shadow-sm">${escapeHtml(options.action.text)}</button>`;
+        }
+
+        toast.innerHTML = `
+            <div class="flex items-center gap-2.5 ${options.action ? 'flex-grow min-w-0' : 'justify-center'}">
+                <i class="fa-solid ${iconClass} text-[14px] shrink-0"></i>
+                <span class="text-[13px] font-medium tracking-wide truncate ${options.action ? 'text-left' : 'text-center'}">${escapeHtml(message)}</span>
+            </div>
+            ${actionHtml}
+            <div class="absolute bottom-0 left-0 w-full h-[2px] bg-white/5">
+                <div class="h-full w-full ${barColorClass}" style="transform-origin: left; transition: transform ${duration}ms linear;" id="toast-progress"></div>
+            </div>
+        `;
+
+        container.appendChild(toast);
+
+        let closeTimeout;
+        const closeToast = () => {
+            clearTimeout(closeTimeout);
+            toast.classList.remove('translate-y-0', 'opacity-100', 'scale-100');
+            toast.classList.add('-translate-y-10', 'opacity-0', 'scale-90');
+            setTimeout(() => toast.remove(), 400);
+        };
+
+        if (options.action) {
+            toast.querySelector('#toast-action-btn').addEventListener('click', () => {
+                options.action.onClick();
+                closeToast();
+            });
+        }
+
+        // --- HOVER TO PAUSE LOGIC ---
+        let isHovered = false;
+        let remainingTime = duration;
+        let startTime = Date.now();
+        const progressBar = toast.querySelector('#toast-progress');
+
+        toast.addEventListener('mouseenter', () => {
+            isHovered = true;
+            clearTimeout(closeTimeout);
+            remainingTime -= (Date.now() - startTime);
+            
+            if (progressBar) {
+                // Safely calculate the exact scale percentage to freeze it perfectly in place
+                const rect = progressBar.getBoundingClientRect();
+                const parentRect = progressBar.parentElement.getBoundingClientRect();
+                const currentScale = rect.width / parentRect.width;
+                
+                progressBar.style.transition = 'none';
+                progressBar.style.transform = `scaleX(${currentScale})`;
+            }
+        });
+
+        toast.addEventListener('mouseleave', () => {
+            isHovered = false;
+            startTime = Date.now(); 
+            
+            if (progressBar) {
+                // 1. Re-apply the transition with the remaining time
+                progressBar.style.transition = `transform ${remainingTime}ms linear`;
+                
+                // 2. Double requestAnimationFrame forces the browser to register the 
+                // transition duration BEFORE we tell it to shrink to 0
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        progressBar.style.transform = 'scaleX(0)';
+                    });
+                });
+            }
+            closeTimeout = setTimeout(closeToast, remainingTime);
+        });
+
+        // --- ENTRANCE ANIMATION ---
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                toast.classList.remove('-translate-y-10', 'opacity-0', 'scale-90');
+                toast.classList.add('translate-y-0', 'opacity-100', 'scale-100');
+                
+                setTimeout(() => {
+                    if (progressBar && !isHovered) {
+                        progressBar.style.transform = 'scaleX(0)';
+                    }
+                }, 10);
+            });
+        });
+
+        closeTimeout = setTimeout(closeToast, duration);
+    }
+
     async executeCommand(cmd) {
         const db = getFirestore();
         const auth = getAuth();
@@ -438,7 +556,8 @@ export class AppNavigation {
         
         const avatarEl = document.getElementById('nav-user-avatar');
         if (avatarEl) {
-            avatarEl.textContent = initial;
+            const cachedAvatar = localStorage.getItem(`avatarHTML_${this.userEmail}`);
+            avatarEl.innerHTML = cachedAvatar ? cachedAvatar : initial;
             avatarEl.title = `Logged in as: ${this.userEmail}`;
         }
     }
@@ -547,6 +666,7 @@ export class AppNavigation {
         };
 
         const userInitial = this.userEmail.charAt(0).toUpperCase();
+        const cachedAvatar = localStorage.getItem(`avatarHTML_${this.userEmail}`);
         
         const hour = new Date().getHours();
         let greeting = "Hello";
@@ -671,7 +791,7 @@ export class AppNavigation {
                             </div>
                             
                             <a href="#" id="nav-user-avatar" class="flex items-center justify-center w-8 h-8 shrink-0 rounded-full bg-${this.themeColor}-100 dark:bg-${this.themeColor}-900/30 text-${this.themeColor}-600 dark:text-${this.themeColor}-400 font-bold text-xs border border-${this.themeColor}-200 dark:border-${this.themeColor}-800 cursor-pointer hover:opacity-80 transition-opacity overflow-hidden" title="${avatarTitle}">                            
-                                ${userInitial}
+                                ${cachedAvatar ? cachedAvatar : userInitial}
                             </a>
 
                             <button id="nav-theme-toggle" class="w-8 h-8 shrink-0 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all duration-500 ease-in-out">
@@ -809,77 +929,96 @@ export class AppNavigation {
         batch.commit().catch(err => console.error("Error marking notifications read:", err));
     }
 
-    listenToUserProfile() {
+    async listenToUserProfile() {
         if (getApps().length === 0) {
             setTimeout(() => this.listenToUserProfile(), 50);
             return;
         }
 
         const auth = getAuth();
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
+                const avatarEl = document.getElementById('nav-user-avatar');
+                if (!avatarEl) return;
+                
+                // Skip Firebase read if we checked within the last 12 hours
+                const lastCheck = localStorage.getItem(`avatarChecked_${user.uid}`);
+                const now = Date.now();
+                if (lastCheck && now - parseInt(lastCheck) < 12 * 60 * 60 * 1000) {
+                    return; 
+                }
+
                 const db = getFirestore();
                 const profileRef = doc(db, 'users', user.uid, 'settings', 'profile');
+                const docSnap = await getDoc(profileRef); // Replaced onSnapshot to stop permanent listeners
                 
-                onSnapshot(profileRef, (docSnap) => {
-                    const avatarEl = document.getElementById('nav-user-avatar');
-                    if (!avatarEl) return;
-                    
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        if (data.profileImageUrl) {
-                            avatarEl.innerHTML = `<img src="${data.profileImageUrl}" alt="Profile" class="w-full h-full object-cover">`;
-                        } else if (data.icon) {
-                            avatarEl.innerHTML = `<i class="${data.icon}"></i>`;
-                        } else {
-                            const dName = data.displayName || this.userEmail;
-                            avatarEl.textContent = dName.charAt(0).toUpperCase();
-                        }
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    let newHTML = '';
+                    if (data.profileImageUrl) {
+                        newHTML = `<img src="${data.profileImageUrl}" alt="Profile" class="w-full h-full object-cover">`;
+                    } else if (data.icon) {
+                        newHTML = `<i class="${data.icon}"></i>`;
+                    } else {
+                        const dName = data.displayName || this.userEmail;
+                        newHTML = dName.charAt(0).toUpperCase();
                     }
-                });
+                    
+                    if (avatarEl.innerHTML !== newHTML) {
+                        avatarEl.innerHTML = newHTML;
+                        localStorage.setItem(`avatarHTML_${this.userEmail}`, newHTML);
+                    }
+                    localStorage.setItem(`avatarChecked_${user.uid}`, now.toString());
+                }
             }
         });
     }
 
-    listenToThemeSync() {
-        // Wait for Firebase to be fully initialized by the host page
+    async listenToThemeSync() {
         if (getApps().length === 0) {
             setTimeout(() => this.listenToThemeSync(), 50);
             return;
         }
 
         const auth = getAuth();
-        onAuthStateChanged(auth, user => {
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
+                // Skip Firebase read if we checked within the last 12 hours
+                const lastCheck = localStorage.getItem(`themeChecked_${user.uid}`);
+                const now = Date.now();
+                if (lastCheck && now - parseInt(lastCheck) < 12 * 60 * 60 * 1000) {
+                    return; 
+                }
+
                 const db = getFirestore();
                 const themeRef = doc(db, 'users', user.uid, 'settings', 'theme');
-                onSnapshot(themeRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        const cloudTheme = data.theme;
-                        const cloudAuto = data.themeAuto;
-                        
-                        // Sync auto-theme preference
-                        if (cloudAuto !== undefined) {
-                            const localAuto = localStorage.getItem('themeAuto') === 'true';
-                            if (cloudAuto !== localAuto) {
-                                localStorage.setItem('themeAuto', cloudAuto ? 'true' : 'false');
-                                if (cloudAuto) {
-                                    this.systemThemeQuery.addEventListener('change', this.handleSystemThemeChange);
-                                    this.applyTheme(this.systemThemeQuery.matches); // Sync to device immediately
-                                } else {
-                                    this.systemThemeQuery.removeEventListener('change', this.handleSystemThemeChange);
-                                    if (cloudTheme) this.applyTheme(cloudTheme === 'dark'); // Revert to explicit theme
-                                }
+                const docSnap = await getDoc(themeRef); // Replaced onSnapshot to stop permanent listeners
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const cloudTheme = data.theme;
+                    const cloudAuto = data.themeAuto;
+                    
+                    if (cloudAuto !== undefined) {
+                        const localAuto = localStorage.getItem('themeAuto') === 'true';
+                        if (cloudAuto !== localAuto) {
+                            localStorage.setItem('themeAuto', cloudAuto ? 'true' : 'false');
+                            if (cloudAuto) {
+                                this.systemThemeQuery.addEventListener('change', this.handleSystemThemeChange);
+                                this.applyTheme(this.systemThemeQuery.matches);
+                            } else {
+                                this.systemThemeQuery.removeEventListener('change', this.handleSystemThemeChange);
+                                if (cloudTheme) this.applyTheme(cloudTheme === 'dark');
                             }
                         }
-
-                        // Sync explicit theme if auto is disabled
-                        if (!cloudAuto && cloudTheme && localStorage.getItem('theme') !== cloudTheme) {
-                            this.applyTheme(cloudTheme === 'dark');
-                        }
                     }
-                });
+
+                    if (!cloudAuto && cloudTheme && localStorage.getItem('theme') !== cloudTheme) {
+                        this.applyTheme(cloudTheme === 'dark');
+                    }
+                    
+                    localStorage.setItem(`themeChecked_${user.uid}`, now.toString());
+                }
             }
         });
     }
