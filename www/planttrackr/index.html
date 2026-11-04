@@ -2173,6 +2173,22 @@
                     getEl("log-repot-size").value = plant.potSize || '';
                     getEl("log-repot-soil").value = plant.soilType || 'standard';
                 }
+
+                // FIX: Dynamically show what fields were LAST time they were filled in
+                const plantLogs = state.logs.filter(l => l.plantId === plantId).sort((a,b) => new Date(b.date) - new Date(a.date));
+                
+                const lastProg = plantLogs.find(l => l.height || l.health);
+                const heightInput = getEl("log-growth-val");
+                if (heightInput) {
+                    heightInput.placeholder = (lastProg && lastProg.height) ? `Last: ${lastProg.height}` : 'Size (cm)';
+                }
+                
+                const harvestLog = plantLogs.find(l => l.type === 'Harvest' && l.notes && l.notes.includes('Harvested:'));
+                const harvestInput = getEl("log-harvest-val");
+                if (harvestInput) {
+                    const match = harvestLog ? harvestLog.notes.match(/Harvested:\s*(.+)/) : null;
+                    harvestInput.placeholder = match ? `Last: ${match[1].split('\n')[0]}` : 'Amount...';
+                }
             }
             const photoName = getEl("log-photo-name");
             if (photoName) photoName.innerHTML = "";
@@ -2345,6 +2361,14 @@
         };
         const toggleDisplay = window.toggleDisplay; // Keeps internal JS calls working too
 
+        // FIX: Firebase upload timeout to prevent infinite "saving log..." on bad networks
+        const uploadWithTimeout = (storageRef, file, timeoutMs = 15000) => {
+            return Promise.race([
+                uploadBytes(storageRef, file),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Network timeout: Photo upload took too long. Please check your connection or switch to mobile data.")), timeoutMs))
+            ]);
+        };
+
         // DEBUG: Advanced Hardware-accelerated memory path for image compression.
         // Uses createImageBitmap to prevent Android Out-Of-Memory (OOM) browser kills returning from Camera.
         const compressImage = async (file, maxWidth = 800) => {
@@ -2352,35 +2376,40 @@
             const newName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
 
             return new Promise(async (resolve) => {
+                let canvas, ctx;
+                const cleanup = () => {
+                    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    if (canvas) { canvas.width = 0; canvas.height = 0; }
+                    canvas = null; ctx = null; // Free up heavy memory to stop mobile freezing
+                };
+
                 try {
                     // Modern Android/iOS memory-safe approach
                     if (window.createImageBitmap) {
                         const bmp = await createImageBitmap(file);
                         const maxDim = Math.max(bmp.width, bmp.height);
                         let ratio = 1;
-                        if (maxDim > maxWidth) {
-                            ratio = maxWidth / maxDim;
-                        }
+                        if (maxDim > maxWidth) ratio = maxWidth / maxDim;
+                        
                         const targetW = Math.round(bmp.width * ratio);
                         const targetH = Math.round(bmp.height * ratio);
 
-                        const canvas = window.OffscreenCanvas ? new OffscreenCanvas(targetW, targetH) : document.createElement('canvas');
+                        canvas = window.OffscreenCanvas ? new OffscreenCanvas(targetW, targetH) : document.createElement('canvas');
                         canvas.width = targetW;
                         canvas.height = targetH;
-                        const ctx = canvas.getContext('2d');
+                        ctx = canvas.getContext('2d');
                         ctx.drawImage(bmp, 0, 0, targetW, targetH);
                         
                         bmp.close(); // CRITICAL: Frees the uncompressed bitmap memory immediately!
 
                         const handleBlob = (blob) => {
-                            ctx.clearRect(0, 0, targetW, targetH);
-                            canvas.width = 0; canvas.height = 0;
+                            cleanup();
                             if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
                             else resolve(file);
                         };
 
                         if (canvas.convertToBlob) {
-                            canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 }).then(handleBlob).catch(() => resolve(file));
+                            canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 }).then(handleBlob).catch(() => { cleanup(); resolve(file); });
                         } else {
                             canvas.toBlob(handleBlob, 'image/jpeg', 0.7);
                         }
@@ -2403,16 +2432,15 @@
                     const targetW = Math.round(img.width * ratio);
                     const targetH = Math.round(img.height * ratio);
                     
-                    const canvas = document.createElement('canvas');
+                    canvas = document.createElement('canvas');
                     canvas.width = targetW; canvas.height = targetH;
-                    const ctx = canvas.getContext('2d');
+                    ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, targetW, targetH);
                     
                     img.onload = null; img.onerror = null; img.src = 'data:,'; 
                     
                     const handleBlob = (blob) => {
-                        ctx.clearRect(0, 0, targetW, targetH);
-                        canvas.width = 0; canvas.height = 0;
+                        cleanup();
                         if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
                         else resolve(file);
                     };
@@ -2420,7 +2448,7 @@
                     canvas.toBlob(handleBlob, 'image/jpeg', 0.7);
                 };
                 
-                img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
+                img.onerror = () => { URL.revokeObjectURL(objectUrl); cleanup(); resolve(file); };
                 img.src = objectUrl;
             });
         };
@@ -4092,14 +4120,98 @@ if (state.compost) {
         };
 
         const deleteLog = async (id) => {
-            if(confirm("Delete this log?")) {
-                await deleteDoc(doc(db, `users/${state.user.uid}/plant_logs`, id));
-                showMsg("Log deleted");
+            if(!confirm("Delete this log? If it contained profile updates (like size or health), they will be reversed.")) return;
+            
+            try {
+                const logToDelete = state.logs.find(l => l.id === id);
+                if (!logToDelete) return;
+
+                const plantId = logToDelete.plantId;
+                let rollbackUpdates = {};
+                let needsRollback = false;
+
+                // Only attempt rollback for actual plants (skip lawn/compost)
+                if (plantId && plantId !== 'sys_lawn' && plantId !== 'sys_compost') {
+                    const plant = state.plants.find(p => p.id === plantId);
+                    
+                    if (plant) {
+                        // The fields our dynamic engine saves to the log
+                        const keysToRollback = ['health', 'height', 'potType', 'potSize', 'soilType'];
+                        
+                        // All other logs for this plant, newest first
+                        const otherLogs = state.logs
+                            .filter(l => l.plantId === plantId && l.id !== id)
+                            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                        keysToRollback.forEach(key => {
+                            // If the log we are deleting actually contained a VALID value for this field
+                            if (logToDelete[key] != null && logToDelete[key] !== "") {
+                                
+                                // Make sure a NEWER log hasn't already overwritten this field with valid data
+                                const newerLog = state.logs.find(l => 
+                                    l.plantId === plantId && l.id !== id && 
+                                    l[key] != null && l[key] !== "" &&
+                                    new Date(l.date).getTime() > new Date(logToDelete.date).getTime()
+                                );
+                                
+                                // If this was the most recent edit to this field, we must roll it back
+                                if (!newerLog) {
+                                    // Find the most recent older log that actually had a VALID value
+                                    const olderLog = otherLogs.find(l => 
+                                        l[key] != null && l[key] !== "" &&
+                                        new Date(l.date).getTime() < new Date(logToDelete.date).getTime()
+                                    );
+                                    
+                                    if (olderLog) {
+                                        rollbackUpdates[key] = olderLog[key];
+                                    } else {
+                                        // If no older record exists at all, revert to defaults/null
+                                        rollbackUpdates[key] = (key === 'health') ? 'good' : null;
+                                    }
+                                    needsRollback = true;
+                                }
+                            }
+                        });
+
+                        // Special Status Rollbacks
+                        if (logToDelete.type === 'Archived' && plant.status === 'dead') {
+                            rollbackUpdates.status = 'alive';
+                            needsRollback = true;
+                        }
+                    }
+                }
+
+                // Delete the actual log
+                await deleteDoc(doc(db, `users/${state.user.uid}/plant_logs`, id));
+                
+                // Apply the rollbacks to the plant profile if needed
+                if (needsRollback) {
+                    rollbackUpdates.updatedAt = Timestamp.now();
+                    await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), rollbackUpdates);
+                    showMsg("Log deleted and profile reverted ↩️", "success");
+                } else {
+                    showMsg("Log deleted", "success");
+                }
+
                 // Refresh modal views if open
                 if (!document.getElementById('lawn-modal').classList.contains('hidden')) window.openLawnModal();
                 if (!document.getElementById('compost-modal').classList.contains('hidden')) window.openCompostModal();
-            }
-        };
+                
+                // Refresh plant details modal if open
+                const viewModal = document.getElementById('view-plant-modal');
+                if (viewModal && !viewModal.classList.contains('hidden') && plantId) {
+                    window.openViewPlantModal(plantId);
+                }
+                
+                // Refresh history modal if open
+                const historyModal = document.getElementById('plant-history-modal');
+                if (historyModal && !historyModal.classList.contains('hidden') && plantId) {
+                    window.openPlantHistoryModal(plantId);
+                }
+            } catch(e) {
+                showMsg(e.message, "error");
+            }
+        };
         window.deleteLog = deleteLog;
 
         getEl("delete-plant-btn").onclick = async () => {
@@ -5726,10 +5838,18 @@ window.openFamilyTreeModal = (plantId) => {
             getEl("walkthrough-plant-location").innerHTML = `<i class="fa-solid fa-location-dot text-[var(--primary)] mr-1"></i> ${displayLocation}${posBadge}`;
 
             // Calculate days since last photo
-            const plantLogs = state.logs.filter(l => l.plantId === plant.id && l.photoUrl);
-            const lastPhotoTime = plantLogs.length > 0 ? new Date(plantLogs[0].date).getTime() : new Date(plant.acquired || 0).getTime();
+            const plantLogs = state.logs.filter(l => l.plantId === plant.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+            const photoLogs = plantLogs.filter(l => l.photoUrl);
+            const lastPhotoTime = photoLogs.length > 0 ? new Date(photoLogs[0].date).getTime() : new Date(plant.acquired || 0).getTime();
             const daysSincePhoto = Math.floor((new Date() - lastPhotoTime) / (1000 * 60 * 60 * 24));
             getEl("walkthrough-plant-lastphoto").textContent = daysSincePhoto === 0 ? "Photo today" : `${daysSincePhoto}d since photo`;
+
+            // Dynamically show previous height for reference in Walkthrough
+            const lastProg = plantLogs.find(l => l.height);
+            const heightInput = getEl("walkthrough-height-input");
+            if (heightInput) {
+                heightInput.placeholder = (lastProg && lastProg.height) ? `Last: ${lastProg.height}` : 'Optional (cm)';
+            }
 
             // Plant avatar thumbnail
             const avatar = getEl("walkthrough-plant-avatar");
@@ -5816,7 +5936,8 @@ window.openFamilyTreeModal = (plantId) => {
                     console.log("[DEBUG] Walkthrough: Compressing and uploading photo...");
                     const compressedFile = await compressImage(walkthroughCurrentFile);
                     const storageRef = ref(storage, `users/${state.user.uid}/logs/${Date.now()}_${compressedFile.name}`);
-                    await uploadBytes(storageRef, compressedFile);
+                    // FIX: Added timeout wrapper to prevent freeze on bad network
+                    await uploadWithTimeout(storageRef, compressedFile, 20000);
                     photoUrl = await getDownloadURL(storageRef);
                 }
 
@@ -6882,9 +7003,7 @@ window.saveCompostSettings = async () => {
                     const plantId = getEl("log-plant-select").value;
                     const type = getEl("log-type-select").value;
                     const date = getEl("log-date").value;
-                    const notes = getEl("log-notes").value;
-                    const height = getEl("log-growth-val").value;
-                    const health = getEl("log-health-select").value;
+                    const baseNotes = getEl("log-notes").value.trim();
                     const noticingTags = Array.from(document.querySelectorAll('#log-noticing-tags input:checked')).map(cb => cb.value);
                     
                     const fileInput = getEl("log-photo");
@@ -6900,46 +7019,67 @@ window.saveCompostSettings = async () => {
                         if (file) {
                             const compressedFile = await compressImage(file);
                             const storageRef = ref(storage, `users/${state.user.uid}/logs/${Date.now()}_${compressedFile.name}`);
-                            await uploadBytes(storageRef, compressedFile);
+                            // FIX: Added timeout wrapper to prevent infinite hangs on bad mobile networks
+                            await uploadWithTimeout(storageRef, compressedFile, 20000);
                             photoUrl = await getDownloadURL(storageRef);
-                        }
+                        }
 
-                        let finalNotes = notes;
-                        if (type === 'Repot') {
-                            const newType = getEl('log-repot-type').value;
-                            const newSize = getEl('log-repot-size').value;
-                            const newSoil = getEl('log-repot-soil').value;
-                            const repotNotes = `Repotted into ${newSize ? newSize+'cm ' : ''}${newType} pot with ${newSoil} soil.`;
-                            finalNotes = finalNotes ? `${finalNotes}\n${repotNotes}` : repotNotes;
-                            
-                            await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { 
-                                potType: newType,
-                                potSize: newSize ? parseInt(newSize) : null,
-                                soilType: newSoil,
-                                updatedAt: Timestamp.now()
-                            });
-                        }
+                        // FIX: Dynamic mapping system for EVERY possible data update.
+                        // Easily implement future detail updates by just adding to this array.
+                        const fieldMappings = [
+                            { containerId: 'log-repot-extras', id: 'log-repot-type', label: 'Pot Type', prop: 'potType' },
+                            { containerId: 'log-repot-extras', id: 'log-repot-size', label: 'Pot Size', prop: 'potSize', isNum: true },
+                            { containerId: 'log-repot-extras', id: 'log-repot-soil', label: 'Soil Type', prop: 'soilType' },
+                            { containerId: 'log-harvest-extras', id: 'log-harvest-val', label: 'Harvested' },
+                            { containerId: 'log-progress-extras', id: 'log-growth-val', label: 'Height (cm)', prop: 'height', isNum: true },
+                            { containerId: 'log-progress-extras', id: 'log-health-select', label: 'Health', prop: 'health' }
+                        ];
 
-                        if (type === 'Harvest') {
-                            const harvestVal = getEl("log-harvest-val").value;
-                            if (harvestVal) finalNotes = finalNotes ? `${finalNotes}\nHarvested: ${harvestVal}` : `Harvested: ${harvestVal}`;
-                        }
-
-                        if (getEl("log-sheltered") && getEl("log-sheltered").checked) {
-                            await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), { status: 'sheltered', updatedAt: Timestamp.now() });
-                            finalNotes = finalNotes ? `${finalNotes}\nCovered with frost blanket/cloche.` : `Covered with frost blanket/cloche.`;
-                        }
-
-                        const logData = {
-                            plantId, type, date: new Date(date).toISOString(), notes: finalNotes,
-                            height: height ? parseFloat(height) : null,
+                        let dynamicNotes = [];
+                        let plantUpdates = {};
+                        let logData = {
+                            plantId, type, date: new Date(date).toISOString(),
                             noticing: noticingTags,
                             updatedAt: Timestamp.now()
                         };
-                        
+
+                        // Map visible fields automatically
+                        fieldMappings.forEach(field => {
+                            const container = getEl(field.containerId);
+                            if (container && !container.classList.contains('hidden')) {
+                                const el = getEl(field.id);
+                                if (el && el.value && el.value.trim() !== '') {
+                                    let val = el.value.trim();
+                                    if (field.isNum) val = parseFloat(val);
+                                    
+                                    // Health and height get dedicated UI treatments, no need to clutter generic text notes
+                                    if (field.id !== 'log-health-select' && field.id !== 'log-growth-val') {
+                                        dynamicNotes.push(`${field.label}: ${val}`);
+                                    }
+                                    
+                                    // Attach to log payload
+                                    logData[field.prop || field.label.toLowerCase()] = val;
+                                    // Attach to Plant Profile updates
+                                    if (field.prop) plantUpdates[field.prop] = val;
+                                }
+                            }
+                        });
+
+                        // Edge Cases & Toggles
+                        if (getEl("log-sheltered") && getEl("log-sheltered").checked) {
+                            plantUpdates.status = 'sheltered';
+                            dynamicNotes.push("Covered with frost blanket/cloche");
+                        }
+
+                        // Compile Final Notes safely
+                        let finalNotes = baseNotes;
+                        if (dynamicNotes.length > 0) {
+                            finalNotes = finalNotes ? `${finalNotes}\n${dynamicNotes.join('\n')}` : dynamicNotes.join('\n');
+                        }
+                        logData.notes = finalNotes;
+
                         // Only update photoUrl if a new file was actually selected
                         if (photoUrl) logData.photoUrl = photoUrl;
-                        if (type === 'Progress') logData.health = health;
 
                         const editId = getEl("modal-log-id").value;
                         if (editId) {
@@ -6951,27 +7091,27 @@ window.saveCompostSettings = async () => {
                             showMsg("Log saved successfully!", "success", 3000);
                         }
 
-                        if (type === 'Progress') {
-                            let plantUpdates = { updatedAt: Timestamp.now() };
-                            if (health) plantUpdates.health = health;
-                            if (height) plantUpdates.height = parseFloat(height);
-                            
+                        // Apply dynamic updates to the main Plant Profile document!
+                        if (Object.keys(plantUpdates).length > 0) {
+                            plantUpdates.updatedAt = Timestamp.now();
                             await updateDoc(doc(db, `users/${state.user.uid}/plants`, plantId), plantUpdates);
                         }
 
                         toggleDisplay(document.getElementById("quick-log-modal"), false);
                         
-                        // Reset Form fields
+                        // Reset Form fields safely
                         getEl("log-notes").value = "";
-                        getEl("log-growth-val").value = "";
+                        if(getEl("log-growth-val")) getEl("log-growth-val").value = "";
+                        if(getEl("log-harvest-val")) getEl("log-harvest-val").value = "";
                         document.querySelectorAll('#log-noticing-tags input').forEach(cb => cb.checked = false);
                         if(fileInput) fileInput.value = "";
-                        getEl("log-photo-name").innerHTML = ""; // Add this line
+                        if(getEl("log-photo-name")) getEl("log-photo-name").innerHTML = "";
                         toggleDisplay(getEl("log-progress-extras"), false);
-                        getEl("log-type-select").value = "Water";
+                        if(getEl("log-type-select")) getEl("log-type-select").value = "Water";
 
                     } catch (e) { 
-                        showMsg(e.message, "error", 4000); 
+                        // Fix for hanging on network errors: error shows and allows retry
+                        showMsg(e.message, "error", 5000); 
                     } finally {
                         getEl("submit-log-btn").disabled = false;
                     }

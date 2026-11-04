@@ -3,6 +3,17 @@
 export const changelogData = [
     {
     version: "v16.105.0-alpha",
+    date: "2026-11-04",
+    changes: [
+                "In PlantTrackr: Implemented an `uploadWithTimeout` wrapper for Firebase storage to prevent infinite 'saving log...' hangs on restricted or weak mobile networks.",
+                "In PlantTrackr: Rewrote the hardware-accelerated `compressImage` function to aggressively clear canvas and context memory, fixing an issue where consecutive photo uploads caused mobile browsers to freeze or crash.",
+                "In PlantTrackr: Built a dynamic `fieldMappings` engine for log submissions that automatically extracts data from UI inputs, updates the log notes, and pushes changes to the main plant profile without hardcoded if/else chains.",
+                "In PlantTrackr: Updated the Quick Log and Walkthrough modals to dynamically scan the plant's history and display the last known values (e.g., height, harvest amount) directly in the input placeholders.",
+                "In PlantTrackr: Added a smart rollback engine to `deleteLog` that automatically reverts plant profile attributes (like height, health, and pot size) to their previous valid state when a progress log is deleted."
+    ]
+},
+    {
+    version: "v16.105.0-alpha",
     date: "2026-11-03",
     changes: [
         "In FoodTrackr: Replaced the brutalist 'McMaster-Carr' styling across all modals (Create Meal, Split/Leftovers, Meal Preview, Quick Log, Edit Item) with modern, rounded Tailwind UI components.",
