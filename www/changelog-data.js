@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.108.0-alpha",
+    date: "2026-11-05",
+    changes: [
+        "In Loggr: Migrated custom toast notifications to the new shared-nav dynamic toast standard and removed the redundant 'Saving...' toast to prevent overlapping.",
+        "In FoodTrackr: Transitioned to the shared-nav toast standard and implemented a dedicated, isolated CSS container for the custom undo toast to bypass Tailwind CDN dynamic injection limits.",
+        "In HealthManagr: Converted standard toasts to the shared-nav system and exposed the nav instance globally.",
+        "In HealthManagr: Replaced blocking browser confirm() popups with sleek, non-blocking 'undo' toasts for deleting medicines, doses, stock batches, grooming logs, and contact lens records."
+    ]
+},
+    {
     version: "v16.107.0-alpha",
     date: "2026-11-04",
     changes: [
