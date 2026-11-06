@@ -351,14 +351,15 @@ export class AppNavigation {
         if (!container) {
             container = document.createElement('div');
             container.id = 'global-toast-container';
-            container.className = 'fixed top-4 md:top-20 left-1/2 -translate-x-1/2 z-[999999] flex flex-col items-center gap-3 pointer-events-none w-full max-w-[90vw] md:max-w-md';
+            // Pinned to the bottom on mobile (right above the h-16 nav) and top on desktop
+            container.className = 'fixed bottom-24 md:bottom-auto md:top-20 left-1/2 -translate-x-1/2 z-[999999] flex flex-col items-center gap-3 pointer-events-none w-full max-w-[90vw] md:max-w-md';
             document.body.appendChild(container);
         }
 
         const toast = document.createElement('div');
         const isError = type === 'error';
         
-        const iconClass = isError ? 'fa-circle-exclamation text-red-400' : `fa-check-circle text-${this.themeColor}-400`;
+        const iconClass = options.icon || (isError ? 'fa-circle-exclamation text-red-400' : `fa-check-circle text-${this.themeColor}-400`);
         const barColorClass = isError ? 'bg-red-400' : `bg-${this.themeColor}-400`;
         
         // Smart Layout: Wide with button on right, or snug and perfectly centered without button
@@ -366,13 +367,16 @@ export class AppNavigation {
             ? 'w-full flex items-center justify-between pl-4 pr-1.5 py-1.5' 
             : 'w-max flex items-center justify-center px-5 py-3';
 
-        // Ultra-premium snappy spring animation (cubic-bezier) and deep shadow
-        toast.className = `pointer-events-auto relative overflow-hidden bg-gray-900/95 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.2)] text-white transform transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] -translate-y-10 opacity-0 scale-90 ${layoutClasses}`;
+        // Using scale for a smooth pop-in animation instead of translate-y which causes direction visual bugs on bottom positioning
+        toast.className = `pointer-events-auto relative overflow-hidden bg-gray-900/95 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.2)] text-white transform transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] opacity-0 scale-90 ${layoutClasses}`;
 
         let actionHtml = '';
         if (options.action) {
-            // Solid, inverted pill button for premium contrast
-            actionHtml = `<button id="toast-action-btn" class="ml-3 px-3.5 py-1.5 rounded-full text-xs font-bold text-gray-900 bg-white hover:bg-gray-200 transition-colors active:scale-95 shrink-0 shadow-sm">${escapeHtml(options.action.text)}</button>`;
+            if (options.action.theme === 'undo') {
+                actionHtml = `<button id="toast-action-btn" class="ml-3 px-3.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider text-orange-400 hover:text-orange-300 bg-gray-800 hover:bg-gray-700 border border-gray-600 transition-colors active:scale-95 shrink-0 shadow-sm">${escapeHtml(options.action.text)}</button>`;
+            } else {
+                actionHtml = `<button id="toast-action-btn" class="ml-3 px-3.5 py-1.5 rounded-full text-xs font-bold text-gray-900 bg-white hover:bg-gray-200 transition-colors active:scale-95 shrink-0 shadow-sm">${escapeHtml(options.action.text)}</button>`;
+            }
         }
 
         toast.innerHTML = `
@@ -391,8 +395,8 @@ export class AppNavigation {
         let closeTimeout;
         const closeToast = () => {
             clearTimeout(closeTimeout);
-            toast.classList.remove('translate-y-0', 'opacity-100', 'scale-100');
-            toast.classList.add('-translate-y-10', 'opacity-0', 'scale-90');
+            toast.classList.remove('opacity-100', 'scale-100');
+            toast.classList.add('opacity-0', 'scale-90');
             setTimeout(() => toast.remove(), 400);
         };
 
@@ -415,7 +419,6 @@ export class AppNavigation {
             remainingTime -= (Date.now() - startTime);
             
             if (progressBar) {
-                // Safely calculate the exact scale percentage to freeze it perfectly in place
                 const rect = progressBar.getBoundingClientRect();
                 const parentRect = progressBar.parentElement.getBoundingClientRect();
                 const currentScale = rect.width / parentRect.width;
@@ -430,11 +433,7 @@ export class AppNavigation {
             startTime = Date.now(); 
             
             if (progressBar) {
-                // 1. Re-apply the transition with the remaining time
                 progressBar.style.transition = `transform ${remainingTime}ms linear`;
-                
-                // 2. Double requestAnimationFrame forces the browser to register the 
-                // transition duration BEFORE we tell it to shrink to 0
                 requestAnimationFrame(() => {
                     requestAnimationFrame(() => {
                         progressBar.style.transform = 'scaleX(0)';
@@ -447,8 +446,8 @@ export class AppNavigation {
         // --- ENTRANCE ANIMATION ---
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                toast.classList.remove('-translate-y-10', 'opacity-0', 'scale-90');
-                toast.classList.add('translate-y-0', 'opacity-100', 'scale-100');
+                toast.classList.remove('opacity-0', 'scale-90');
+                toast.classList.add('opacity-100', 'scale-100');
                 
                 setTimeout(() => {
                     if (progressBar && !isHovered) {
@@ -593,6 +592,14 @@ export class AppNavigation {
             }
             .dark body, body.dark-mode {
                 background-image: radial-gradient(ellipse at top, rgba(${rgb}, 0.08) 0%, transparent 80%);
+            }
+            
+            /* Kill default browser purple tap highlights and outlines globally */
+            * {
+                -webkit-tap-highlight-color: transparent;
+            }
+            *:focus {
+                outline: none !important;
             }
 
             /* Custom Scrollbar */

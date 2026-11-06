@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v16.109.0-alpha",
+    date: "2026-11-06",
+    changes: [
+                "In Shared UI: Stripped out default browser purple tap highlights and focus outlines globally to ensure a clean, native mobile app feel.",
+                "In Shared UI: Re-engineered the global toast notification system to pin safely above mobile navigation bars and support dynamic action button themes.",
+                "In FoodTrackr: Fully integrated the new global shared toast engine, seamlessly migrating the custom Undo deletion UI into the central notification flow.",
+                "In TaskTrackr: Modernised the toast notification system to route through the shared-nav engine, bringing unified premium UI and interactive 'Undo' actions to task completions."
+    ]
+},
+    {
     version: "v16.108.0-alpha",
     date: "2026-11-05",
     changes: [
