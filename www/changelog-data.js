@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.110.0-alpha",
+    date: "2026-11-06",
+    changes: [
+        "In PlantTrackr: Replaced the bulky bottom floating action menu with a slim, icon-first top bar pinned seamlessly below the global shared navigation.",
+        "In PlantTrackr: Redesigned the main garden grid to support higher density.",
+        "In PlantTrackr: Overhauled plant cards into a compact 2/3 image split layout, featuring edge-to-edge photography on top and dense, data-rich badges on the bottom.",
+        "In PlantTrackr: Replaced the dedicated 'Select Multiple' button with an circular selection toggle overlaid directly on the top-left of plant thumbnails.",
+        "In PlantTrackr: Streamlined the filter and action bar with transparent inputs and darker, borderless styling to reduce visual clutter.",
+    ]
+},
+    {
     version: "v16.109.0-alpha",
     date: "2026-11-06",
     changes: [
