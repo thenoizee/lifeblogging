@@ -2339,16 +2339,15 @@
         };
         const toggleDisplay = window.toggleDisplay; // Keeps internal JS calls working too
 
-        // FIX: Firebase upload timeout to prevent infinite "saving log..." on bad networks
-        const uploadWithTimeout = (storageRef, file, timeoutMs = 15000) => {
+        // FIX: Increased timeout baseline to 45 seconds for mobile uploads
+        const uploadWithTimeout = (storageRef, file, timeoutMs = 45000) => {
             return Promise.race([
                 uploadBytes(storageRef, file),
-                new Promise((_, reject) => setTimeout(() => reject(new Error("Network timeout: Photo upload took too long. Please check your connection or switch to mobile data.")), timeoutMs))
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Network timeout: Photo upload took too long. Please check your mobile signal or switch to Wi-Fi.")), timeoutMs))
             ]);
         };
 
         // DEBUG: Advanced Hardware-accelerated memory path for image compression.
-        // Uses createImageBitmap to prevent Android Out-Of-Memory (OOM) browser kills returning from Camera.
         const compressImage = async (file, maxWidth = 800) => {
             if (!file || !file.type.match(/image.*/)) return file;
             const newName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
@@ -2358,11 +2357,10 @@
                 const cleanup = () => {
                     if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
                     if (canvas) { canvas.width = 0; canvas.height = 0; }
-                    canvas = null; ctx = null; // Free up heavy memory to stop mobile freezing
+                    canvas = null; ctx = null; 
                 };
 
                 try {
-                    // Modern Android/iOS memory-safe approach
                     if (window.createImageBitmap) {
                         const bmp = await createImageBitmap(file);
                         const maxDim = Math.max(bmp.width, bmp.height);
@@ -2378,7 +2376,7 @@
                         ctx = canvas.getContext('2d');
                         ctx.drawImage(bmp, 0, 0, targetW, targetH);
                         
-                        bmp.close(); // CRITICAL: Frees the uncompressed bitmap memory immediately!
+                        bmp.close(); 
 
                         const handleBlob = (blob) => {
                             cleanup();
@@ -2386,18 +2384,18 @@
                             else resolve(file);
                         };
 
+                        // FIX: Dropped quality to 0.6 to drastically speed up cellular uploads
                         if (canvas.convertToBlob) {
-                            canvas.convertToBlob({ type: 'image/jpeg', quality: 0.7 }).then(handleBlob).catch(() => { cleanup(); resolve(file); });
+                            canvas.convertToBlob({ type: 'image/jpeg', quality: 0.6 }).then(handleBlob).catch(() => { cleanup(); resolve(file); });
                         } else {
-                            canvas.toBlob(handleBlob, 'image/jpeg', 0.7);
+                            canvas.toBlob(handleBlob, 'image/jpeg', 0.6);
                         }
-                        return; // Exit successful modern path
+                        return; 
                     }
                 } catch (e) {
                     console.warn("[DEBUG] createImageBitmap failed, falling back to FileReader", e);
                 }
 
-                // Fallback for older browsers
                 const img = new Image();
                 const objectUrl = URL.createObjectURL(file);
                 
@@ -2423,7 +2421,8 @@
                         else resolve(file);
                     };
 
-                    canvas.toBlob(handleBlob, 'image/jpeg', 0.7);
+                    // FIX: Dropped quality to 0.6 here as well
+                    canvas.toBlob(handleBlob, 'image/jpeg', 0.6);
                 };
                 
                 img.onerror = () => { URL.revokeObjectURL(objectUrl); cleanup(); resolve(file); };
@@ -5814,8 +5813,8 @@ window.openFamilyTreeModal = (plantId) => {
                     console.log("[DEBUG] Walkthrough: Compressing and uploading photo...");
                     const compressedFile = await compressImage(walkthroughCurrentFile);
                     const storageRef = ref(storage, `users/${state.user.uid}/logs/${Date.now()}_${compressedFile.name}`);
-                    // FIX: Added timeout wrapper to prevent freeze on bad network
-                    await uploadWithTimeout(storageRef, compressedFile, 20000);
+                    // FIX: Bumped from 20s to 45s to allow slow mobile uplinks time to succeed
+                    await uploadWithTimeout(storageRef, compressedFile, 45000);
                     photoUrl = await getDownloadURL(storageRef);
                 }
 
@@ -6897,8 +6896,8 @@ window.saveCompostSettings = async () => {
                         if (file) {
                             const compressedFile = await compressImage(file);
                             const storageRef = ref(storage, `users/${state.user.uid}/logs/${Date.now()}_${compressedFile.name}`);
-                            // FIX: Added timeout wrapper to prevent infinite hangs on bad mobile networks
-                            await uploadWithTimeout(storageRef, compressedFile, 20000);
+                            // FIX: Bumped from 20s to 45s to allow slow mobile uplinks time to succeed
+                            await uploadWithTimeout(storageRef, compressedFile, 45000);
                             photoUrl = await getDownloadURL(storageRef);
                         }
 

@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v16.110.1-alpha",
+    date: "2026-11-06",
+    changes: [
+        "In PlantTrackr: Bug fix for photo upload timeout.",
+    ]
+},
+    {
     version: "v16.110.0-alpha",
     date: "2026-11-06",
     changes: [
