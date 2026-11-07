@@ -2014,7 +2014,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { initializeAuth, browserLocalPersistence, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, Timestamp, doc, deleteDoc, updateDoc, query, orderBy, onSnapshot, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+        import { getStorage, ref, uploadBytesResumable, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBL_FesZhiD3JQH8ftmDgTS8HBdVPL1cj8",
@@ -2339,94 +2339,98 @@
         };
         const toggleDisplay = window.toggleDisplay; // Keeps internal JS calls working too
 
-        // FIX: Increased timeout baseline to 45 seconds for mobile uploads
-        const uploadWithTimeout = (storageRef, file, timeoutMs = 45000) => {
-            return Promise.race([
-                uploadBytes(storageRef, file),
-                new Promise((_, reject) => setTimeout(() => reject(new Error("Network timeout: Photo upload took too long. Please check your mobile signal or switch to Wi-Fi.")), timeoutMs))
-            ]);
+        // 1. Firebase Resumable Upload Helper with Auto-Fallback
+        const uploadPhotoWithProgress = (storageRef, fileOrBlob, btnElement) => {
+            return new Promise((resolve, reject) => {
+                const metadata = { contentType: 'image/jpeg' }; 
+                const uploadTask = uploadBytesResumable(storageRef, fileOrBlob, metadata);
+                
+                let progressMoved = false;
+
+                // WATCHDOG: If stuck at 0% for 8 seconds (usually a Wi-Fi firewall/IPv6 block), fallback to brute-force POST
+                const watchdog = setTimeout(async () => {
+                    if (!progressMoved) {
+                        console.warn("[DEBUG] Resumable upload stalled by network. Falling back to standard upload...");
+                        uploadTask.cancel(); // Abort the blocked resumable session
+                        
+                        if (btnElement) {
+                            btnElement.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Forcing Upload...`;
+                        }
+                        
+                        try {
+                            // standard uploadBytes uses a single POST request which bypasses strict router NATs/firewalls
+                            await uploadBytes(storageRef, fileOrBlob, metadata);
+                            const downloadURL = await getDownloadURL(storageRef);
+                            resolve(downloadURL);
+                        } catch (fallbackErr) {
+                            reject(new Error("Your Wi-Fi network is actively blocking the image server. Please use mobile data."));
+                        }
+                    }
+                }, 8000);
+                
+                uploadTask.on('state_changed',
+                    (snapshot) => {
+                        const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+                        if (progress > 0) {
+                            progressMoved = true;
+                            clearTimeout(watchdog); // Network is healthy, cancel the fallback
+                        }
+                        if (btnElement) {
+                            btnElement.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Uploading ${progress}%`;
+                        }
+                    },
+                    (error) => {
+                        if (error.code === 'storage/canceled') return; // Ignore errors caused by our own watchdog
+                        clearTimeout(watchdog);
+                        reject(error);
+                    },
+                    async () => {
+                        clearTimeout(watchdog);
+                        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                        resolve(downloadURL);
+                    }
+                );
+            });
         };
 
-        // DEBUG: Advanced Hardware-accelerated memory path for image compression.
-        const compressImage = async (file, maxWidth = 800) => {
-            if (!file || !file.type.match(/image.*/)) return file;
-            const newName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+        // 2. Mobile-Safe Compression
+        const compressImage = (file, maxWidth = 800) => {
+            if (!file || !file.type.match(/image.*/)) return Promise.resolve(file);
+            
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const maxDim = Math.max(img.width, img.height);
+                        const ratio = maxDim > maxWidth ? maxWidth / maxDim : 1;
+                        const targetW = Math.round(img.width * ratio);
+                        const targetH = Math.round(img.height * ratio);
 
-            return new Promise(async (resolve) => {
-                let canvas, ctx;
-                const cleanup = () => {
-                    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    if (canvas) { canvas.width = 0; canvas.height = 0; }
-                    canvas = null; ctx = null; 
-                };
-
-                try {
-                    if (window.createImageBitmap) {
-                        const bmp = await createImageBitmap(file);
-                        const maxDim = Math.max(bmp.width, bmp.height);
-                        let ratio = 1;
-                        if (maxDim > maxWidth) ratio = maxWidth / maxDim;
-                        
-                        const targetW = Math.round(bmp.width * ratio);
-                        const targetH = Math.round(bmp.height * ratio);
-
-                        canvas = window.OffscreenCanvas ? new OffscreenCanvas(targetW, targetH) : document.createElement('canvas');
+                        const canvas = document.createElement('canvas');
                         canvas.width = targetW;
                         canvas.height = targetH;
-                        ctx = canvas.getContext('2d');
-                        ctx.drawImage(bmp, 0, 0, targetW, targetH);
-                        
-                        bmp.close(); 
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, targetW, targetH);
 
-                        const handleBlob = (blob) => {
-                            cleanup();
-                            if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
-                            else resolve(file);
-                        };
-
-                        // FIX: Dropped quality to 0.6 to drastically speed up cellular uploads
-                        if (canvas.convertToBlob) {
-                            canvas.convertToBlob({ type: 'image/jpeg', quality: 0.6 }).then(handleBlob).catch(() => { cleanup(); resolve(file); });
-                        } else {
-                            canvas.toBlob(handleBlob, 'image/jpeg', 0.6);
-                        }
-                        return; 
-                    }
-                } catch (e) {
-                    console.warn("[DEBUG] createImageBitmap failed, falling back to FileReader", e);
-                }
-
-                const img = new Image();
-                const objectUrl = URL.createObjectURL(file);
-                
-                img.onload = () => {
-                    URL.revokeObjectURL(objectUrl); 
-                    const maxDim = Math.max(img.width, img.height);
-                    let ratio = 1;
-                    if (maxDim > maxWidth) ratio = maxWidth / maxDim;
-                    
-                    const targetW = Math.round(img.width * ratio);
-                    const targetH = Math.round(img.height * ratio);
-                    
-                    canvas = document.createElement('canvas');
-                    canvas.width = targetW; canvas.height = targetH;
-                    ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, targetW, targetH);
-                    
-                    img.onload = null; img.onerror = null; img.src = 'data:,'; 
-                    
-                    const handleBlob = (blob) => {
-                        cleanup();
-                        if (blob) resolve(new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() }));
-                        else resolve(file);
+                        canvas.toBlob((blob) => {
+                            if (blob) {
+                                // iOS WEBKIT BUG FIX: 
+                                // Do NOT wrap this in 'new File()'. WebKit fails to stream dynamic files.
+                                // Instead, return the raw Blob and just attach a name property to it 
+                                // so the Firebase paths don't break downstream.
+                                blob.name = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+                                resolve(blob);
+                            } else {
+                                resolve(file);
+                            }
+                        }, 'image/jpeg', 0.6); // 0.6 quality keeps it fast on cellular
                     };
-
-                    // FIX: Dropped quality to 0.6 here as well
-                    canvas.toBlob(handleBlob, 'image/jpeg', 0.6);
+                    img.onerror = () => resolve(file);
+                    img.src = event.target.result;
                 };
-                
-                img.onerror = () => { URL.revokeObjectURL(objectUrl); cleanup(); resolve(file); };
-                img.src = objectUrl;
+                reader.onerror = () => resolve(file);
+                reader.readAsDataURL(file);
             });
         };
 
@@ -4603,10 +4607,10 @@ if (getEl("plant-seed-origin")) getEl("plant-seed-origin").value = plant.seedId 
                 }
 
                 if (file) {
+                    getEl("save-plant-btn").innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Compressing...`;
                     const compressedFile = await compressImage(file);
                     const storageRef = ref(storage, `users/${state.user.uid}/plants/${Date.now()}_${compressedFile.name}`);
-                    await uploadBytes(storageRef, compressedFile);
-                    data.photoUrl = await getDownloadURL(storageRef);
+                    data.photoUrl = await uploadPhotoWithProgress(storageRef, compressedFile, getEl("save-plant-btn"));
                 }
 
                 if (id) {
@@ -5810,12 +5814,10 @@ window.openFamilyTreeModal = (plantId) => {
             try {
                 let photoUrl = null;
                 if (walkthroughCurrentFile) {
-                    console.log("[DEBUG] Walkthrough: Compressing and uploading photo...");
+                    saveBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> Compressing...`;
                     const compressedFile = await compressImage(walkthroughCurrentFile);
                     const storageRef = ref(storage, `users/${state.user.uid}/logs/${Date.now()}_${compressedFile.name}`);
-                    // FIX: Bumped from 20s to 45s to allow slow mobile uplinks time to succeed
-                    await uploadWithTimeout(storageRef, compressedFile, 45000);
-                    photoUrl = await getDownloadURL(storageRef);
+                    photoUrl = await uploadPhotoWithProgress(storageRef, compressedFile, saveBtn);
                 }
 
                 const health = getEl("walkthrough-health-select").value;
@@ -6894,11 +6896,10 @@ window.saveCompostSettings = async () => {
 
                         let photoUrl = null;
                         if (file) {
+                            getEl("submit-log-btn").innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Compressing...`;
                             const compressedFile = await compressImage(file);
                             const storageRef = ref(storage, `users/${state.user.uid}/logs/${Date.now()}_${compressedFile.name}`);
-                            // FIX: Bumped from 20s to 45s to allow slow mobile uplinks time to succeed
-                            await uploadWithTimeout(storageRef, compressedFile, 45000);
-                            photoUrl = await getDownloadURL(storageRef);
+                            photoUrl = await uploadPhotoWithProgress(storageRef, compressedFile, getEl("submit-log-btn"));
                         }
 
                         // FIX: Dynamic mapping system for EVERY possible data update.
