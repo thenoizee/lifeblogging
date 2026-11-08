@@ -2,7 +2,19 @@
 
 export const changelogData = [
     {
-    version: "v16.111.0-alpha",
+    version: "v16.112.0-alpha",
+    date: "2026-11-08",
+    changes: [
+                "In VehicleManagr: Replaced isolated notification engine with standard shared-nav toasts.",
+                "In VehicleManagr: Applied new dynamic premium aesthetics to layout components including radial-gradient body backgrounds, heavily rounded modal corners (rounded-3xl), and backdrop-blur overlays.",
+                "In VehicleManagr: Added structural styling upgrades (active scale-down effects) to buttons and unified border radii across input elements.",
+                "In VehicleManagr: Enhanced the dashboard header stat metrics by adding 'Current Cost/Mi' based on the last full fueling cycle calculation.",
+                "In VehicleManagr: Standardized the history activity log table with strict uppercase styling and wider spacing for improved hierarchy.",
+                "In VehicleManagr: Introduced an expandable full-screen toggle button to all analytic dashboard charts for easier mobile and deep-dive analysis."
+    ]
+},
+    {
+    version: "v16.111.2-alpha",
     date: "2026-11-06",
     changes: [
         "In PlantTrackr: Bug fix for photo upload timeout.",
