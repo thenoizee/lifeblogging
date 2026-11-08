@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v16.113.0-alpha",
+    date: "2026-11-08",
+    changes: [
+        "In VidTrackr: Implemented input debouncing in the search handler and added keydown listeners to prevent URL hash thrashing while typing.",
+        "In VidTrackr: Enforced strict CSS aspect ratios (aspect-[2/3]) on card images to eliminate layout shifts during TMDB image hydration.",
+        "In VidTrackr: Replaced manual Firebase history fetches with a real-time onSnapshot listener to optimize database reads and keep the global cache synced.",
+        "In VidTrackr: Fixed memory leaks by properly tracking and removing global document keydown event listeners before reassigning them.",
+        "In VidTrackr: Unified vertical, horizontal, and landscape media cards into a single createCardHtml factory function to standardize UI rendering.",
+        "In VidTrackr: Reduced sessionStorage bloat by mapping optPayload to store only essential data, preventing QuotaExceeded errors while preserving season/episode info for skeletons.",
+        "In VidTrackr: Eliminated network waterfalls in the detail view by running TMDB API calls and local history fetches concurrently via Promise.all.",
+        "In VidTrackr: Consolidated state map redundancy by converting userRatings into a lightweight Proxy object that reads and writes directly to userRatingDetails.",
+        "In VidTrackr: Updated the optimistic UI ID matcher to properly reconstruct and match composite TMDB episode IDs (e.g., 1234-1-2).",
+        "In VidTrackr: Added a thread-yielding timeout to force the browser to instantly paint the skeleton UI before blocking the main thread with network requests.",
+        "In VidTrackr: Switched TV show API calls to use aggregate_credits and extracted character names from the roles array to properly load the full series regular cast."
+    ]
+},
+    {
     version: "v16.112.0-alpha",
     date: "2026-11-08",
     changes: [

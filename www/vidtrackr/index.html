@@ -493,8 +493,15 @@ const PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000
     let selectedPlatform = null;
     // Track active search request to prevent stale async responses from overwriting results
     let activeSearchRequestId = 0;
-    let userRatings = new Map(); 
-    let userRatingDetails = new Map(); // <--- Added to track exact timestamps
+    // Consolidate state maps: userRatingDetails is the single source of truth.
+    // userRatings is now a lightweight Proxy that automatically extracts the rating number from userRatingDetails.
+    let userRatingDetails = new Map();
+    let userRatings = {
+        get: (key) => userRatingDetails.get(key)?.rating || null,
+        set: (key, val) => userRatingDetails.set(key, { rating: val, ratedAt: new Date().toISOString() }),
+        delete: (key) => userRatingDetails.delete(key),
+        has: (key) => userRatingDetails.has(key)
+    };
     let userPlayback = new Map();
     let historyPage = 1;
     let isFetchingHistory = false;
@@ -2118,27 +2125,40 @@ if (headerRight) {
             return url;
         }
 
-        const createCardHtml = (item, typeOverride = null) => {
-            // Determine type and normalize data structure
-            let type = typeOverride || item.media_type || item.type; // TMDB uses media_type
-            if (type === 'tv') type = 'show'; // Prevent TMDB 'tv' type from bleeding into the router
+        const createCardHtml = (item, options = {}) => {
+            const { layout = 'vertical', contextHtml = '', actionHtml = '', progress = 0, customSub = null } = options;
+            
+            let type = item.media_type || item.type; 
+            if (type === 'tv') type = 'show'; 
             const data = item[type] || item;
             
-            // Normalize IDs based on primary data source to prevent routing mismatches. Ensure we fallback to data.id to prevent undefined target IDs that break loading.
             let targetId = (primaryDataSource === 'tmdb') ? (data.ids?.tmdb || data.id) : (data.ids?.trakt || data.id);
             const fallbackId = data.ids?.trakt || data.id || data.ids?.tmdb;
             
-            if (!type || !data || !fallbackId) {
-                console.warn('Skipping invalid item:', item);
-                return ''; 
-            }
+            if (!type || !data || !fallbackId) return ''; 
             
-            // Inject known data into fast storage so the next page can render instantly without waiting for the network
-            const optimisticPayload = encodeURIComponent(JSON.stringify(data).replace(/'/g, "%27"));
+            // Preserve lightweight episode/show context so the detail skeleton paints instantly without 404ing
+            // Preserve lightweight episode/show context so the detail skeleton paints instantly
+            const optPayload = { 
+                id: data.id, 
+                ids: data.ids, 
+                title: data.title || data.name, 
+                poster_path: data.poster_path, 
+                backdrop_path: data.backdrop_path,
+                still_path: data.still_path,
+                season: data.season !== undefined ? data.season : data.season_number,
+                number: data.number !== undefined ? data.number : data.episode_number,
+                show: (type === 'episode' && (item.show || data.show)) ? { 
+                    title: item.show?.title || item.show?.name || data.show?.title || data.show?.name, 
+                    ids: item.show?.ids || data.show?.ids, 
+                    poster_path: item.show?.poster_path || data.show?.poster_path, 
+                    backdrop_path: item.show?.backdrop_path || data.show?.backdrop_path 
+                } : null
+            };
+            const optimisticPayload = encodeURIComponent(JSON.stringify(optPayload).replace(/'/g, "%27"));
             const setOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${optimisticPayload}')); `;
             
-            const idsStr = encodeURIComponent(JSON.stringify(data.ids || {}));
-            let clickHandler = targetId ? `${setOpt} location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${idsStr}')`;
+            let clickHandler = targetId ? `${setOpt} location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${encodeURIComponent(JSON.stringify(data.ids || {}))}')`;
             
             if (targetId && type === 'episode' && primaryDataSource === 'tmdb') {
                 const showTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
@@ -2147,92 +2167,95 @@ if (headerRight) {
                 if (showTmdb && sNum !== undefined) clickHandler = `${setOpt} location.hash='#detail/episode/${showTmdb}-${sNum}-${eNum}'`;
             }
 
-            const img = getImage(data, type);
-            const typeColor = getTypeColor(type);
-            const imgId = `card-img-${type}-${fallbackId}`; // Generate a targeting ID
+            const imgId = `card-img-${type}-${fallbackId}-${layout}`;
+            const useLandscapeImage = layout === 'landscape' || layout === 'horizontal';
+            const img = getImage(data, type === 'episode' ? 'episode' : type, useLandscapeImage);
             
-            // Sanitize titles extracted from APIs before they hit the DOM
-            const showTitle = sanitizeHTML(data.show?.title || data.show?.name || item.show?.title || item.show?.name || item.episode?.show?.title);
+            const showTitle = sanitizeHTML(data.show?.title || data.show?.name || item.show?.title || item.show?.name);
             let displayTitle = sanitizeHTML(data.title || data.name || 'Unknown Title');
-            if (type === 'episode' && showTitle) displayTitle = `${showTitle}: ${displayTitle}`;
+            if (type === 'episode' && showTitle && layout !== 'horizontal') displayTitle = `${showTitle}: ${displayTitle}`;
             
             const dateString = data.release_date || data.first_air_date || data.air_date || data.released;
             let displayDate = dateString ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : (data.year || 'N/A');
             
-            let displaySub = displayDate;
-            if (type === 'show') {
-                const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
-                if (epCount) displaySub += ` • ${epCount} Eps`;
-            } else if (type === 'episode') {
-                const sNum = data.season !== undefined ? data.season : (data.season_number !== undefined ? data.season_number : '?');
-                const eNum = data.number !== undefined ? data.number : (data.episode_number !== undefined ? data.episode_number : '?');
-                displaySub = `S${sNum}E${eNum} • ${displayDate}`;
+            let displaySub = customSub || displayDate;
+            if (!customSub) {
+                if (type === 'show') {
+                    const epCount = data.number_of_episodes || data.aired_episodes || data.episode_count;
+                    if (epCount) displaySub += ` • ${epCount} Eps`;
+                } else if (type === 'episode') {
+                    const sNum = data.season !== undefined ? data.season : (data.season_number !== undefined ? data.season_number : '?');
+                    const eNum = data.number !== undefined ? data.number : (data.episode_number !== undefined ? data.episode_number : '?');
+                    displaySub = `S${sNum}E${eNum} • ${displayDate}`;
+                }
             }
 
-            // Fallback rating logic for TMDB's vote_average
             const ratingVal = data.rating || data.vote_average || 0;
-            
-            let compositeId = null;
-            if (type === 'episode') {
-                const sTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
-                const sNum = data.season || data.season_number;
-                const eNum = data.number || data.episode_number;
-                if (sTmdb && sNum !== undefined && eNum !== undefined) compositeId = `${sTmdb}-${sNum}-${eNum}`;
-            }
-
-            // Improved Rating Logic globally referencing all known map keys
-            // Add comments so I can easily understand what it means and edit it later
-            // Optimize map lookups to prevent excessive parsing CPU overhead on grid renders
-            const traktStr = String(data.ids?.trakt || '');
-            const traktNum = traktStr ? parseInt(traktStr) : NaN;
-            const tmdbStr = String(data.ids?.tmdb || targetId || '');
-            const tmdbNum = tmdbStr ? parseInt(tmdbStr) : NaN;
-
-            const myRating = (compositeId ? userRatings.get(compositeId) : null)
-                || (traktStr ? userRatings.get(traktStr) : null)
-                || (!isNaN(traktNum) ? userRatings.get(traktNum) : null)
-                || (type !== 'episode' && tmdbStr ? userRatings.get(tmdbStr) : null)
-                || (type !== 'episode' && !isNaN(tmdbNum) ? userRatings.get(tmdbNum) : null);
+            const tId = String(data.ids?.trakt || '');
+            const tmdbId = String(data.ids?.tmdb || targetId || '');
+            const myRating = userRatings.get(tId) || (!isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null) || (type !== 'episode' && tmdbId ? userRatings.get(tmdbId) : null);
             
             const tmdbRatingHtml = ratingVal > 0 ? `<span class="text-white/80 flex items-center gap-1"><i class="fa-solid fa-star text-yellow-500"></i> ${ratingVal.toFixed(1)}</span>` : '';
             const myRatingHtml = myRating ? `<span class="text-green-400 font-bold flex items-center gap-1 ${ratingVal > 0 ? 'ml-2 border-l border-white/20 pl-2' : ''}"><i class="fa-solid fa-user-check"></i> ${myRating}</span>` : '';
-            const ratingHtml = `<div class="flex items-center">${tmdbRatingHtml}${myRatingHtml}</div>`;
+            const ratingHtml = (tmdbRatingHtml || myRatingHtml) ? `<div class="flex items-center">${tmdbRatingHtml}${myRatingHtml}</div>` : '';
 
-            // McMaster Fix: Silent Prefetching for ALL media types
-            // Downloads the data instantly into fast RAM the millisecond the user hovers/touches the card.
-            let hoverPrefetch = '';
-            if (type === 'episode') {
-                const sTmdb = data.show?.ids?.tmdb || item.show?.ids?.tmdb;
-                const sNum = data.season || data.season_number;
-                const eNum = data.number || data.episode_number;
-                if (sTmdb && sNum !== undefined && eNum !== undefined) {
-                    // Prefetch BOTH the episode details and the parent show details so the detail page opens in 0ms
-                    hoverPrefetch = `onmouseenter="if(window.fetchTMDB) { window.fetchTMDB('/tv/${sTmdb}?append_to_response=external_ids,aggregate_credits,watch/providers').catch(()=>{}); window.fetchTMDB('/tv/${sTmdb}/season/${sNum}/episode/${eNum}?append_to_response=credits,videos,images,external_ids').catch(()=>{}); }"`;
-                }
-            } else {
-                const prefetchEndpoint = `/${type === 'show' ? 'tv' : 'movie'}/${targetId}?append_to_response=credits,videos,recommendations,external_ids,watch/providers`;
-                hoverPrefetch = `onmouseenter="if(window.fetchTMDB) window.fetchTMDB('${prefetchEndpoint}').catch(()=>{});"`;
+            // Layout Renderers
+            if (layout === 'horizontal') {
+                return `
+                <div class="card p-0 rounded-xl flex flex-row overflow-hidden border ${progress > 0 && progress < 100 ? 'border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.15)]' : 'border-gray-800'} hover:border-[var(--primary)] transition cursor-pointer shadow-lg group relative animate-fade" onclick="${clickHandler}">
+                    <div class="w-[40%] sm:w-1/3 aspect-video relative bg-gray-900 flex-shrink-0">
+                        <img id="${imgId}" src="${img}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_IMG}'">
+                        ${progress > 0 ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-700"><div class="bg-blue-500 h-full shadow-[0_0_5px_#3b82f6]" style="width: ${progress}%"></div></div>` : ''}
+                        ${contextHtml}
+                    </div>
+                    <div class="w-[60%] sm:w-2/3 p-3 flex flex-col bg-[var(--card)] relative">
+                        ${showTitle ? `<h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5 break-words">${showTitle}</h4>` : ''}
+                        <h3 class="font-bold text-sm leading-tight mb-1 break-words whitespace-normal text-gray-200 group-hover:text-white transition flex items-center flex-wrap gap-y-1">${displayTitle} ${ratingHtml ? `<span class="ml-2 bg-black/50 px-1.5 py-0.5 rounded border border-gray-700/50 text-[10px]">${ratingHtml}</span>` : ''}</h3>
+                        <p class="text-gray-500 text-xs mb-3">${displaySub}</p>
+                        ${actionHtml ? `<div class="mt-auto relative z-10 pt-2 border-t border-gray-800/50">${actionHtml}</div>` : ''}
+                    </div>
+                </div>`;
             }
 
+            if (layout === 'landscape') {
+                return `
+                <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer animate-fade" onclick="${clickHandler}">
+                    <div class="aspect-video relative">
+                        <img id="${imgId}" src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:scale-110" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_IMG}'">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
+                        <div class="absolute bottom-0 left-0 p-4 w-full">
+                            <h4 class="text-white font-bold break-words shadow-black drop-shadow-md text-sm md:text-base flex items-center">${displayTitle}</h4>
+                            <div class="flex items-center justify-between mt-1">
+                                <div class="flex items-center overflow-hidden">
+                                    <span class="text-xs text-gray-300 font-mono truncate">${displaySub}</span>
+                                    ${ratingHtml ? `<div class="ml-2 bg-black/50 px-1.5 py-0.5 rounded border border-gray-700/50 text-[10px]">${ratingHtml}</div>` : ''}
+                                </div>
+                                <span class="text-[10px] bg-[var(--primary)] text-white px-1.5 py-0.5 rounded font-bold uppercase flex-shrink-0 ml-2">${type}</span>
+                            </div>
+                            ${contextHtml ? `<div class="mt-2 text-[10px] text-gray-400 font-montserrat border-t border-gray-700 pt-1 flex items-center">${contextHtml}</div>` : ''}
+                        </div>
+                    </div>
+                </div>`;
+            }
+
+            // Default Vertical Grid Layout
+            const typeColor = getTypeColor(type);
             return `
-            <div class="group relative card rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-[1.02] transition duration-300 cursor-pointer border border-gray-800" onclick="${clickHandler}" ${hoverPrefetch}>
+            <div class="group relative card rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-[1.02] transition duration-300 cursor-pointer border border-gray-800 animate-fade" onclick="${clickHandler}">
                 <div class="aspect-[2/3] relative bg-gray-800">
                     <img id="${imgId}" src="${img}" class="w-full h-full object-cover object-center transition duration-500 group-hover:opacity-60" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_IMG}'">
-                    <div class="absolute inset-0 flex flex-col items-center justify-center opacity-0 md:group-hover:opacity-100 transition duration-300 hidden md:flex">
-                        <span class="${getBgColor(type)} text-white px-4 py-2 rounded-full font-bold text-sm shadow-lg mb-2 transform translate-y-4 group-hover:translate-y-0 transition">View Details</span>
-                    </div>
                     <div class="absolute top-2 right-2 bg-black/70 px-2 py-1 rounded-md text-xs font-bold backdrop-blur-md border border-white/10 shadow-sm">
                         ${ratingHtml}
                     </div>
+                    ${contextHtml}
                 </div>
-                <div class="p-4 border-t border-gray-800">
-                    <!-- Added comments so I can easily understand what it means and edit it later -->
-                    <!-- Removed 'truncate' and added 'break-words whitespace-normal' so long titles wrap -->
-                    <h3 class="font-bold text-sm whitespace-normal break-words text-gray-100 group-hover:${typeColor} transition-colors" title="${displayTitle.replace(/"/g, '&quot;')}">${displayTitle}</h3>
-                    <div class="flex justify-between items-center mt-2">
+                <div class="p-4 border-t border-gray-800 bg-[var(--card)] flex flex-col h-full">
+                    <h3 class="font-bold text-sm whitespace-normal break-words text-gray-100 group-hover:${typeColor} transition-colors line-clamp-2" title="${displayTitle.replace(/"/g, '&quot;')}">${displayTitle}</h3>
+                    <div class="flex justify-between items-center mt-2 flex-wrap gap-1">
                         <p class="text-xs text-gray-400 font-medium">${displaySub}</p>
                         <p class="text-[10px] ${typeColor} border ${getBorderColor(type)} px-1.5 py-0.5 rounded uppercase font-bold tracking-wide opacity-70">${type}</p>
                     </div>
+                    ${actionHtml ? `<div class="mt-3 relative z-10">${actionHtml}</div>` : ''}
                 </div>
             </div>`;
         };
@@ -2648,82 +2671,30 @@ async function renderDashboard() {
                 if (window.VIDTRACKR_DEBUG) console.log("Rendering Last Watched UI instantly...");
 
                 const createCard = (h) => {
-                    const type = h.type;
-                    const data = h.media;
-                    // Safely extract TMDB ID for last watched items from history
-                    const id = (primaryDataSource === 'tmdb')
-                        ? (data.ids?.tmdb || data.tmdb || data.id || data.ids?.trakt)
-                        : (data.id || (data.ids && data.ids.trakt));
-                    
-                    let title = data.title || data.name;
-                    let subTitle = data.year || '';
-                    
-                    if (type === 'episode') {
-                        const showName = data.show?.title || 'TV Episode';
-                        // Prevent doubling the title if the saved data.title already contains the showName
-                        const rawEpTitle = data.name || data.title || 'Unknown Episode';
-                        title = rawEpTitle.includes(showName) ? rawEpTitle : `${showName}: ${rawEpTitle}`;
-                        
-                        const sNum = data.season || data.season_number;
-                        const eNum = data.number || data.episode_number;
-                        subTitle = (sNum !== undefined && eNum !== undefined) ? `S${sNum}E${eNum}` : '';
-                    } else {
-                        if (!subTitle && data.release_date) subTitle = data.release_date.substring(0,4);
-                    }
-
-                    const img = getImage(data, type === 'episode' ? 'episode' : 'movie', true);
-                    
-                    // Create TMDB-compatible hash for episodes (ShowID-Season-Episode)
-                    let targetHash = `#detail/${type}/${id}`;
-                    if (type === 'episode') {
-                        const sId = data.show?.ids?.tmdb || data.show?.ids?.trakt || data.show?.id;
-                        targetHash = `#detail/episode/${sId}-${data.season || data.season_number}-${data.number || data.episode_number}`;
-                    }
-                    
                     const dateObj = new Date(h.watched_at);
-                    const dateTimeDisplay = `${dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})} @ ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                    const dateTimeDisplay = `<i class="fa-regular fa-clock mr-1 text-[var(--primary)]"></i> ${dateObj.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'})} @ ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
                     
-                    let compositeId = null;
-                    if (type === 'episode') {
-                        const s = data.season || data.season_number;
-                        const e = data.number || data.episode_number;
-                        const sTmdb = data.show?.ids?.tmdb;
-                        if (sTmdb && s !== undefined && e !== undefined) compositeId = `${sTmdb}-${s}-${e}`;
+                    let subTitle = h.media.year || '';
+                    if (h.type === 'episode') {
+                        const sNum = h.media.season || h.media.season_number;
+                        const eNum = h.media.number || h.media.episode_number;
+                        subTitle = (sNum !== undefined && eNum !== undefined) ? `S${sNum}E${eNum}` : '';
+                    } else if (!subTitle && h.media.release_date) {
+                        subTitle = h.media.release_date.substring(0,4);
                     }
-                    const tId = String(data.ids?.trakt || '');
-                    const tmdbId = String(data.ids?.tmdb || '');
-                    
-                    // Prevent Episode TMDB ID collisions
-                    const myRating = userRatings.get(compositeId) || userRatings.get(tId) || (tId && !isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null) || (type !== 'episode' ? userRatings.get(tmdbId) : null) || (type !== 'episode' && tmdbId && !isNaN(Number(tmdbId)) ? userRatings.get(parseInt(tmdbId)) : null);
-                    const rDetails = userRatingDetails.get(compositeId) || userRatingDetails.get(tId) || (tId && !isNaN(Number(tId)) ? userRatingDetails.get(parseInt(tId)) : null) || (type !== 'episode' ? userRatingDetails.get(tmdbId) : null) || (type !== 'episode' && tmdbId && !isNaN(Number(tmdbId)) ? userRatingDetails.get(parseInt(tmdbId)) : null);
-                    
-                    // Rely strictly on the rating details map to prevent history import pollution
-                    const trueRatedAt = rDetails ? rDetails.ratedAt : null;
-                    const ratedTimeStr = trueRatedAt ? new Date(trueRatedAt).toLocaleDateString([], {month:'short', day:'numeric'}) : '';
-                    
-                    const ratingHtml = myRating ? `<div class="flex items-center ml-2 bg-black/50 px-1.5 py-0.5 rounded gap-1.5"><span class="text-green-400 font-bold flex items-center gap-1 text-[10px]"><i class="fa-solid fa-user-check"></i> ${myRating}</span>${ratedTimeStr ? `<span class="text-[8px] text-gray-400">${ratedTimeStr}</span>` : ''}</div>` : '';
 
-                    return `
-                        <div class="relative card rounded-xl overflow-hidden shadow-lg border border-gray-800 group cursor-pointer animate-fade" onclick="location.hash='${targetHash}'">
-                            <div class="aspect-video relative">
-                                <img id="last-watched-img-${h.id}" src="${img}" class="w-full h-full object-cover transition duration-500 group-hover:scale-110" onerror="this.src='${PLACEHOLDER_IMG}'">
-                                <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
-                                <div class="absolute bottom-0 left-0 p-4 w-full">
-                                    <h4 class="text-white font-bold break-words shadow-black drop-shadow-md text-sm md:text-base flex items-center">${title}</h4>
-                                    <div class="flex items-center justify-between mt-1">
-                                        <div class="flex items-center overflow-hidden">
-                                            <span class="text-xs text-gray-300 font-mono truncate">${subTitle}</span>
-                                            ${ratingHtml}
-                                        </div>
-                                        <span class="text-[10px] bg-[var(--primary)] text-white px-1.5 py-0.5 rounded font-bold uppercase flex-shrink-0 ml-2">${type}</span>
-                                    </div>
-                                    <div class="mt-2 text-[10px] text-gray-400 font-montserrat border-t border-gray-700 pt-1 flex items-center">
-                                        <i class="fa-regular fa-clock mr-1 text-[var(--primary)]"></i> ${dateTimeDisplay}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
+                    // Format it so createCardHtml handles it natively
+                    const pseudoItem = {
+                        type: h.type,
+                        media_type: h.type,
+                        [h.type]: h.media
+                    };
+
+                    return createCardHtml(pseudoItem, {
+                        layout: 'landscape',
+                        contextHtml: dateTimeDisplay,
+                        customSub: subTitle
+                    });
                 };
 
                 const top3 = history.slice(0, 3).map(createCard).join('');
@@ -3195,56 +3166,20 @@ async function loadUpNext() {
 
                 const isMovie = item.type === 'movie';
                 const data = isMovie ? (item.movie || item) : (item.episode || item.episode);
-                
                 if (!data || !data.ids || !data.ids.trakt) return '';
 
                 const showTitle = !isMovie ? item.show.title : null;
                 const title = isMovie ? (item.movie?.title || item.title) : data.title;
-
-                let cId = null;
-                if (!isMovie) {
-                    const sTmdb = item.show?.ids?.tmdb;
-                    const s = data.season || data.season_number;
-                    const e = data.number || data.episode_number;
-                    if (sTmdb && s !== undefined && e !== undefined) cId = `${sTmdb}-${s}-${e}`;
-                }
-                const tId = String(data.ids?.trakt || '');
-                const tmdbId = String(data.ids?.tmdb || data.id || '');
-                const myRating = (cId ? userRatings.get(cId) : null) || userRatings.get(tId) || (!isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null) || (isMovie ? userRatings.get(tmdbId) || (!isNaN(Number(tmdbId)) ? userRatings.get(parseInt(tmdbId)) : null) : null);
-                const ratingBadgeHtml = myRating ? `<span class="text-green-400 font-bold ml-2 text-[10px] border border-green-500/30 px-1 rounded bg-green-900/20 shadow-sm inline-flex items-center"><i class="fa-solid fa-user-check mr-1"></i> ${myRating}</span>` : '';
-                const sub = isMovie ? (item.movie?.year || item.year) : `S${data.season} E${data.number}`;
-                const img = getImage(item, null, true);
                 const progress = item.progress || 0;
-                let typeBadge = '';
-                if (!isMovie && data.episode_type && data.episode_type !== 'standard') {
-                                    const formatType = data.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                    let typeColor = 'bg-purple-900/50 text-purple-300 border-purple-800';
-                                    if (data.episode_type.includes('finale')) typeColor = 'bg-red-900/50 text-red-300 border-red-800';
-                                    if (data.episode_type.includes('premiere')) typeColor = 'bg-blue-900/50 text-blue-300 border-blue-800';
-                                    typeBadge = `<span class="text-[9px] ${typeColor} border px-1 py-0.5 rounded uppercase font-bold tracking-wide shadow-sm ml-2 align-middle inline-block">${formatType}</span>`;
-                                }
-                                
-                                // Append the newly released badge to the UI logic if flagged
-                                if (item.isNewRelease) {
-                                    typeBadge += `<span class="text-[9px] bg-[var(--primary)] text-white border border-red-400 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide shadow-[0_0_8px_rgba(237,34,36,0.6)] ml-2 align-middle inline-block animate-pulse"><i class="fa-solid fa-fire mr-1"></i>New</span>`;
-                                }
                 
                 const jsonStr = JSON.stringify({
-                    ids: data.ids, 
-                    title: isMovie ? title : `${showTitle}: ${title}`, 
-                    name: data.title || data.name,
-                    type: item.type, 
-                    runtime: data.runtime,
-                    season: data.season || data.season_number,
-                    number: data.number || data.episode_number,
-                    still_path: data.still_path,
-                    backdrop_path: data.backdrop_path,
-                    poster_path: data.poster_path,
+                    ids: data.ids, title: isMovie ? title : `${showTitle}: ${title}`, name: data.title || data.name,
+                    type: item.type, runtime: data.runtime, season: data.season || data.season_number, number: data.number || data.episode_number,
+                    still_path: data.still_path, backdrop_path: data.backdrop_path, poster_path: data.poster_path,
                     show: isMovie ? null : { title: showTitle, ids: item.show?.ids, poster_path: item.show?.poster_path, backdrop_path: item.show?.backdrop_path }
                 }).replace(/'/g, "&apos;");
 
                 let actionBtns = '';
-                
                 if (item.isResume) {
                     actionBtns = `
                     <div class="flex gap-2 w-full h-10">
@@ -3253,7 +3188,6 @@ async function loadUpNext() {
                         <button onclick="event.stopPropagation(); window.removeProgress(${item.playbackId})" class="h-full bg-gray-700 hover:bg-red-600 text-white text-xs px-3 rounded-lg transition font-bold shadow flex items-center justify-center" title="Drop / Remove Progress"><i class="fa-solid fa-xmark"></i></button>
                     </div>`;
                 } else {
-                    // Route "Hide" action to the parent Show ID to hide the entire series queue
                     const hideId = !isMovie ? (item.show?.ids?.tmdb || item.show?.ids?.trakt || item.show?.id || data.ids.trakt) : data.ids.trakt;
                     const hideType = !isMovie ? 'show' : 'movie';
                     const hideTitle = !isMovie ? showTitle : title;
@@ -3266,35 +3200,17 @@ async function loadUpNext() {
                     </div>`;
                 }
 
-                const setOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${encodeURIComponent(jsonStr).replace(/'/g, "%27")}')); `;
-                let clickTargetId = (primaryDataSource === 'tmdb') ? (data.ids.tmdb || data.ids.trakt) : data.ids.trakt;
-                if (item.type === 'episode' && primaryDataSource === 'tmdb') {
-                    const s = data.season || data.season_number;
-                    const e = data.number || data.episode_number;
-                    const sTmdb = item.show?.ids?.tmdb;
-                    if (sTmdb && s !== undefined && e !== undefined) clickTargetId = `${sTmdb}-${s}-${e}`;
-                }
+                const contextHtml = `<div class="absolute top-2 left-2 ${item.isResume ? 'bg-blue-600' : 'bg-black/70'} text-white px-1.5 py-0.5 rounded text-[10px] font-bold shadow uppercase tracking-wider">${item.isResume ? 'Resume' : 'Up Next'}</div>`;
                 
-                return `
-                <div class="card p-0 rounded-xl flex flex-row overflow-hidden border ${item.isResume ? 'border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.15)]' : 'border-gray-800'} hover:border-[var(--primary)] transition cursor-pointer shadow-lg group relative animate-fade" onclick="${setOpt} location.hash='#detail/${item.type}/${clickTargetId}'">
-                    
-                    <div class="w-[40%] sm:w-1/3 aspect-video relative bg-gray-900 flex-shrink-0">
-                        <img src="${img}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition" loading="lazy" decoding="async" onerror="this.src='${PLACEHOLDER_IMG}'">
-                        ${item.isResume ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-700"><div class="bg-blue-500 h-full shadow-[0_0_5px_#3b82f6]" style="width: ${progress}%"></div></div>` : ''}
-                        <div class="absolute top-2 left-2 ${item.isResume ? 'bg-blue-600' : 'bg-black/70'} text-white px-1.5 py-0.5 rounded text-[10px] font-bold shadow uppercase tracking-wider">${item.isResume ? 'Resume' : 'Up Next'}</div>
-                    </div>
-                    
-                    <div class="w-[60%] sm:w-2/3 p-3 flex flex-col bg-[var(--card)] relative">
-                        ${showTitle ? `<h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5 break-words">${showTitle}</h4>` : ''}
-                        <!-- Removed line-clamp-1 so titles wrap correctly in Up Next -->
-                        <h3 class="font-bold text-sm leading-tight mb-1 break-words whitespace-normal text-gray-200 group-hover:text-white transition flex items-center flex-wrap gap-y-1">${title} ${typeBadge}${ratingBadgeHtml}</h3>
-                        <p class="text-gray-500 text-xs mb-3">${sub}${item.isResume ? `<span class="text-blue-400 ml-1">(${Math.round(progress)}%)</span>` : ''}</p>
-                        
-                        <div class="mt-auto relative z-10 pt-2 border-t border-gray-800/50">
-                             ${actionBtns}
-                        </div>
-                    </div>
-                </div>`;
+                const customSub = (isMovie ? (item.movie?.year || item.year) : `S${data.season || data.season_number} E${data.number || data.episode_number}`) + (item.isResume ? `<span class="text-blue-400 ml-1">(${Math.round(progress)}%)</span>` : '');
+
+                return createCardHtml(item, {
+                    layout: 'horizontal',
+                    contextHtml: contextHtml,
+                    actionHtml: actionBtns,
+                    progress: progress,
+                    customSub: customSub
+                });
             };
 
             // Accordion Logic: Show top 3 items, hide the rest
@@ -3580,8 +3496,17 @@ async function renderPerson(id) {
                         const optTrakt = String(optData.ids?.trakt || '');
                         const optTmdb = String(optData.ids?.tmdb || optData.id || '');
                         const reqId = String(id);
-                        // Accept if it's an exact match, or if it's a composite TMDB episode ID (1234-1-2) that contains the requested ID
-                        if (reqId === optTrakt || reqId === optTmdb || optTrakt.includes(reqId) || reqId.includes(optTrakt)) {
+                        
+                        let compositeOptId = '';
+                        if (type === 'episode') {
+                            const sTmdb = optData.show?.ids?.tmdb;
+                            const s = optData.season;
+                            const e = optData.number;
+                            if (sTmdb && s !== undefined && e !== undefined) compositeOptId = `${sTmdb}-${s}-${e}`;
+                        }
+
+                        // Accept exact matches, composite IDs, or legacy Trakt ID strings
+                        if (reqId === optTrakt || reqId === optTmdb || reqId === compositeOptId || optTrakt.includes(reqId) || reqId.includes(optTrakt)) {
                             isOptimisticMatch = true;
                         }
                     }
@@ -3691,6 +3616,10 @@ async function renderPerson(id) {
                 if (!optHtml) showLoader();
                 if (window.appNav) window.appNav.setSyncState('syncing');
             }
+
+            // CRITICAL FIX: Force the browser to paint the Optimistic UI skeleton instantly 
+            // BEFORE we block the main thread waiting for TMDB network responses.
+            await new Promise(resolve => setTimeout(resolve, 0));
 
             try {
                 if (location.hash !== currentHash) { hideLoader(); return; } // Abort if navigated away
@@ -3857,19 +3786,23 @@ let listsIn = [];
                         // Request external_ids to capture IMDB IDs for episodes
                         tmdbEndpoint = `/tv/${resolvedShowId}/season/${epSeason}/episode/${epNum}?append_to_response=credits,videos,images,external_ids`;
                         
-                        // Fetch the parent TV show and the specific episode in PARALLEL (0ms if prefetched in sessionStorage!)
-                        const [fetchedShow, fetchedEp] = await Promise.all([
+                        // PERFORMANCE FIX: Fetch TMDB API and Local Firebase History concurrently!
+                        const [fetchedShow, fetchedEp, localHistData] = await Promise.all([
                             fetchTMDB(`/tv/${resolvedShowId}?append_to_response=external_ids,aggregate_credits,watch/providers`),
-                            fetchTMDB(tmdbEndpoint)
+                            fetchTMDB(tmdbEndpoint),
+                            localHistoryFetch()
                         ]);
                         showInfo = fetchedShow;
                         item = fetchedEp;
+                        history = localHistData;
                         showPeople = { cast: showInfo.aggregate_credits?.cast || showInfo.credits?.cast || [] };
                         showInfo.title = showInfo.name;
                         showInfo.ids = { tmdb: resolvedShowId, trakt: resolvedShowId, imdb: showInfo.external_ids?.imdb_id }; 
                     } else {
                         // Add watch/providers to append_to_response to fetch 'Where to Watch' data alongside movie/show info
-                        tmdbEndpoint = `/${tmdbType}/${id}?append_to_response=credits,videos,recommendations,external_ids,watch/providers`;
+                        // TV Shows require aggregate_credits to get the full series main cast rather than just the pilot cast
+                        const castEndpoint = tmdbType === 'tv' ? 'aggregate_credits,credits' : 'credits';
+                        tmdbEndpoint = `/${tmdbType}/${id}?append_to_response=${castEndpoint},videos,recommendations,external_ids,watch/providers`;
                     }
                     
                     try {
@@ -3909,15 +3842,11 @@ let listsIn = [];
                     noteKey = `${type}_${canonicalId}`;
                     localWlKey = `${type}_${canonicalId}`;
 
-                    [history] = await Promise.all([
-                        localHistoryFetch()
-                    ]);
-
-                    // Map Credits (Episodes use guest_stars)
+                    // Map Credits (Episodes use guest_stars, Shows use aggregate_credits)
                     people = {
-                        cast: item.credits?.cast || [],
+                        cast: item.aggregate_credits?.cast || item.credits?.cast || [],
                         guest_stars: item.guest_stars || item.credits?.guest_stars || [],
-                        crew: item.credits?.crew || []
+                        crew: item.aggregate_credits?.crew || item.credits?.crew || []
                     };
                     // Remove duplicates by ID
                     const seenCast = new Set();
@@ -4327,7 +4256,11 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             const { id, obj } = getP(p);
                             if (id && !seenIds.has(id)) {
                                 seenIds.add(id);
-                                combinedMembers.push({ ...p, role_type: 'Series Regular', normPerson: obj, normId: id });
+                                // Extract character name from TMDB aggregate_credits 'roles' array
+                                let charName = p.character;
+                                if (!charName && p.roles && p.roles.length > 0) charName = p.roles[0].character;
+                                
+                                combinedMembers.push({ ...p, character: charName, role_type: 'Series Regular', normPerson: obj, normId: id });
                             }
                         });
                     }
@@ -8631,19 +8564,34 @@ modalContent.addEventListener('touchend', () => {
         // --- Search Listener ---
     const searchHandler = debounce((e) => {
         const val = e.target.value.trim();
+        
+        // Prevent hash thrashing if typing hasn't finished
+        if (e.type === 'keydown' && e.key !== 'Enter') return;
+        
         // Add encoding to handle spaces and symbols (like '?') securely
-        if (val.length > 1) location.hash = `#search/${encodeURIComponent(val)}`; 
+        if (val.length > 1) {
+            const targetHash = `#search/${encodeURIComponent(val)}`;
+            if (location.hash !== targetHash) location.hash = targetHash;
+        } 
         // Only trigger history back if we are actively viewing a search results page
-        else if (val.length === 0 && location.hash.startsWith('#search')) history.back();
+        else if (val.length === 0 && location.hash.startsWith('#search')) {
+            history.back();
+        }
     }, 600);
 
     // Attach to the NEW dynamically injected input
     const desktopSearch = document.getElementById('search-input');
-    if (desktopSearch) desktopSearch.addEventListener('input', searchHandler);
+    if (desktopSearch) {
+        desktopSearch.addEventListener('input', searchHandler);
+        desktopSearch.addEventListener('keydown', searchHandler);
+    }
     
     // Attach to the existing mobile input
     const mobileSearch = document.getElementById('mobile-search-input');
-    if (mobileSearch) mobileSearch.addEventListener('input', searchHandler);
+    if (mobileSearch) {
+        mobileSearch.addEventListener('input', searchHandler);
+        mobileSearch.addEventListener('keydown', searchHandler);
+    }
 
         document.addEventListener('click', e => {
             const btn = e.target.closest('.scrobble-btn');
@@ -8761,7 +8709,8 @@ modalContent.addEventListener('touchend', () => {
         });
 
        // Keyboard navigation shortcuts: Escape closes modals, Left/Right arrows navigate episodes
-        document.addEventListener('keydown', (e) => {
+        if (window.appKeydownListener) document.removeEventListener('keydown', window.appKeydownListener);
+        window.appKeydownListener = (e) => {
             // Ignore shortcuts if typing inside an input or textarea
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
 
@@ -8785,7 +8734,8 @@ modalContent.addEventListener('touchend', () => {
                     }
                 }
             }
-        });
+        };
+        document.addEventListener('keydown', window.appKeydownListener);
 
        // --- AUTH LISTENER ---
     onAuthStateChanged(auth, async user => {
@@ -8842,6 +8792,22 @@ modalContent.addEventListener('touchend', () => {
                         window.globalHistoryCache = [];
                         historySnap.forEach(d => window.globalHistoryCache.push({ ...d.data(), _docId: d.id }));
                     }
+
+                    // Attach real-time listener for history sync to prevent manual polling
+                    if (window.historyUnsubscribe) window.historyUnsubscribe();
+                    window.historyUnsubscribe = onSnapshot(
+                        query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(200)),
+                        (snapshot) => {
+                            window.globalHistoryCache = [];
+                            snapshot.forEach(d => window.globalHistoryCache.push({ ...d.data(), _docId: d.id }));
+                            try {
+                                localStorage.setItem(`vidtrackr_full_history_${currentUser.uid}`, JSON.stringify(window.globalHistoryCache));
+                            } catch(e) { console.warn("Quota exceeded on snapshot sync"); }
+                            
+                            // Silently update active UI if viewing history
+                            if (location.hash.startsWith('#history')) window.renderHistory(window.historyPage || 1);
+                        }
+                    );
 
                     await Promise.all([syncUserRatings(), syncPlayback(), syncHiddenItems()]);
 
