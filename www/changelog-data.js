@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v16.114.0-alpha",
+    date: "2026-11-09",
+    changes: [
+        "In Hub & Shared Nav: Added NoteTrackr to the application grid and global navigation dropdown.",
+        "New App Release: Launched NoteTrackr, an offline-first scratchpad with Privacy Blur, local device saving, custom color tagging, and direct database injection to TaskTrackr and Loggr."
+    ]
+},
+    {
     version: "v16.113.0-alpha",
     date: "2026-11-08",
     changes: [

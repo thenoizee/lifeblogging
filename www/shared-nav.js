@@ -57,6 +57,7 @@ export class AppNavigation {
             { name: 'Podcast', url: '/podtrackr', icon: 'fa-podcast', color: 'bg-purple-600' },
             { name: 'Logger', url: '/log', icon: 'fa-pen-to-square', color: 'bg-green-600' },
             { name: 'Journal', url: '/journaltrackr', icon: 'fa-newspaper', color: 'bg-purple-500' },
+            { name: 'Note', url: '/notetrackr', icon: 'fa-pen-nib', color: 'bg-amber-500' },
             { name: 'Analyser', url: '/analyser', icon: 'fa-chart-line', color: 'bg-indigo-600' },
             { name: 'Hydration', url: '/hydrationtrackr', icon: 'fa-droplet', color: 'bg-cyan-600' },
             { name: 'Vehicle', url: '/vehiclemanagr', icon: 'fa-car-tunnel', color: 'bg-zinc-600' },
