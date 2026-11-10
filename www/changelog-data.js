@@ -2,6 +2,23 @@
 
 export const changelogData = [
     {
+    version: "v16.117.0-alpha",
+    date: "2026-11-10",
+    changes: [
+        "In PlantTrackr: Fixed desktop toast positioning so they appear top-center instead of floating dynamically at the bottom.",
+        "In PlantTrackr: Resolved memory leaks and performance drops in Firebase onAuthStateChanged by cleanly unsubscribing from previous real-time listeners.",
+        "In PlantTrackr: Improved Garden tab loading performance by adding native lazy loading to all plant images.",
+        "In PlantTrackr: Added a global Escape key listener to safely close all active modals for a native desktop UX.",
+        "In PlantTrackr: Optimized DOM queries in the Potting Shed logic by moving the 'Show New Arrivals' check outside the render loop.",
+        "In PlantTrackr: Fixed awkward modal bottom padding on desktop by removing conflicting pb-20 tailwind classes.",
+        "In PlantTrackr: Overhauled Garden tab light mode styling by replacing hardcoded dark hex colors with responsive Tailwind dark: classes on filters, plant cards, and badges.",
+        "In PlantTrackr: Completely redesigned the View Plant modal into a premium Profile Card with a wider max-w-4xl layout, taller hero image, and grid-based vitals.",
+        "In PlantTrackr: Restored vertical scrolling to the View Plant modal by swapping overflow-hidden for overflow-y-auto and overflow-x-hidden.",
+        "In PlantTrackr: Updated the View Plant hero image to fade out the gradient and text on hover, revealing an unobstructed view of the photo without a jarring scale effect.",
+        "In PlantTrackr: Fixed Tailwind dark mode parsing on the View Plant action bar by explicitly applying dark:bg-gray-800 and dark:border overrides."
+    ]
+},
+    {
     version: "v16.116.0-alpha",
     date: "2026-11-10",
     changes: [
