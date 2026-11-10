@@ -331,10 +331,6 @@
 </style>
 </head>
 <body>
-
-    <div id="notification" class="fixed top-5 right-5 bg-green-500 text-white py-2 px-4 rounded-lg shadow-lg opacity-0 transform translate-y-2 z-50">
-        Copied to clipboard!
-    </div>
     
     <div id="sync-conflict-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
         <div class="relative top-10 mx-auto p-5 border w-full max-w-3xl shadow-lg rounded-md bg-[var(--card-bg-color)]">
@@ -944,7 +940,7 @@ const updateManagerPreview = () => {
     ui.use.copyBodyButton.addEventListener('click', () => {
         const missing = getMissingFields();
         if (missing.length > 0) {
-            alert(`You cannot copy yet! Please fill in the following missing fields:\n\n- ${missing.join('\n- ')}`);
+            window.showToast(`Missing ${missing.length} field(s)!`, 'error');
             return; // Stop the copy process
         }
 
@@ -958,7 +954,7 @@ const updateManagerPreview = () => {
     ui.use.copySubjectButton.addEventListener('click', () => {
         const missing = getMissingFields();
         if (missing.length > 0) {
-            alert(`You cannot copy yet! Please fill in the following missing fields:\n\n- ${missing.join('\n- ')}`);
+            window.showToast(`Missing ${missing.length} field(s)!`, 'error');
             return; // Stop the copy process
         }
         
@@ -968,7 +964,7 @@ const updateManagerPreview = () => {
     ui.use.loadToGmailButton.addEventListener('click', () => {
         const missing = getMissingFields();
         if (missing.length > 0) {
-            alert(`You cannot export yet! Please fill in the following missing fields:\n\n- ${missing.join('\n- ')}`);
+            window.showToast(`Missing ${missing.length} field(s)!`, 'error');
             return; // Stop the export process
         }
         
@@ -1157,7 +1153,8 @@ function renderTemplateList(searchTerm = '') {
     filtered.forEach(template => {
         const item = document.createElement('div');
         const isActive = selectedTemplateId === template.id;
-        item.className = `template-list-item mb-1 flex flex-col gap-1 ${isActive ? 'active' : ''}`;
+        // Added 'group' to enable hover effects on child elements
+        item.className = `template-list-item mb-1 flex flex-col gap-1 group ${isActive ? 'active' : ''}`;
         
         // Get metadata from latest version
         const latest = template.versions && template.versions.length > 0 
@@ -1168,14 +1165,24 @@ function renderTemplateList(searchTerm = '') {
         const purpose = latest?.purpose || '';
         
         item.innerHTML = `
-                    <div class="flex items-start gap-3">
+                    <div class="flex items-start gap-3 relative">
                         <div class="mt-0.5 ${isActive ? 'text-white' : 'text-[var(--primary)]'} opacity-80">
                             <i class="fa-regular fa-file-lines text-lg"></i>
                         </div>
                         <div class="flex flex-col flex-grow min-w-0">
                             <div class="flex justify-between items-center">
                                 <span class="font-semibold text-sm truncate pr-2">${template.name}</span>
-                                ${template.isDefault ? '<i class="fa-solid fa-star text-[10px] text-yellow-400" title="Default Template"></i>' : ''}
+                                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    ${!template.isDefault ? `
+                                    <button class="front-edit-btn text-gray-400 hover:text-indigo-500 p-1 rounded z-10 transition-colors" title="Edit Template" data-id="${template.id}">
+                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    </button>
+                                    <button class="front-archive-btn text-gray-400 hover:text-red-500 p-1 rounded z-10 transition-colors" title="Archive Template" data-id="${template.id}">
+                                        <i class="fa-solid fa-box-archive text-xs"></i>
+                                    </button>
+                                    ` : ''}
+                                    ${template.isDefault ? '<i class="fa-solid fa-star text-[10px] text-yellow-400" title="Default Template"></i>' : ''}
+                                </div>
                             </div>
                             <div class="text-[10px] ${isActive ? 'text-white/80' : 'text-gray-500'} truncate mb-1">
                                 <i class="fa-regular fa-folder mr-1"></i> ${template.folder || 'Uncategorized'}
@@ -1189,7 +1196,25 @@ function renderTemplateList(searchTerm = '') {
                     </div>
                 `;
         
-        item.addEventListener('click', () => {
+        item.addEventListener('click', (e) => {
+            const archiveBtn = e.target.closest('.front-archive-btn');
+            const editBtn = e.target.closest('.front-edit-btn');
+            
+            // Handle Quick Archive from Front Page
+            if (archiveBtn) {
+                e.stopPropagation();
+                toggleArchiveTemplate(archiveBtn.dataset.id);
+                return;
+            }
+            
+            // Handle Quick Edit from Front Page
+            if (editBtn) {
+                e.stopPropagation();
+                if (nav) nav.switchTab('manage-templates');
+                useLatestVersionForEdit(editBtn.dataset.id);
+                return;
+            }
+
             handleTemplateSelection(template.id);
             renderTemplateList(searchTerm); // Re-render to update active styling
         });
@@ -1565,7 +1590,7 @@ function resetSelectionUI() {
 
             }
         
-        // Checks all specific fields (dropdowns, text inputs, etc.) and returns an array of missing names.
+        // Checks all specific fields (dropdowns, text inputs, etc.), highlights missing ones, and returns an array of missing names.
         function getMissingFields() {
             const missing = [];
             
@@ -1574,12 +1599,28 @@ function resetSelectionUI() {
                 return missing;
             }
 
+            // Helper to toggle error ring
+            const toggleError = (element, isError) => {
+                if (isError) {
+                    element.classList.add('ring-2', 'ring-red-500');
+                } else {
+                    element.classList.remove('ring-2', 'ring-red-500');
+                }
+            };
+
             // 1. Check top bar fields
-            if (!ui.use.pronounPreset.value) {
+            if (!ui.use.pronounPreset.value && document.querySelector('label[for="pronoun-preset"]')?.innerHTML.includes('text-red-500')) {
                 missing.push("Pronouns");
+                toggleError(ui.use.pronounPreset, true);
+            } else {
+                toggleError(ui.use.pronounPreset, false);
             }
+
             if (!ui.use.scheduledTimeInput.value) {
                 missing.push("Time");
+                toggleError(ui.use.scheduledTimeInput, true);
+            } else {
+                toggleError(ui.use.scheduledTimeInput, false);
             }
 
             // 2. Check all dynamic custom fields generated by the template
@@ -1587,6 +1628,9 @@ function resetSelectionUI() {
                 if (!field.value || field.value.trim() === '') {
                     const fieldName = field.getAttribute('data-original-name') || 'A custom field';
                     missing.push(fieldName);
+                    toggleError(field, true);
+                } else {
+                    toggleError(field, false);
                 }
             });
 
@@ -1595,7 +1639,7 @@ function resetSelectionUI() {
 
         function copyToClipboard(content, message) {
             if (!content) return;
-            navigator.clipboard.writeText(content).then(() => showNotification(message));
+            navigator.clipboard.writeText(content).then(() => window.showToast(message, 'success'));
         }
 
         function copyToClipboardRich(text, html, message) {
@@ -1604,20 +1648,14 @@ function resetSelectionUI() {
                 const blobHtml = new Blob([html], { type: "text/html" });
                 const blobText = new Blob([text], { type: "text/plain" });
                 const data = [new ClipboardItem({ "text/plain": blobText, "text/html": blobHtml })];
-                navigator.clipboard.write(data).then(() => showNotification(message)).catch(err => {
+                navigator.clipboard.write(data).then(() => window.showToast(message, 'success')).catch(err => {
                     // Fallback to plain text on error
-                    navigator.clipboard.writeText(text).then(() => showNotification(message));
+                    navigator.clipboard.writeText(text).then(() => window.showToast(message, 'success'));
                 });
             } catch (e) {
                 // Fallback for older browsers
-                navigator.clipboard.writeText(text).then(() => showNotification(message));
+                navigator.clipboard.writeText(text).then(() => window.showToast(message, 'success'));
             }
-        }
-
-        function showNotification(message) {
-            ui.notification.textContent = message;
-            ui.notification.classList.remove('opacity-0', 'translate-y-2');
-            setTimeout(() => ui.notification.classList.add('opacity-0', 'translate-y-2'), 2000);
         }
         
         function handleBatchGenerate() {
@@ -2060,7 +2098,24 @@ function resetSelectionUI() {
 // --- ADD THIS LINE HERE ---
 window.cancelEdit = cancelEdit;
 
-        async function toggleArchiveTemplate(templateId) { let userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]'); const template = userTemplates.find(t => t.id === templateId); if (template) { template.isArchived = !template.isArchived; template.updatedAt = new Date().toISOString(); } await saveAndSyncTemplates(userTemplates); }
+        async function toggleArchiveTemplate(templateId) { 
+            let userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]'); 
+            const template = userTemplates.find(t => t.id === templateId); 
+            if (template) { 
+                template.isArchived = !template.isArchived; 
+                template.updatedAt = new Date().toISOString(); 
+            } 
+            
+            // UX Improvement: If the user archives the template they currently have open on the Use tab, clear the workspace
+            if (template && template.isArchived && selectedTemplateId === templateId) {
+                selectedTemplateId = null;
+                resetSelectionUI();
+                const emptyState = document.getElementById('workspace-empty-state');
+                if (emptyState) emptyState.classList.remove('hidden');
+            }
+            
+            await saveAndSyncTemplates(userTemplates); 
+        }
         async function deleteTemplate(templateId) { if (!confirm("Are you sure you want to permanently delete this template and all its versions?")) return; let userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]'); userTemplates = userTemplates.filter(t => t.id !== templateId); await saveAndSyncTemplates(userTemplates); }
         
         function useVersion(templateId, versionNumber) { 
@@ -2282,7 +2337,7 @@ window.cancelEdit = cancelEdit;
                 btn.innerHTML = `<svg class="animate-spin inline -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Syncing...`;
                 const finalTemplates = [...nonConflictingTemplates];
                 conflicts.forEach(conflict => { const choice = document.querySelector(`input[name="conflict_${conflict.id}"]:checked`).value; finalTemplates.push(choice === 'local' ? conflict.local : conflict.remote); });
-                try { await saveAndSyncTemplates(finalTemplates); ui.sync.conflictModal.classList.add('hidden'); showNotification("Sync conflicts resolved!"); } catch (error) { console.error("Failed to resolve conflicts:", error); showNotification("Error: Could not resolve conflicts."); } finally { btn.disabled = false; btn.textContent = 'Apply Custom Resolutions & Sync'; }
+                try { await saveAndSyncTemplates(finalTemplates); ui.sync.conflictModal.classList.add('hidden'); window.showToast("Sync conflicts resolved!", 'success'); } catch (error) { console.error("Failed to resolve conflicts:", error); window.showToast("Error: Could not resolve conflicts.", 'error'); } finally { btn.disabled = false; btn.textContent = 'Apply Custom Resolutions & Sync'; }
             };
             let newBtn = ui.sync.resolveButton.cloneNode(true);
             ui.sync.resolveButton.parentNode.replaceChild(newBtn, ui.sync.resolveButton);
@@ -2302,7 +2357,7 @@ window.cancelEdit = cancelEdit;
         async function initializeGapiClient() { if(gapi && gapi.client) await gapi.client.init({ apiKey: GMAIL_API_KEY, discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest"], }); }
         function gisLoaded() { if(google && google.accounts && google.accounts.oauth2) tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GMAIL_CLIENT_ID, scope: GMAIL_SCOPES, callback: (tokenResponse) => { if (tokenResponse && tokenResponse.access_token) { gapi.client.setToken(tokenResponse); ui.sync.gmailAuthStatus.textContent = "Gmail access authorized successfully!"; ui.sync.authorizeGmailButton.disabled = true; ui.sync.authorizeGmailButton.textContent = "Gmail Authorized"; if (ui.use.generatedTextDiv.innerText) ui.use.loadToGmailButton.classList.remove('hidden'); } }, }); }
         function handleAuthGmailClick() { if (!tokenClient) return; if (gapi.client.getToken() === null) tokenClient.requestAccessToken({prompt: 'consent'}); else tokenClient.requestAccessToken({prompt: ''}); }
-        async function createGmailDraft() { const subject = ui.use.generatedSubjectInput.value; const body = ui.use.generatedTextDiv.innerText; const email = [`Subject: ${subject}`, 'Content-Type: text/plain; charset="UTF-8"', 'MIME-Version: 1.0', '', body].join('\n'); const base64EncodedEmail = btoa(unescape(encodeURIComponent(email))).replace(/\+/g, '-').replace(/\//g, '_'); try { await gapi.client.gmail.users.drafts.create({ 'userId': 'me', 'resource': { 'message': { 'raw': base64EncodedEmail } } }); showNotification("Draft created in Gmail!"); } catch (err) { console.error("Gmail API Error:", err); alert(`Could not create Gmail draft. Your authorization may have expired.`); } }
+        async function createGmailDraft() { const subject = ui.use.generatedSubjectInput.value; const body = ui.use.generatedTextDiv.innerText; const email = [`Subject: ${subject}`, 'Content-Type: text/plain; charset="UTF-8"', 'MIME-Version: 1.0', '', body].join('\n'); const base64EncodedEmail = btoa(unescape(encodeURIComponent(email))).replace(/\+/g, '-').replace(/\//g, '_'); try { await gapi.client.gmail.users.drafts.create({ 'userId': 'me', 'resource': { 'message': { 'raw': base64EncodedEmail } } }); window.showToast("Draft created in Gmail!", 'success'); } catch (err) { console.error("Gmail API Error:", err); alert(`Could not create Gmail draft. Your authorization may have expired.`); } }
 
         function applyTheme(theme) {
     document.documentElement.classList.toggle('dark', theme === 'dark');

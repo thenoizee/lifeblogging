@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.115.0-alpha",
+    date: "2026-11-10",
+    changes: [
+                "In Work: Added quick-action buttons (Archive, Edit) on hover directly to templates in the Front Page 'Use' tab list.",
+                "In Work: Updated the workspace logic to gracefully clear the active view and return to the empty state when the currently open template is archived.",
+                "In Work: Replaced jarring native browser 'alert()' popups during validation with smooth inline UI error highlighting (red outlines) for missing fields.",
+                "In Work: Migrated the entire local notification system to use the universal shared-nav.js window.showToast() method.",
+                "In Work: Removed the redundant hardcoded HTML notification banner and local showNotification() logic to clean up the DOM.",
+                "In Work: Wired clipboard copy (subject and rich text body) and Gmail draft generation actions to trigger global success toasts.",
+                "In Work: Updated sync conflict resolution and missing field validation to trigger global error toasts."
+    ]
+},
+    {
     version: "v16.114.0-alpha",
     date: "2026-11-09",
     changes: [
