@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.116.0-alpha",
+    date: "2026-11-10",
+    changes: [
+        "In LabelGenerator: Fixed printing output where text appeared dimmed by forcing pure black (#000000) and exact color adjustments within the @media print rules.",
+        "In LabelGenerator: Fixed the custom preset dropdown rendering in dark mode by applying correct Tailwind dark classes to dynamically injected HTML.",
+        "In LabelGenerator: Improved visual depth in the sidebar by updating inner panel backgrounds from flat gray to an inset bg-gray-900/40.",
+        "In LabelGenerator: Updated the 'Clear Manual Edits' button from a solid red block to a ghost outline button to improve visual hierarchy.",
+        "In LabelGenerator: Added custom, slim webkit scrollbars styled to seamlessly match both light and dark mode themes.",
+        "In LabelGenerator: Fixed the floating visual artifact beneath the SharedNav header by overriding default shadows and applying a crisp, flush 1px bottom border."
+    ]
+},
+    {
     version: "v16.115.0-alpha",
     date: "2026-11-10",
     changes: [
