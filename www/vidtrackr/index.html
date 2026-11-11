@@ -462,10 +462,12 @@ input[type=range]::-moz-range-thumb {
         persistence: browserLocalPersistence
     });
     
-    // Initialize Firestore without persistentLocalCache.
-    // FIX: persistentLocalCache causes the endless 'channel?VER=8' WebChannel ping loops 
-    // when the IndexedDB lock fails. We revert to standard getFirestore.
-    const db = getFirestore(app);
+    // Initialize Firestore WITH persistent cache to eliminate full re-downloads, 
+    // and force WebSockets to completely kill the 'channel?VER=8' ping loop bug.
+    const db = initializeFirestore(app, {
+        localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()}),
+        experimentalForceLongPolling: false
+    });
     
     const TRAKT_API_URL = 'https://us-central1-sammy-7298f.cloudfunctions.net/traktProxy';
     // Added comments so I can easily understand what it means and edit it later
@@ -916,26 +918,13 @@ if (headerRight) {
                     } catch(e) {}
                 }
                 
-                // 2. Fetch Local Lists (With Self-Healing Document Counter)
+                // 2. Fetch Local Lists (Optimized, no inner loop counting)
                 if (currentUser) {
                     const snap = await getDocs(collection(db, `users/${currentUser.uid}/lists`));
-                    const listPromises = snap.docs.map(async (d) => {
+                    const resolvedLists = snap.docs.map((d) => {
                         const listData = d.data();
-                        let count = listData.item_count || 0;
-                        
-                        // If count is suspected bad/legacy, fetch it natively
-                        if (count === 0 || count === undefined || count === 'Local') {
-                            try {
-                                const countSnap = await getCountFromServer(collection(db, `users/${currentUser.uid}/lists/${d.id}/items`));
-                                count = countSnap.data().count;
-                                if (count > 0) {
-                                    await updateDoc(doc(db, `users/${currentUser.uid}/lists`, d.id), { item_count: count });
-                                }
-                            } catch(e) {}
-                        }
-                        return { ...listData, item_count: count, ids: { trakt: d.id }, isTrakt: false };
+                        return { ...listData, item_count: listData.item_count || 0, ids: { trakt: d.id }, isTrakt: false };
                     });
-                    const resolvedLists = await Promise.all(listPromises);
                     allLists = allLists.concat(resolvedLists);
                 }
                 

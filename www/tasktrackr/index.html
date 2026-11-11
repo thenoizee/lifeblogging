@@ -1012,7 +1012,7 @@ import {
     GoogleAuthProvider, 
     signInWithPopup      
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, orderBy, limit, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, orderBy, limit, getDocs, writeBatch, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         import { AppNavigation } from '/shared-nav.js';
         import { changelogData } from '/changelog-data.js';
@@ -2044,8 +2044,8 @@ window.syncPendingTasks = async () => {
                     }
 
                     if (savedTask && savedTask.id && auth.currentUser) {
-                        await saveTaskOrigin(savedTask.id, 'tasktrackr');
-                        const mirrorPayload = { ...payload, id: savedTask.id, source: 'ticktick', lastSynced: new Date(), dueDate: payload.dueDate ? new Date(payload.dueDate) : null, startDate: payload.startDate ? new Date(payload.startDate) : null, contextMode: mergedTask.contextMode || 'inherit' };
+                        // Store 'tasktrackr' directly on the document so we don't need the task_origins collection anymore
+                        const mirrorPayload = { ...payload, id: savedTask.id, source: 'tasktrackr', lastSynced: new Date(), dueDate: payload.dueDate ? new Date(payload.dueDate) : null, startDate: payload.startDate ? new Date(payload.startDate) : null, contextMode: mergedTask.contextMode || 'inherit' };
                         await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload);
                     }
                 }
@@ -2625,22 +2625,28 @@ const fetchAllData = async () => {
 
     allActiveTasks = [...allActiveTasks, ...googleData.tasks];
 
-    // 3. Fetch Origins
-    let originsMap = new Set();
+    // 3. Origins now load naturally from local_tasks cache
     if (auth.currentUser) {
         try {
-            const originsRef = collection(db, 'users', auth.currentUser.uid, 'task_origins');
-            const originSnaps = await getDocs(originsRef);
-            originSnaps.forEach(doc => originsMap.add(doc.id));
             
-            // 4. FETCH LOCAL TASKS (AND MIRRORS)
+            // 4. FETCH LOCAL TASKS (AND MIRRORS) - DELTA SYNC
+            const lastSync = localStorage.getItem('tasktrackr_last_sync') || '1970-01-01T00:00:00Z';
             const localRef = collection(db, 'users', auth.currentUser.uid, 'local_tasks');
-            const localSnaps = await getDocs(localRef);
+            const localSnaps = await getDocs(query(localRef, where('updated', '>=', new Date(lastSync))));
+            localStorage.setItem('tasktrackr_last_sync', new Date().toISOString());
             
+            // Load unaffected cached tasks into memory first
+            taskCache.filter(t => t.source === 'local' || t.source === 'google' || originsMap.has(t.id)).forEach(t => {
+                if (!allActiveTasks.find(a => a.id === t.id)) allActiveTasks.push(t);
+            });
+
             // Create a Set of existing IDs from TickTick to avoid duplicates
             const apiTaskIds = new Set(allActiveTasks.map(t => t.id));
 
             localSnaps.forEach(docSnap => {
+                // Remove stale cached versions of updated documents
+                const staleIdx = allActiveTasks.findIndex(t => t.id === docSnap.id);
+                if (staleIdx > -1) allActiveTasks.splice(staleIdx, 1);
                 const data = docSnap.data();
                 
                 // [FIX] Auto-Heal: If an ephemeral calendar event was accidentally saved to the DB in a previous version, destroy it.
@@ -2695,9 +2701,9 @@ const fetchAllData = async () => {
         if (task.source === 'local') { 
             // Keep local
         } else if (task.source === 'google') { 
-            // Keep google (NEW)
-        } else if (originsMap.has(task.id)) {
-            task.source = 'tasktrackr'; 
+            // Keep google
+        } else if (task.source === 'tasktrackr') {
+            // Keep tasktrackr (Now naturally pulled from local_tasks)
         } else {
             // Default only if nothing else matches
             task.source = 'ticktick';

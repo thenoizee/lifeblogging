@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.118.0-alpha",
+    date: "2026-11-10",
+    changes: [
+        "In TaskTrackr: Implemented Delta Sync for 'local_tasks' to only fetch items modified since the last sync, massively reducing Firebase read operations.",
+"In TaskTrackr: Eliminated the 'task_origins' collection fetch by storing origin data directly on the task document, saving hundreds of reads on app startup.",
+"In PlantTrackr: Capped the unbounded 'plant_logs' dashboard query with a limit of 150 to prevent massive read spikes when loading the app.",
+"In VidTrackr: Optimized Custom List fetching by removing the nested 'getCountFromServer' loop, eliminating unnecessary document reads per modal open.",
+"In VidTrackr: Re-enabled 'persistentLocalCache' and forced WebSockets to fix the 'channel?VER=8' ping loop bug, drastically reducing full-collection re-downloads on page refresh."
+    ]
+},
+    {
     version: "v16.117.0-alpha",
     date: "2026-11-10",
     changes: [
