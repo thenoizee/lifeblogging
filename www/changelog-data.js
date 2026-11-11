@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v16.119.0-alpha",
+    date: "2026-11-11",
+    changes: [
+                "In NoteTrackr: Transitioned app to a seamless Auto-Save model. Notes now instantly create and save themselves entirely locally on the very first keystroke.",
+                "In NoteTrackr: Built and integrated a lazy-loaded, Offline-First Firebase Sync Engine. The core app boots synchronously from local storage while Firebase connects silently 1.5s later, guaranteeing zero keyboard latency.",
+                "In NoteTrackr: Added an interactive Cloud Sync UI modal allowing users to log in, sign up, or disable sync.",
+                "In NoteTrackr: Connected Auth to Loggr's 'browserLocalPersistence' token. NoteTrackr now automatically detects your session from Loggr and seamlessly enables sync without needing a separate login.",
+                "In NoteTrackr: Engineered a robust background conflict resolution merge. When opening the app, it safely mixes offline-only notes with cloud downloads and gracefully handles timestamp conflicts if the same note was edited on multiple devices.",
+                "In NoteTrackr: Implemented rich real-time visual feedback. The top header now dynamically reads 'Syncing...' while buffering and flashes a green 'Cloud Saved' when Firebase acknowledges receipt.",
+                "In NoteTrackr: Updated the history drawer to inject bright green cloud icons next to notes successfully backed up to the cloud, and grey cloud icons for pending notes.",
+                "In NoteTrackr: Added a prominent 'Cloud / Local' pill toggle button to the editor action bar. Users can lock any specific note exclusively to the device (instantly deleting it from the cloud and skipping future syncs).",
+    ]
+},
+    {
     version: "v16.118.0-alpha",
     date: "2026-11-10",
     changes: [
