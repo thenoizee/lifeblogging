@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v16.120.0-alpha",
+    date: "2026-11-13",
+    changes: [
+                "In PlantTrackr: Restored left/right chevron buttons for desktop photo gallery navigation.",
+                "In PlantTrackr: Added invisible left/right touch zones to the full-screen photo modal to allow intuitive mobile tapping (Instagram-style navigation).",
+                "In PlantTrackr: Fixed an issue where the photo gallery defaulted to a single image by ignoring dynamic Firebase security tokens during URL matching.",
+                "In PlantTrackr: Resolved a bug where closing the photo modal caused the next loaded image to permanently turn grey in dark mode.",
+                "In PlantTrackr: Increased the Firestore log download limit from 150 to 1500 to prevent older journal entries, task histories, and gallery photos from vanishing as the garden grows.",
+                "In PlantTrackr: Expanded the tap target on the Plant Profile hero image by adding a full-bleed invisible touch layer and disabling pointer events on the overlay text.",
+    ]
+},
+    {
     version: "v16.119.0-alpha",
     date: "2026-11-11",
     changes: [
