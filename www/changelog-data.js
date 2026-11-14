@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.121.0-alpha",
+    date: "2026-11-14",
+    changes: [
+        "In IconGenerator: Transitioned the app to use the native sharednav (AppNavigation) and removed the custom baked-in header and manual theme logic.",
+        "In IconGenerator: Renamed view wrappers to 'tab-studio' and 'tab-library' to enable automated tab switching via the shared nav.",
+        "In IconGenerator: Redesigned the Icon Studio tab by modularizing the monolithic configuration panel into distinct cards for Content, Colors, and Dimensions.",
+        "In IconGenerator: Tucked advanced properties (Transform, Outer Border, Effects) into a collapsible native <details> accordion.",
+        "In IconGenerator: Updated the live preview and code generator panel to be sticky so it remains visible while scrolling the settings.",
+    ]
+},
+    {
     version: "v16.120.0-alpha",
     date: "2026-11-13",
     changes: [
