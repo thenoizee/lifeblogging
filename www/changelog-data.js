@@ -2,6 +2,21 @@
 
 export const changelogData = [
     {
+    version: "v16.123.0-alpha",
+    date: "2026-11-14",
+    changes: [
+        "In PDF Tools: Upgraded the layout to a full-bleed, fixed-sidebar native app shell using AppNavigation.",
+        "In PDF Tools: Extracted the inline 'Edit Metadata' tool into a dedicated, centered 'Document Properties' modal.",
+        "In PDF Tools: Added a Global 'Download' button to the workspace banner to ensure users can easily download the latest file state (especially after updating properties).",
+        "In PDF Tools: Replaced conflicting 'Fit All' and 'HD Preview' buttons in the Organise tool with a clean 'Grid' vs 'Inspect' segmented view toggle.",
+        "In PDF Tools: Redesigned page thumbnails with rounded corners, shadows, and improved action button overlays.",
+        "In PDF Tools: Fixed History button centering and upgraded its hover-to-expand animation.",
+        "In PDF Tools: Added a global error handler for encrypted/restricted PDFs that guides users to use the Chrome 'Print to PDF' workaround, fixing an issue where bypassing encryption resulted in blank saved pages.",
+        "In PDF Tools: Added 'or click to browse files' helper text to all drag-and-drop zones.",
+        "In PDF Tools: Added smooth fade-in animations when switching between tool panels."
+    ]
+},
+    {
     version: "v16.122.0-alpha",
     date: "2026-11-14",
     changes: [
