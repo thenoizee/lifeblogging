@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v16.122.0-alpha",
+    date: "2026-11-14",
+    changes: [
+        "In VidTrackr: Migrated renderHistory() to use the RAM-based window.fullHistoryMemoryCache for zero-read pagination instead of querying Firestore.",
+        "In VidTrackr: Implemented IntersectionObserver for infinite scrolling in the history view to prevent redrawing the entire DOM.",
+        "In VidTrackr: Removed blocking CacheStorage wipe loops in fetchTMDB and fetchDirect to enable instant live search.",
+        "In VidTrackr: Added an itemIds map to custom list documents for instant, 0-read membership checks when opening the Add to List modal.",
+        "In VidTrackr: Parallelized self-healing check-in fetches in checkActiveWatching() using Promise.all to reduce banner recovery latency."
+    ]
+},
+    {
     version: "v16.121.0-alpha",
     date: "2026-11-14",
     changes: [

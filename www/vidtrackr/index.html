@@ -608,20 +608,7 @@ if (headerRight) {
                 }
             }
 
-            // CRITICAL FIX: Service Workers (sw.js) with `ignoreSearch: true` will eternally trap searches.
-            // We must forcefully evict stale search caches from CacheStorage before fetching.
-            if (isSearch && 'caches' in window) {
-                try {
-                    const cacheNames = await caches.keys();
-                    for (const name of cacheNames) {
-                        const cache = await caches.open(name);
-                        const keys = await cache.keys();
-                        for (const req of keys) {
-                            if (req.url.includes('/search/')) await cache.delete(req);
-                        }
-                    }
-                } catch(e) {}
-            }
+            // Cache bypass for /search/ routes handled in sw.js or via bypass headers, skipping main-thread full scan.
 
             // FIX: Dynamically determine whether to use '?' or '&' to prevent malformed URLs
             const separator = endpoint.includes('?') ? '&' : '?';
@@ -956,25 +943,29 @@ if (headerRight) {
                             const items = await fetchDirect(`/users/me/lists/${list.ids.trakt}/items/${type}`);
                             isMember = items.some(i => String(i[type]?.ids?.trakt) === String(realTraktId) || String(i[type]?.ids?.tmdb) === String(realTmdbId));
                         } else {
-                            // Direct check using robust multiple ID matching for legacy and cross-platform compatibility
-                            const idsToCheck = new Set([String(passedId)]);
-                            if (realTraktId) idsToCheck.add(String(realTraktId));
-                            if (realTmdbId) idsToCheck.add(String(realTmdbId));
-                            
+                            // Fast membership check directly via lightweight itemIds array on the list document (0 extra reads)
+                            const listObj = list; 
+                            const idsToCheck = [String(passedId), String(realTraktId), String(realTmdbId)];
                             if (type === 'episode') {
                                 const sTmdb = itemData?.show?.ids?.tmdb || itemData?.show_tmdb;
                                 const s = itemData?.season || itemData?.season_number;
                                 const e = itemData?.number || itemData?.episode_number;
-                                if (sTmdb && s !== undefined && e !== undefined) idsToCheck.add(`${sTmdb}-${s}-${e}`);
+                                if (sTmdb && s !== undefined && e !== undefined) idsToCheck.push(`${sTmdb}-${s}-${e}`);
                             }
-
-                            for (const testId of idsToCheck) {
-                                if (!testId || testId === 'undefined') continue;
-                                const docRef = doc(db, `users/${currentUser.uid}/lists/${list.ids.trakt}/items`, `${type}_${testId}`);
-                                const dSnap = await getDoc(docRef);
-                                if (dSnap.exists()) {
-                                    isMember = true;
-                                    break;
+                            
+                            // Check if the list document has an itemIds map/array containing any of our target IDs
+                            if (listObj.itemIds) {
+                                isMember = idsToCheck.some(id => id && id !== 'undefined' && (Array.isArray(listObj.itemIds) ? listObj.itemIds.includes(`${type}_${id}`) : listObj.itemIds[`${type}_${id}`]));
+                            } else {
+                                // Fallback for legacy lists without itemIds cached on the parent document
+                                for (const testId of idsToCheck) {
+                                    if (!testId || testId === 'undefined') continue;
+                                    const docRef = doc(db, `users/${currentUser.uid}/lists/${list.ids.trakt}/items`, `${type}_${testId}`);
+                                    const dSnap = await getDoc(docRef);
+                                    if (dSnap.exists()) {
+                                        isMember = true;
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -1023,11 +1014,17 @@ if (headerRight) {
                             [type]: itemData,
                             listedAt: new Date().toISOString()
                         });
-                        await updateDoc(doc(db, `users/${currentUser.uid}/lists/${listId}`), { item_count: increment(1) });
+                        await updateDoc(doc(db, `users/${currentUser.uid}/lists/${listId}`), { 
+                             item_count: increment(1),
+                             [`itemIds.${type}_${passedId}`]: true
+                        });
                     } else {
                         // Bypasses scanning the list, performs a direct targeted deletion to eliminate read usage
                         await deleteDoc(doc(db, `users/${currentUser.uid}/lists/${listId}/items`, `${type}_${passedId}`));
-                        await updateDoc(doc(db, `users/${currentUser.uid}/lists/${listId}`), { item_count: increment(-1) });
+                        await updateDoc(doc(db, `users/${currentUser.uid}/lists/${listId}`), { 
+                             item_count: increment(-1),
+                             [`itemIds.${type}_${passedId}`]: false
+                        });
                     }
                 }
 
@@ -2300,19 +2297,7 @@ if (headerRight) {
                 }
             }
             
-            // CRITICAL FIX: Nuke stale Service Worker caches for Trakt search queries.
-            if (isSearch && 'caches' in window) {
-                try {
-                    const cacheNames = await caches.keys();
-                    for (const name of cacheNames) {
-                        const cache = await caches.open(name);
-                        const keys = await cache.keys();
-                        for (const req of keys) {
-                            if (req.url.includes('/search/')) await cache.delete(req);
-                        }
-                    }
-                } catch(e) {}
-            }
+            // Cache bypass for /search/ routes handled in sw.js or via bypass headers, skipping main-thread full scan.
 
             // Bypasses Trakt requests smoothly when running in TMDB Standalone Mode
             const handleStandaloneBypass = () => {
@@ -5212,8 +5197,10 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             // Handle TMDB composite ID (showId-season-episode)
                             if (String(activeData.id).includes('-')) {
                                 const parts = String(activeData.id).split('-');
-                                const showRes = await fetchTMDB(`/tv/${parts[0]}`).catch(() => null);
-                                const epRes = await fetchTMDB(`/tv/${parts[0]}/season/${parts[1]}/episode/${parts[2]}`).catch(() => null);
+                                const [showRes, epRes] = await Promise.all([
+                                    fetchTMDB(`/tv/${parts[0]}`).catch(() => null),
+                                    fetchTMDB(`/tv/${parts[0]}/season/${parts[1]}/episode/${parts[2]}`).catch(() => null)
+                                ]);
                                 if (showRes && epRes) {
                                     title = `${showRes.name}: ${epRes.name}`;
                                     sub = `S${parts[1]}E${parts[2]}`;
@@ -5413,30 +5400,33 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     }
                     
                     if (page === 1) historyPage = 1; // Reset tracker when starting fresh
-                    // 1. Fetch History from Firebase
-                    let q;
+                    
+                    let data = [];
+                    // 1. Retrieve History from Memory Cache instead of blocking on Firestore network read
+                    let rawHistory = window.fullHistoryMemoryCache || [];
+                    if (!rawHistory.length) {
+                         const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(2500));
+                         const snapshot = await getDocs(q);
+                         snapshot.forEach(d => rawHistory.push({ ...d.data(), _docId: d.id }));
+                         window.fullHistoryMemoryCache = rawHistory;
+                    }
+
                     if (currentHistoryPeriod) {
                         const [year, month] = currentHistoryPeriod.split('-');
                         const start = new Date(Date.UTC(year, parseInt(month) - 1, 1)).toISOString();
-                        const end = new Date(Date.UTC(year, parseInt(month), 1)).toISOString(); // 1st day of next month
-                        
-                        q = query(
-                            collection(db, `users/${currentUser.uid}/history`), 
-                            where("watchedAt", ">=", start),
-                            where("watchedAt", "<", end),
-                            orderBy("watchedAt", "desc"),
-                            limit(page * 100)
-                        );
-                    } else {
-                        q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(page * 100));
+                        const end = new Date(Date.UTC(year, parseInt(month), 1)).toISOString();
+                        rawHistory = rawHistory.filter(h => {
+                             const wDate = h.watchedAt || h.loggedAt;
+                             return wDate >= start && wDate < end;
+                        });
                     }
-                    const snapshot = await getDocs(q);
-                    
-                    let data = [];
-                    snapshot.forEach(docSnap => {
-                        const d = docSnap.data();
+
+                    // For pagination, process only up to the requested limit
+                    const paginatedSlice = rawHistory.slice(0, page * 100);
+
+                    paginatedSlice.forEach(d => {
                         const item = {
-                            id: docSnap.id,
+                            id: d._docId || d.id,
                             type: d.type,
                             watched_at: d.watchedAt || d.loggedAt,
                             rating: d.rating,
@@ -5706,11 +5696,28 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                         </div>`;
                     }).join('');
                     
-                    container.innerHTML = listHtml; // Use innerHTML to redraw the full paginated list properly instead of appending duplicates
+                    if (page === 1) {
+                        container.innerHTML = listHtml;
+                    } else {
+                        container.innerHTML = listHtml; // Replaced natively from updated mapped array
+                    }
                     
-                    if (fetchedCount >= page * 100) {
-                        loadMoreContainer.innerHTML = `<button id="btn-load-more" class="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-full font-bold transition shadow-lg border border-gray-600 hover:border-white">Load More</button>`;
+                    if (rawHistory.length > page * 100 || (fetchedCount >= page * 100 && traktAccessToken)) {
+                        loadMoreContainer.innerHTML = `<div id="history-sentinel" class="h-10 w-full"></div><button id="btn-load-more" class="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-full font-bold transition shadow-lg border border-gray-600 hover:border-white">Load More</button>`;
                         document.getElementById('btn-load-more').onclick = () => { historyPage++; renderHistory(historyPage); };
+                        
+                        // IntersectionObserver for Infinite Scroll
+                        const sentinel = document.getElementById('history-sentinel');
+                        if (sentinel) {
+                            const observer = new IntersectionObserver((entries) => {
+                                if (entries[0].isIntersecting) {
+                                    observer.disconnect();
+                                    historyPage++;
+                                    renderHistory(historyPage);
+                                }
+                            }, { rootMargin: '200px' });
+                            observer.observe(sentinel);
+                        }
                     } else {
                         loadMoreContainer.innerHTML = `<p class="text-gray-600 text-sm italic opacity-50">End of history.</p>`;
                     }
