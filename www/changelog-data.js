@@ -2,6 +2,19 @@
 
 export const changelogData = [
     {
+    version: "v16.125.0-alpha",
+    date: "2026-11-16",
+    changes: [
+        "In RecipeManagr: Added native lazy loading (loading='lazy') to all recipe images in both grid and list views.",
+        "In RecipeManagr: Implemented skeleton loaders for perceived performance while Firebase fetches recipe data.",
+        "In RecipeManagr: Refactored populateFilters() to use map and join instead of innerHTML loops, drastically improving filter rendering speed.",
+        "In RecipeManagr: Made the 'Add Recipe' submit button sticky at the bottom of the viewport for easier saving on long forms.",
+        "In RecipeManagr: Overhauled the dashboard and filter UI for mobile, moving tools and bulk actions into a compact horizontal scrollable bar.",
+        "In RecipeManagr: Moved the massive 7-column advanced filter grid into a collapsible <details> accordion to reduce UI clutter.",
+        "In RecipeManagr: Unified the 'Reset Filters' logic and buttons across both desktop and mobile views."
+    ]
+},
+    {
     version: "v16.124.0-alpha",
     date: "2026-11-16",
     changes: [
