@@ -48,8 +48,8 @@ export class AppNavigation {
         this.hubApps = [
             { name: 'Dashboard', url: '/dashboard', icon: 'fa-gauge-high', color: 'bg-slate-700' },
             { name: 'Route', url: '/routetrackr', icon: 'fa-map-location-dot', color: 'bg-lime-600' },
-            { name: 'Food', url: '/foodtrackr', icon: 'fa-utensils', color: 'bg-orange-600' },
-            { name: 'Recipe', url: '/recipemanagr', icon: 'fa-book-open', color: 'bg-teal-600' },
+            { name: 'Food', url: '/foodtrackr', icon: 'fa-apple-whole', color: 'bg-orange-600' },
+            { name: 'Recipe', url: '/recipemanagr', icon: 'fa-kitchen-set', color: 'bg-teal-600' },
             { name: 'Task', url: '/tasktrackr', icon: 'fa-check-double', color: 'bg-blue-600' },
             { name: 'Video', url: '/vidtrackr', icon: 'fa-ticket', color: 'bg-red-600' },
             { name: 'Book', url: '/booktrackr', icon: 'fa-book-open', color: 'bg-amber-500' },

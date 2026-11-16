@@ -2,6 +2,13 @@
 
 export const changelogData = [
     {
+    version: "v16.124.0-alpha",
+    date: "2026-11-16",
+    changes: [
+        "In Hub/Nav: Updated the icons for RecipeManagr (kitchen-set) and FoodTrackr (apple-whole) globally to completely separate them from BookTrackr.",
+    ]
+},
+    {
     version: "v16.123.0-alpha",
     date: "2026-11-14",
     changes: [
