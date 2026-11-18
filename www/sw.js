@@ -1,6 +1,6 @@
 // Automatically grab the version from the registration URL (e.g., sw.js?v=1.2.0)
 const urlParams = new URL(self.location).searchParams;
-const LATEST_VERSION = urlParams.get('v') || "2.0.11";
+const LATEST_VERSION = urlParams.get('v') || "2.0.12";
 
 console.log(`[sw.js] 🟢 Booting up Service Worker v${LATEST_VERSION}`);
 
@@ -66,7 +66,6 @@ const urlsToCache = [
 
 // --- FORCE CACHE THESE IMMEDIATELY ON INSTALL ---
 const externalUrlsToCache = [
-  'https://cdn.tailwindcss.com?v=3.4.3',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/webfonts/fa-solid-900.woff2',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/webfonts/fa-solid-900.ttf',

@@ -563,6 +563,27 @@ export class AppNavigation {
     }
 
     injectGlobalStyles() {
+        // [PERFORMANCE] 1. Inject compiled Tailwind CSS globally
+        if (!document.querySelector('link[href^="/output.css"]')) {
+            const twLink = document.createElement('link');
+            twLink.rel = 'stylesheet';
+            twLink.href = '/output.css';
+            const firstStyle = document.head.querySelector('style');
+            if (firstStyle) {
+                document.head.insertBefore(twLink, firstStyle);
+            } else {
+                document.head.appendChild(twLink);
+            }
+        }
+
+        // [PERFORMANCE] 2. Strip out the heavy Tailwind CDN script (if any legacy page still includes it)
+        const cdnScript = document.querySelector('script[src*="cdn.tailwindcss.com"]');
+        if (cdnScript) {
+            cdnScript.remove();
+            window.tailwind = window.tailwind || {};
+            console.log("[Debug - Performance] Tailwind CDN stripped dynamically. Using static output.css.");
+        }
+
         const styleId = 'shared-nav-styles';
         if (document.getElementById(styleId)) return;
 

@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v17.0.0-alpha",
+    date: "2026-11-18",
+    changes: [
+        "In All: Migrated all 34 apps and pages from the runtime Tailwind CSS CDN script to a single, pre-compiled static stylesheet (/output.css) built with Tailwind v3.4.19 for faster load times and offline reliability.",
+        "In All: Removed inline tailwind.config scripts across all HTML files and unified custom theme colors (brand, primary, primary-hover), fonts (Inter), and dynamic safelists into tailwind.config.js.",
+        "In Hub/Nav: Updated AppNavigation (shared-nav.js) to inject /output.css in the proper cascade order before inline <style> blocks and safely strip any legacy Tailwind CDN scripts.",
+        "In Hub/Nav: Removed the obsolete Tailwind CDN URL from Service Worker (sw.js) pre-caching and bumped the cache version.",
+        "In BookTrackr: Converted the CDN-only <style type='text/tailwindcss'> and @apply directives for .stats-box into standard CSS rules.",
+        "In RecipeManagr: Fixed an iOS WebKit image upload bug in compressImage() by resolving the raw compressed Blob with a .name property instead of wrapping it in a new File() constructor that failed to stream to Firebase Storage."
+    ]
+},
+    {
     version: "v16.125.0-alpha",
     date: "2026-11-16",
     changes: [
