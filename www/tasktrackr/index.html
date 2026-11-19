@@ -2012,7 +2012,7 @@ window.syncPendingTasks = async () => {
                     }
 
                     if (savedTask && savedTask.id && auth.currentUser) {
-                        const mirrorPayload = { ...mergedTask, id: savedTask.id, source: 'google', lastSynced: new Date(), dueDate: payload.dueDate ? new Date(payload.dueDate) : null, contextMode: mergedTask.contextMode || 'inherit' };
+                        const mirrorPayload = { ...mergedTask, id: savedTask.id, source: 'google', updated: new Date(), lastSynced: new Date(), dueDate: payload.dueDate ? new Date(payload.dueDate) : null, contextMode: mergedTask.contextMode || 'inherit' };
                         await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload, { merge: true });
                     }
                 } else {
@@ -2030,9 +2030,17 @@ window.syncPendingTasks = async () => {
                     }
 
                     if (savedTask && savedTask.id && auth.currentUser) {
+                        const resolvedSource = (!isEdit || isTemp) ? 'tasktrackr' : (mergedTask.source || 'tasktrackr');
                         // Store 'tasktrackr' directly on the document so we don't need the task_origins collection anymore
-                        const mirrorPayload = { ...payload, id: savedTask.id, source: 'tasktrackr', lastSynced: new Date(), dueDate: payload.dueDate ? new Date(payload.dueDate) : null, startDate: payload.startDate ? new Date(payload.startDate) : null, contextMode: mergedTask.contextMode || 'inherit' };
-                        await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload);
+                        const mirrorPayload = { ...payload, id: savedTask.id, source: resolvedSource, updated: new Date(), lastSynced: new Date(), dueDate: payload.dueDate ? new Date(payload.dueDate) : null, startDate: payload.startDate ? new Date(payload.startDate) : null, contextMode: mergedTask.contextMode || 'inherit' };
+                        await setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id), mirrorPayload, { merge: true });
+                        if (resolvedSource === 'tasktrackr') {
+                            try {
+                                const cachedOrigins = new Set(JSON.parse(localStorage.getItem('tasktrackr_origins_v2') || '[]'));
+                                cachedOrigins.add(savedTask.id);
+                                localStorage.setItem('tasktrackr_origins_v2', JSON.stringify(Array.from(cachedOrigins)));
+                            } catch (e) {}
+                        }
                     }
                 }
 
@@ -2426,12 +2434,18 @@ const fetchGoogleData = async () => {
             try { 
                 const q = query(collection(db, 'users', auth.currentUser.uid, 'task_history'), orderBy('completedAt', 'desc'), limit(100)); 
                 const querySnapshot = await getDocs(q); 
+                let storedOrigins = new Set();
+                try {
+                    JSON.parse(localStorage.getItem('tasktrackr_origins_v2') || '[]').forEach(id => storedOrigins.add(id));
+                } catch (e) {}
                 const fetchedHistory = querySnapshot.docs.map(doc => { 
                     const data = doc.data(); 
                     const base = data.originalData || {}; 
+                    const resolvedId = data.taskId || doc.id;
+                    const resolvedSource = (base.source === 'tasktrackr' || storedOrigins.has(resolvedId)) ? 'tasktrackr' : (base.source || 'ticktick');
                     // Strictly prevent inflating "Today" by leaving missing dates as null
                     const cDate = data.completedAt ? (data.completedAt.toDate ? data.completedAt.toDate().toISOString() : new Date(data.completedAt).toISOString()) : null;
-                    return { ...base, id: data.taskId || doc.id, title: data.title || base.title || 'Untitled', projectId: data.projectId || base.projectId || 'inbox', status: 2, completedAt: cDate, isHistory: true }; 
+                    return { ...base, id: resolvedId, source: resolvedSource, title: data.title || base.title || 'Untitled', projectId: data.projectId || base.projectId || 'inbox', status: 2, completedAt: cDate, isHistory: true }; 
                 });
                 
                 // CRITICAL FIX: Preserve recently completed items that haven't hit the database query yet
@@ -2445,7 +2459,7 @@ const fetchGoogleData = async () => {
                 const newHistoryCache = [...optimisticHistory, ...fetchedHistory];
                 
                 // Use visual signature to ignore backend timestamp drift
-                const getHistorySignature = (cache) => JSON.stringify(cache.map(t => t.id + t.status));
+                const getHistorySignature = (cache) => JSON.stringify(cache.map(t => t.id + t.status + (t.source || '')));
                 const historyChanged = getHistorySignature(historyCache) !== getHistorySignature(newHistoryCache);
                 
                 historyCache = newHistoryCache;
@@ -2611,28 +2625,53 @@ const fetchAllData = async () => {
 
     allActiveTasks = [...allActiveTasks, ...googleData.tasks];
 
-    // 3. Origins now load naturally from local_tasks cache
+    // 3. Origins & Local Tasks (with one-time historical origin bootstrap + Delta Sync)
+    let originsMap = new Set();
+    try {
+        const storedOrigins = JSON.parse(localStorage.getItem('tasktrackr_origins_v2') || '[]');
+        storedOrigins.forEach(id => originsMap.add(id));
+    } catch (e) {}
+    taskCache.forEach(t => {
+        if (t.source === 'tasktrackr') originsMap.add(t.id);
+    });
+
     if (auth.currentUser) {
         try {
-            
-            // 4. FETCH LOCAL TASKS (AND MIRRORS) - DELTA SYNC
-            const lastSync = localStorage.getItem('tasktrackr_last_sync') || '1970-01-01T00:00:00Z';
-            const localRef = collection(db, 'users', auth.currentUser.uid, 'local_tasks');
-            const localSnaps = await getDocs(query(localRef, where('updated', '>=', new Date(lastSync))));
-            localStorage.setItem('tasktrackr_last_sync', new Date().toISOString());
-            
-            // Load unaffected cached tasks into memory first
-            taskCache.filter(t => t.source === 'local' || t.source === 'google' || originsMap.has(t.id)).forEach(t => {
-                if (!allActiveTasks.find(a => a.id === t.id)) allActiveTasks.push(t);
-            });
+            // One-time bootstrap of legacy task_origins collection so historical TaskTrackr tasks keep their origin with 0 ongoing reads
+            if (!localStorage.getItem('tasktrackr_origins_v2')) {
+                try {
+                    const originSnaps = await getDocs(collection(db, 'users', auth.currentUser.uid, 'task_origins'));
+                    originSnaps.forEach(docSnap => originsMap.add(docSnap.id));
+                } catch (e) { console.warn("Could not bootstrap legacy task_origins:", e); }
+            }
 
-            // Create a Set of existing IDs from TickTick to avoid duplicates
+            // 4. FETCH LOCAL TASKS (AND MIRRORS) - DELTA SYNC
+            const lastSync = localStorage.getItem('tasktrackr_last_sync_v2');
+            const syncTimestamp = new Date().toISOString();
+            const localRef = collection(db, 'users', auth.currentUser.uid, 'local_tasks');
+            // On initial v2 sync, perform a full collection read so legacy documents lacking an 'updated' field are included
+            const localSnaps = lastSync
+                ? await getDocs(query(localRef, where('updated', '>=', new Date(lastSync))))
+                : await getDocs(localRef);
+
+            // Create a Set of existing IDs from live APIs (TickTick / Google)
             const apiTaskIds = new Set(allActiveTasks.map(t => t.id));
 
+            // Carry over cached local metadata onto live API tasks, or retain local/cached tasks untouched by delta sync
+            taskCache.forEach(t => {
+                const existingApiTask = allActiveTasks.find(a => a.id === t.id);
+                if (existingApiTask) {
+                    if (t.hidden !== undefined) existingApiTask.hidden = t.hidden;
+                    if (t.contextMode) existingApiTask.contextMode = t.contextMode;
+                    if (t.editHistory) existingApiTask.editHistory = t.editHistory;
+                    if (t.completedAt && !existingApiTask.completedAt) existingApiTask.completedAt = t.completedAt;
+                    if (t.source === 'tasktrackr' || originsMap.has(t.id)) existingApiTask.source = 'tasktrackr';
+                } else if (t.source === 'local' || t.source === 'google' || t.source === 'tasktrackr' || originsMap.has(t.id)) {
+                    allActiveTasks.push(t);
+                }
+            });
+
             localSnaps.forEach(docSnap => {
-                // Remove stale cached versions of updated documents
-                const staleIdx = allActiveTasks.findIndex(t => t.id === docSnap.id);
-                if (staleIdx > -1) allActiveTasks.splice(staleIdx, 1);
                 const data = docSnap.data();
                 
                 // [FIX] Auto-Heal: If an ephemeral calendar event was accidentally saved to the DB in a previous version, destroy it.
@@ -2641,20 +2680,30 @@ const fetchAllData = async () => {
                     return; 
                 }
 
-                // If this task ID was already fetched from TickTick, map local states (like hidden)
-            if (apiTaskIds.has(doc.id)) {
-                const existingTask = allActiveTasks.find(t => t.id === doc.id);
-                if (existingTask) {
-                    if (data.hidden !== undefined) existingTask.hidden = data.hidden;
-                    // ADDED: Sync custom context to existing TickTick tasks
-                    if (data.contextMode) existingTask.contextMode = data.contextMode; 
-                    // FIX: Re-attach local edit history so cloud syncs don't wipe it
-                    if (data.editHistory) existingTask.editHistory = data.editHistory;
-                    // [DEBUG] Preserve completedAt if mirrored in local_tasks
-                    if (data.completedAt) existingTask.completedAt = data.completedAt.toDate ? data.completedAt.toDate().toISOString() : data.completedAt;
+                if (data.source === 'tasktrackr') {
+                    originsMap.add(docSnap.id);
                 }
-                return;
-            }
+
+                // If this task ID was already fetched from TickTick/Google API, map local states & origin onto it
+                if (apiTaskIds.has(docSnap.id)) {
+                    const existingTask = allActiveTasks.find(t => t.id === docSnap.id);
+                    if (existingTask) {
+                        if (data.hidden !== undefined) existingTask.hidden = data.hidden;
+                        if (data.contextMode) existingTask.contextMode = data.contextMode; 
+                        if (data.editHistory) existingTask.editHistory = data.editHistory;
+                        if (data.completedAt) existingTask.completedAt = data.completedAt.toDate ? data.completedAt.toDate().toISOString() : data.completedAt;
+                        if (data.source === 'tasktrackr' || originsMap.has(docSnap.id)) {
+                            existingTask.source = 'tasktrackr';
+                        } else if (data.source && !existingTask.source) {
+                            existingTask.source = data.source;
+                        }
+                    }
+                    return;
+                }
+
+                // Remove stale cached versions of updated local documents
+                const staleIdx = allActiveTasks.findIndex(t => t.id === docSnap.id);
+                if (staleIdx > -1) allActiveTasks.splice(staleIdx, 1);
 
                 const cleanDate = (d) => d && d.toDate ? d.toDate().toISOString() : d;
                 
@@ -2667,13 +2716,21 @@ const fetchAllData = async () => {
 
                 allActiveTasks.push({
                     ...data,
-                    id: doc.id,
-                    source: data.source || 'local', // FIXED: Retain original source so the UI formats it correctly
+                    id: docSnap.id,
+                    source: originsMap.has(docSnap.id) ? 'tasktrackr' : (data.source || 'local'),
                     startDate: cleanDate(data.startDate),
                     dueDate: cleanDate(data.dueDate),
                     completedAt: resolvedCompletedAt || null
                 });
             });
+
+            localStorage.setItem('tasktrackr_origins_v2', JSON.stringify(Array.from(originsMap)));
+            localStorage.setItem('tasktrackr_last_sync_v2', syncTimestamp);
+            if (historyCache && historyCache.length > 0) {
+                historyCache.forEach(h => {
+                    if (originsMap.has(h.id)) h.source = 'tasktrackr';
+                });
+            }
         } catch (e) { console.error("Error fetching Firebase data:", e); }
     }
 
@@ -2688,8 +2745,8 @@ const fetchAllData = async () => {
             // Keep local
         } else if (task.source === 'google') { 
             // Keep google
-        } else if (task.source === 'tasktrackr') {
-            // Keep tasktrackr (Now naturally pulled from local_tasks)
+        } else if (task.source === 'tasktrackr' || originsMap.has(task.id)) {
+            task.source = 'tasktrackr';
         } else {
             // Default only if nothing else matches
             task.source = 'ticktick';
@@ -2724,7 +2781,7 @@ const fetchAllData = async () => {
     });
 
     // Generate a visual signature to ignore invisible backend timestamp updates (like lastSynced)
-    const getCacheSignature = (cache) => JSON.stringify(cache.map(t => ({id: t.id, status: t.status, title: t.title, dueDate: t.dueDate, projectId: t.projectId, priority: t.priority, hidden: t.hidden, items: (t.items||[]).length})));
+    const getCacheSignature = (cache) => JSON.stringify(cache.map(t => ({id: t.id, status: t.status, title: t.title, dueDate: t.dueDate, projectId: t.projectId, priority: t.priority, hidden: t.hidden, source: t.source, items: (t.items||[]).length})));
     const oldSig = getCacheSignature(taskCache);
     
     // [CRITICAL FIX] Hard Deduplication: Enforce strict uniqueness by ID to guarantee no duplicates survive a reload

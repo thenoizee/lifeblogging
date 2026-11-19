@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v17.1.0-alpha",
+    date: "2026-11-19",
+    changes: [
+        "In FoodTrackr: Fixed missing desktop navigation tabs and header branding by removing a redundant inline .hidden CSS rule that overrode responsive display utilities (md:flex, sm:flex) in /output.css.",
+        "In FoodTrackr: Restored the shared mobile bottom navigation bar and removed the hardcoded display: flex override on .sub-tab-nav so responsive sub-tab navigation hides properly on mobile viewports.",
+        "In VehicleManagr: Removed a redundant inline .hidden CSS rule to prevent cascade conflicts with compiled Tailwind responsive utilities.",
+        "In TaskTrackr: Fixed a bug where all tasks displayed TickTick as their origin instead of TaskTrackr by resolving an undefined originsMap reference and docSnap.id typo during local_tasks delta sync.",
+        "In TaskTrackr: Added a one-time localStorage bootstrap (tasktrackr_origins_v2) for legacy task_origins and local_tasks records to preserve TaskTrackr task origins across active and completed history caches with zero ongoing Firestore reads.",
+        "In TaskTrackr: Added updated timestamps when mirroring synced tasks to local_tasks and included task source in cache visual signatures so origin badge updates trigger immediate UI re-renders."
+    ]
+},
+    {
     version: "v17.0.0-alpha",
     date: "2026-11-18",
     changes: [
