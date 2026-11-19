@@ -2,6 +2,20 @@
 
 export const changelogData = [
     {
+    version: "v17.2.0-alpha",
+    date: "2026-11-19",
+    changes: [
+        "In RecipeManagr: Fixed mobile photo uploads hanging indefinitely on 'Saving...' across both mobile data and Wi-Fi by attaching img.onload before assigning img.src in compressImage() (preventing synchronous decoded data: URI cache hits from dropping the load callback), skipping raw camera FileReader data: URI previews in the Log Cook modal, and adding uploadPhotoWithProgress() with explicit contentType metadata and an 8-second resumable upload watchdog fallback.",
+        "In RecipeManagr: Updated the browser favicon SVG to fa-kitchen-set (teal #14b8a6) and added Service Worker registration (/sw.js) in <head> so mobile devices receive cache updates when launching RecipeManagr directly.",
+        "In FoodTrackr: Updated the browser favicon SVG from fa-utensils to fa-apple-whole (orange #f97316) and updated compressImage() to return a raw Blob with explicit contentType metadata for mobile WebKit compatibility.",
+        "In IconGenerator: Updated the FoodTrackr preset to fa-apple-whole and added a RecipeManagr preset (fa-kitchen-set).",
+        "In TaskTrackr: Drastically improved initial load speed with 0ms instant boot rendering from localStorage caches (tasks, project hierarchy/lists, completed history, and filter settings) and enabled Firestore IndexedDB persistentLocalCache.",
+        "In TaskTrackr: Parallelized startup Firestore settings/service token reads, Google Tasks list/task fetches, Google Calendar event fetches, and TickTick project/task pipelines via Promise.all.",
+        "In TaskTrackr: Eliminated double and triple screen refreshes during startup and background syncs by removing a duplicate legacy DOMContentLoaded fetchAllData() listener, deduplicating concurrent fetchAllData() calls, sorting cache and project signatures by ID so non-deterministic Promise.all arrival order never triggers false re-renders, restricting background fetchHistory() re-renders, and preserving scroll position without re-playing card fade animations on silent background updates.",
+        "In TaskTrackr: Fixed deleted tasks remaining visually on screen until manual refresh by calling renderApp({ silent: true }) immediately on optimistic deletion, tracking last-rendered DOM signatures (_lastRenderedTaskSig), and mapping temp_ task IDs to their synced cloud IDs when deleting newly created tasks."
+    ]
+},
+    {
     version: "v17.1.0-alpha",
     date: "2026-11-19",
     changes: [

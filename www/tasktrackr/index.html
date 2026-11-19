@@ -998,7 +998,7 @@ import {
     GoogleAuthProvider, 
     signInWithPopup      
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, orderBy, limit, getDocs, writeBatch, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, query, orderBy, limit, getDocs, writeBatch, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         import { AppNavigation } from '/shared-nav.js';
         import { changelogData } from '/changelog-data.js';
@@ -1008,7 +1008,9 @@ import {
         const auth = initializeAuth(app, {
             persistence: browserLocalPersistence
         });
-        const db = getFirestore(app);
+        const db = initializeFirestore(app, {
+            localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+        });
 
         // --- NEW: Advanced View & Filter Hash Routing ---
         const validTabs = ['classic', 'agenda', 'eisenhower', 'kanban', 'calendar', 'timeline'];
@@ -1133,83 +1135,137 @@ window.addEventListener('WidgetAction', (e) => {
     }
 });
         
+        const applySettingsToState = (s) => {
+            if (!s) return false;
+            const before = JSON.stringify({
+                visibleSources: currentState.visibleSources,
+                projectIds: currentState.projectIds,
+                tags: currentState.tags,
+                sortMode: currentState.sortMode,
+                priority: currentState.priority
+            });
+            if (s.visibleSources) currentState.visibleSources = s.visibleSources;
+            if (s.projectIds) currentState.projectIds = s.projectIds;
+            if (s.tags) {
+                currentState.tags = Array.isArray(s.tags) ? s.tags : (s.tags === 'all' ? [] : [s.tags]);
+            } else if (s.tag) {
+                currentState.tags = Array.isArray(s.tag) ? s.tag : (s.tag === 'all' ? [] : [s.tag]);
+            }
+            if (s.sortMode) currentState.sortMode = s.sortMode;
+            if (s.priority) currentState.priority = s.priority;
+            const after = JSON.stringify({
+                visibleSources: currentState.visibleSources,
+                projectIds: currentState.projectIds,
+                tags: currentState.tags,
+                sortMode: currentState.sortMode,
+                priority: currentState.priority
+            });
+            return before !== after;
+        };
+
+        const saveTaskCacheToStorage = (cache) => {
+            try {
+                const clean = cache.map(t => {
+                    if (!t._nestedTasks && !t._customStyle && !t._customClass) return t;
+                    const copy = { ...t };
+                    delete copy._nestedTasks;
+                    delete copy._customStyle;
+                    delete copy._customClass;
+                    return copy;
+                });
+                localStorage.setItem('ticktrackr_tasks', JSON.stringify(clean));
+            } catch (e) { console.error("Error saving task cache:", e); }
+        };
+
         onAuthStateChanged(auth, async (user) => {
-    // 1. If Firebase User exists (Google/Sync)
-    if (user) {
-        showLoader();
-        nav.updateUser(user.email);
-        document.getElementById('login-overlay').classList.add('hidden');
+            // 1. If Firebase User exists (Google/Sync)
+            if (user) {
+                nav.updateUser(user.email);
+                document.getElementById('login-overlay').classList.add('hidden');
 
-        // Load Saved Preferences
-        try {
-            const setSnap = await getDoc(doc(db, 'users', user.uid, 'settings', 'tasktrackr'));
-            if (setSnap.exists()) {
-                const s = setSnap.data();
-                if (s.visibleSources) currentState.visibleSources = s.visibleSources;
-                if (s.projectIds) currentState.projectIds = s.projectIds;
-                if (s.tag) {
-                    currentState.tags = Array.isArray(s.tag) ? s.tag : (s.tag === 'all' ? [] : [s.tag]);
+                // INSTANT UI: If not already rendered from local cache at boot, render immediately before network calls
+                if (taskCache && taskCache.length > 0) {
+                    if (!window._hasInitialRendered) {
+                        renderApp();
+                    }
+                    const loaderEl = document.getElementById('app-loader');
+                    if (loaderEl) loaderEl.classList.add('hidden');
+                    window.updateSyncStatus('syncing');
+                } else {
+                    showLoader();
                 }
-                if (s.sortMode) currentState.sortMode = s.sortMode;
-                if (s.priority) currentState.priority = s.priority;
+
+                // Load Saved Preferences & Sync Services in PARALLEL instead of 3 sequential waterfalls
+                let settingsChanged = false;
+                try {
+                    const [setSnap, ttSnap, gSnap] = await Promise.all([
+                        getDoc(doc(db, 'users', user.uid, 'settings', 'tasktrackr')).catch(e => { console.error("Could not load settings", e); return null; }),
+                        getDoc(doc(db, 'users', user.uid, 'services', 'ticktick')).catch(e => { console.error(e); return null; }),
+                        getDoc(doc(db, 'users', user.uid, 'services', 'google')).catch(e => { console.error(e); return null; })
+                    ]);
+
+                    if (setSnap && setSnap.exists()) {
+                        const s = setSnap.data();
+                        localStorage.setItem('tasktrackr_settings_cache', JSON.stringify(s));
+                        settingsChanged = applySettingsToState(s);
+                    }
+                    if (ttSnap && ttSnap.exists() && ttSnap.data().token) {
+                        accessToken = ttSnap.data().token;
+                        localStorage.setItem('ticktick_token', accessToken);
+                    }
+                    if (gSnap && gSnap.exists() && gSnap.data().token) {
+                        localStorage.setItem('google_token', gSnap.data().token);
+                    }
+                } catch (e) { console.error(e); }
+
+                if (settingsChanged && window._hasInitialRendered) {
+                    renderApp({ silent: true });
+                }
+
+                // 2. Process offline queue now that auth is ready
+                if (window.syncPendingTasks) {
+                    window.syncPendingTasks();
+                }
+
+                // 3. Fetch Data silently to update the cache
+                fetchAllData();
+                fetchHistory(true);
+            } 
+            // 2. If No Firebase User (TickTick Standalone / Local)
+            else {
+                if (accessToken) {
+                    document.getElementById('login-overlay').classList.add('hidden');
+                    if (taskCache && taskCache.length > 0 && !window._hasInitialRendered) {
+                        renderApp();
+                        const loaderEl = document.getElementById('app-loader');
+                        if (loaderEl) loaderEl.classList.add('hidden');
+                    }
+                    if (window.syncPendingTasks) {
+                        window.syncPendingTasks();
+                    }
+                    fetchAllData();
+                } else {
+                    const loaderEl = document.getElementById('app-loader');
+                    if (loaderEl) loaderEl.classList.add('hidden');
+                    document.getElementById('login-overlay').classList.remove('hidden');
+                }
             }
-        } catch(e) { console.error("Could not load settings", e); }
-
-        // Sync Services
-        try {
-            const docRef = doc(db, 'users', user.uid, 'services', 'ticktick');
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists() && docSnap.data().token) {
-                accessToken = docSnap.data().token;
-                localStorage.setItem('ticktick_token', accessToken);
-            }
-        } catch (e) { console.error(e); }
-
-        try {
-            const gDoc = await getDoc(doc(db, 'users', user.uid, 'services', 'google'));
-            if (gDoc.exists() && gDoc.data().token) {
-                localStorage.setItem('google_token', gDoc.data().token);
-            }
-        } catch (e) { console.error(e); }
-
-        // 1. INSTANT UI: Render the local cache immediately before waiting for network calls
-        if (taskCache && taskCache.length > 0) {
-            renderApp();
-        }
-
-        // 2. Process offline queue now that auth is ready
-        if (window.syncPendingTasks) {
-            window.syncPendingTasks();
-        }
-
-        // 3. Fetch Data silently to update the cache
-        fetchAllData();
-        fetchHistory(); // ADDED: Seed completed tasks immediately at startup
-    } 
-    // 2. If No Firebase User (TickTick Standalone / Local)
-    else {
-        // Check if we have a legacy TickTick token
-        if (accessToken) {
-            document.getElementById('login-overlay').classList.add('hidden');
-            
-            // Process offline queue now that local token is ready
-            if (window.syncPendingTasks) {
-                window.syncPendingTasks();
-            }
-
-            fetchAllData();
-        } else {
-            // No user, no token -> Show Login
-            document.getElementById('login-overlay').classList.remove('hidden');
-        }
-    }
-});
+        });
         
         let activeSortables = [];
         let taskCache = [];
         let historyCache = [];
         try { const cached = localStorage.getItem('ticktrackr_tasks'); if (cached) taskCache = JSON.parse(cached); } catch(e) { console.error(e); }
+        try { const cachedHist = localStorage.getItem('tasktrackr_history_cache'); if (cachedHist) historyCache = JSON.parse(cachedHist); } catch(e) { console.error(e); }
         let projectMap = {}; // { id: { name, color } }
+        try {
+            const cachedProj = localStorage.getItem('tasktrackr_projects_cache');
+            if (cachedProj) projectMap = JSON.parse(cachedProj);
+        } catch(e) { console.error(e); }
+        if (Object.keys(projectMap).length === 0) {
+            const initInboxId = localStorage.getItem('ticktrackr_true_inbox_id') || 'inbox';
+            projectMap[initInboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
+        }
         let currentCalendarDate = new Date();
         let selectedTasks = new Set();
         let isSelectionMode = false;
@@ -1256,6 +1312,10 @@ window.addEventListener('WidgetAction', (e) => {
                 tasktrackr: true
             }
         };
+        try {
+            const cachedSettings = localStorage.getItem('tasktrackr_settings_cache');
+            if (cachedSettings) applySettingsToState(JSON.parse(cachedSettings));
+        } catch(e) {}
         window.sectionStates = { overdue: false, today: false, tomorrow: false, later: false, noDate: false, completed: true };
 
         window.updateKanbanGrouping = (mode) => {
@@ -1264,15 +1324,17 @@ window.addEventListener('WidgetAction', (e) => {
         };
 
         const saveSettingsToFirebase = async () => {
+            const payload = {
+                visibleSources: currentState.visibleSources,
+                projectIds: currentState.projectIds,
+                tags: currentState.tags,
+                sortMode: currentState.sortMode,
+                priority: currentState.priority
+            };
+            try { localStorage.setItem('tasktrackr_settings_cache', JSON.stringify(payload)); } catch(e) {}
             if (auth.currentUser) {
                 try {
-                    await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'tasktrackr'), {
-                        visibleSources: currentState.visibleSources,
-                        projectIds: currentState.projectIds,
-                        tags: currentState.tags,
-                        sortMode: currentState.sortMode,
-                        priority: currentState.priority
-                    }, { merge: true });
+                    await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'tasktrackr'), payload, { merge: true });
                 } catch (e) { console.error("Error saving settings", e); }
             }
         };
@@ -2045,6 +2107,29 @@ window.syncPendingTasks = async () => {
                 }
 
                 if (savedTask && savedTask.id) {
+                    window._tempIdMap = window._tempIdMap || {};
+                    if (tempId !== savedTask.id) {
+                        window._tempIdMap[tempId] = savedTask.id;
+                    }
+
+                    // If the user deleted this task while the creation POST was still in flight, immediately clean it up from cloud & cache
+                    if (window._deletedTempIds && (window._deletedTempIds.has(tempId) || window._deletedTempIds.has(savedTask.id))) {
+                        taskCache = taskCache.filter(t => t.id !== tempId && t.id !== savedTask.id);
+                        saveTaskCacheToStorage(taskCache);
+                        if (auth.currentUser) {
+                            deleteDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', savedTask.id)).catch(() => {});
+                        }
+                        if (destination === 'google' || mergedTask.source === 'google' || mergedTask.kind === 'google') {
+                            const gListId = mergedTask.projectId === 'inbox' ? '@default' : mergedTask.projectId;
+                            googleApi(`lists/${gListId}/tasks/${savedTask.id}`, 'DELETE').catch(() => {});
+                        } else if (destination !== 'local') {
+                            const targetPid = (!mergedTask.projectId || mergedTask.projectId === 'inbox') ? window.getInboxId() : mergedTask.projectId;
+                            api(`/project/${targetPid}/task/${savedTask.id}`, 'DELETE').catch(() => {});
+                        }
+                        renderApp({ silent: true });
+                        continue;
+                    }
+
                     // [CRITICAL FIX] Prevent ID Collision: If a background fetch already pulled the real task, 
                     // merge the context into it and destroy the temporary ghost, instead of creating a duplicate ID.
                     const existingRealIdx = taskCache.findIndex(t => t.id === savedTask.id);
@@ -2103,7 +2188,7 @@ window.syncPendingTasks = async () => {
         );
 
         localStorage.setItem('pendingTasks', JSON.stringify(failedOrNew));
-        localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
+        saveTaskCacheToStorage(taskCache);
         
     } finally {
         // [FIX] Bulletproof queue release to ensure no permanent thread lockouts
@@ -2291,75 +2376,69 @@ const googleApi = async (endpoint, method = 'GET', body = null, base = 'https://
     }
 };
 
-// 3. Fetcher Logic
+// 3. Fetcher Logic (Parallelized Google Tasks + Google Calendar)
 const fetchGoogleData = async () => {
-    // 1. Safety check: If not connected, return empty immediately
-    if (!localStorage.getItem('google_token')) return { projects: [], tasks: [] };
-
-    const taskLists = await googleApi('users/@me/lists');
-    
-    // 2. Handle API failure or empty response gracefully
-    if (!taskLists || !taskLists.items) {
-        return { projects: [], tasks: [] };
-    }
+    if (!localStorage.getItem('google_token')) return { projects: [], tasks: [], calProjects: {} };
 
     let gProjects = [];
     let gTasks = [];
+    let calProjects = {};
 
-    // Process Lists
-    for (const list of taskLists.items) {
-        gProjects.push({
-            id: list.id,
-            name: list.title,
-            kind: 'google_list',
-            color: '#4285F4' // Google Blue
-        });
+    const tasksPipeline = (async () => {
+        const taskLists = await googleApi('users/@me/lists');
+        if (!taskLists || !taskLists.items) return;
 
-        // Fetch Tasks for this List
-        const tasksData = await googleApi(`lists/${list.id}/tasks?showCompleted=false&showHidden=false`);
-        if (tasksData && tasksData.items) {
-            tasksData.items.forEach(t => {
-                gTasks.push({
-                    id: t.id,
-                    title: t.title,
-                    content: t.notes || '',
-                    projectId: list.id,
-                    status: t.status === 'completed' ? 2 : 0,
-                    completedAt: t.completed ? t.completed : null,
-                    priority: 0, 
-                    dueDate: t.due ? t.due : null,
-                    source: 'google',
-                    kind: 'google'
-                });
+        await Promise.all(taskLists.items.map(async (list) => {
+            gProjects.push({
+                id: list.id,
+                name: list.title,
+                kind: 'google_list',
+                color: '#4285F4'
             });
-        }
-    }
 
-    // --- ADD GOOGLE CALENDAR SYNC ---
-    try {
-        const timeMin = new Date().toISOString(); // From now
-        const future = new Date();
-        future.setMonth(future.getMonth() + 2); // 2 months ahead (lowered to prevent memory/DOM freeze)
-        const timeMax = future.toISOString();
-        
-        const calListRes = await googleApi('users/me/calendarList', 'GET', null, 'https://www.googleapis.com/calendar/v3/');
-        let enabledCals = [];
-        try { enabledCals = JSON.parse(localStorage.getItem('enabled_gcals') || '[]'); } catch(e){}
-
-        if (calListRes && calListRes.items) {
-            window.availableGoogleCalendars = calListRes.items;
-            
-            // Default to primary if empty
-            if (!localStorage.getItem('enabled_gcals')) {
-                const primary = calListRes.items.find(c => c.primary);
-                if (primary) enabledCals = [primary.id];
-                localStorage.setItem('enabled_gcals', JSON.stringify(enabledCals));
+            const tasksData = await googleApi(`lists/${list.id}/tasks?showCompleted=false&showHidden=false`);
+            if (tasksData && tasksData.items) {
+                tasksData.items.forEach(t => {
+                    gTasks.push({
+                        id: t.id,
+                        title: t.title,
+                        content: t.notes || '',
+                        projectId: list.id,
+                        status: t.status === 'completed' ? 2 : 0,
+                        completedAt: t.completed ? t.completed : null,
+                        priority: 0,
+                        dueDate: t.due ? t.due : null,
+                        source: 'google',
+                        kind: 'google'
+                    });
+                });
             }
+        }));
+    })();
 
-            for (const cal of calListRes.items) {
-                if (enabledCals.includes(cal.id)) {
-                    // Map individual calendars as sub-lists for finer control
-                    projectMap[cal.id] = {
+    const calendarPipeline = (async () => {
+        try {
+            const timeMin = new Date().toISOString();
+            const future = new Date();
+            future.setMonth(future.getMonth() + 2);
+            const timeMax = future.toISOString();
+
+            const calListRes = await googleApi('users/me/calendarList', 'GET', null, 'https://www.googleapis.com/calendar/v3/');
+            let enabledCals = [];
+            try { enabledCals = JSON.parse(localStorage.getItem('enabled_gcals') || '[]'); } catch(e){}
+
+            if (calListRes && calListRes.items) {
+                window.availableGoogleCalendars = calListRes.items;
+
+                if (!localStorage.getItem('enabled_gcals')) {
+                    const primary = calListRes.items.find(c => c.primary);
+                    if (primary) enabledCals = [primary.id];
+                    localStorage.setItem('enabled_gcals', JSON.stringify(enabledCals));
+                }
+
+                const activeCals = calListRes.items.filter(cal => enabledCals.includes(cal.id));
+                await Promise.all(activeCals.map(async (cal) => {
+                    calProjects[cal.id] = {
                         id: cal.id,
                         name: cal.summary,
                         kind: 'google_calendar_list',
@@ -2368,18 +2447,17 @@ const fetchGoogleData = async () => {
                     };
 
                     const eventsData = await googleApi(`calendars/${encodeURIComponent(cal.id)}/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`, 'GET', null, 'https://www.googleapis.com/calendar/v3/');
-                    
                     if (eventsData && eventsData.items) {
                         eventsData.items.forEach(e => {
                             gTasks.push({
                                 id: e.id,
                                 title: e.summary || 'Calendar Event',
                                 content: e.description || '',
-                                projectId: cal.id, // Assign to the specific calendar sub-list
+                                projectId: cal.id,
                                 status: 0,
-                                priority: 0, 
-                                startDate: e.start?.dateTime || e.start?.date || null, // Real start time
-                                dueDate: e.end?.dateTime || e.end?.date || e.start?.dateTime || e.start?.date || null, // Real end time
+                                priority: 0,
+                                startDate: e.start?.dateTime || e.start?.date || null,
+                                dueDate: e.end?.dateTime || e.end?.date || e.start?.dateTime || e.start?.date || null,
                                 isAllDay: !!(e.start && e.start.date),
                                 source: 'google_calendar',
                                 kind: 'google_calendar',
@@ -2387,14 +2465,15 @@ const fetchGoogleData = async () => {
                             });
                         });
                     }
-                }
+                }));
             }
+        } catch (err) {
+            console.error("Calendar Sync Error:", err);
         }
-    } catch (err) {
-        console.error("Calendar Sync Error:", err);
-    }
+    })();
 
-    return { projects: gProjects, tasks: gTasks };
+    await Promise.all([tasksPipeline, calendarPipeline]);
+    return { projects: gProjects, tasks: gTasks, calProjects };
 };
 
         const logTaskCompletion = async (task) => {
@@ -2428,9 +2507,9 @@ const fetchGoogleData = async () => {
         };
         // -----------------------
 
-        const fetchHistory = async () => { 
+        const fetchHistory = async (isBackground = false) => { 
             if (!auth.currentUser) return; 
-            showLoader(); 
+            if (!isBackground) showLoader(); 
             try { 
                 const q = query(collection(db, 'users', auth.currentUser.uid, 'task_history'), orderBy('completedAt', 'desc'), limit(100)); 
                 const querySnapshot = await getDocs(q); 
@@ -2458,24 +2537,69 @@ const fetchGoogleData = async () => {
                 
                 const newHistoryCache = [...optimisticHistory, ...fetchedHistory];
                 
-                // Use visual signature to ignore backend timestamp drift
-                const getHistorySignature = (cache) => JSON.stringify(cache.map(t => t.id + t.status + (t.source || '')));
+                // Order-independent visual signature to ignore backend timestamp drift
+                const getHistorySignature = (cache) => JSON.stringify([...cache].sort((a, b) => String(a.id).localeCompare(String(b.id))).map(t => t.id + ':' + t.status + ':' + (t.source || '') + ':' + (t.parentId || '')));
                 const historyChanged = getHistorySignature(historyCache) !== getHistorySignature(newHistoryCache);
                 
                 historyCache = newHistoryCache;
+                try {
+                    const cleanHist = historyCache.map(h => {
+                        if (!h._nestedTasks) return h;
+                        const copy = { ...h };
+                        delete copy._nestedTasks;
+                        return copy;
+                    });
+                    localStorage.setItem('tasktrackr_history_cache', JSON.stringify(cleanHist));
+                } catch(e) {}
                 
-                // Only redraw if the history from the server is visually different
+                // Only redraw if history changed AND we are viewing completed tasks or a history item is a nested subtask of an active task
                 if (historyChanged) {
-                    renderApp(); 
+                    const affectsActiveView = currentState.filter === 'completed' || historyCache.some(h => h.parentId);
+                    if (affectsActiveView) {
+                        renderApp({ silent: true }); 
+                    }
                 }
             } catch (e) {
                 console.error(e); 
-                showToast('Error loading history', 'error'); 
+                if (!isBackground) showToast('Error loading history', 'error'); 
             } 
-            hideLoader();
+            if (!isBackground) hideLoader();
         };
 
        // ... inside <script type="module">
+
+const getProjectSignature = (pmap) => {
+    const entries = Object.entries(pmap || {}).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    return JSON.stringify(entries.map(([id, p]) => ({
+        id,
+        name: p.name,
+        color: p.color,
+        kind: p.kind,
+        isInbox: !!p.isInbox,
+        parentId: p.parentId || null,
+        contextMode: p.contextMode || 'inherit'
+    })));
+};
+
+const getCacheSignature = (cache) => {
+    const sorted = [...(cache || [])].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    return JSON.stringify(sorted.map(t => ({
+        id: t.id,
+        status: t.status,
+        title: t.title,
+        content: t.content || '',
+        startDate: t.startDate || null,
+        dueDate: t.dueDate || null,
+        projectId: t.projectId,
+        parentId: t.parentId || null,
+        priority: t.priority || 0,
+        hidden: !!t.hidden,
+        source: t.source,
+        contextMode: t.contextMode || 'inherit',
+        tags: (t.tags || []).join(','),
+        items: (t.items || []).map(i => `${i.title}:${i.status}`).join('|')
+    })));
+};
 
 // REPLACE your existing fetchAllData with this updated version
 const fetchAllData = async () => {
@@ -2493,322 +2617,328 @@ const fetchAllData = async () => {
         return;
     }
 
-    // 1. Fetch Projects from TickTick
-    const projects = await api('/project');
-    if (!projects && !auth.currentUser) return; // Allow if only local user exists
-
-    // INTELLIGENT INBOX FINDER
-    let inboxProj = projects ? projects.find(p => (p.kind && p.kind.toLowerCase() === 'inbox') || (p.id && p.id.toString().toLowerCase().startsWith('inbox'))) : null;
-    if (projects && !inboxProj) inboxProj = projects.find(p => p.name.toLowerCase() === 'inbox');
-    const inboxId = inboxProj ? inboxProj.id : 'inbox';
-
-    // Fetch custom project hierarchy & color mapping from Firebase
-    let hierarchyMap = {};
-    let customColors = {};
-    let localProjects = [];
-    let projectContexts = {}; // Store project context definitions
-    
-    if (auth.currentUser) {
-        try {
-            const hSnaps = await getDocs(collection(db, 'users', auth.currentUser.uid, 'project_hierarchy'));
-            hSnaps.forEach(doc => { 
-                const data = doc.data();
-                if(data.parentId) hierarchyMap[doc.id] = data.parentId; 
-                if(data.color) customColors[doc.id] = data.color;
-                if(data.contextMode) projectContexts[doc.id] = data.contextMode; // Save fetched context
-                
-                // Capture Local Fallback Projects
-                if(data.isLocal || doc.id.startsWith('local_proj_')) {
-                    localProjects.push({
-                        id: doc.id,
-                        name: data.name || 'Unnamed List',
-                        color: data.color || '#4b5563',
-                        parentId: data.parentId || null,
-                        contextMode: data.contextMode || 'inherit'
-                    });
-                }
-            });
-        } catch(e) { console.error("Could not fetch hierarchy", e); }
+    // Deduplicate concurrent fetchAllData invocations so overlapping startup calls don't double-refresh
+    if (window._fetchAllDataPromise) {
+        return window._fetchAllDataPromise;
     }
 
-    projectMap = (projects || []).reduce((acc, p) => ({
-        ...acc,
-        [p.id]: { 
-            name: p.name, 
-            color: customColors[p.id] || p.color, 
-            kind: p.kind, 
-            isInbox: p.id === inboxId, 
-            parentId: hierarchyMap[p.id] || p.groupId || p.parentId || null,
-            contextMode: projectContexts[p.id] || 'inherit' // Changed to inherit
-        }
-    }), {});
-
-    // Inject local projects seamlessly into the UI
-    localProjects.forEach(lp => {
-        projectMap[lp.id] = {
-            name: lp.name,
-            color: lp.color,
-            kind: 'local_list',
-            isInbox: false,
-            parentId: lp.parentId,
-            contextMode: lp.contextMode || 'inherit' // Ensure context mode is copied here!
-        };
-    });
-    if (!projectMap[inboxId]) projectMap[inboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
-
-    // --- NEW: FETCH GOOGLE DATA ---
-    const googleData = await fetchGoogleData();
-    
-    // Merge Google Projects into projectMap
-    googleData.projects.forEach(p => {
-        projectMap[p.id] = p;
-    });
-    projectMap['google_calendar'] = { id: 'google_calendar', name: 'Google Calendar', kind: 'google_calendar', color: '#EA4335' };
-
-    // Mirror Google Tasks to Firebase for Records
-    if (auth.currentUser && googleData.tasks.length > 0) {
-        // [FIX] Filter out calendar events. They are fetched live and should never be permanently saved to the local tasks DB.
-        const tasksToMirror = googleData.tasks.filter(t => t.source !== 'google_calendar' && t.kind !== 'google_calendar');
-        
-        // We don't await this so it happens in background
-        Promise.all(tasksToMirror.map(t => {
-            return setDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', t.id), {
-                ...t,
-                source: 'google',
-                lastSeen: new Date(),
-                // Convert dates to Firestore timestamps or keep as strings depending on preference
-                dueDate: t.dueDate ? new Date(t.dueDate) : null
-            }, { merge: true });
-        })).catch(e => console.error("Error mirroring Google tasks:", e));
-    }
-
-    // 2. Fetch TickTick Tasks
-    let allActiveTasks = [];
-    let trueInboxId = localStorage.getItem('ticktrackr_true_inbox_id') || inboxId;
-
-    if (projects) {
-        const projectIds = new Set(projects.map(p => p.id));
-        projectIds.delete(inboxId); // Handle inbox separately to extract the true ID
-        
-        // [FIX] Fetch Inbox First to discover the True Inbox ID from the server
+    window._fetchAllDataPromise = (async () => {
         try {
-            const inboxData = await api(`/project/${inboxId}/data`);
-            if (inboxData && inboxData.tasks && inboxData.tasks.length > 0) {
-                trueInboxId = inboxData.tasks[0].projectId || trueInboxId;
-                localStorage.setItem('ticktrackr_true_inbox_id', trueInboxId);
-            }
-            
-            // Register True Inbox in Project Map to prevent UI 'Unknown' rendering
-            projectMap[trueInboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
-            if (trueInboxId !== inboxId && projectMap[inboxId]) delete projectMap[inboxId];
-            if (trueInboxId !== 'inbox' && projectMap['inbox']) delete projectMap['inbox'];
+            const oldProjSig = getProjectSignature(projectMap);
 
-            if (inboxData && inboxData.tasks) {
-                const mappedTasks = inboxData.tasks.map(t => ({ ...t, projectId: t.projectId || trueInboxId, completedAt: t.completedTime || t.completedAt || null }));
-                allActiveTasks.push(...mappedTasks);
-            }
-        } catch (e) { console.warn("Inbox fetch failed", e); }
-
-        // Fetch remaining projects
-        await Promise.all(Array.from(projectIds).map(async (pid) => {
-            try {
-                const data = await api(`/project/${pid}/data`);
-                if (data && data.tasks) {
-                    const mappedTasks = data.tasks.map(t => ({ ...t, projectId: t.projectId || pid, completedAt: t.completedTime || t.completedAt || null }));
-                    allActiveTasks.push(...mappedTasks);
-                }
-            } catch (e) { console.warn(`Failed to fetch tasks for ${pid}`, e); }
-        }));
-    } else {
-        projectMap[trueInboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
-    }
-
-    allActiveTasks = [...allActiveTasks, ...googleData.tasks];
-
-    // 3. Origins & Local Tasks (with one-time historical origin bootstrap + Delta Sync)
-    let originsMap = new Set();
-    try {
-        const storedOrigins = JSON.parse(localStorage.getItem('tasktrackr_origins_v2') || '[]');
-        storedOrigins.forEach(id => originsMap.add(id));
-    } catch (e) {}
-    taskCache.forEach(t => {
-        if (t.source === 'tasktrackr') originsMap.add(t.id);
-    });
-
-    if (auth.currentUser) {
-        try {
-            // One-time bootstrap of legacy task_origins collection so historical TaskTrackr tasks keep their origin with 0 ongoing reads
-            if (!localStorage.getItem('tasktrackr_origins_v2')) {
-                try {
-                    const originSnaps = await getDocs(collection(db, 'users', auth.currentUser.uid, 'task_origins'));
-                    originSnaps.forEach(docSnap => originsMap.add(docSnap.id));
-                } catch (e) { console.warn("Could not bootstrap legacy task_origins:", e); }
-            }
-
-            // 4. FETCH LOCAL TASKS (AND MIRRORS) - DELTA SYNC
+            // Run independent network pipelines in PARALLEL instead of sequentially
+            const currentUser = auth.currentUser;
             const lastSync = localStorage.getItem('tasktrackr_last_sync_v2');
             const syncTimestamp = new Date().toISOString();
-            const localRef = collection(db, 'users', auth.currentUser.uid, 'local_tasks');
-            // On initial v2 sync, perform a full collection read so legacy documents lacking an 'updated' field are included
-            const localSnaps = lastSync
-                ? await getDocs(query(localRef, where('updated', '>=', new Date(lastSync))))
-                : await getDocs(localRef);
 
-            // Create a Set of existing IDs from live APIs (TickTick / Google)
-            const apiTaskIds = new Set(allActiveTasks.map(t => t.id));
+            const [projects, hSnaps, googleData, originSnaps, localSnaps] = await Promise.all([
+                api('/project'),
+                currentUser
+                    ? getDocs(collection(db, 'users', currentUser.uid, 'project_hierarchy')).catch(e => { console.error("Could not fetch hierarchy", e); return null; })
+                    : Promise.resolve(null),
+                fetchGoogleData(),
+                (currentUser && !localStorage.getItem('tasktrackr_origins_v2'))
+                    ? getDocs(collection(db, 'users', currentUser.uid, 'task_origins')).catch(e => { console.warn("Could not bootstrap legacy task_origins:", e); return null; })
+                    : Promise.resolve(null),
+                currentUser
+                    ? (lastSync
+                        ? getDocs(query(collection(db, 'users', currentUser.uid, 'local_tasks'), where('updated', '>=', new Date(lastSync))))
+                        : getDocs(collection(db, 'users', currentUser.uid, 'local_tasks'))
+                      ).catch(e => { console.error("Error fetching local_tasks:", e); return null; })
+                    : Promise.resolve(null)
+            ]);
 
-            // Carry over cached local metadata onto live API tasks, or retain local/cached tasks untouched by delta sync
-            taskCache.forEach(t => {
-                const existingApiTask = allActiveTasks.find(a => a.id === t.id);
-                if (existingApiTask) {
-                    if (t.hidden !== undefined) existingApiTask.hidden = t.hidden;
-                    if (t.contextMode) existingApiTask.contextMode = t.contextMode;
-                    if (t.editHistory) existingApiTask.editHistory = t.editHistory;
-                    if (t.completedAt && !existingApiTask.completedAt) existingApiTask.completedAt = t.completedAt;
-                    if (t.source === 'tasktrackr' || originsMap.has(t.id)) existingApiTask.source = 'tasktrackr';
-                } else if (t.source === 'local' || t.source === 'google' || t.source === 'tasktrackr' || originsMap.has(t.id)) {
-                    allActiveTasks.push(t);
+            if (!projects && !currentUser) return;
+
+            // INTELLIGENT INBOX FINDER
+            let inboxProj = projects ? projects.find(p => (p.kind && p.kind.toLowerCase() === 'inbox') || (p.id && p.id.toString().toLowerCase().startsWith('inbox'))) : null;
+            if (projects && !inboxProj) inboxProj = projects.find(p => p.name.toLowerCase() === 'inbox');
+            const inboxId = inboxProj ? inboxProj.id : 'inbox';
+
+            let hierarchyMap = {};
+            let customColors = {};
+            let localProjects = [];
+            let projectContexts = {};
+
+            if (hSnaps) {
+                hSnaps.forEach(doc => {
+                    const data = doc.data();
+                    if (data.parentId) hierarchyMap[doc.id] = data.parentId;
+                    if (data.color) customColors[doc.id] = data.color;
+                    if (data.contextMode) projectContexts[doc.id] = data.contextMode;
+
+                    if (data.isLocal || doc.id.startsWith('local_proj_')) {
+                        localProjects.push({
+                            id: doc.id,
+                            name: data.name || 'Unnamed List',
+                            color: data.color || '#4b5563',
+                            parentId: data.parentId || null,
+                            contextMode: data.contextMode || 'inherit'
+                        });
+                    }
+                });
+            }
+
+            const nextProjectMap = (projects || []).reduce((acc, p) => ({
+                ...acc,
+                [p.id]: {
+                    name: p.name,
+                    color: customColors[p.id] || p.color,
+                    kind: p.kind,
+                    isInbox: p.id === inboxId,
+                    parentId: hierarchyMap[p.id] || p.groupId || p.parentId || null,
+                    contextMode: projectContexts[p.id] || 'inherit'
                 }
+            }), {});
+
+            localProjects.forEach(lp => {
+                nextProjectMap[lp.id] = {
+                    name: lp.name,
+                    color: lp.color,
+                    kind: 'local_list',
+                    isInbox: false,
+                    parentId: lp.parentId,
+                    contextMode: lp.contextMode || 'inherit'
+                };
+            });
+            if (!nextProjectMap[inboxId]) nextProjectMap[inboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
+
+            // Merge Google Projects & Calendar Sub-Lists into nextProjectMap
+            googleData.projects.forEach(p => {
+                nextProjectMap[p.id] = p;
+            });
+            if (googleData.calProjects) {
+                Object.assign(nextProjectMap, googleData.calProjects);
+            }
+            nextProjectMap['google_calendar'] = { id: 'google_calendar', name: 'Google Calendar', kind: 'google_calendar', color: '#EA4335' };
+
+            // Mirror Google Tasks to Firebase for Records (non-blocking)
+            if (currentUser && googleData.tasks.length > 0) {
+                const tasksToMirror = googleData.tasks.filter(t => t.source !== 'google_calendar' && t.kind !== 'google_calendar');
+                Promise.all(tasksToMirror.map(t => {
+                    return setDoc(doc(db, 'users', currentUser.uid, 'local_tasks', t.id), {
+                        ...t,
+                        source: 'google',
+                        lastSeen: new Date(),
+                        dueDate: t.dueDate ? new Date(t.dueDate) : null
+                    }, { merge: true });
+                })).catch(e => console.error("Error mirroring Google tasks:", e));
+            }
+
+            // 2. Fetch TickTick Tasks (Inbox + all projects in parallel)
+            let allActiveTasks = [];
+            let trueInboxId = localStorage.getItem('ticktrackr_true_inbox_id') || inboxId;
+
+            if (projects) {
+                const projectIds = new Set(projects.map(p => p.id));
+                projectIds.delete(inboxId);
+
+                const inboxPromise = (async () => {
+                    try {
+                        const inboxData = await api(`/project/${inboxId}/data`);
+                        if (inboxData && inboxData.tasks && inboxData.tasks.length > 0) {
+                            trueInboxId = inboxData.tasks[0].projectId || trueInboxId;
+                            localStorage.setItem('ticktrackr_true_inbox_id', trueInboxId);
+                        }
+                        if (inboxData && inboxData.tasks) {
+                            return inboxData.tasks.map(t => ({ ...t, projectId: t.projectId || trueInboxId, completedAt: t.completedTime || t.completedAt || null }));
+                        }
+                    } catch (e) { console.warn("Inbox fetch failed", e); }
+                    return [];
+                })();
+
+                const otherProjectsPromise = Promise.all(Array.from(projectIds).map(async (pid) => {
+                    try {
+                        const data = await api(`/project/${pid}/data`);
+                        if (data && data.tasks) {
+                            return data.tasks.map(t => ({ ...t, projectId: t.projectId || pid, completedAt: t.completedTime || t.completedAt || null }));
+                        }
+                    } catch (e) { console.warn(`Failed to fetch tasks for ${pid}`, e); }
+                    return [];
+                }));
+
+                const [inboxTasks, projectTaskArrays] = await Promise.all([inboxPromise, otherProjectsPromise]);
+                nextProjectMap[trueInboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
+                if (trueInboxId !== inboxId && nextProjectMap[inboxId]) delete nextProjectMap[inboxId];
+                if (trueInboxId !== 'inbox' && nextProjectMap['inbox']) delete nextProjectMap['inbox'];
+
+                allActiveTasks.push(...inboxTasks);
+                projectTaskArrays.forEach(arr => allActiveTasks.push(...arr));
+            } else {
+                nextProjectMap[trueInboxId] = { name: 'Inbox', color: '#3b82f6', isInbox: true };
+            }
+
+            projectMap = nextProjectMap;
+            try { localStorage.setItem('tasktrackr_projects_cache', JSON.stringify(projectMap)); } catch(e) {}
+
+            allActiveTasks = [...allActiveTasks, ...googleData.tasks];
+
+            // 3. Origins & Local Tasks
+            let originsMap = new Set();
+            try {
+                const storedOrigins = JSON.parse(localStorage.getItem('tasktrackr_origins_v2') || '[]');
+                storedOrigins.forEach(id => originsMap.add(id));
+            } catch (e) {}
+            taskCache.forEach(t => {
+                if (t.source === 'tasktrackr') originsMap.add(t.id);
             });
 
-            localSnaps.forEach(docSnap => {
-                const data = docSnap.data();
-                
-                // [FIX] Auto-Heal: If an ephemeral calendar event was accidentally saved to the DB in a previous version, destroy it.
-                if (data.calendarId || data.kind === 'google_calendar' || data.source === 'google_calendar') {
-                    deleteDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', docSnap.id)).catch(()=>{});
-                    return; 
-                }
-
-                if (data.source === 'tasktrackr') {
-                    originsMap.add(docSnap.id);
-                }
-
-                // If this task ID was already fetched from TickTick/Google API, map local states & origin onto it
-                if (apiTaskIds.has(docSnap.id)) {
-                    const existingTask = allActiveTasks.find(t => t.id === docSnap.id);
-                    if (existingTask) {
-                        if (data.hidden !== undefined) existingTask.hidden = data.hidden;
-                        if (data.contextMode) existingTask.contextMode = data.contextMode; 
-                        if (data.editHistory) existingTask.editHistory = data.editHistory;
-                        if (data.completedAt) existingTask.completedAt = data.completedAt.toDate ? data.completedAt.toDate().toISOString() : data.completedAt;
-                        if (data.source === 'tasktrackr' || originsMap.has(docSnap.id)) {
-                            existingTask.source = 'tasktrackr';
-                        } else if (data.source && !existingTask.source) {
-                            existingTask.source = data.source;
-                        }
+            if (currentUser) {
+                try {
+                    if (originSnaps) {
+                        originSnaps.forEach(docSnap => originsMap.add(docSnap.id));
                     }
+
+                    const apiTaskIds = new Set(allActiveTasks.map(t => t.id));
+
+                    // Carry over cached local metadata onto live API tasks, or retain local/cached tasks untouched by delta sync
+                    taskCache.forEach(t => {
+                        const existingApiTask = allActiveTasks.find(a => a.id === t.id);
+                        if (existingApiTask) {
+                            if (t.hidden !== undefined) existingApiTask.hidden = t.hidden;
+                            if (t.contextMode) existingApiTask.contextMode = t.contextMode;
+                            if (t.editHistory) existingApiTask.editHistory = t.editHistory;
+                            if (t.completedAt && !existingApiTask.completedAt) existingApiTask.completedAt = t.completedAt;
+                            if (t.source === 'tasktrackr' || originsMap.has(t.id)) existingApiTask.source = 'tasktrackr';
+                        } else if (t.source === 'local' || t.source === 'google' || t.source === 'tasktrackr' || originsMap.has(t.id)) {
+                            allActiveTasks.push(t);
+                        }
+                    });
+
+                    if (localSnaps) {
+                        localSnaps.forEach(docSnap => {
+                            const data = docSnap.data();
+
+                            if (data.calendarId || data.kind === 'google_calendar' || data.source === 'google_calendar') {
+                                deleteDoc(doc(db, 'users', currentUser.uid, 'local_tasks', docSnap.id)).catch(()=>{});
+                                return;
+                            }
+
+                            if (data.source === 'tasktrackr') {
+                                originsMap.add(docSnap.id);
+                            }
+
+                            if (apiTaskIds.has(docSnap.id)) {
+                                const existingTask = allActiveTasks.find(t => t.id === docSnap.id);
+                                if (existingTask) {
+                                    if (data.hidden !== undefined) existingTask.hidden = data.hidden;
+                                    if (data.contextMode) existingTask.contextMode = data.contextMode;
+                                    if (data.editHistory) existingTask.editHistory = data.editHistory;
+                                    if (data.completedAt) existingTask.completedAt = data.completedAt.toDate ? data.completedAt.toDate().toISOString() : data.completedAt;
+                                    if (data.source === 'tasktrackr' || originsMap.has(docSnap.id)) {
+                                        existingTask.source = 'tasktrackr';
+                                    } else if (data.source && !existingTask.source) {
+                                        existingTask.source = data.source;
+                                    }
+                                }
+                                return;
+                            }
+
+                            const staleIdx = allActiveTasks.findIndex(t => t.id === docSnap.id);
+                            if (staleIdx > -1) allActiveTasks.splice(staleIdx, 1);
+
+                            const cleanDate = (d) => d && d.toDate ? d.toDate().toISOString() : d;
+                            let resolvedCompletedAt = cleanDate(data.completedAt);
+                            if (!resolvedCompletedAt && data.status === 2) {
+                                resolvedCompletedAt = null;
+                            }
+
+                            allActiveTasks.push({
+                                ...data,
+                                id: docSnap.id,
+                                source: originsMap.has(docSnap.id) ? 'tasktrackr' : (data.source || 'local'),
+                                startDate: cleanDate(data.startDate),
+                                dueDate: cleanDate(data.dueDate),
+                                completedAt: resolvedCompletedAt || null
+                            });
+                        });
+
+                        localStorage.setItem('tasktrackr_origins_v2', JSON.stringify(Array.from(originsMap)));
+                        localStorage.setItem('tasktrackr_last_sync_v2', syncTimestamp);
+                    }
+                    if (historyCache && historyCache.length > 0) {
+                        historyCache.forEach(h => {
+                            if (originsMap.has(h.id)) h.source = 'tasktrackr';
+                        });
+                    }
+                } catch (e) { console.error("Error processing Firebase data:", e); }
+            }
+
+            const newCache = [];
+            allActiveTasks.forEach(task => {
+                if (!task.projectId || task.projectId === 'undefined' || task.projectId === 'inbox') {
+                    task.projectId = trueInboxId;
+                }
+
+                if (task.source === 'local') {
+                    // Keep local
+                } else if (task.source === 'google') {
+                    // Keep google
+                } else if (task.source === 'tasktrackr' || originsMap.has(task.id)) {
+                    task.source = 'tasktrackr';
+                } else {
+                    task.source = 'ticktick';
+                }
+                newCache.push(task);
+            });
+
+            // Retain completed history
+            const now = new Date();
+            taskCache.forEach(t => {
+                if (t.status === 2 && !newCache.find(n => n.id === t.id)) {
+                    newCache.push(t);
                     return;
                 }
 
-                // Remove stale cached versions of updated local documents
-                const staleIdx = allActiveTasks.findIndex(t => t.id === docSnap.id);
-                if (staleIdx > -1) allActiveTasks.splice(staleIdx, 1);
-
-                const cleanDate = (d) => d && d.toDate ? d.toDate().toISOString() : d;
-                
-                // [DEBUG] Backwards-compatibility: If task status is completed (2) but completedAt is missing, fall back to updated or created timestamp
-                let resolvedCompletedAt = cleanDate(data.completedAt);
-                if (!resolvedCompletedAt && data.status === 2) {
-                    // Strictly prevent inflating "Today" by leaving missing dates as null
-                    resolvedCompletedAt = null;
+                if (t.editHistory && t.editHistory.length > 0) {
+                    const lastEdit = new Date(t.editHistory[t.editHistory.length - 1].timestamp);
+                    if ((now - lastEdit) < 60000 && !newCache.find(n => n.id === t.id)) {
+                        newCache.unshift(t);
+                    }
                 }
-
-                allActiveTasks.push({
-                    ...data,
-                    id: docSnap.id,
-                    source: originsMap.has(docSnap.id) ? 'tasktrackr' : (data.source || 'local'),
-                    startDate: cleanDate(data.startDate),
-                    dueDate: cleanDate(data.dueDate),
-                    completedAt: resolvedCompletedAt || null
-                });
             });
 
-            localStorage.setItem('tasktrackr_origins_v2', JSON.stringify(Array.from(originsMap)));
-            localStorage.setItem('tasktrackr_last_sync_v2', syncTimestamp);
-            if (historyCache && historyCache.length > 0) {
-                historyCache.forEach(h => {
-                    if (originsMap.has(h.id)) h.source = 'tasktrackr';
-                });
+            const pendingQueue = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+            pendingQueue.forEach(pt => {
+                if (pt.tempId && pt.tempId.startsWith('temp_') && !newCache.find(n => n.id === pt.tempId)) {
+                    newCache.unshift(pt.mergedTask);
+                }
+            });
+
+            const oldSig = getCacheSignature(taskCache);
+
+            // Hard Deduplication: Enforce strict uniqueness by ID
+            taskCache = Array.from(new Map(newCache.map(t => [t.id, t])).values());
+            saveTaskCacheToStorage(taskCache);
+
+            const pSelect = document.getElementById('project-filter');
+            if (pSelect) {
+                pSelect.innerHTML = `<option value="all">All Lists</option>` + Object.entries(projectMap).map(([id, p]) => `<option value="${id}" ${currentState.projectId===id?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
             }
-        } catch (e) { console.error("Error fetching Firebase data:", e); }
-    }
 
-    const newCache = [];
-    allActiveTasks.forEach(task => {
-        // [CRITICAL FIX] Universal fallback: if projectId is absent or generic 'inbox', force to True Inbox ID
-        if (!task.projectId || task.projectId === 'undefined' || task.projectId === 'inbox') {
-            task.projectId = trueInboxId;
-        }
+            const newSig = getCacheSignature(taskCache);
+            const newProjSig = getProjectSignature(projectMap);
 
-        if (task.source === 'local') { 
-            // Keep local
-        } else if (task.source === 'google') { 
-            // Keep google
-        } else if (task.source === 'tasktrackr' || originsMap.has(task.id)) {
-            task.source = 'tasktrackr';
-        } else {
-            // Default only if nothing else matches
-            task.source = 'ticktick';
-        }
-        newCache.push(task);
-    });
-
-    // Retain completed history
-    const now = new Date();
-    taskCache.forEach(t => {
-        if (t.status === 2 && !newCache.find(n => n.id === t.id)) {
-            newCache.push(t);
-            return;
-        }
-        
-        // [CRITICAL FIX] Safe local retention. Keep tasks that were edited recently
-        // strictly based on their exact ID. No dangerous title guessing.
-        if (t.editHistory && t.editHistory.length > 0) {
-            const lastEdit = new Date(t.editHistory[t.editHistory.length - 1].timestamp);
-            if ((now - lastEdit) < 60000 && !newCache.find(n => n.id === t.id)) {
-                newCache.unshift(t);
+            // SILENT REFRESH: Compare against what was last rendered on screen (not just pre-fetch taskCache) so optimistic mutations always reconcile
+            if (!window._hasInitialRendered || newSig !== window._lastRenderedTaskSig || newProjSig !== window._lastRenderedProjSig || oldSig !== newSig || oldProjSig !== newProjSig) {
+                renderApp({ silent: !!window._hasInitialRendered });
             }
+
+            if (currentSidePaneTaskId) {
+                const stillExists = taskCache.find(t => t.id === currentSidePaneTaskId);
+                if (stillExists) {
+                    window.openSidePane(currentSidePaneTaskId);
+                } else {
+                    window.closeSidePane();
+                }
+            }
+        } finally {
+            window._fetchAllDataPromise = null;
+            hideLoader();
         }
-    });
+    })();
 
-    // [DEBUG] Retain tasks currently in the offline queue strictly by ID
-    const pendingQueue = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
-    pendingQueue.forEach(pt => {
-        if (pt.tempId && pt.tempId.startsWith('temp_') && !newCache.find(n => n.id === pt.tempId)) {
-            newCache.unshift(pt.mergedTask);
-        }
-    });
-
-    // Generate a visual signature to ignore invisible backend timestamp updates (like lastSynced)
-    const getCacheSignature = (cache) => JSON.stringify(cache.map(t => ({id: t.id, status: t.status, title: t.title, dueDate: t.dueDate, projectId: t.projectId, priority: t.priority, hidden: t.hidden, source: t.source, items: (t.items||[]).length})));
-    const oldSig = getCacheSignature(taskCache);
-    
-    // [CRITICAL FIX] Hard Deduplication: Enforce strict uniqueness by ID to guarantee no duplicates survive a reload
-    taskCache = Array.from(new Map(newCache.map(t => [t.id, t])).values());
-    localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
-
-    const pSelect = document.getElementById('project-filter');
-    if (pSelect) {
-        pSelect.innerHTML = `<option value="all">All Lists</option>` + Object.entries(projectMap).map(([id, p]) => `<option value="${id}" ${currentState.projectId===id?'selected':''}>${escapeHtml(p.name)}</option>`).join('');
-    }
-
-    // SILENT REFRESH: Only rebuild the DOM if the visual cloud data is actually different from our local cache
-    if (oldSig !== getCacheSignature(taskCache)) {
-        renderApp();
-    }
-    
-    // Sync the side pane to the newly fetched data
-    if (currentSidePaneTaskId) {
-        const stillExists = taskCache.find(t => t.id === currentSidePaneTaskId);
-        if (stillExists) {
-            window.openSidePane(currentSidePaneTaskId);
-        } else {
-            window.closeSidePane();
-        }
-    }
-    
-    hideLoader(); 
+    return window._fetchAllDataPromise;
 };
 
 // Helper to ensure we only send clean, API-friendly data
@@ -3718,8 +3848,9 @@ if (localStorage.getItem('theme') === 'light') document.documentElement.classLis
             // --- FILTER LOGIC ---
             // Only show active tasks (status 0) in the main views.
             if (activeFilter === 'inbox') { 
-                const inboxId = Object.keys(projectMap).find(id => projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; 
-                tasks = tasks.filter(t => (t.projectId === inboxId || (t.projectId && t.projectId.startsWith('inbox'))) && t.status === 0); 
+                const inboxId = Object.keys(projectMap).find(id => projectMap[id].isInbox || projectMap[id].name.toLowerCase() === 'inbox') || 'inbox'; 
+                const cachedTrueInboxId = localStorage.getItem('ticktrackr_true_inbox_id');
+                tasks = tasks.filter(t => (t.projectId === inboxId || t.projectId === cachedTrueInboxId || (t.projectId && t.projectId.startsWith('inbox'))) && t.status === 0); 
             } else if (activeFilter === 'today') { 
                 tasks = tasks.filter(t => t.status === 0 && t.dueDate && new Date(t.dueDate).toISOString().startsWith(todayStr)); 
             } else if (activeFilter === 'tomorrow') { 
@@ -4155,8 +4286,12 @@ window.toggleRepeatOptions = () => {
         };
 
         /* Render App, Cards, Etc (Standard logic) */
-        const renderApp = () => { 
+        const renderApp = (opts = {}) => { 
             if(!document.getElementById('content')) return; 
+            const silent = !!(opts && opts.silent);
+            window._suppressCardFade = silent;
+            const prevScrollTop = (silent && els.content) ? els.content.scrollTop : 0;
+            const prevWindowScrollY = silent ? window.scrollY : 0;
             
             // [PERF] Actively clear innerHTML first to force GC of old DOM nodes on low-RAM devices.
             // (We only do this if it's not already showing the spinner injected by our fast-tab-switch functions).
@@ -4272,7 +4407,16 @@ window.toggleRepeatOptions = () => {
         if (counterEl) {
             counterEl.textContent = (currentState.filter === 'completed' && window._hasMoreCompleted > 0) ? `${tasks.length}+` : tasks.length;
         }
-        if (currentState.view === 'eisenhower') renderEisenhower(tasks); else if (currentState.view === 'classic') renderClassic(tasks); else if (currentState.view === 'calendar') renderCalendar(tasks); else if (currentState.view === 'kanban') renderKanban(tasks); else if (currentState.view === 'timeline') renderTimeline(tasks); else if (currentState.view === 'agenda') renderAgenda(tasks); };
+        if (currentState.view === 'eisenhower') renderEisenhower(tasks); else if (currentState.view === 'classic') renderClassic(tasks); else if (currentState.view === 'calendar') renderCalendar(tasks); else if (currentState.view === 'kanban') renderKanban(tasks); else if (currentState.view === 'timeline') renderTimeline(tasks); else if (currentState.view === 'agenda') renderAgenda(tasks);
+        window._hasInitialRendered = true;
+        window._lastRenderedTaskSig = getCacheSignature(taskCache);
+        window._lastRenderedProjSig = getProjectSignature(projectMap);
+        window._suppressCardFade = false;
+        if (silent) {
+            if (els.content && prevScrollTop > 0) els.content.scrollTop = prevScrollTop;
+            if (prevWindowScrollY > 0) window.scrollTo(0, prevWindowScrollY);
+        }
+        };
         // Timebox functionality completely removed.
         window.renderApp = renderApp;
 
@@ -4589,9 +4733,10 @@ const renderTaskCard = (task) => {
 
     const customStyle = task._customStyle ? `style="${task._customStyle}"` : '';
     const customClass = task._customClass || '';
+    const fadeClass = window._suppressCardFade ? '' : 'animate-fade';
 
     return `
-    <div ${customStyle} class="card p-0 rounded-2xl border transition-all duration-200 flex group relative overflow-hidden ${wrapperClass} ${customClass} text-gray-900 dark:text-gray-100 pb-1 w-full mb-2 animate-fade" 
+    <div ${customStyle} class="card p-0 rounded-2xl border transition-all duration-200 flex group relative overflow-hidden ${wrapperClass} ${customClass} text-gray-900 dark:text-gray-100 pb-1 w-full mb-2 ${fadeClass}" 
          draggable="true" 
          ondragstart="window.handleDragStart(event, '${task.id}')" 
          data-task-id="${task.id}" 
@@ -7304,13 +7449,15 @@ window.renderSidePaneChecklist = (task) => {
                 // C. Clean local arrays
                 taskCache = taskCache.filter(t => !pidsToDelete.includes(t.projectId));
                 historyCache = historyCache.filter(t => !pidsToDelete.includes(t.projectId));
-                localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
+                saveTaskCacheToStorage(taskCache);
+                try { localStorage.setItem('tasktrackr_projects_cache', JSON.stringify(projectMap)); } catch(e) {}
 
-                // D. Redirect safely
+                // D. Redirect safely & immediately re-render
                 if (pidsToDelete.includes(currentState.projectId)) {
                     currentState.projectId = 'all';
                     window.setFilter('inbox');
                 } else {
+                    renderApp({ silent: true });
                     window.refreshData(); 
                 }
                 
@@ -7324,30 +7471,60 @@ window.renderSidePaneChecklist = (task) => {
     );
 };
 
-// --- UPDATED: Delete Task (Uses Custom Modal) ---
+// --- UPDATED: Delete Task (Uses Custom Modal & Instant Optimistic UI Removal) ---
         window.deleteTask = (pid, tid) => {
             window.openConfirmModal(
                 "Delete Task?", 
                 "This will permanently delete the task. This action cannot be undone.",
                 async () => {
-                    showLoader();
-                    const task = taskCache.find(t => t.id === tid);
+                    // Resolve temp ID if background sync just swapped temp_... for the real cloud ID while the modal was open
+                    const resolvedTid = (window._tempIdMap && window._tempIdMap[tid]) || tid;
+                    window._deletedTempIds = window._deletedTempIds || new Set();
+                    window._deletedTempIds.add(tid);
+                    window._deletedTempIds.add(resolvedTid);
 
-                    try {
-                        await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', tid));
-                    } catch(e) { console.log("No local mirror or error:", e); }
+                    const task = taskCache.find(t => t.id === resolvedTid || t.id === tid) || historyCache.find(t => t.id === resolvedTid || t.id === tid);
+                    const idsToRemove = new Set([tid, resolvedTid]);
 
-                    if (!task || task.source !== 'local') {
+                    // 1. Optimistically remove from local caches & UI immediately
+                    taskCache = taskCache.filter(t => !idsToRemove.has(t.id));
+                    historyCache = historyCache.filter(t => !idsToRemove.has(t.id));
+                    saveTaskCacheToStorage(taskCache);
+                    try { localStorage.setItem('tasktrackr_history_cache', JSON.stringify(historyCache)); } catch(e) {}
+
+                    // Purge from selection & offline queue
+                    idsToRemove.forEach(id => selectedTasks.delete(id));
+                    updateBulkToolbar();
+                    let pending = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
+                    pending = pending.filter(pt => !idsToRemove.has(pt.tempId));
+                    localStorage.setItem('pendingTasks', JSON.stringify(pending));
+
+                    if (window.focusNowTasks && window.focusNowTasks.some(id => idsToRemove.has(id))) {
+                        window.focusNowTasks = window.focusNowTasks.filter(id => !idsToRemove.has(id));
+                        localStorage.setItem('focus_now_tasks', JSON.stringify(window.focusNowTasks));
+                    }
+                    if (window.renderFocusNowTasks) window.renderFocusNowTasks();
+
+                    window.closeSidePane();
+                    renderApp({ silent: true });
+
+                    // 2. Delete from Firestore & Cloud Provider in the background
+                    if (auth.currentUser) {
+                        for (const delId of idsToRemove) {
+                            if (!String(delId).startsWith('temp_')) {
+                                deleteDoc(doc(db, 'users', auth.currentUser.uid, 'local_tasks', delId)).catch(() => {});
+                            }
+                        }
+                    }
+
+                    if (!String(resolvedTid).startsWith('temp_') && (!task || task.source !== 'local')) {
                         try {
-                            // [FIX] Route Google Tasks deletion directly to Google API to prevent silent failure and refresh reversions
                             if (task && (task.source === 'google' || task.kind === 'google')) {
-                                console.log("[TaskTrackr Debug] Deleting Google Task via Google API");
-                                await googleApi(`lists/${task.projectId}/tasks/${tid}`, 'DELETE');
+                                await googleApi(`lists/${task.projectId}/tasks/${resolvedTid}`, 'DELETE');
                             } else {
-                                // TickTick deletion
                                 let targetPid = pid && pid !== 'undefined' ? pid : (task ? task.projectId : 'inbox');
                                 if (!targetPid || targetPid === 'inbox') targetPid = window.getInboxId();
-                                await api(`/project/${targetPid}/task/${tid}`, 'DELETE');
+                                await api(`/project/${targetPid}/task/${resolvedTid}`, 'DELETE');
                             }
                             showToast('Deleted from Cloud');
                         } catch(e) {
@@ -7356,26 +7533,6 @@ window.renderSidePaneChecklist = (task) => {
                     } else {
                         showToast('Deleted locally');
                     }
-                    
-                    // [CRITICAL FIX] Instantly remove from local cache
-                    const idx = taskCache.findIndex(t => t.id === tid);
-                    if(idx > -1) taskCache.splice(idx, 1);
-                    localStorage.setItem('ticktrackr_tasks', JSON.stringify(taskCache));
-
-                    // Add this to purge the offline queue:
-                    let pending = JSON.parse(localStorage.getItem('pendingTasks') || '[]');
-                    pending = pending.filter(pt => pt.tempId !== tid);
-                    localStorage.setItem('pendingTasks', JSON.stringify(pending));
-
-                    if (window.focusNowTasks && window.focusNowTasks.includes(tid)) {
-                        window.focusNowTasks = window.focusNowTasks.filter(id => id !== tid);
-                        localStorage.setItem('focus_now_tasks', JSON.stringify(window.focusNowTasks));
-                    }
-                    if (window.renderFocusNowTasks) window.renderFocusNowTasks();
-
-                    window.closeSidePane();
-                    fetchAllData();
-                    hideLoader();
                 }
             );
         };
@@ -7778,7 +7935,15 @@ document.addEventListener('keydown', (e) => {
             
             if (location.search.includes('code=')) checkAuthCode(); 
             
-            initDropZones(); 
+            initDropZones();
+
+            // 0ms Instant Boot from Local Cache: Paint cached tasks & lists immediately before Firebase Auth resolves
+            if (taskCache && taskCache.length > 0 && !window._hasInitialRendered) {
+                document.getElementById('login-overlay')?.classList.add('hidden');
+                document.getElementById('app-loader')?.classList.add('hidden');
+                if (window.updateSyncStatus) window.updateSyncStatus('syncing');
+                renderApp();
+            }
         });
         // --- REVIEW MODE WIZARD LOGIC ---
 let reviewQueue = [];
@@ -7988,7 +8153,6 @@ document.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 'w') window.reviewAction('schedule', 'tomorrow'); 
     if (e.key.toLowerCase() === 's') document.getElementById('review-date-picker').showPicker();
 });
-        window.addEventListener('DOMContentLoaded', () => { document.getElementById('login-btn').onclick = () => { location.href = `https://ticktick.com/oauth/authorize?client_id=${TICKTICK_CLIENT_ID}&scope=tasks:read%20tasks:write&response_type=code&redirect_uri=${encodeURIComponent(TICKTICK_REDIRECT_URI)}`; }; if (accessToken) fetchAllData(); else if (location.search.includes('code=')) checkAuthCode(); else document.getElementById('login-overlay').classList.remove('hidden'); initDropZones(); });
     </script>
 
     <div id="bulk-toolbar" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white dark:bg-[#1f2937] text-gray-900 dark:text-gray-100 border border-gray-600 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 z-50 transition-all duration-300 translate-y-24 opacity-0">
