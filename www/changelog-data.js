@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v17.3.0-alpha",
+    date: "2026-11-20",
+    changes: [
+        "In RecipeManagr: Fixed Android PWA log photo uploads by using direct single-POST uploadBytes() with a 30s timeout for compressed images (<= 1 MB) in uploadPhotoWithProgress() and resetting the 8s stall watchdog on progress ticks for larger files.",
+        "In RecipeManagr: Hardened compressImage() for Android camera/gallery photos by using URL.createObjectURL() (with FileReader fallback) to avoid base64 memory spikes, wrapping canvas operations in try/catch, and adding a 10s safety timeout so compression never hangs on 'Compressing...'.",
+        "In RecipeManagr: Changed the Log Cook modal file input (#history-image) from display: none (hidden) to sr-only for Android WebView/PWA compatibility, guarded missing file.name values, sanitized uploaded filenames, and surfaced error details in the 'Failed to save log' notification."
+    ]
+},
+    {
     version: "v17.2.0-alpha",
     date: "2026-11-19",
     changes: [

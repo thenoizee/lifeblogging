@@ -802,16 +802,33 @@ select, button, input {
             return d.toISOString().slice(0, 16);
         };
 
-        // 1. Firebase Resumable Upload Helper with Auto-Fallback
-        const uploadPhotoWithProgress = (storageRef, fileOrBlob, btnElement) => {
-            return new Promise((resolve, reject) => {
-                const metadata = { contentType: fileOrBlob.type || 'image/jpeg' };
-                const uploadTask = uploadBytesResumable(storageRef, fileOrBlob, metadata);
-                let progressMoved = false;
+        // 1. Firebase Upload Helper (direct single-POST for <=1MB compressed photos, resumable with stall watchdog for larger files)
+        const uploadPhotoWithProgress = async (storageRef, fileOrBlob, btnElement) => {
+            const metadata = { contentType: fileOrBlob.type || 'image/jpeg' };
 
-                // WATCHDOG: If stuck at 0% for 8 seconds (Wi-Fi firewall/IPv6 block), fallback to single POST uploadBytes
-                const watchdog = setTimeout(async () => {
-                    if (!progressMoved) {
+            // For compressed photos (<= 1MB), single-POST uploadBytes is far more reliable on mobile PWAs than resumable sessions
+            if (!fileOrBlob.size || fileOrBlob.size <= 1024 * 1024) {
+                if (btnElement) {
+                    btnElement.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Uploading...`;
+                }
+                const uploadPromise = (async () => {
+                    await uploadBytes(storageRef, fileOrBlob, metadata);
+                    return await getDownloadURL(storageRef);
+                })();
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Upload timed out after 30s')), 30000)
+                );
+                return await Promise.race([uploadPromise, timeoutPromise]);
+            }
+
+            return new Promise((resolve, reject) => {
+                const uploadTask = uploadBytesResumable(storageRef, fileOrBlob, metadata);
+                let lastBytes = -1;
+                let watchdog = null;
+
+                const resetWatchdog = () => {
+                    if (watchdog) clearTimeout(watchdog);
+                    watchdog = setTimeout(async () => {
                         console.warn("[RecipeManagr] Resumable upload stalled by network. Falling back to standard upload...");
                         uploadTask.cancel();
                         if (btnElement) {
@@ -824,17 +841,19 @@ select, button, input {
                         } catch (fallbackErr) {
                             reject(fallbackErr);
                         }
-                    }
-                }, 8000);
+                    }, 8000);
+                };
+
+                resetWatchdog();
 
                 uploadTask.on('state_changed',
                     (snapshot) => {
                         const progress = snapshot.totalBytes > 0
                             ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
                             : 0;
-                        if (progress > 0 || snapshot.bytesTransferred > 0) {
-                            progressMoved = true;
-                            clearTimeout(watchdog);
+                        if (snapshot.bytesTransferred > lastBytes) {
+                            lastBytes = snapshot.bytesTransferred;
+                            resetWatchdog();
                         }
                         if (btnElement) {
                             btnElement.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Uploading ${progress}%`;
@@ -842,11 +861,11 @@ select, button, input {
                     },
                     (error) => {
                         if (error.code === 'storage/canceled') return;
-                        clearTimeout(watchdog);
+                        if (watchdog) clearTimeout(watchdog);
                         reject(error);
                     },
                     async () => {
-                        clearTimeout(watchdog);
+                        if (watchdog) clearTimeout(watchdog);
                         try {
                             const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
                             resolve(downloadURL);
@@ -864,45 +883,81 @@ select, button, input {
             const safeBaseName = (file.name ? file.name.replace(/\.[^/.]+$/, "") : "photo").replace(/[^a-zA-Z0-9._-]/g, "_");
 
             return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = (event) => {
+                let settled = false;
+                let objectUrl = null;
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(safetyTimer);
+                    if (objectUrl) {
+                        try { URL.revokeObjectURL(objectUrl); } catch (_) {}
+                        objectUrl = null;
+                    }
+                    resolve(result);
+                };
+
+                // Safety timeout so Android camera/canvas edge cases never hang on "Compressing..."
+                const safetyTimer = setTimeout(() => finish(file), 10000);
+
+                const processSrc = (src) => {
                     const img = new Image();
                     img.onload = () => {
-                        const maxDim = Math.max(img.width, img.height);
-                        const ratio = maxDim > maxWidth ? maxWidth / maxDim : 1;
-                        const targetW = Math.max(1, Math.round(img.width * ratio));
-                        const targetH = Math.max(1, Math.round(img.height * ratio));
+                        try {
+                            const maxDim = Math.max(img.width, img.height);
+                            const ratio = maxDim > maxWidth ? maxWidth / maxDim : 1;
+                            const targetW = Math.max(1, Math.round(img.width * ratio));
+                            const targetH = Math.max(1, Math.round(img.height * ratio));
 
-                        const canvas = document.createElement('canvas');
-                        canvas.width = targetW;
-                        canvas.height = targetH;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, targetW, targetH);
+                            const canvas = document.createElement('canvas');
+                            canvas.width = targetW;
+                            canvas.height = targetH;
+                            const ctx = canvas.getContext('2d');
+                            if (!ctx) return finish(file);
+                            ctx.drawImage(img, 0, 0, targetW, targetH);
 
-                        canvas.toBlob(
-                            (blob) => {
-                                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                                canvas.width = 0;
-                                canvas.height = 0;
-                                img.src = '';
-                                if (blob) {
-                                    // iOS WEBKIT BUG FIX: Do NOT wrap this in 'new File()'.
-                                    // WebKit fails to stream dynamic File objects to Firebase Storage.
-                                    blob.name = safeBaseName + ".jpg";
-                                    resolve(blob);
-                                } else {
-                                    resolve(file);
-                                }
-                            },
-                            'image/jpeg',
-                            quality
-                        );
+                            canvas.toBlob(
+                                (blob) => {
+                                    try {
+                                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                        canvas.width = 0;
+                                        canvas.height = 0;
+                                        img.src = '';
+                                    } catch (_) {}
+                                    if (blob) {
+                                        // iOS WEBKIT BUG FIX: Do NOT wrap this in 'new File()'.
+                                        // WebKit fails to stream dynamic File objects to Firebase Storage.
+                                        blob.name = safeBaseName + ".jpg";
+                                        finish(blob);
+                                    } else {
+                                        finish(file);
+                                    }
+                                },
+                                'image/jpeg',
+                                quality
+                            );
+                        } catch (err) {
+                            console.warn("[RecipeManagr] Image compression failed, using original file:", err);
+                            finish(file);
+                        }
                     };
-                    img.onerror = () => resolve(file);
-                    // CRITICAL: Assign img.src AFTER img.onload so cached data URLs never fire synchronously before the handler is bound
-                    img.src = event.target.result;
+                    img.onerror = () => finish(file);
+                    // CRITICAL: Assign img.src AFTER img.onload so cached URLs never fire synchronously before the handler is bound
+                    img.src = src;
                 };
-                reader.onerror = () => resolve(file);
+
+                if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+                    try {
+                        objectUrl = URL.createObjectURL(file);
+                        processSrc(objectUrl);
+                        return;
+                    } catch (_) {
+                        objectUrl = null;
+                    }
+                }
+
+                const reader = new FileReader();
+                reader.onload = (event) => processSrc(event.target.result);
+                reader.onerror = () => finish(file);
                 reader.readAsDataURL(file);
             });
         }
@@ -3190,7 +3245,7 @@ async function showHistoryModal(recipeId, recipeName) {
                          <button type="button" id="history-camera-btn" class="flex-1 flex items-center justify-center gap-2 bg-white dark:bg-gray-700 border dark:border-gray-600 p-2 rounded text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition">
                              <i class="fas fa-camera text-teal-500"></i> <span>Camera</span>
                          </button>
-                         <input type="file" id="history-image" accept="image/*" class="hidden">
+                         <input type="file" id="history-image" accept="image/*" class="sr-only">
                          <img id="history-image-preview" class="hidden w-10 h-10 object-cover rounded border dark:border-gray-600 flex-shrink-0" />
                      </div>
                      <span id="history-image-label" class="text-xs text-gray-500 dark:text-gray-400 truncate px-1">No photo selected (or drop image here)</span>
@@ -3269,7 +3324,8 @@ async function showHistoryModal(recipeId, recipeName) {
             // Skip heavy FileReader base64 DOM preview on mobile to prevent WebKit memory spikes & cached data-URI race conditions
             imgPreview.removeAttribute('src');
             imgPreview.classList.add('hidden');
-            const shortName = file.name.length > 28 ? file.name.substring(0, 28) + '...' : file.name;
+            const safeName = file.name || 'photo.jpg';
+            const shortName = safeName.length > 28 ? safeName.substring(0, 28) + '...' : safeName;
             imgLabel.innerHTML = `<i class="fas fa-check-circle mr-1"></i> Photo attached: ${shortName}`;
             imgLabel.classList.add('text-teal-600', 'dark:text-teal-400', 'font-bold');
         } else {
@@ -3442,7 +3498,8 @@ async function showHistoryModal(recipeId, recipeName) {
             if (imageFile) {
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Compressing...';
                 const compressedHistoryFile = await compressImage(imageFile);
-                const imageRef = ref(storage, `users/${userId}/recipes/history/${Date.now()}_${compressedHistoryFile.name || 'history.jpg'}`);
+                const safeFileName = (compressedHistoryFile.name || 'history.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
+                const imageRef = ref(storage, `users/${userId}/recipes/history/${Date.now()}_${safeFileName}`);
                 finalImageUrl = await uploadPhotoWithProgress(imageRef, compressedHistoryFile, btn);
             }
 
@@ -3477,7 +3534,7 @@ async function showHistoryModal(recipeId, recipeName) {
             loadHistory();
         } catch (e) {
             console.error(e);
-            showNotification('Failed to save log', 'error');
+            showNotification(`Failed to save log: ${e?.code || e?.message || 'Unknown error'}`, 'error');
         } finally {
             btn.disabled = false;
             btn.textContent = editModeLogId ? 'Update Log' : 'Log Cook';
