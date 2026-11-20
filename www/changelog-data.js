@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v17.4.0-alpha",
+    date: "2026-11-20",
+    changes: [
+        "In PlantTrackr: Fixed modals (location-modal, data-check-modal, spaces-data-check-modal) opening on page load by adding .modal-overlay.hidden { display: none !important; } so inline .modal-overlay display rules never override Tailwind's .hidden utility.",
+        "In PlantTrackr: Fixed Spaces not rendering in the Spaces tab by populating card.innerHTML in renderLocations() with space photos/icons, plant counts, environmental chips, zone tags, and click-to-edit actions.",
+        "In Analyser: Fundamentally redesigned the Data Table page (#tab-data) and mobile UX with a responsive Card View vs. Table View switcher (defaulting to Cards on mobile), an inline Quick Search bar synced with global filters, Quick Sort controls, tap-friendly inline value editing, active filter badges with one-tap reset, responsive bulk actions, and enhanced pagination.",
+        "In FoodTrackr: Overhauled mobile UX across Log Food, History, and Foods & Meals tabs—added a Card View vs. Table View switcher and Quick Sort controls in Food Log History, compacted Today's Overview, Log Details form (single-row pill strips and inline photo buttons), and the Food Overview modal on mobile, replaced the mobile sub-tab dropdown with a 1-tap horizontal pill bar, added a live filter bar to Favourite Foods & Saved Meals, and softened squared button corners across the app."
+    ]
+},
+    {
     version: "v17.3.0-alpha",
     date: "2026-11-20",
     changes: [
