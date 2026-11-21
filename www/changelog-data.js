@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v17.7.0-alpha",
+    date: "2026-11-21",
+    changes: [
+        "In PlantTrackr: Switched Firestore to initializeFirestore() with persistentLocalCache (persistentMultipleTabManager), added a localStorage boot cache (pt_boot_<uid>) for instant startup rendering, and coalesced initial onSnapshot redraws via requestAnimationFrame (scheduleRender).",
+        "In PlantTrackr: Upgraded renderPlants() and renderHistory() with O(1) Map lookups, progressive batch rendering (24 plants / 30 journal rows via DocumentFragment + IntersectionObserver), delegated click handlers, and eliminated all 16 innerHTML += DOM-thrashing loops.",
+        "In PlantTrackr: Fixed duplicate watering logs caused by global quick-water-btn listener attachment in renderDashboard() and added a double-submit guard on #submit-log-btn.",
+        "In PlantTrackr: Replaced all 22 native prompt()/confirm() dialogs with a reusable #app-dialog-modal (appConfirm/appPrompt) and removed user-scalable=no from the viewport meta tag.",
+        "In PlantTrackr: Fixed #view-plant-modal on mobile so the footer action bar sits in a non-overlapping flex column cleanly above the bottom nav bar, tightened the Dashboard to fit more on one screen, and compacted the My Garden header with single-line scrollable sub-tabs and a collapsible Filters drawer."
+    ]
+},
+    {
     version: "v17.6.0-alpha",
     date: "2026-11-21",
     changes: [
