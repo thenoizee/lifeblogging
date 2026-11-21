@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v17.6.0-alpha",
+    date: "2026-11-21",
+    changes: [
+        "In RecipeManagr: Drastically improved startup and scrolling performance by adding stale-while-revalidate localStorage caching for recipesCache (with safe Firestore Timestamp/seconds date formatting), precomputing a _searchText index per recipe, removing a duplicate un-debounced search listener, switching #recipe-list to progressive 24-card batch rendering via IntersectionObserver with event delegation, replacing external placehold.co requests with inline icon placeholders, caching last-cooked and Timeline history queries, and fixing modal click/timer listener leaks.",
+        "In RecipeManagr: Upgraded the browse and filter UI by restoring the Sort selector (#sort-by-select: A–Z, Newest, Top Rated, Quickest), adding a live recipe count (#recipe-count-label) and active filter badges, adding a horizontally scrollable Quick Filter Chip bar (All, 4★+, ≤30m, Breakfast, Lunch, Dinner, Dessert, Public), fixing list-card V2 badge clipping, and turning the mobile filter panel (#dashboard-filters-card) into a fixed bottom sheet (fixing a duplicate toggle bug that left an empty box).",
+        "In RecipeManagr: Overhauled the mobile Recipe Detail modal (#recipe-detail-modal) with full-bleed mobile sizing, a compact non-clipping V2 badge, a mobile All | Ingredients | Instructions segmented view switcher (#mobile-recipe-view-tabs), side-by-side yield/unit controls, touch-visible tab close and note buttons, and a clean bottom action bar (Cook, Edit, Plan, Log, and a More popover for Share, Flowchart, Print, Duplicate, and Delete).",
+        "In RecipeManagr: Overhauled the mobile Meal Planner and Cook Mode—added a Meal Plan Picker modal (#meal-plan-picker-modal) and Meal Slot Recipe Picker (#meal-slot-recipe-picker-modal) with a mobile day switcher (#meal-plan-day-tabs) to replace native prompt() dialogs and desktop-only drag-and-drop; in Cook Mode, added body.cook-mode-active rules to hide shared-nav bars, a top step progress bar (#cook-progress-bar), and horizontal touch swipe navigation.",
+        "In RecipeManagr: Added a persistent floating Active Timer dock (#floating-timer-dock + window.timerManager) synced with both Recipe Detail and Cook Mode timers, fixed renderTextWithTimers() to detect unparenthesized durations and ranges (e.g. '15-20 minutes', '2 mins', '1.5 hours') with styled .timer-btn pills and Cook Mode bottom-button fallback, and replaced all remaining native prompt()/confirm() dialogs with a reusable #app-dialog-modal (appPrompt/appConfirm)."
+    ]
+},
+    {
     version: "v17.5.0-alpha",
     date: "2026-11-21",
     changes: [
