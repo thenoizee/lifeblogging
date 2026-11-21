@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v17.5.0-alpha",
+    date: "2026-11-21",
+    changes: [
+        "In VidTrackr: Redesigned the Log & Rate modal (#scrobble-modal) into a 2-column desktop layout so all controls fit on one screen without scrolling, added mobile bottom-nav clearance (pb-[calc(76px+env(safe-area-inset-bottom,0px))]) and dynamic viewport max-height so action buttons are never cut off on mobile, and guarded swipe-to-dismiss to only trigger when scrolled to the top.",
+        "In VidTrackr: Fixed a bug where unwatched Up Next episodes showed 'Watched before' and 'Log Rewatch' by guarding parseInt() on composite TMDB episode IDs (e.g. showId-season-episode) in configureScrobbleModalRatingUI() and resetting #confirm-log back to 'Log Only' inside enableRewatchRating().",
+        "In VidTrackr: Fixed Watch History cards on mobile by moving the Rate and Delete buttons out of absolute positioning into a non-overlapping flex row alongside the timestamp/runtime/logged badges, and applied card-horizontal styling for tighter vertical spacing.",
+        "In VidTrackr: Upgraded the Settings page (renderSettings) to a 2-column desktop grid, fixed the Trakt migration progress badge count (out of 8 modules), added light-mode-compatible card/border colors, and batched Firestore history wipe deletes via writeBatch() in chunks of 500.",
+        "In VidTrackr: Improved mobile UX and accessibility by wiring up a mobile header search toggle (#mobile-search-toggle) for #mobile-search-bar, changing Quick Rate (#quick-rate-modal) to a 5x2 mobile grid, removing user-scalable=no with 16px mobile inputs to prevent iOS auto-zoom, adding safe-area-inset-bottom offsets, and scoping hover-lift effects to @media (hover: hover).",
+        "In VidTrackr: Improved performance and UI consistency by lazy-loading Chart.js only when opening Progress, replacing dashboard spinners with skeleton cards and requestIdleCallback scheduling, switching trending shuffle to Fisher-Yates, scoping button transitions and card will-change, bounding the episode detail hero height for one-screen desktop viewing, and fixing .bg-[var(--card)] in light mode."
+    ]
+},
+    {
     version: "v17.4.0-alpha",
     date: "2026-11-20",
     changes: [
