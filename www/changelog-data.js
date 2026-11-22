@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v17.9.0-alpha",
+    date: "2026-11-22",
+    changes: [
+        "In VehicleManagr: Fixed critical bugs including dropped service costs in renderDashboard() (costs.service), missing insuranceExpiry in saveMetadata(), unreset checkboxes after saveEntry(), missing consumable/expense fields in Edit Modal, and full history + inventory batched cleanup on vehicle deletion.",
+        "In VehicleManagr: Eliminated Firestore onSnapshot listener leaks in loadVehicles() and loadInventory(), enabled initializeFirestore() with persistentLocalCache, added requestAnimationFrame coalescing (scheduleRender) with active-tab gating, debounced search inputs, paginated Activity Log (30/page), in-place Chart.js updates, deferred CDN scripts, and client-side receipt image compression.",
+        "In VehicleManagr: Upgraded desktop and mobile UI/UX with a styled #app-dialog-modal (replacing native confirm() dialogs), mobile card view for History, touch-visible inventory delete buttons, labeled mini-FABs with safe-area clearance, iOS-friendly 16px inputs with decimal keypads, dark-mode contrast fixes, Esc/Enter keyboard shortcuts, an in-app receipt lightbox (#receipt-modal), compact Vehicle Health & Stats layout, and a 'Set tank' shortcut.",
+        "In VehicleManagr: Implemented Trips tab statistics & trip list with business claim calculation, Tyre Tread wear prediction, Dashboard date-range filters, Loyalty Savings & Cheapest Station badges, a Spending by Category doughnut chart, configurable Units/Currency/Intervals in Settings, Repeat Last Fill, EV kWh support, and flattened CSV export.",
+        "In VehicleManagr: Added automatic missed-fill anomaly detection & ghost mode (#ghost-anomalies-toggle) with a faded dashed average bridge on Fuel Efficiency Trend, ghosted median tank bars on Distance Between Fueling, clean Average MPL / Current Cost/Mi calculations, and a manual 'Missed Prev. Fill' flag.",
+        "In VehicleManagr: Overhauled the Statutory compliance flow (MOT, Road Tax, Car Insurance) with clickable Dashboard cards and alerts, an 'Auto-Updates Glovebox Expiry' panel in Log forms (+6 Mo / +1 Year shortcuts & Auto-Renew toggle), explicit MANUAL vs SCHEDULED badges alongside days remaining, editable Renewal Mode & Expiry Date inside the History Edit Modal, and a dedicated 'Statutory' filter pill in Activity Log."
+    ]
+},
+    {
     version: "v17.8.0-alpha",
     date: "2026-11-22",
     changes: [
