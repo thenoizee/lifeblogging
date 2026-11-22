@@ -51,16 +51,7 @@
             transform: translateZ(0); 
         }
         
-        @media (max-width: 1024px) {
-            .card {
-                backdrop-filter: blur(4px);
-                -webkit-backdrop-filter: blur(4px);
-            }
-            .bg-\[var\(--card\)\] {
-                backdrop-filter: blur(8px);
-                -webkit-backdrop-filter: blur(8px);
-            }
-        }
+        /* Keep cards crisp without per-card mobile backdrop-filter GPU blur passes */
         @media (hover: hover) {
             .card:hover {
                 will-change: transform;
@@ -378,24 +369,24 @@ input[type=range]::-moz-range-thumb {
         </div>
     </div>
 
-    <div id="trailer-modal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[60] hidden backdrop-blur-md p-4 animate-fade">
+    <div id="trailer-modal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[60] hidden backdrop-blur-sm p-3 pb-[calc(76px+env(safe-area-inset-bottom,0px))] md:p-4 animate-fade">
         <div class="w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative border border-gray-800">
-            <button onclick="window.closeTrailer()" class="absolute top-4 right-4 text-white hover:text-[var(--primary)] z-10 bg-black/50 rounded-full w-10 h-10 flex items-center justify-center backdrop-blur transition hover:scale-110"><i class="fa-solid fa-xmark text-xl"></i></button>
+            <button onclick="window.closeTrailer()" class="absolute top-3 right-3 md:top-4 md:right-4 text-white hover:text-[var(--primary)] z-10 bg-black/60 rounded-full w-10 h-10 flex items-center justify-center transition hover:scale-110"><i class="fa-solid fa-xmark text-xl"></i></button>
             <iframe id="trailer-frame" class="w-full h-full" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
     </div>
 
-    <div id="list-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden backdrop-blur-sm px-4">
-        <div class="card p-6 rounded-2xl shadow-2xl max-w-sm md:max-w-md w-full border border-gray-700 animate-fade">
-            <h3 class="text-xl font-bold mb-4">Add to List</h3>
-            <div id="list-modal-content" class="space-y-2 max-h-[55vh] overflow-y-auto hide-scroll mb-4">
+    <div id="list-modal" class="fixed inset-0 bg-black/80 flex flex-col justify-end md:justify-center items-center z-50 hidden backdrop-blur-sm px-2 pb-[calc(76px+env(safe-area-inset-bottom,0px))] md:p-4">
+        <div class="card p-4 md:p-6 rounded-2xl shadow-2xl max-w-sm md:max-w-md w-full border border-gray-700 animate-fade flex flex-col max-h-[calc(100dvh-96px)] md:max-h-[85vh]">
+            <h3 class="text-lg md:text-xl font-bold mb-3 md:mb-4 shrink-0">Add to List</h3>
+            <div id="list-modal-content" class="space-y-2 overflow-y-auto hide-scroll mb-3 md:mb-4 flex-1 min-h-0">
                 </div>
-            <button onclick="document.getElementById('list-modal').classList.add('hidden')" class="w-full text-sm text-gray-500 hover:text-white mt-2">Cancel</button>
+            <button onclick="document.getElementById('list-modal').classList.add('hidden')" class="w-full text-sm text-gray-400 hover:text-white py-2 shrink-0">Cancel</button>
         </div>
     </div>
 
-    <div id="quick-rate-modal" class="fixed inset-0 bg-black/95 flex items-center justify-center z-[80] hidden backdrop-blur-xl animate-fade p-2 md:p-6">
-        <div class="w-full max-w-5xl bg-gray-900/90 p-4 md:p-8 rounded-3xl border border-gray-700 shadow-2xl relative">
+    <div id="quick-rate-modal" class="fixed inset-0 bg-black/90 flex flex-col justify-end md:justify-center items-center z-[80] hidden backdrop-blur-sm animate-fade px-2 pb-[calc(76px+env(safe-area-inset-bottom,0px))] md:p-6">
+        <div class="w-full max-w-5xl bg-gray-900/95 p-4 md:p-8 rounded-2xl md:rounded-3xl border border-gray-700 shadow-2xl relative max-h-[calc(100dvh-96px)] md:max-h-[90vh] overflow-y-auto hide-scroll">
             <h3 class="text-xl md:text-3xl font-bold text-center mb-2 md:mb-6 text-white">Rate & Log</h3>
             <p class="text-center text-gray-400 text-xs md:text-base mb-4 md:mb-8 truncate px-2" id="quick-rate-title"></p>
             
@@ -612,39 +603,52 @@ if (headerRight) {
             const url = `https://api.themoviedb.org/3${endpoint}${separator}api_key=${TMDB_API_KEY}${cacheBuster}`;
             
             // Add comments when writing code so can easily understand what it means and edit it later
-            // Prioritize search requests to jump the browser's network queue instantly.
-            // Background tasks get 'low' priority so they don't block user interactions.
-            const fetchOptions = isSearch ? { cache: 'reload', priority: 'high' } : { priority: 'low' };
-            const res = await fetch(url, fetchOptions);
-            if (!res.ok) {
-                // Only log unexpected errors (404s on episode checks are normal when a season/show has ended)
-                if (res.status !== 404 || window.VIDTRACKR_DEBUG) {
-                    console.debug(`[Debug] TMDB status ${res.status} for endpoint: ${endpoint}`);
-                }
-                // Cache 404 Not Found for 30 minutes (since non-existent episodes won't appear in 60s), other errors for 60s
-                if (!isSearch) {
-                    try { 
-                        // FIX: Never cache 429 Too Many Requests errors so the app can instantly self-heal on the next retry
-                        if (res.status !== 429) {
-                            const ttl = res.status === 404 ? 1800000 : 60000;
-                            sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true, status: res.status, expiry: Date.now() + ttl })); 
-                        }
-                    } catch(e) {}
-                }
-                throw new Error(`TMDB API Error ${res.status}`);
+            // Deduplicate concurrent identical TMDB requests
+            if (!isSearch && window._inflightTMDB && window._inflightTMDB.has(cacheKey)) {
+                return window._inflightTMDB.get(cacheKey);
             }
-            
-            const data = await res.json();
-            
-            // Add debugging to inspect received search payloads
-            if (isSearch) {
-                console.log(`[Debug] Search results received from API for endpoint ${endpoint}:`, data.results?.map(r => r.title || r.name));
-            }
+            if (!window._inflightTMDB) window._inflightTMDB = new Map();
 
-            if (!isSearch) {
-                try { sessionStorage.setItem(cacheKey, JSON.stringify(data)); } catch(e) {}
-            }
-            return data;
+            const execFetch = async () => {
+                // Prioritize search requests to jump the browser's network queue instantly.
+                // Background tasks get 'low' priority so they don't block user interactions.
+                const fetchOptions = isSearch ? { cache: 'reload', priority: 'high' } : { priority: 'low' };
+                const res = await fetch(url, fetchOptions);
+                if (!res.ok) {
+                    // Only log unexpected errors (404s on episode checks are normal when a season/show has ended)
+                    if (res.status !== 404 || window.VIDTRACKR_DEBUG) {
+                        console.debug(`[Debug] TMDB status ${res.status} for endpoint: ${endpoint}`);
+                    }
+                    // Cache 404 Not Found for 30 minutes (since non-existent episodes won't appear in 60s), other errors for 60s
+                    if (!isSearch) {
+                        try { 
+                            // FIX: Never cache 429 Too Many Requests errors so the app can instantly self-heal on the next retry
+                            if (res.status !== 429) {
+                                const ttl = res.status === 404 ? 1800000 : 60000;
+                                sessionStorage.setItem(cacheKey, JSON.stringify({ _isError: true, status: res.status, expiry: Date.now() + ttl })); 
+                            }
+                        } catch(e) {}
+                    }
+                    throw new Error(`TMDB API Error ${res.status}`);
+                }
+                
+                const data = await res.json();
+                
+                // Add debugging to inspect received search payloads
+                if (isSearch) {
+                    console.log(`[Debug] Search results received from API for endpoint ${endpoint}:`, data.results?.map(r => r.title || r.name));
+                }
+
+                if (!isSearch) {
+                    try { sessionStorage.setItem(cacheKey, JSON.stringify(data)); } catch(e) {}
+                }
+                return data;
+            };
+
+            if (isSearch) return execFetch();
+            const promise = execFetch().finally(() => window._inflightTMDB.delete(cacheKey));
+            window._inflightTMDB.set(cacheKey, promise);
+            return promise;
         };
         const fetchTMDB = window.fetchTMDB;
 
@@ -776,10 +780,10 @@ if (headerRight) {
             if (window.VIDTRACKR_DEBUG) console.time('enrichTMDBImages');
             const chunks = [];
             
-            // PERFORMANCE FIX: Check for low device memory and dynamically adjust chunk sizes to prevent iPad/Mobile browser crashes
-            const isLowMem = navigator.deviceMemory && navigator.deviceMemory < 4;
-            const chunkSize = isLowMem ? 10 : 25;
-            if (window.VIDTRACKR_DEBUG && isLowMem) console.debug("[Debug] Low memory device detected. Reducing TMDB fetch chunk size.");
+            // PERFORMANCE FIX: Throttle TMDB concurrency on mobile/low-memory devices (iOS doesn't expose deviceMemory)
+            const isConstrained = (navigator.deviceMemory && navigator.deviceMemory < 4) || window.innerWidth < 768;
+            const chunkSize = isConstrained ? 6 : 20;
+            if (window.VIDTRACKR_DEBUG && isConstrained) console.debug("[Debug] Mobile/low-memory device detected. Reducing TMDB fetch chunk size to 6.");
             
             // OPTIMIZATION: Maximize TMDB's 50 req/sec limit (reduced on low RAM devices)
             for (let i = 0; i < toFetch.length; i += chunkSize) chunks.push(toFetch.slice(i, i + chunkSize));
@@ -2144,7 +2148,7 @@ if (headerRight) {
                     backdrop_path: item.show?.backdrop_path || data.show?.backdrop_path 
                 } : null
             };
-            const optimisticPayload = encodeURIComponent(JSON.stringify(optPayload).replace(/'/g, "%27"));
+            const optimisticPayload = encodeURIComponent(JSON.stringify(optPayload)).replace(/'/g, "%27");
             const setOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${optimisticPayload}')); `;
             
             let clickHandler = targetId ? `${setOpt} location.hash='#detail/${type}/${targetId}'` : `window.routeToLocalItem('${type}', '${fallbackId}', '${encodeURIComponent(JSON.stringify(data.ids || {}))}')`;
@@ -2162,7 +2166,9 @@ if (headerRight) {
             
             const showTitle = sanitizeHTML(data.show?.title || data.show?.name || item.show?.title || item.show?.name);
             let displayTitle = sanitizeHTML(data.title || data.name || 'Unknown Title');
-            if (type === 'episode' && showTitle && layout !== 'horizontal') displayTitle = `${showTitle}: ${displayTitle}`;
+            if (type === 'episode' && showTitle && layout !== 'horizontal' && !displayTitle.toLowerCase().startsWith(showTitle.toLowerCase() + ':')) {
+                displayTitle = `${showTitle}: ${displayTitle}`;
+            }
             
             const dateString = data.release_date || data.first_air_date || data.air_date || data.released;
             let displayDate = dateString ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : (data.year || 'N/A');
@@ -2918,13 +2924,17 @@ async function loadUpNext() {
 
                         if (window.VIDTRACKR_DEBUG) console.time('UpNextFetchEngine');
                         const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
-                        // Process in fast batches of 10, and stop early once we have 18 valid Up Next items!
-                        const batches = chunk(activeShows, 10);
+                        // Process in smaller batches on mobile so we don't clog the network/main thread
+                        const batchSize = window.innerWidth < 768 ? 5 : 10;
+                        const batches = chunk(activeShows, batchSize);
                         
                         const nextEpisodes = [];
                         for (const batch of batches) {
                             if (!document.getElementById('up-next-container')) {
                                 throw new Error("Navigation Abort");
+                            }
+                            if (nextEpisodes.length > 0 && window.innerWidth < 768) {
+                                await new Promise(r => setTimeout(r, 50));
                             }
 
                             const batchResults = await Promise.all(batch.map(async (entry) => {
@@ -4347,7 +4357,34 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             <!-- UI FIX: Tightened margins and shrank font sizes to bring action boxes higher -->
                             <div class="flex flex-wrap gap-4 mb-3 text-xs text-gray-400 border-b border-gray-800 pb-3">
                                 <span class="flex items-center"><i class="fa-regular fa-clock mr-1"></i> ${runtimeStr}</span>
-                                <span class="flex items-center"><i class="fa-regular fa-calendar mr-1"></i> First aired: ${new Date(item.first_aired).toLocaleDateString()}</span>
+                                <span class="flex items-center"><i class="fa-regular fa-calendar mr-1"></i> First aired: ${(() => {
+                                    if (!item.first_aired) return 'Unknown';
+                                    const aired = new Date(item.first_aired);
+                                    if (isNaN(aired.getTime())) return 'Unknown';
+                                    const now = new Date();
+                                    const dateStr = aired.toLocaleDateString();
+                                    if (aired > now) {
+                                        const diffDays = Math.ceil((aired - now) / 86400000);
+                                        return `${dateStr} <span class="text-gray-500 ml-1">(in ${diffDays} ${diffDays === 1 ? 'day' : 'days'})</span>`;
+                                    }
+                                    let yrs = now.getFullYear() - aired.getFullYear();
+                                    let mths = now.getMonth() - aired.getMonth();
+                                    let days = now.getDate() - aired.getDate();
+                                    if (days < 0) {
+                                        mths--;
+                                        days += new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+                                    }
+                                    if (mths < 0) {
+                                        yrs--;
+                                        mths += 12;
+                                    }
+                                    const parts = [];
+                                    if (yrs > 0) parts.push(`${yrs} ${yrs === 1 ? 'yr' : 'yrs'}`);
+                                    if (mths > 0) parts.push(`${mths} ${mths === 1 ? 'mth' : 'mths'}`);
+                                    if (parts.length === 0) parts.push(days > 0 ? `${days} ${days === 1 ? 'day' : 'days'}` : 'today');
+                                    const rel = parts[0] === 'today' ? 'today' : `${parts.join(' ')} ago`;
+                                    return `${dateStr} <span class="text-gray-500 ml-1">(${rel})</span>`;
+                                })()}</span>
                             </div>
                             <h3 class="text-[10px] font-bold text-[var(--primary)] mb-1.5 uppercase tracking-widest">Overview</h3>
                             ${!isWatched && item.overview ? 
@@ -6098,13 +6135,13 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 let previewModal = document.getElementById('import-preview-modal');
                                 if (!previewModal) {
                                     document.body.insertAdjacentHTML('beforeend', `
-                                        <div id="import-preview-modal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100] hidden backdrop-blur-sm px-4">
-                                            <div class="card p-6 md:p-8 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-gray-700 animate-fade">
+                                        <div id="import-preview-modal" class="fixed inset-0 bg-black/90 flex flex-col justify-end md:justify-center items-center z-[100] hidden backdrop-blur-sm px-2 pb-[calc(76px+env(safe-area-inset-bottom,0px))] md:p-4">
+                                            <div class="card p-4 md:p-8 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[calc(100dvh-96px)] md:max-h-[90vh] flex flex-col border border-gray-700 animate-fade">
                                                 <div id="import-header-area">
-                                                    <h3 class="text-2xl font-bold mb-1 text-white" id="import-title">Import Preview</h3>
+                                                    <h3 class="text-xl md:text-2xl font-bold mb-1 text-white" id="import-title">Import Preview</h3>
                                                 </div>
-                                                <p id="import-preview-stats" class="text-gray-400 text-sm mb-4"></p>
-                                                <div class="flex-grow overflow-y-auto hide-scroll border border-gray-800 rounded-xl bg-gray-900 mb-6">
+                                                <p id="import-preview-stats" class="text-gray-400 text-xs md:text-sm mb-3 md:mb-4"></p>
+                                                <div class="flex-grow min-h-0 overflow-y-auto overflow-x-auto hide-scroll border border-gray-800 rounded-xl bg-gray-900 mb-4 md:mb-6">
                                                     <table class="w-full text-left text-sm text-gray-300">
                                                         <thead class="bg-gray-800 text-gray-100 sticky top-0">
                                                             <tr id="import-thead-row"></tr>
@@ -7855,8 +7892,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             let advanceModal = document.getElementById('auto-advance-modal');
                             if (!advanceModal) {
                                 document.body.insertAdjacentHTML('beforeend', `
-                                    <div id="auto-advance-modal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-[100] hidden backdrop-blur-md px-4 animate-fade">
-                                        <div class="card p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-gray-700 text-center">
+                                    <div id="auto-advance-modal" class="fixed inset-0 bg-black/90 flex flex-col justify-end md:justify-center items-center z-[100] hidden backdrop-blur-sm px-2 pb-[calc(76px+env(safe-area-inset-bottom,0px))] md:p-4 animate-fade">
+                                        <div class="card p-6 md:p-8 rounded-2xl md:rounded-3xl shadow-2xl max-w-sm w-full border border-gray-700 text-center">
                                             <div class="w-16 h-16 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/50 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
                                                 <i class="fa-solid fa-check text-2xl"></i>
                                             </div>
@@ -8808,10 +8845,7 @@ modalContent.addEventListener('touchend', () => {
             (async () => {
                 try {
                     const qHistory = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(200));
-                    const [traktSnap, historySnap] = await Promise.all([
-                        getDoc(doc(db, 'users', user.uid, 'services', 'trakt')).catch(() => null),
-                        getDocs(qHistory).catch(() => null)
-                    ]);
+                    const traktSnap = await getDoc(doc(db, 'users', user.uid, 'services', 'trakt')).catch(() => null);
 
                     if (traktSnap && traktSnap.exists() && traktSnap.data().accessToken) {
                         const dbToken = traktSnap.data().accessToken;
@@ -8825,32 +8859,48 @@ modalContent.addEventListener('touchend', () => {
                         }, { merge: true }).catch(() => {});
                     }
 
-                    if (historySnap) {
-                        window.globalHistoryCache = [];
-                        historySnap.forEach(d => window.globalHistoryCache.push({ ...d.data(), _docId: d.id }));
-                    }
-
-                    // Attach real-time listener for history sync to prevent manual polling
+                    // Single real-time listener for history sync (avoids duplicate getDocs read on boot)
+                    let lastHistSig = window.globalHistoryCache.map(h => h._docId || h.watchedAt).slice(0, 20).join('|');
                     if (window.historyUnsubscribe) window.historyUnsubscribe();
                     window.historyUnsubscribe = onSnapshot(
-                        query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(200)),
+                        qHistory,
                         (snapshot) => {
-                            window.globalHistoryCache = [];
-                            snapshot.forEach(d => window.globalHistoryCache.push({ ...d.data(), _docId: d.id }));
-                            try {
-                                localStorage.setItem(`vidtrackr_full_history_${currentUser.uid}`, JSON.stringify(window.globalHistoryCache));
-                            } catch(e) { console.warn("Quota exceeded on snapshot sync"); }
-                            
-                            // Silently update active UI if viewing history
-                            if (location.hash.startsWith('#history')) window.renderHistory(window.historyPage || 1);
+                            const nextCache = [];
+                            snapshot.forEach(d => nextCache.push({ ...d.data(), _docId: d.id }));
+                            const nextSig = nextCache.map(h => h._docId || h.watchedAt).slice(0, 20).join('|');
+                            window.globalHistoryCache = nextCache;
+                            if (nextCache.length > (window.fullHistoryMemoryCache?.length || 0)) {
+                                window.fullHistoryMemoryCache = nextCache;
+                            }
+
+                            const persistCache = () => {
+                                try {
+                                    localStorage.setItem(`vidtrackr_full_history_${currentUser.uid}`, JSON.stringify(window.globalHistoryCache));
+                                } catch(e) { console.warn("Quota exceeded on snapshot sync"); }
+                            };
+                            if ('requestIdleCallback' in window) requestIdleCallback(persistCache);
+                            else setTimeout(persistCache, 250);
+
+                            if (nextSig !== lastHistSig) {
+                                lastHistSig = nextSig;
+                                // Silently update active UI only when history actually changed
+                                if (location.hash.startsWith('#history')) window.renderHistory(window.historyPage || 1);
+                                if (document.getElementById('last-watched-container')) loadLastWatched();
+                            }
                         }
                     );
 
+                    const prevRatingsCount = userRatings.size;
+                    const prevPlaybackCount = userPlayback.size;
                     await Promise.all([syncUserRatings(), syncPlayback(), syncHiddenItems()]);
 
-                    // Refresh Dashboard sections if user is still on Dashboard
-                    if (document.getElementById('last-watched-container')) loadLastWatched();
-                    if (document.getElementById('up-next-container')) loadUpNext();
+                    // Only refresh Dashboard sections if playback or ratings actually changed from boot
+                    if (userPlayback.size !== prevPlaybackCount && document.getElementById('up-next-container')) {
+                        loadUpNext();
+                    }
+                    if (userRatings.size !== prevRatingsCount && document.getElementById('last-watched-container')) {
+                        loadLastWatched();
+                    }
                 } catch (e) {
                     console.warn("[Debug] Background startup sync warning:", e);
                 }

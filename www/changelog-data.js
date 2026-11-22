@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v17.8.0-alpha",
+    date: "2026-11-22",
+    changes: [
+        "In VidTrackr: Eliminated mobile GPU lag and background clogging by removing per-card mobile backdrop-filter blur rules, removing the duplicate startup getDocs(qHistory) read before onSnapshot, deferring history localStorage serialization to requestIdleCallback, deduplicating concurrent fetchTMDB() requests, throttling mobile enrichTMDBImages() (6 per chunk) and loadUpNext() (5 per batch) concurrency, and skipping redundant post-sync Dashboard refreshes when ratings/playback haven't changed.",
+        "In VidTrackr: Optimized #trailer-modal, #list-modal, #quick-rate-modal, #import-preview-modal (with horizontal table scroll), and #auto-advance-modal for mobile with bottom-nav clearance and dynamic viewport height constraints.",
+        "In VidTrackr: Fixed double show names (e.g. 'Show: Show: Episode') on Recently Watched episode cards in createCardHtml(), fixed '%27' apostrophe encoding in optimistic detail skeleton payloads (vt_optimistic), and added a relative age indicator (e.g. '(28 yrs 9 mths ago)') next to the First aired date on Episode Detail pages.",
+        "In PlantTrackr: Added active-tab render gating to scheduleRender() (flushDirtyForTab on tab-changed) so background onSnapshot bursts only render the visible tab, coalesced weather/lawn/compost Dashboard updates, pre-indexed logsByPlant and locById Maps in renderDashboard() to eliminate O(plants × logs) scans, deferred pt_boot_ cache writes to requestIdleCallback, and removed backdrop-blur from repeating plant card buttons.",
+        "In PlantTrackr: Fixed mobile modal clipping across all modals by updating .modal-overlay, .modal-content, .modal-header-sticky, #photo-modal, and #quick-log-modal to sit cleanly above the fixed mobile bottom nav bar with responsive repot field grids."
+    ]
+},
+    {
     version: "v17.7.0-alpha",
     date: "2026-11-21",
     changes: [
