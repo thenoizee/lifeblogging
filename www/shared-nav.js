@@ -147,6 +147,14 @@ export class AppNavigation {
 
         // Render Floating Show Nav Button
         this.renderNavRestoreButton();
+        this.attachCommandTrigger();
+    }
+
+    attachCommandTrigger() {
+        const cmdBtn = document.getElementById('nav-cmd-btn');
+        if (cmdBtn) {
+            cmdBtn.addEventListener('click', () => this.toggleCommandPalette());
+        }
     }
 
     renderNavRestoreButton() {
@@ -215,14 +223,14 @@ export class AppNavigation {
         if (document.getElementById('nav-command-palette-modal')) return;
 
         const paletteHtml = `
-        <div id="nav-command-palette-modal" class="hidden fixed inset-0 z-[2147483647] bg-gray-800/60 dark:bg-gray-900/80 backdrop-blur-md flex flex-col items-center p-4 pt-[15vh] sm:p-6 transition-opacity duration-200 opacity-0">
+        <div id="nav-command-palette-modal" class="hidden fixed inset-0 z-[2147483647] bg-gray-800/60 dark:bg-gray-900/80 backdrop-blur-sm flex flex-col items-center p-4 pt-4 sm:pt-[15vh] sm:p-6 transition-opacity duration-200 opacity-0">
             <div class="w-full max-w-2xl bg-white dark:bg-gray-800 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/10 flex flex-col">
                 <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center">
                     <i class="fa-solid fa-bolt text-${this.themeColor}-500 mr-3 text-lg"></i>
                     <input id="nav-command-input" type="text" placeholder="Search apps, or type 'task', 'water', 'log'..." class="flex-1 bg-transparent border-none outline-none text-lg text-gray-800 dark:text-gray-200 placeholder-gray-400" autocomplete="off">
                     <span class="text-[10px] font-mono bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-1 rounded shadow-sm border border-gray-200 dark:border-gray-600 ml-2">ESC</span>
                 </div>
-                <div id="nav-command-results" class="max-h-[50vh] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                <div id="nav-command-results" class="max-h-[40dvh] sm:max-h-[50vh] overflow-y-auto p-2 space-y-1 custom-scrollbar">
                     <!-- Dynamic results injected here -->
                 </div>
             </div>
@@ -352,8 +360,9 @@ export class AppNavigation {
         if (!container) {
             container = document.createElement('div');
             container.id = 'global-toast-container';
-            // Pinned to the bottom on mobile (right above the h-16 nav) and top on desktop
-            container.className = 'fixed bottom-24 md:bottom-auto md:top-20 left-1/2 -translate-x-1/2 z-[999999] flex flex-col items-center gap-3 pointer-events-none w-full max-w-[90vw] md:max-w-md';
+            // Pinned to the bottom on mobile (above h-16 nav if tabs exist) and top on iPad/desktop
+            const mobileBottomClass = this.tabs.length ? 'bottom-24' : 'bottom-6';
+            container.className = `fixed ${mobileBottomClass} md:bottom-auto md:top-20 left-1/2 -translate-x-1/2 z-[999999] flex flex-col items-center gap-3 pointer-events-none w-full max-w-[90vw] md:max-w-md`;
             document.body.appendChild(container);
         }
 
@@ -369,14 +378,14 @@ export class AppNavigation {
             : 'w-max flex items-center justify-center px-5 py-3';
 
         // Using scale for a smooth pop-in animation instead of translate-y which causes direction visual bugs on bottom positioning
-        toast.className = `pointer-events-auto relative overflow-hidden bg-gray-900/95 dark:bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.2)] text-white transform transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] opacity-0 scale-90 ${layoutClasses}`;
+        toast.className = `pointer-events-auto relative overflow-hidden bg-gray-900/95 dark:bg-gray-800/95 border border-gray-700/50 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.2)] text-white transform transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] opacity-0 scale-90 ${layoutClasses}`;
 
         let actionHtml = '';
         if (options.action) {
             if (options.action.theme === 'undo') {
-                actionHtml = `<button id="toast-action-btn" class="ml-3 px-3.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider text-orange-400 hover:text-orange-300 bg-gray-800 hover:bg-gray-700 border border-gray-600 transition-colors active:scale-95 shrink-0 shadow-sm">${escapeHtml(options.action.text)}</button>`;
+                actionHtml = `<button class="toast-action-btn ml-3 px-3.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider text-orange-400 hover:text-orange-300 bg-gray-800 hover:bg-gray-700 border border-gray-600 transition-colors active:scale-95 shrink-0 shadow-sm">${escapeHtml(options.action.text)}</button>`;
             } else {
-                actionHtml = `<button id="toast-action-btn" class="ml-3 px-3.5 py-1.5 rounded-full text-xs font-bold text-gray-900 bg-white hover:bg-gray-200 transition-colors active:scale-95 shrink-0 shadow-sm">${escapeHtml(options.action.text)}</button>`;
+                actionHtml = `<button class="toast-action-btn ml-3 px-3.5 py-1.5 rounded-full text-xs font-bold text-gray-900 bg-white hover:bg-gray-200 transition-colors active:scale-95 shrink-0 shadow-sm">${escapeHtml(options.action.text)}</button>`;
             }
         }
 
@@ -387,7 +396,7 @@ export class AppNavigation {
             </div>
             ${actionHtml}
             <div class="absolute bottom-0 left-0 w-full h-[2px] bg-white/5">
-                <div class="h-full w-full ${barColorClass}" style="transform-origin: left; transition: transform ${duration}ms linear;" id="toast-progress"></div>
+                <div class="toast-progress h-full w-full ${barColorClass}" style="transform-origin: left; transition: transform ${duration}ms linear;"></div>
             </div>
         `;
 
@@ -402,7 +411,7 @@ export class AppNavigation {
         };
 
         if (options.action) {
-            toast.querySelector('#toast-action-btn').addEventListener('click', () => {
+            toast.querySelector('.toast-action-btn').addEventListener('click', () => {
                 options.action.onClick();
                 closeToast();
             });
@@ -412,7 +421,7 @@ export class AppNavigation {
         let isHovered = false;
         let remainingTime = duration;
         let startTime = Date.now();
-        const progressBar = toast.querySelector('#toast-progress');
+        const progressBar = toast.querySelector('.toast-progress');
 
         toast.addEventListener('mouseenter', () => {
             isHovered = true;
@@ -587,11 +596,6 @@ export class AppNavigation {
         const styleId = 'shared-nav-styles';
         if (document.getElementById(styleId)) return;
 
-        // Force Tailwind CDN to compile the dynamic theme colors
-        const safelistDiv = document.createElement('div');
-        safelistDiv.className = `absolute -top-[9999px] opacity-0 text-${this.themeColor}-700 dark:text-${this.themeColor}-400 bg-${this.themeColor}-100 dark:bg-gray-900 shadow-sm ring-1 ring-${this.themeColor}-300 dark:ring-gray-700 bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:from-${this.themeColor}-900/10 border-${this.themeColor}-200 border-t-${this.themeColor}-500 text-${this.themeColor}-600 dark:text-${this.themeColor}-500 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400`;
-        document.body.appendChild(safelistDiv);
-
         // Map Tailwind color names to RGB values for the dynamic radial gradient
         const rgbMap = {
             slate: '100, 116, 139', lime: '132, 204, 22', orange: '249, 115, 22',
@@ -726,8 +730,8 @@ export class AppNavigation {
     </div>
 </div>
 
-<header class="sticky top-0 backdrop-blur-md bg-gradient-to-t from-${this.themeColor}-50/90 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/10 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 40; isolation: isolate; ${nativeHeaderStyle}">
-            <div class="container mx-auto px-2 sm:px-4 py-2 min-w-0">
+<header class="sticky top-0 bg-gradient-to-t from-${this.themeColor}-50/95 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/20 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 40; isolation: isolate; ${nativeHeaderStyle}">
+            <div class="container mx-auto px-2 sm:px-4 pt-2 pb-1 min-w-0">
                 <div class="flex items-center justify-between h-12 gap-2 md:gap-3 w-full min-w-0">
                         
                         <div class="flex items-center gap-2 sm:gap-3 shrink min-w-0">
@@ -776,13 +780,13 @@ export class AppNavigation {
 
                         <a href="#" class="flex items-center gap-1.5 sm:gap-2 text-xl font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-500 no-underline hover:opacity-80 transition shrink min-w-0 hidden sm:flex">
                             <i class="fa-solid ${this.appIcon} shrink-0"></i>
-                            <span class="hidden md:inline truncate max-w-[90px] lg:max-w-none">${this.appName}</span>
+                            <span class="hidden lg:inline truncate">${this.appName}</span>
                         </a>
                     </div>
 
                     <nav class="hidden md:flex items-center gap-1 bg-white/80 shadow-inner dark:bg-gray-900/50 p-1 rounded-lg border border-${this.themeColor}-100 dark:border-transparent overflow-x-auto hide-scroll min-w-0 shrink">
                         ${this.tabs.map(tab => `
-                            <button class="nav-tab-btn px-4 py-1.5 rounded-md text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-300 ease-in-out" data-tab="${tab.id}">
+                            <button class="nav-tab-btn px-2.5 lg:px-4 py-1.5 rounded-md text-xs lg:text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-300 ease-in-out whitespace-nowrap shrink-0" data-tab="${tab.id}">
                                 <i class="fa-solid ${tab.icon} mr-1.5"></i>${tab.label}
                             </button>
                         `).join('')}
@@ -823,6 +827,10 @@ export class AppNavigation {
                                 ${cachedAvatar ? cachedAvatar : userInitial}
                             </a>
 
+                            <button id="nav-cmd-btn" class="w-8 h-8 shrink-0 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-colors" title="Quick Menu (Cmd/Ctrl + K)">
+                                <i class="fa-solid fa-bolt text-xs"></i>
+                            </button>
+
                             <button id="nav-theme-toggle" class="w-8 h-8 shrink-0 rounded-full bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 flex items-center justify-center transition-all duration-500 ease-in-out">
                                 <i id="theme-icon-moon" class="fas fa-moon"></i>
                                 <i id="theme-icon-sun" class="fas fa-sun" style="display: none;"></i>
@@ -831,18 +839,19 @@ export class AppNavigation {
                             <!-- Log out button removed from global nav -->
                         </div>
                 </div>
-            </div>
-            
-            <div class="absolute right-2 flex flex-col items-end z-[100]" style="${nativeCornerStyle}">
-                ${this.version ? `
-                    <a href="/changelog" class="text-[10px] font-mono text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400 transition-colors" title="App Version ${this.version}">
-                        App: ${this.version}
-                    </a>
+                ${!isNativeApp ? `
+                <div class="flex items-center justify-end gap-3 pt-0.5 text-[10px] leading-none">
+                    ${this.version ? `
+                        <a href="/changelog" class="font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title="App Version ${this.version}">
+                            App: ${this.version}
+                        </a>
+                    ` : ''}
+                    <span id="nav-sw-version" class="hidden sm:inline font-mono text-gray-400 dark:text-gray-600" title="Service Worker Version">SW: ---</span>
+                    <button id="nav-hide-btn" class="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-white hover:bg-${this.themeColor}-500 px-2 py-0.5 rounded shadow-sm transition-all flex items-center group active:scale-95">
+                        <i class="fa-solid fa-eye-slash mr-1 group-hover:scale-110 transition-transform"></i>Hide Nav
+                    </button>
+                </div>
                 ` : ''}
-                <span id="nav-sw-version" class="text-[9px] font-mono text-gray-300 dark:text-gray-700" title="Service Worker Version">SW: ---</span>
-                <button onclick="window.toggleNavBar()" class="mt-2 text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-white hover:bg-${this.themeColor}-500 px-2 py-1 rounded-md shadow-sm transition-all flex items-center group active:scale-95">
-                    <i class="fa-solid fa-eye-slash mr-1.5 group-hover:scale-110 transition-transform"></i>Hide Nav
-                </button>
             </div>
         </header>
         `;
@@ -855,19 +864,19 @@ export class AppNavigation {
     renderMobileNav() {
         if (!this.tabs.length) return;
         const mobileHtml = `
-        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-${this.themeColor}-200 dark:border-gray-800 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 border-t border-${this.themeColor}-200 dark:border-gray-800 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
             <div class="flex justify-around items-center h-16 px-2">
                 ${this.tabs.map(tab => `
-                    <button class="mobile-nav-btn flex flex-col items-center justify-center flex-1 h-full text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 transition-colors" data-tab="${tab.id}">
-                        <div class="icon-wrapper flex items-center justify-center w-14 h-8 rounded-full transition-colors pointer-events-none mb-0.5">
+                    <button class="mobile-nav-btn flex flex-col items-center justify-center flex-1 min-w-0 h-full text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 transition-colors" data-tab="${tab.id}">
+                        <div class="icon-wrapper flex items-center justify-center w-12 h-8 rounded-full transition-colors pointer-events-none mb-0.5">
                             <i class="fa-solid ${tab.icon} text-lg"></i>
                         </div>
-                        <span class="text-[10px] font-semibold pointer-events-none leading-none tracking-wide">${tab.label}</span>
+                        <span class="text-[10px] font-semibold pointer-events-none leading-none tracking-wide truncate max-w-full px-0.5">${tab.label}</span>
                     </button>
                 `).join('')}
             </div>
         </nav>
-        <style> .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); } body { padding-bottom: 5rem; } </style>
+        <style> .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); } @media (max-width: 767px) { body { padding-bottom: 5rem; } } </style>
         `;
 
         const existingNav = document.querySelector('nav.md\\:hidden');
@@ -1172,9 +1181,11 @@ export class AppNavigation {
 
             const positionMenu = () => {
                 const rect = dropBtn.getBoundingClientRect();
-                dropMenu.style.top = `${rect.bottom + window.scrollY}px`;
-                dropMenu.style.left = `${rect.left + window.scrollX}px`;
-                dropMenu.style.position = 'absolute';
+                const menuWidth = 288; // w-72
+                const maxLeft = Math.max(8, window.innerWidth - menuWidth - 8);
+                dropMenu.style.top = `${rect.bottom + 4}px`;
+                dropMenu.style.left = `${Math.min(rect.left, maxLeft)}px`;
+                dropMenu.style.position = 'fixed';
                 dropMenu.style.zIndex = '999999';
             };
 
@@ -1228,17 +1239,17 @@ export class AppNavigation {
 
             const positionNotifMenu = () => {
                 const rect = bellBtn.getBoundingClientRect();
-                notifMenu.style.top = `${rect.bottom + window.scrollY}px`;
+                notifMenu.style.top = `${rect.bottom + 4}px`;
                 if (window.innerWidth < 768) {
                     notifMenu.style.left = '1rem';
                     notifMenu.style.right = '1rem';
                     notifMenu.style.width = 'auto';
                 } else {
                     notifMenu.style.left = 'auto';
-                    notifMenu.style.right = `${window.innerWidth - rect.right - window.scrollX}px`;
+                    notifMenu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
                     notifMenu.style.width = '20rem';
                 }
-                notifMenu.style.position = 'absolute';
+                notifMenu.style.position = 'fixed';
                 notifMenu.style.zIndex = '999999';
             };
 
@@ -1450,8 +1461,8 @@ export class AppNavigation {
         const inactiveClassDesktop = `text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100`;
 
         document.querySelectorAll('.nav-tab-btn').forEach(btn => {
-            if (btn.dataset.tab === tabId) btn.className = `nav-tab-btn px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeClassDesktop}`;
-            else btn.className = `nav-tab-btn px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${inactiveClassDesktop}`;
+            if (btn.dataset.tab === tabId) btn.className = `nav-tab-btn px-2.5 lg:px-4 py-1.5 rounded-md text-xs lg:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeClassDesktop}`;
+            else btn.className = `nav-tab-btn px-2.5 lg:px-4 py-1.5 rounded-md text-xs lg:text-sm font-semibold transition-all whitespace-nowrap shrink-0 ${inactiveClassDesktop}`;
         });
 
        document.querySelectorAll('.mobile-nav-btn').forEach(btn => {

@@ -1,6 +1,6 @@
 // Automatically grab the version from the registration URL (e.g., sw.js?v=1.2.0)
 const urlParams = new URL(self.location).searchParams;
-const LATEST_VERSION = urlParams.get('v') || "2.0.14";
+const LATEST_VERSION = urlParams.get('v') || "2.0.15";
 
 console.log(`[sw.js] 🟢 Booting up Service Worker v${LATEST_VERSION}`);
 
@@ -136,34 +136,35 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('install', event => {
   console.log(`[sw.js] 📦 Installing v${LATEST_VERSION}...`);
   self.skipWaiting(); 
+
+  const cacheInBatches = async (cache, urls, batchSize = 6) => {
+    for (let i = 0; i < urls.length; i += batchSize) {
+      const batch = urls.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(async (url) => {
+        try {
+          if (url.includes('tailwindcss')) {
+            const request = new Request(url, { mode: 'no-cors' });
+            const response = await fetch(request);
+            await cache.put(request, response);
+          } else {
+            await cache.add(url);
+          }
+        } catch (error) {
+          console.warn(`[sw.js] Failed to pre-cache asset: ${url}`);
+        }
+      }));
+    }
+  };
   
   event.waitUntil(
     Promise.all([
-      // Pre-cache local app files
-      caches.open(CACHE_NAME).then(async cache => {
+      caches.open(CACHE_NAME).then(cache => {
         console.log(`[sw.js] Caching local app files for v${LATEST_VERSION}`);
-        for (let url of urlsToCache) {
-            try { await cache.add(url); } 
-            catch (error) { console.warn(`[sw.js] Failed to pre-cache app file: ${url}`); }
-        }
+        return cacheInBatches(cache, urlsToCache, 6);
       }),
-      // Pre-cache external styling libraries so the app is styled offline instantly
-      caches.open(EXTERNAL_CACHE_NAME).then(async cache => {
+      caches.open(EXTERNAL_CACHE_NAME).then(cache => {
         console.log(`[sw.js] Caching external design assets...`);
-        for (let url of externalUrlsToCache) {
-            try { 
-                if (url.includes('tailwindcss')) {
-                    // Tailwind CDN requires no-cors to bypass origin blocks
-                    const request = new Request(url, { mode: 'no-cors' });
-                    const response = await fetch(request);
-                    await cache.put(request, response);
-                } else {
-                    // Fonts and Icons MUST use standard CORS to pass browser integrity checks
-                    await cache.add(url);
-                }
-            } 
-            catch (error) { console.warn(`[sw.js] Failed to pre-cache external design asset: ${url}`); }
-        }
+        return cacheInBatches(cache, externalUrlsToCache, 4);
       })
     ])
   );
@@ -203,13 +204,15 @@ self.addEventListener('fetch', event => {
   }
 
   // 1. BYPASS SERVICE WORKER FOR API CALLS & AUTH
-  // Firebase APIs, Google Auth, and dynamic external APIs must be ignored so they don't break offline syncing or authentication flows
+  // Firebase APIs, Google Auth, and dynamic external APIs must be ignored so they don't break offline syncing or authentication flows.
+  // Pinned versioned Firebase JS SDK modules (www.gstatic.com/firebasejs/<version>/...) are immutable and safe to cache below.
+  const isPinnedFirebaseSdk = url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/');
   if (event.request.method !== 'GET' || 
       url.hostname.includes('googleapis.com') ||
       url.hostname.includes('apis.google.com') || // Ignore Google Auth API traffic
       url.hostname.includes('firebaseapp.com') || 
       url.pathname.includes('/__/auth/') || // Ignore Firebase Auth hidden iframes
-      url.hostname.includes('gstatic.com') || // Ignore Firebase JS SDK assets to prevent caching stale auth logic
+      (url.hostname.includes('gstatic.com') && !isPinnedFirebaseSdk) ||
       url.hostname.includes('cloudfunctions.net') ||
       url.hostname.includes('api.open-meteo.com') ||
       url.hostname.includes('openfoodfacts.org') ||
@@ -224,38 +227,38 @@ self.addEventListener('fetch', event => {
 
   event.respondWith((async () => {
     try {
-      // 2. NETWORK FIRST: For your own local HTML/JS files
+      // 2. STALE-WHILE-REVALIDATE: For local HTML/JS/CSS files (instant load + background refresh)
       if (url.origin === self.location.origin) {
-        try {
-                const networkResponse = await fetch(event.request);
-                // Only cache valid 200 responses
-                if (networkResponse && networkResponse.status === 200) {
-                  const cache = await caches.open(CACHE_NAME);
-                  cache.put(event.request, networkResponse.clone());
-                }
-                return networkResponse;
-              } catch (error) {
-                // If completely offline, fall back to our cached app files
-                let cachedResponse = await caches.match(event.request, { ignoreSearch: true });
-                
-                // Aggressive routing fix to ALWAYS find the right HTML file offline
-                if (!cachedResponse) {
-                    const cache = await caches.open(CACHE_NAME);
-                    const keys = await cache.keys();
-                    const reqUrl = new URL(event.request.url);
-                    const basePath = reqUrl.pathname.replace(/\/$/, "");
-                    
-                    for (const req of keys) {
-                        const cachedPath = new URL(req.url).pathname;
-                        if (cachedPath === basePath || cachedPath === basePath + '/' || cachedPath === basePath + '/index.html') {
-                            cachedResponse = await cache.match(req);
-                            break;
-                        }
-                    }
-                }
-                
-                return cachedResponse || new Response("Offline", { status: 408, statusText: "Offline" });
-              }
+        const cache = await caches.open(CACHE_NAME);
+        let cachedResponse = await cache.match(event.request, { ignoreSearch: true });
+
+        // Aggressive routing fallback for clean URLs (e.g. /tasktrackr -> /tasktrackr/index.html)
+        if (!cachedResponse) {
+          const basePath = url.pathname.replace(/\/$/, "");
+          const keys = await cache.keys();
+          for (const req of keys) {
+            const cachedPath = new URL(req.url).pathname;
+            if (cachedPath === basePath || cachedPath === basePath + '/' || cachedPath === basePath + '/index.html') {
+              cachedResponse = await cache.match(req);
+              break;
+            }
+          }
+        }
+
+        const networkFetch = fetch(event.request).then(networkResponse => {
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        }).catch(() => null);
+
+        if (cachedResponse) {
+          event.waitUntil(networkFetch);
+          return cachedResponse;
+        }
+
+        const networkResponse = await networkFetch;
+        return networkResponse || new Response("Offline", { status: 408, statusText: "Offline" });
       }
 
       // 3. CACHE FIRST: For external assets (Tailwind, FontAwesome, Google Fonts)

@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v17.11.0-alpha",
+    date: "2026-11-23",
+    changes: [
+        "In SharedNav: Improved responsive layout across mobile, iPad, and desktop—delayed the header app title text to lg:, tightened md: tab padding so tablet tab bars don't crowd, moved version/SW/Hide Nav metadata into a non-overlapping header sub-row, scoped mobile bottom padding to <768px so iPad/desktop have no dead bottom space, added a header Command Palette button (#nav-cmd-btn) for touch devices, anchored dropdowns with position: fixed + viewport clamping, removed heavy backdrop-blur from sticky/fixed bars for smoother iPad GPU scrolling, and deduplicated BroadcastChannel notification handling.",
+        "In Lifeblogging Hub & Service Worker: Improved loading speed on all devices (especially older iPads like iPad Air 2) by switching same-origin assets in sw.js to Stale-While-Revalidate, caching pinned Firebase 11.6.1 SDK modules Cache-First, batching SW install pre-caching, adding <link rel=\"modulepreload\"> for shared-nav.js and changelog-data.js, loading Google Fonts and FontAwesome asynchronously, lazy-loading Firebase Messaging after auth resolves, caching the user's displayName in localStorage, and enabling Firestore persistentLocalCache."
+    ]
+},
+    {
     version: "v17.10.0-alpha",
     date: "2026-11-23",
     changes: [
