@@ -1,6 +1,6 @@
 // Automatically grab the version from the registration URL (e.g., sw.js?v=1.2.0)
 const urlParams = new URL(self.location).searchParams;
-const LATEST_VERSION = urlParams.get('v') || "2.0.15";
+const LATEST_VERSION = urlParams.get('v') || "2.0.17";
 
 console.log(`[sw.js] 🟢 Booting up Service Worker v${LATEST_VERSION}`);
 
@@ -15,51 +15,25 @@ const CACHE_NAME = `lifeblogging-hub-${LATEST_VERSION}`;
 // Bumped to v2 to flush the corrupted Open-Meteo cache responses
 const EXTERNAL_CACHE_NAME = `lifeblogging-external-assets-v2`;
 
-// Add all the files you want to cache for offline use
+// Pre-cache only the core Hub shell & shared assets on install so older devices (e.g. iPad Air 2) boot fast.
+// Individual sub-apps are cached on-demand via Stale-While-Revalidate when visited.
 const urlsToCache = [
   '/',
   '/index.html',
-  '/analyser/index.html',
-  '/log/index.html',
-  '/healthmanagr/index.html',
-  '/changelog/index.html',
-  '/converter/index.html',
-  '/time/index.html',
-  '/account/index.html',
-  '/recipemanagr/index.html',
-  '/podtrackr/index.html',
-  '/hydrationtrackr/index.html', 
-  '/palette/index.html', 
-  '/tasktrackr/index.html',
-  
-// --- SUBFOLDERS ---
-  '/vidtrackr/',
-  '/vidtrackr/index.html',
-  '/vidtrackr/api_keys.js',
-  
-  // ADD THESE LINES:
-  '/moneymanagr/',
-  '/moneymanagr/index.html',
   
   // --- ASSETS ---
   '/output.css',
-  '/recipemanagr/style.css',
-  '/changelog-data.js',
+  '/version.js',
   '/shared-nav.js',
   '/manifest.json',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
-
-  // --- ADD MISSING ASSETS ---
-  '/favicons/pen-to-square.svg', // Used by Logger
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap', // Pre-cache fonts
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap',
   
 // --- CRITICAL EXTERNAL LIBS (Explicitly Cache these) ---
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
-  'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js',
-  'https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging-compat.js'
 ];

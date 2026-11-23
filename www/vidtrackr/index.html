@@ -427,7 +427,7 @@ input[type=range]::-moz-range-thumb {
     // FIX: Added initializeFirestore, onSnapshot, and IndexedDB persistence components to drastically reduce DB read costs
     import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, onSnapshot, getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch, query, orderBy, limit, where, updateDoc, increment, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     // Globally import the TMDB key so all functions can use it
-    import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI, TMDB_API_KEY } from './api_keys.js';
+    import { TRAKT_CLIENT_ID, TRAKT_REDIRECT_URI, TMDB_API_KEY } from '/vidtrackr/api_keys.js';
 
     // --- Config ---
     const app = initializeApp({
@@ -447,7 +447,7 @@ input[type=range]::-moz-range-thumb {
     // and force WebSockets to completely kill the 'channel?VER=8' ping loop bug.
     const db = initializeFirestore(app, {
         localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()}),
-        experimentalForceLongPolling: false
+        experimentalAutoDetectLongPolling: true
     });
     
     const TRAKT_API_URL = 'https://us-central1-sammy-7298f.cloudfunctions.net/traktProxy';
@@ -7736,11 +7736,13 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                 await setDoc(docRef, payload, { merge: true });
                 
                 // Smartly update the local full history cache to prevent aggressive invalidations
+                const resolvedDocId = docId || docRef.id;
                 try {
                     const histCacheKey = `vidtrackr_full_history_${currentUser.uid}`;
-                    // McMaster Fix: Update the fast RAM array directly
+                    // McMaster Fix: Update the fast RAM array directly (deduped in case onSnapshot already fired)
                     if (window.fullHistoryMemoryCache) {
-                        window.fullHistoryMemoryCache.unshift({ ...payload, _docId: docId });
+                        window.fullHistoryMemoryCache = window.fullHistoryMemoryCache.filter(h => h._docId !== resolvedDocId);
+                        window.fullHistoryMemoryCache.unshift({ ...payload, _docId: resolvedDocId });
                         if (window.fullHistoryMemoryCache.length > 2500) {
                             window.fullHistoryMemoryCache = window.fullHistoryMemoryCache.slice(0, 2500);
                         }
@@ -7753,12 +7755,6 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                         }
                     }
                 } catch(e) { console.warn("Failed to update history cache locally", e); }
-                        // so it doesn't interrupt the user clicking buttons or scrolling.
-                        if ('requestIdleCallback' in window) {
-                            requestIdleCallback(() => localStorage.setItem(histCacheKey, JSON.stringify(histArr)));
-                        } else {
-                            setTimeout(() => localStorage.setItem(histCacheKey, JSON.stringify(histArr)), 200);
-                        }
                             
                 // --- NoSQL Denormalization for Series Progress ---
                 // We only execute this if it's NOT a bulk import to protect your database read costs.
@@ -7783,9 +7779,10 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     }
                 }
                 
-                // Keep in-memory globalHistoryCache in sync for instant Dashboard & Detail updates
+                // Keep in-memory globalHistoryCache in sync (deduped in case onSnapshot already included it)
                 if (!isImport && window.globalHistoryCache) {
-                    window.globalHistoryCache.unshift({ ...payload, _docId: docId || docRef.id });
+                    window.globalHistoryCache = window.globalHistoryCache.filter(h => h._docId !== resolvedDocId);
+                    window.globalHistoryCache.unshift({ ...payload, _docId: resolvedDocId });
                 }
 
                 // Bust detail view HTML cache & progress caches so all tabs update immediately
@@ -8869,7 +8866,14 @@ modalContent.addEventListener('touchend', () => {
                             snapshot.forEach(d => nextCache.push({ ...d.data(), _docId: d.id }));
                             const nextSig = nextCache.map(h => h._docId || h.watchedAt).slice(0, 20).join('|');
                             window.globalHistoryCache = nextCache;
-                            if (nextCache.length > (window.fullHistoryMemoryCache?.length || 0)) {
+
+                            // Merge latest 200 items into fullHistoryMemoryCache without dropping older cached entries
+                            const existingFull = Array.isArray(window.fullHistoryMemoryCache) ? window.fullHistoryMemoryCache : [];
+                            if (existingFull.length > nextCache.length) {
+                                const latestIds = new Set(nextCache.map(h => h._docId).filter(Boolean));
+                                const olderItems = existingFull.filter(h => !h._docId || !latestIds.has(h._docId));
+                                window.fullHistoryMemoryCache = [...nextCache, ...olderItems].slice(0, 2500);
+                            } else {
                                 window.fullHistoryMemoryCache = nextCache;
                             }
 
@@ -8883,9 +8887,15 @@ modalContent.addEventListener('touchend', () => {
 
                             if (nextSig !== lastHistSig) {
                                 lastHistSig = nextSig;
-                                // Silently update active UI only when history actually changed
+                                // Invalidate Up Next local caches so Continue Watching stays in sync across devices
+                                localStorage.removeItem('vidtrackr_smart_up_next_local_v5');
+                                localStorage.removeItem('vidtrackr_smart_up_next_local_v5_timestamp');
+                                sessionStorage.removeItem('vidtrackr_local_progress');
+
+                                // Silently update active UI when history changed
                                 if (location.hash.startsWith('#history')) window.renderHistory(window.historyPage || 1);
                                 if (document.getElementById('last-watched-container')) loadLastWatched();
+                                if (document.getElementById('up-next-container')) loadUpNext();
                             }
                         }
                     );
@@ -8906,10 +8916,15 @@ modalContent.addEventListener('touchend', () => {
                 }
             })();
         } else {
+            if (window.historyUnsubscribe) {
+                window.historyUnsubscribe();
+                window.historyUnsubscribe = null;
+            }
             if (globalHistoryListener) {
                 globalHistoryListener(); // Unsubscribe to prevent memory leaks
                 globalHistoryListener = null;
             }
+            window.fullHistoryMemoryCache = [];
             window.globalHistoryCache = [];
             
             // Render Login Form (No changes needed here)

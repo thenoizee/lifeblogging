@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v17.12.0-alpha",
+    date: "2026-11-23",
+    changes: [
+        "In TaskTrackr & VidTrackr: Fixed both apps failing to load when accessed via clean URLs (/tasktrackr, /vidtrackr) by switching their api_keys.js imports from relative paths (./api_keys.js) to root-relative paths (/tasktrackr/api_keys.js, /vidtrackr/api_keys.js).",
+        "In Lifeblogging Hub & Service Worker: Extracted a lightweight /version.js module so SharedNav and the Hub no longer download and parse the 500KB+ changelog-data.js on every boot, lazy-loaded Firestore on the Hub until the 12-hour profile check is due, and trimmed sw.js (v2.0.17) install pre-caching to the core Hub shell for much faster initial loads on older iPads.",
+        "In VidTrackr: Fixed cross-device Recently Watched and Continue Watching updates by enabling experimentalAutoDetectLongPolling for iPadOS Safari, merging onSnapshot updates into fullHistoryMemoryCache, invalidating local Up Next caches when remote history changes, deduplicating optimistic logHistory() cache entries by document ID, and cleaning up historyUnsubscribe on sign-out.",
+        "In HealthManagr: Removed the global !important border-radius overrides (Soft UI rounding), removed heavy backdrop-filter: blur() from opaque cards/.stats-box and blur-xl/2xl/3xl from decorative blobs to fix GPU clipping on Lens Usage History and improve PC/iPad load performance, made Eye Health Records span full width (md:col-span-2), and fixed the Lens History calendar not rendering when no recent logs exist (plus added mobile stack styling for #lens-calendar).",
+        "In FoodTrackr: Removed stray non-breaking space characters inside .sub-tab-nav so the sub-tab pills have consistent spacing."
+    ]
+},
+    {
     version: "v17.11.0-alpha",
     date: "2026-11-23",
     changes: [
