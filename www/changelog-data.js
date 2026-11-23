@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v17.10.0-alpha",
+    date: "2026-11-23",
+    changes: [
+        "In MoneyManagr: Fixed critical bugs including duplicate legacy calculateSplitPreview() and confirmSplit() definitions that overwrote the 5-mode Split Bill flow, single-color Spending Breakdown doughnut slices, and updateWeeklyTracker() summing income instead of weekly spending.",
+        "In MoneyManagr: Improved performance by bounding the initial moneyLogs onSnapshot listener (250 records with 'Load Older Transactions from Cloud'), debouncing Activity/Inbox/Duplicate search inputs (180ms), adding DocumentFragment rendering with 'Show More' pagination, lazy-loading Chart.js on the Tools tab, updating the Time Machine projection chart in-place without destroying/recreating it on slider drag, and batching bulk Firestore writes via commitBatch().",
+        "In MoneyManagr: Upgraded desktop and mobile UI/UX with a 2-column max-w-6xl desktop dashboard layout, a mobile Quick Log FAB and desktop Quick Log button (#quick-tx-modal for Expense/Income/Transfer), 16px inputs to prevent iOS Safari auto-zoom, offset sticky date headers, synced Dark Mode + Chart.js theming, Auth form UX (Enter submit, password toggle, Forgot Password), Esc/n keyboard shortcuts, .modal-overlay.hidden CSS fix, and a custom #confirm-modal replacing native confirm() dialogs.",
+        "In MoneyManagr: Added Auto-Categorization Rules (merchant memory in moneyRules with #rules-modal and automatic Inbox pre-fill), true Account-to-Account Transfers, Period-filtered Spending Breakdown + 6-month Cashflow & Savings Rate chart, 1-tap IOU Settle Up (#settle-modal), actionable Subscriptions Due banner with weekly/monthly/yearly intervals, editable Weekly Spend Limit, Budget deletion & daily allowance + Home preview, and lossless JSON Backup & Restore.",
+        "In MoneyManagr: Added automatic Transfer Match detection (#transfer-match-modal) when categorizing Inbox transfers/saves so matching opposite-side logs or pending items are flagged for confirmation and linked without double-counting, switched CSV Import conflicts to overwrite existing matches by default for higher accuracy, and added a persistent Audit Trail (moneyAuditLogs + #audit-modal) recording all import overwrites and linked transfers."
+    ]
+},
+    {
     version: "v17.9.0-alpha",
     date: "2026-11-22",
     changes: [
