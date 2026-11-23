@@ -2410,8 +2410,9 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
     // 1. Instant Load from Cache
     const cached = localStorage.getItem(key);
     const lastFetch = localStorage.getItem(timeKey);
+    const isEmptyUpNextCache = cacheKey === 'up_next_local_v5' && cached === '[]' && (window.fullHistoryMemoryCache?.length > 0 || userPlayback.size > 0);
     
-    if (cached) {
+    if (cached && !isEmptyUpNextCache) {
         try {
             setStatus('cache'); // Show "Synced" immediately
             const cachedData = JSON.parse(cached);
@@ -2420,7 +2421,7 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
     }
 
     // 2. Skip silent fetch if TTL hasn't expired yet to save Firebase reads
-    if (cached && lastFetch && (now - parseInt(lastFetch) < ttlMs)) {
+    if (cached && !isEmptyUpNextCache && lastFetch && (now - parseInt(lastFetch) < ttlMs)) {
         return; 
     }
 
@@ -2429,6 +2430,7 @@ async function runSmart(cacheKey, fetcherFn, rendererFn, ttlMs = 120000) { // 2 
         if(cached) setStatus('loading'); // Switch to "Syncing..."
         
         const freshData = await fetcherFn();
+        if (freshData === null) return; // Fetcher deferred (e.g. waiting for initial sync)
         localStorage.setItem(timeKey, now.toString()); // Update timestamp
         
         // 4. Compare & Update
@@ -2882,6 +2884,13 @@ async function loadUpNext() {
                 // --- FETCHER: Builds Up Next from local Firebase history ---
                 async () => {
                     if (!currentUser) return [];
+
+                    // If history & playback haven't finished their initial Firestore sync yet,
+                    // defer instead of caching an empty [] result in localStorage.
+                    const hasHistory = Array.isArray(window.fullHistoryMemoryCache) && window.fullHistoryMemoryCache.length > 0;
+                    if (!hasHistory && userPlayback.size === 0 && !window._initialHistorySynced) {
+                        return null;
+                    }
 
                     try {
                         let activeShows = [];
@@ -4572,6 +4581,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                         }
 
                                         let watchedEps = new Set();
+                                        let lastS = 0, lastE = 0, foundMostRecent = false;
                                         let maxS = 0, maxE = 0;
                                         
                                         historyDocs.forEach(data => {
@@ -4582,21 +4592,28 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                                 const matchTrakt = String(item.ids?.trakt);
                                                 
                                                 if ((sTmdb && sTmdb === matchTmdb) || (sTrakt && sTrakt === matchTrakt)) {
-                                                    const s = parseInt(data.media.season || data.media.season_number || 1);
-                                                    const e = parseInt(data.media.number || data.media.episode_number || 1);
+                                                    const s = parseInt(data.media.season !== undefined ? data.media.season : (data.media.season_number !== undefined ? data.media.season_number : 1));
+                                                    const e = parseInt(data.media.number !== undefined ? data.media.number : (data.media.episode_number !== undefined ? data.media.episode_number : 1));
                                                     watchedEps.add(`S${s}E${e}`);
+                                                    if (!foundMostRecent) {
+                                                        lastS = s;
+                                                        lastE = e;
+                                                        foundMostRecent = true;
+                                                    }
                                                     if (s > maxS || (s === maxS && e > maxE)) { maxS = s; maxE = e; }
                                                 }
                                             }
                                         });
 
+                                        const pointerS = foundMostRecent ? lastS : maxS;
+                                        const pointerE = foundMostRecent ? lastE : maxE;
                                         const totalAired = item.number_of_episodes || item.aired_episodes || 0;
                                         
                                         // Simple next episode resolution for TMDB
                                         let nextEpData = null;
-                                        if (primaryDataSource === 'tmdb') {
-                                            let nextS = maxS;
-                                            let nextE = maxE + 1;
+                                        if (primaryDataSource === 'tmdb' && pointerS > 0) {
+                                            let nextS = pointerS;
+                                            let nextE = pointerE + 1;
                                             const currentSeason = item.seasons?.find(x => x.season_number === nextS);
                                             if (currentSeason && nextE > currentSeason.episode_count) {
                                                 nextS += 1;
@@ -4641,6 +4658,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                     if (!showProgress) return '';
 
                                     const percent = showProgress.aired > 0 ? Math.min(100, Math.round((showProgress.completed / showProgress.aired) * 100)) : 0; 
+                                    const remainingEps = Math.max(0, (showProgress.aired || 0) - (showProgress.completed || 0));
                                     let nextEpHtml = ''; 
                                     if (showProgress.next_episode) { 
                                         const nx = showProgress.next_episode; 
@@ -4656,9 +4674,23 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                         })).replace(/'/g, "%27");
                                         const nxSetOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${nxOpt}')); `;
 
-                                        nextEpHtml = `<div class="mb-6 bg-[var(--bg)] rounded-xl p-4 border border-gray-700 hover:border-[var(--primary)] flex items-center gap-4 cursor-pointer transition shadow-lg group" onclick="${nxSetOpt} location.hash='${clickHash}'"><div class="w-24 h-14 md:w-32 md:h-18 flex-shrink-0 rounded-lg overflow-hidden bg-gray-900 relative"><img src="${nxImg}" class="w-full h-full object-cover group-hover:scale-110 transition duration-300" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-1 left-1 bg-[var(--primary)] text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shadow-sm">Up Next</div></div><div class="flex-grow min-w-0"><p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">Season ${nx.season} <span class="mx-1">•</span> Episode ${nx.number}</p><h4 class="font-bold text-sm md:text-base text-gray-200 truncate group-hover:text-[var(--primary)] transition">${nx.title || 'Next Episode'}</h4></div><div class="hidden sm:flex items-center text-xs text-gray-500 font-bold mr-2">Continue Watching <i class="fa-solid fa-circle-play text-[var(--primary)] text-xl ml-2"></i></div></div>`;
+                                        nextEpHtml = `<div class="mt-3 bg-[var(--bg)] rounded-xl p-3.5 border border-gray-700/80 hover:border-[var(--primary)] flex items-center gap-4 cursor-pointer transition shadow-lg group" onclick="${nxSetOpt} location.hash='${clickHash}'"><div class="w-24 h-14 md:w-32 md:h-18 flex-shrink-0 rounded-lg overflow-hidden bg-gray-900 relative"><img src="${nxImg}" class="w-full h-full object-cover group-hover:scale-110 transition duration-300" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-1 left-1 bg-[var(--primary)] text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shadow-sm">Up Next</div></div><div class="flex-grow min-w-0"><p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">Season ${nx.season} <span class="mx-1">•</span> Episode ${nx.number}</p><h4 class="font-bold text-sm md:text-base text-gray-200 truncate group-hover:text-[var(--primary)] transition">${nx.title || 'Next Episode'}</h4></div><div class="hidden sm:flex items-center text-xs text-gray-400 font-bold mr-2 group-hover:text-white transition">Watch Next <i class="fa-solid fa-circle-play text-[var(--primary)] text-xl ml-2"></i></div></div>`;
                                     } 
-                                    return `<div class="mb-6 bg-gray-800 rounded-full h-4 w-full overflow-hidden border border-gray-700 relative group"><div class="bg-gradient-to-r from-green-600 to-green-400 h-full transition-all duration-1000" style="width: ${percent}%"></div><div class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white drop-shadow-md">${percent}% WATCHED</div></div>${nextEpHtml}`; 
+                                    return `
+                                    <div class="mb-6 bg-gray-900/50 border border-gray-800 rounded-2xl p-4 shadow-inner">
+                                        <div class="flex flex-wrap items-center justify-between gap-2 mb-2 text-xs">
+                                            <span class="font-bold text-gray-200 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-bars-progress text-green-400"></i> Series Progress</span>
+                                            <div class="flex items-center gap-3 text-gray-400 font-mono">
+                                                <span><strong class="text-white">${showProgress.completed || 0}</strong> / ${showProgress.aired || 0} eps</span>
+                                                <span class="px-2 py-0.5 rounded bg-gray-800 border border-gray-700 ${remainingEps === 0 && showProgress.aired > 0 ? 'text-green-400 border-green-800/50' : 'text-gray-300'} font-sans font-bold">${remainingEps === 0 && showProgress.aired > 0 ? 'Caught Up' : `${remainingEps} left`}</span>
+                                                <span class="text-green-400 font-bold">${percent}%</span>
+                                            </div>
+                                        </div>
+                                        <div class="bg-gray-800 rounded-full h-2.5 w-full overflow-hidden border border-gray-700/70">
+                                            <div class="bg-gradient-to-r from-green-600 to-emerald-400 h-full transition-all duration-700 rounded-full" style="width: ${percent}%"></div>
+                                        </div>
+                                        ${nextEpHtml}
+                                    </div>`; 
                                 } catch(e){ 
                                     console.error("Local series progress computation error:", e);
                                     return ''; 
@@ -4808,6 +4840,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 number: s.season_number,
                                 title: s.name,
                                 episode_count: s.episode_count,
+                                air_date: s.air_date,
+                                overview: s.overview,
                                 poster_path: s.poster_path, // Native TMDB property
                                 ids: { tmdb: s.id }
                             }));
@@ -4895,10 +4929,11 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
 
                         window.renderSeasonsGrid = () => { 
                             const validSeasons = seasons.filter(s => showSpecials ? true : s.number > 0);
+                            const nextSeasonNum = showProgress?.next_episode?.season;
                             
                             // Add toggle buttons to the UI
                             const toggleHtml = `
-                                <div class="flex gap-2">
+                                <div class="flex flex-wrap gap-2">
                                     <button onclick="window.renderChronological()" class="text-xs bg-blue-900/30 text-blue-400 border border-blue-800/50 hover:bg-blue-600 hover:text-white px-3 py-1.5 rounded-lg transition flex items-center gap-2 shadow-sm">
                                         <i class="fa-solid fa-list-ol"></i> Chronological
                                     </button>
@@ -4908,21 +4943,31 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 </div>
                             `;
 
-                            mount.innerHTML = `<div class="flex items-center justify-between mb-6"><h2 class="text-2xl font-bold border-l-4 border-yellow-500 px-4">Seasons</h2>${toggleHtml}</div><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">${validSeasons.map(s => {
+                            mount.innerHTML = `<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6"><h2 class="text-2xl font-bold border-l-4 border-yellow-500 px-4">Seasons <span class="text-sm font-normal text-gray-500 ml-1">(${validSeasons.length})</span></h2>${toggleHtml}</div><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">${validSeasons.map(s => {
                                 let sImg = getImage(s); if(sImg === PLACEHOLDER_IMG) sImg = mainShowPoster;
                                 let isFullyWatched = false;
                                 let progressHtml = '';
+                                let statusPill = '';
                                 if(showProgress && showProgress.seasons) {
                                     const sp = showProgress.seasons.find(x => x.number === s.number);
                                     if(sp && sp.aired > 0) {
                                         if(sp.completed >= sp.aired) isFullyWatched = true;
-                                        const pct = Math.round((sp.completed / sp.aired) * 100);
-                                        progressHtml = `<div class="w-full bg-gray-700 h-1.5 mt-2 rounded-full overflow-hidden"><div class="bg-gradient-to-r from-yellow-600 to-yellow-400 h-full" style="width: ${pct}%"></div></div><p class="text-[10px] text-gray-400 mt-1">${sp.completed} / ${sp.aired} watched</p>`;
+                                        const pct = Math.min(100, Math.round((sp.completed / sp.aired) * 100));
+                                        const left = Math.max(0, sp.aired - sp.completed);
+                                        progressHtml = `<div class="w-full bg-gray-800 h-1.5 mt-2 rounded-full overflow-hidden"><div class="bg-gradient-to-r ${isFullyWatched ? 'from-green-500 to-emerald-400' : 'from-yellow-600 to-yellow-400'} h-full transition-all" style="width: ${pct}%"></div></div><p class="text-[10px] text-gray-400 mt-1.5 flex justify-between"><span>${sp.completed}/${sp.aired}</span><span>${isFullyWatched ? '<span class="text-green-400 font-bold">Done</span>' : `${left} left`}</span></p>`;
                                     }
                                 }
-                                const styleClasses = isFullyWatched ? "opacity-60 grayscale hover:grayscale-0 hover:opacity-100 border-green-900/30" : "hover:border-yellow-500 border-transparent";
-                                const checkIcon = isFullyWatched ? `<div class="absolute top-2 left-2 bg-green-500 text-black w-6 h-6 flex items-center justify-center rounded-full shadow-lg z-10"><i class="fa-solid fa-check text-xs"></i></div>` : '';
-                                return `<div class="card rounded-xl overflow-hidden cursor-pointer border transition-all duration-300 group relative ${styleClasses}" onclick="window.loadEpisodes('${id}', '${s.number}')"><div class="aspect-[2/3] relative"><img src="${sImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">${checkIcon}<div class="absolute top-2 right-2 bg-yellow-500 text-black text-xs font-bold px-2 py-1 rounded shadow">S${s.number}</div><div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center font-bold text-sm">View Episodes</div></div><div class="p-3 text-center"><h4 class="font-bold text-sm truncate">${s.title}</h4><p class="text-xs text-gray-500">${s.episode_count} Eps</p>${progressHtml}</div></div>`; 
+                                const isNextSeason = nextSeasonNum !== undefined && Number(nextSeasonNum) === Number(s.number) && !isFullyWatched;
+                                if (isNextSeason) {
+                                    statusPill = `<div class="absolute top-2 left-2 bg-[var(--primary)] text-white text-[9px] font-bold px-2 py-0.5 rounded shadow-lg z-10 uppercase tracking-wider">Up Next</div>`;
+                                } else if (isFullyWatched) {
+                                    statusPill = `<div class="absolute top-2 left-2 bg-green-500 text-black w-6 h-6 flex items-center justify-center rounded-full shadow-lg z-10"><i class="fa-solid fa-check text-xs"></i></div>`;
+                                }
+                                const airYear = (s.air_date || s.first_aired) ? new Date(s.air_date || s.first_aired).getFullYear() : '';
+                                const styleClasses = isFullyWatched
+                                    ? "opacity-75 hover:opacity-100 border-green-900/40 hover:border-green-500/60"
+                                    : (isNextSeason ? "border-[var(--primary)]/70 shadow-[0_0_15px_rgba(229,9,20,0.15)]" : "hover:border-yellow-500 border-gray-800/80");
+                                return `<div class="card rounded-xl overflow-hidden cursor-pointer border transition-all duration-300 group relative ${styleClasses}" onclick="window.loadEpisodes('${id}', '${s.number}')"><div class="aspect-[2/3] relative"><img src="${sImg}" class="w-full h-full object-cover" onerror="this.src='${PLACEHOLDER_IMG}'">${statusPill}<div class="absolute top-2 right-2 bg-yellow-500 text-black text-xs font-bold px-2 py-0.5 rounded shadow">S${s.number}</div><div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center font-bold text-sm">View Episodes</div></div><div class="p-3 text-center"><h4 class="font-bold text-sm truncate">${s.title}</h4><p class="text-xs text-gray-500">${s.episode_count} Eps${airYear ? ` • ${airYear}` : ''}</p>${progressHtml}</div></div>`; 
                             }).join('')}</div>`; 
                         };
                         window.renderSeasonsGrid();
@@ -4966,7 +5011,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 }
 
                                 // Fix: Generate composite Trakt ID to prevent episode TMDB IDs from colliding with movie ratings
-                                episodes = seasonData.episodes.map(ep => ({
+                                episodes = (seasonData?.episodes || []).map(ep => ({
                                     ...ep,
                                     title: ep.name,
                                     number: ep.episode_number,
@@ -5010,72 +5055,216 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 episodes = await fetchDirect(`/shows/${targetTraktId}/seasons/${seasonNum}/episodes?extended=full,images,user_data`);
                             }
                             
-                            mount.innerHTML = `<div class="flex items-center justify-between mb-6"><h2 class="text-2xl font-bold border-l-4 border-yellow-500 px-4">Season ${seasonNum}</h2><button onclick="window.renderSeasonsGrid()" class="text-sm text-gray-400 hover:text-white flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition"><i class="fa-solid fa-arrow-left"></i> Back to Seasons</button></div><div class="space-y-4">${episodes.map(ep => {
-                                
-                                const tmdbShowId = item.ids.tmdb || id;
-                                const epLink = primaryDataSource === 'tmdb' ? `#detail/episode/${tmdbShowId}-${seasonNum}-${ep.number}` : `#detail/episode/${ep.ids.trakt}`;
-                                
-                                const epOpt = encodeURIComponent(JSON.stringify({
-                                    ids: ep.ids, title: ep.title, type: 'episode', season: seasonNum, number: ep.number, still_path: ep.still_path,
-                                    show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path }
-                                })).replace(/'/g, "%27");
-                                const epSetOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${epOpt}')); `;
-                                
-                                // Resolving local ratings natively so they appear even if an episode wasn't logged as watched
-                                const cId = `${tmdbShowId}-${seasonNum}-${ep.number}`;
-                                const tId = String(ep.ids?.trakt || '');
-                                // CRITICAL FIX: Remove flat epTmdbId lookup to prevent collisions with Movie IDs
-                                const localRating = userRatings.get(cId) || userRatings.get(tId) || (tId && !isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null);
-                                const finalRating = localRating || ep.user_rating;
-                                
-                                const rDetails = userRatingDetails.get(cId) || userRatingDetails.get(tId) || (tId && !isNaN(Number(tId)) ? userRatingDetails.get(parseInt(tId)) : null);
-                                const ratedStr = rDetails?.ratedAt ? `<span class="text-[9px] text-gray-400 font-normal ml-1">(${new Date(rDetails.ratedAt).toLocaleDateString()})</span>` : '';
-                                
-                                const epRating = finalRating ? `<span class="text-green-400 text-xs font-bold ml-2 border border-green-500/50 px-1 rounded shadow-sm">You: ${finalRating}${ratedStr}</span>` : '';
-                                
-                                // Filter all history logs for this specific episode to show ALL watches
-                                const epHistoryLogs = seasonHistory.filter(h => String(h.media?.number || h.media?.episode_number) === String(ep.number));
-                                
-                                // Map all watch dates and any history-specific ratings into badges
-                                const watchedDateStr = epHistoryLogs.length > 0 
-                                    ? `<div class="inline-flex flex-wrap items-center gap-1.5 ml-3">` + epHistoryLogs.map(h => {
-                                        const dateStr = new Date(h.watchedAt || h.loggedAt).toLocaleDateString();
-                                        // Add comments when writing code so can easily understand what it means and edit it later
-                                        // Extract rating from the specific history log if available
-                                        const rStr = h.rating ? ` <span class="text-yellow-500 ml-1 border-l border-green-800/50 pl-1"><i class="fa-solid fa-star text-[10px]"></i> ${h.rating}</span>` : '';
-                                        return `<span class="text-[10px] text-green-400 bg-green-900/20 px-2 py-0.5 rounded border border-green-800/50 flex items-center shadow-sm"><i class="fa-solid fa-calendar-check mr-1"></i> ${dateStr}${rStr}</span>`;
-                                    }).join('') + `</div>`
-                                    : '';
+                            const renderSeasonEpisodesUI = () => {
+                                const tmdbShowId = item.ids?.tmdb || id;
+                                const validSeasons = seasons.filter(s => showSpecials ? true : s.number > 0);
+                                const currentSeasonMeta = seasons.find(s => String(s.number) === String(seasonNum));
+                                const seasonTitle = currentSeasonMeta?.title && currentSeasonMeta.title !== `Season ${seasonNum}` ? `Season ${seasonNum}: ${currentSeasonMeta.title}` : (Number(seasonNum) === 0 ? 'Specials' : `Season ${seasonNum}`);
 
-                                const epPlayback = userPlayback.get(parseInt(ep.ids.trakt));
-                                const pbHtml = epPlayback ? `<div class="mt-2 w-full bg-gray-800 rounded-full h-1"><div class="bg-blue-500 h-1 rounded-full" style="width: ${epPlayback.progress}%"></div></div><p class="text-[10px] text-blue-400 mt-1">${Math.round(epPlayback.progress)}% resumed</p>` : '';
-                                
-                                // Calculate Canonical ID for Episode Hide Action
-                                const epCanonicalId = (primaryDataSource === 'tmdb') ? `${tmdbShowId}-${seasonNum}-${ep.number}` : ep.ids.trakt;
-                                
                                 const epHiddenArr = JSON.parse(localStorage.getItem('vidtrackr_hidden_upnext') || '[]');
-                                const isEpHidden = epHiddenArr.some(h => String(h.id) === String(epCanonicalId) && h.type === 'episode');
-                                const hiddenBadge = isEpHidden ? `<span class="bg-red-900/80 text-red-200 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ml-3 border border-red-500/50 shadow-sm flex-shrink-0"><i class="fa-solid fa-eye-slash mr-1"></i> Hidden</span>` : '';
-                                const epHiddenClass = isEpHidden ? 'opacity-50 grayscale hover:grayscale-0 hover:opacity-100' : '';
+                                const nowDate = new Date();
 
-                                // NEW LOGIC: Determine Episode Type Badge
-                                let typeBadge = '';
-                                if (ep.episode_type && ep.episode_type !== 'standard') {
-                                    const formatType = ep.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                    let typeColor = 'bg-purple-900/50 text-purple-300 border-purple-800';
-                                    if (ep.episode_type.includes('finale')) typeColor = 'bg-red-900/50 text-red-300 border-red-800';
-                                    if (ep.episode_type.includes('premiere')) typeColor = 'bg-blue-900/50 text-blue-300 border-blue-800';
-                                    typeBadge = `<span class="text-[10px] ${typeColor} border px-1.5 py-0.5 rounded uppercase font-bold tracking-wide shadow-sm ml-3 flex-shrink-0">${formatType}</span>`;
+                                // Annotate episodes with watched/aired state
+                                const annotated = episodes.map(ep => {
+                                    const epS = ep.season !== undefined ? ep.season : seasonNum;
+                                    const epLogs = seasonHistory.filter(h => String(h.media?.number || h.media?.episode_number) === String(ep.number) && String(h.media?.season !== undefined ? h.media.season : (h.media?.season_number !== undefined ? h.media.season_number : seasonNum)) === String(epS));
+                                    const airStr = ep.air_date || ep.first_aired;
+                                    const airDate = airStr ? new Date(airStr) : null;
+                                    const isUnaired = airDate ? airDate > nowDate : true;
+                                    return { ep, epS, epLogs, isWatched: epLogs.length > 0, airStr, airDate, isUnaired };
+                                });
+
+                                const totalCount = annotated.length;
+                                const watchedCount = annotated.filter(x => x.isWatched).length;
+                                const unwatchedAiredCount = annotated.filter(x => !x.isWatched && !x.isUnaired).length;
+                                const unwatchedCount = annotated.filter(x => !x.isWatched).length;
+                                const seasonPct = totalCount > 0 ? Math.round((watchedCount / totalCount) * 100) : 0;
+                                const totalMins = annotated.reduce((sum, x) => sum + (parseInt(x.ep.runtime) || parseInt(item.runtime) || 0), 0);
+                                const seasonRuntimeStr = totalMins > 0 ? (totalMins >= 60 ? `${Math.floor(totalMins / 60)}h ${totalMins % 60}m` : `${totalMins}m`) : '';
+
+                                const filterState = window._seasonEpFilter || 'all';
+                                const sortDesc = Boolean(window._seasonEpSortDesc);
+
+                                let filtered = annotated.filter(x => {
+                                    if (filterState === 'unwatched') return !x.isWatched;
+                                    if (filterState === 'watched') return x.isWatched;
+                                    return true;
+                                });
+                                if (sortDesc) filtered = [...filtered].reverse();
+
+                                const seasonPillsHtml = validSeasons.length > 1 ? `
+                                    <div class="flex items-center gap-1.5 overflow-x-auto pb-2 mb-4 no-scrollbar">
+                                        ${validSeasons.map(s => {
+                                            const active = String(s.number) === String(seasonNum);
+                                            return `<button onclick="window.loadEpisodes('${id}', '${s.number}')" class="px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition border ${active ? 'bg-yellow-500 text-black border-yellow-400 shadow-md' : 'bg-gray-800/80 text-gray-300 border-gray-700 hover:bg-gray-700 hover:text-white'}">${s.number === 0 ? 'Specials' : `S${s.number}`}</button>`;
+                                        }).join('')}
+                                    </div>` : '';
+
+                                const headerHtml = `
+                                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                                        <div>
+                                            <h2 class="text-2xl font-bold border-l-4 border-yellow-500 px-4">${seasonTitle}</h2>
+                                            ${currentSeasonMeta?.overview ? `<p class="text-xs text-gray-400 mt-2 px-4 max-w-3xl line-clamp-2">${currentSeasonMeta.overview}</p>` : ''}
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            ${unwatchedAiredCount > 0 ? `<button id="mark-season-watched-btn" class="text-xs bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-600/50 px-3.5 py-2 rounded-lg font-bold transition flex items-center gap-2 shadow-sm"><i class="fa-solid fa-check-double"></i> Mark Season Watched (${unwatchedAiredCount})</button>` : `<span class="text-xs bg-green-900/20 text-green-400 border border-green-800/50 px-3 py-2 rounded-lg font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> Season Complete</span>`}
+                                            <button onclick="window.renderSeasonsGrid()" class="text-xs sm:text-sm text-gray-300 hover:text-white flex items-center gap-2 px-3.5 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition"><i class="fa-solid fa-arrow-left"></i> All Seasons</button>
+                                        </div>
+                                    </div>
+                                    ${seasonPillsHtml}
+                                    <div class="bg-gray-900/50 border border-gray-800 rounded-xl p-3.5 mb-5">
+                                        <div class="flex flex-wrap items-center justify-between gap-2 text-xs mb-2">
+                                            <span class="text-gray-300 font-bold">${watchedCount} / ${totalCount} episodes watched <span class="text-yellow-400 font-mono ml-1">(${seasonPct}%)</span></span>
+                                            <div class="flex items-center gap-3 text-gray-400">
+                                                ${seasonRuntimeStr ? `<span><i class="fa-regular fa-clock mr-1 text-gray-500"></i>${seasonRuntimeStr} total</span>` : ''}
+                                            </div>
+                                        </div>
+                                        <div class="w-full bg-gray-800 rounded-full h-2 overflow-hidden mb-3">
+                                            <div class="bg-gradient-to-r from-yellow-600 to-yellow-400 h-full transition-all duration-500 rounded-full" style="width: ${seasonPct}%"></div>
+                                        </div>
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div class="flex items-center gap-1.5">
+                                                <button onclick="window._seasonEpFilter='all'; window._renderSeasonEpList();" class="px-2.5 py-1 rounded-md text-xs font-bold transition ${filterState === 'all' ? 'bg-[var(--primary)] text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}">All (${totalCount})</button>
+                                                <button onclick="window._seasonEpFilter='unwatched'; window._renderSeasonEpList();" class="px-2.5 py-1 rounded-md text-xs font-bold transition ${filterState === 'unwatched' ? 'bg-[var(--primary)] text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}">Unwatched (${unwatchedCount})</button>
+                                                <button onclick="window._seasonEpFilter='watched'; window._renderSeasonEpList();" class="px-2.5 py-1 rounded-md text-xs font-bold transition ${filterState === 'watched' ? 'bg-[var(--primary)] text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}">Watched (${watchedCount})</button>
+                                            </div>
+                                            <button onclick="window._seasonEpSortDesc=!window._seasonEpSortDesc; window._renderSeasonEpList();" class="px-2.5 py-1 rounded-md text-xs font-bold bg-gray-800 text-gray-300 hover:text-white border border-gray-700 transition flex items-center gap-1.5">
+                                                <i class="fa-solid ${sortDesc ? 'fa-arrow-down-9-1' : 'fa-arrow-up-1-9'}"></i> ${sortDesc ? 'Newest First' : 'Ep 1 → End'}
+                                            </button>
+                                        </div>
+                                    </div>`;
+
+                                const cardsHtml = filtered.length > 0 ? filtered.map(({ ep, epS, epLogs, isWatched, airStr, isUnaired }) => {
+                                    const epLink = primaryDataSource === 'tmdb' ? `#detail/episode/${tmdbShowId}-${epS}-${ep.number}` : `#detail/episode/${ep.ids.trakt}`;
+                                    const epOpt = encodeURIComponent(JSON.stringify({
+                                        ids: ep.ids, title: ep.title, type: 'episode', season: epS, number: ep.number, still_path: ep.still_path,
+                                        show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path }
+                                    })).replace(/'/g, "%27");
+                                    const epSetOpt = `sessionStorage.setItem('vt_optimistic', decodeURIComponent('${epOpt}')); `;
+
+                                    const cId = `${tmdbShowId}-${epS}-${ep.number}`;
+                                    const tId = String(ep.ids?.trakt || '');
+                                    const localRating = userRatings.get(cId) || userRatings.get(tId) || (tId && !isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null);
+                                    const finalRating = localRating || ep.user_rating;
+                                    const rDetails = userRatingDetails.get(cId) || userRatingDetails.get(tId) || (tId && !isNaN(Number(tId)) ? userRatingDetails.get(parseInt(tId)) : null);
+                                    const ratedStr = rDetails?.ratedAt ? `<span class="text-[9px] text-gray-400 font-normal ml-1">(${new Date(rDetails.ratedAt).toLocaleDateString()})</span>` : '';
+                                    const epRating = finalRating ? `<span class="text-green-400 text-xs font-bold border border-green-500/50 px-1.5 py-0.5 rounded shadow-sm">You: ${finalRating}${ratedStr}</span>` : '';
+
+                                    const watchedDateStr = epLogs.length > 0 
+                                        ? `<div class="inline-flex flex-wrap items-center gap-1.5">` + epLogs.map(h => {
+                                            const dateStr = new Date(h.watchedAt || h.loggedAt).toLocaleDateString();
+                                            const rStr = h.rating ? ` <span class="text-yellow-500 ml-1 border-l border-green-800/50 pl-1"><i class="fa-solid fa-star text-[10px]"></i> ${h.rating}</span>` : '';
+                                            return `<span class="text-[10px] text-green-400 bg-green-900/20 px-2 py-0.5 rounded border border-green-800/50 flex items-center shadow-sm"><i class="fa-solid fa-calendar-check mr-1"></i> ${dateStr}${rStr}</span>`;
+                                        }).join('') + `</div>`
+                                        : '';
+
+                                    const epPlayback = userPlayback.get(parseInt(ep.ids.trakt));
+                                    const pbThumbBar = epPlayback ? `<div class="absolute bottom-0 left-0 right-0 h-1.5 bg-black/70"><div class="bg-blue-500 h-full" style="width: ${epPlayback.progress}%"></div></div>` : '';
+                                    const pbText = epPlayback ? `<span class="text-[10px] text-blue-400 font-bold">${Math.round(epPlayback.progress)}% resumed</span>` : '';
+
+                                    const epCanonicalId = (primaryDataSource === 'tmdb') ? cId : ep.ids.trakt;
+                                    const isEpHidden = epHiddenArr.some(h => String(h.id) === String(epCanonicalId) && h.type === 'episode');
+                                    const hiddenBadge = isEpHidden ? `<span class="bg-red-900/80 text-red-200 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider border border-red-500/50 shadow-sm flex-shrink-0"><i class="fa-solid fa-eye-slash mr-1"></i> Hidden</span>` : '';
+
+                                    let typeBadge = '';
+                                    if (ep.episode_type && ep.episode_type !== 'standard') {
+                                        const formatType = ep.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                        let typeColor = 'bg-purple-900/50 text-purple-300 border-purple-800';
+                                        if (ep.episode_type.includes('finale')) typeColor = 'bg-red-900/50 text-red-300 border-red-800';
+                                        if (ep.episode_type.includes('premiere')) typeColor = 'bg-blue-900/50 text-blue-300 border-blue-800';
+                                        typeBadge = `<span class="text-[10px] ${typeColor} border px-1.5 py-0.5 rounded uppercase font-bold tracking-wide shadow-sm flex-shrink-0">${formatType}</span>`;
+                                    }
+
+                                    const formattedAirDate = airStr ? new Date(airStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBA';
+                                    const epRuntime = parseInt(ep.runtime) || parseInt(item.runtime) || 0;
+                                    const airBadge = isUnaired
+                                        ? `<span class="text-[11px] text-amber-400 bg-amber-900/20 border border-amber-700/40 px-2 py-0.5 rounded font-medium"><i class="fa-regular fa-calendar mr-1"></i>${airStr ? `Airs ${formattedAirDate}` : 'TBA'}</span>`
+                                        : `<span class="text-[11px] text-gray-400"><i class="fa-regular fa-calendar mr-1 text-gray-500"></i>${formattedAirDate}</span>`;
+
+                                    const cardBorder = isEpHidden
+                                        ? 'opacity-50 grayscale hover:grayscale-0 hover:opacity-100 border-gray-800'
+                                        : (isWatched ? 'border-green-900/40 hover:border-green-500/50' : (isUnaired ? 'opacity-75 border-gray-800/60 hover:border-gray-700' : 'border-gray-800 hover:border-yellow-500/60'));
+                                    const thumbStatus = isWatched
+                                        ? `<div class="absolute top-2 right-2 bg-green-500 text-black w-6 h-6 rounded-full flex items-center justify-center shadow-lg"><i class="fa-solid fa-check text-xs"></i></div>`
+                                        : (isUnaired ? `<div class="absolute top-2 right-2 bg-amber-500/90 text-black text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shadow">Upcoming</div>` : '');
+
+                                    return `<div class="card p-3.5 sm:p-4 rounded-xl flex flex-col sm:flex-row gap-4 border transition ${cardBorder}">
+                                        <div class="sm:w-52 flex-shrink-0 relative cursor-pointer group aspect-video sm:aspect-auto sm:h-32 rounded-lg overflow-hidden bg-gray-900" onclick="${epSetOpt} location.hash='${epLink}'">
+                                            <img src="${getImage(ep, 'episode', true)}" class="w-full h-full object-cover shadow-md group-hover:scale-105 transition duration-300" onerror="this.src='${PLACEHOLDER_IMG}'">
+                                            <div class="absolute top-2 left-2 bg-black/75 backdrop-blur-sm px-2 py-0.5 rounded text-xs font-bold text-white border border-white/10">S${epS}E${ep.number}</div>
+                                            ${thumbStatus}
+                                            ${pbThumbBar}
+                                        </div>
+                                        <div class="flex-grow min-w-0 flex flex-col justify-between">
+                                            <div>
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <h4 class="font-bold text-base sm:text-lg text-gray-100 break-words hover:text-yellow-500 cursor-pointer transition" onclick="${epSetOpt} location.hash='${epLink}'">${ep.title || 'Episode ' + ep.number}</h4>
+                                                    ${typeBadge}${hiddenBadge}
+                                                </div>
+                                                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs">
+                                                    ${airBadge}
+                                                    ${epRuntime ? `<span class="text-gray-400"><i class="fa-regular fa-clock mr-1 text-gray-500"></i>${epRuntime}m</span>` : ''}
+                                                    <span class="text-gray-400"><i class="fa-solid fa-star text-yellow-500 mr-1"></i>${ep.rating ? ep.rating.toFixed(1) : '-'}</span>
+                                                    ${pbText}
+                                                </div>
+                                                <p class="text-gray-400 text-sm mt-2 line-clamp-2">${ep.overview || 'No description.'}</p>
+                                            </div>
+                                            <div class="flex flex-wrap items-center justify-between gap-2 mt-3 pt-2 border-t border-gray-800/60">
+                                                <div class="flex flex-wrap items-center gap-2">${epRating}${watchedDateStr}</div>
+                                                <div class="flex items-center gap-2 ml-auto">
+                                                    <button class="text-xs ${isEpHidden ? 'bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white border-red-900/50 hover:border-red-600' : 'bg-gray-800 text-gray-400 hover:bg-gray-600 hover:text-white border-gray-700 hover:border-gray-500'} px-3 py-2 rounded-lg transition shadow-md border flex items-center justify-center" onclick="event.stopPropagation(); window.toggleHidden('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${epS}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="${isEpHidden ? 'Unhide Episode' : 'Hide Episode'}"><i class="fa-solid ${isEpHidden ? 'fa-eye' : 'fa-eye-slash'}"></i></button>
+                                                    <button class="text-xs bg-yellow-900/30 text-yellow-500 hover:bg-yellow-500 hover:text-black border border-yellow-900/50 hover:border-yellow-500 px-3 py-2 rounded-lg transition shadow-md flex items-center justify-center" onclick="event.stopPropagation(); window.openQuickRate('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${epS}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}', true)" title="Rate Episode"><i class="fa-solid fa-star"></i></button>
+                                                    <button class="scrobble-btn text-xs ${isWatched ? 'bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-600/40' : 'bg-yellow-500 hover:bg-yellow-600 text-black'} px-3.5 py-2 rounded-lg font-bold shadow-md flex items-center transition" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${epS}x${ep.number}: ${ep.title}`, name: ep.title, type: 'episode', runtime: epRuntime || item.runtime, season: epS, number: ep.number, still_path: ep.still_path, isWatched, show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid ${isWatched ? 'fa-rotate-right' : 'fa-check'} mr-1.5"></i> ${isWatched ? 'Rewatch' : 'Log'}</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>`;
+                                }).join('') : `<div class="card p-8 rounded-xl border border-gray-800 text-center text-gray-400 text-sm">No episodes match the "${filterState}" filter.</div>`;
+
+                                mount.innerHTML = `${headerHtml}<div class="space-y-4">${cardsHtml}</div>`;
+
+                                const markBtn = document.getElementById('mark-season-watched-btn');
+                                if (markBtn) {
+                                    markBtn.onclick = async () => {
+                                        const toLog = annotated.filter(x => !x.isWatched && !x.isUnaired);
+                                        if (!toLog.length) return;
+                                        if (!confirm(`Mark ${toLog.length} unwatched aired episode${toLog.length === 1 ? '' : 's'} in ${seasonTitle} as watched?`)) return;
+                                        markBtn.disabled = true;
+                                        markBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Logging ${toLog.length}...`;
+                                        try {
+                                            const nowIso = new Date().toISOString();
+                                            for (const { ep, epS } of toLog) {
+                                                const payloadItem = {
+                                                    ids: ep.ids,
+                                                    title: ep.title || ep.name,
+                                                    name: ep.name || ep.title,
+                                                    season: epS,
+                                                    number: ep.number,
+                                                    runtime: ep.runtime || item.runtime || 45,
+                                                    still_path: ep.still_path || null,
+                                                    show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path }
+                                                };
+                                                await window.logWatchToFirebase(payloadItem, 'episode', 100, nowIso);
+                                                if (primaryDataSource === 'trakt' && traktAccessToken) {
+                                                    await fetchDirect('/sync/history', 'POST', { episodes: [{ ids: ep.ids, watched_at: nowIso }] }).catch(() => {});
+                                                }
+                                            }
+                                            window.invalidateProgressCaches();
+                                            window.invalidateDetailCache('show', id);
+                                            showToast(`Marked ${toLog.length} episode${toLog.length === 1 ? '' : 's'} as watched`);
+                                            await window.loadEpisodes(showId, seasonNum);
+                                        } catch (err) {
+                                            console.error('Mark season watched failed:', err);
+                                            showToast('Failed to mark season watched', 'error');
+                                            markBtn.disabled = false;
+                                            markBtn.innerHTML = `<i class="fa-solid fa-check-double"></i> Mark Season Watched (${unwatchedAiredCount})`;
+                                        }
+                                    };
                                 }
+                            };
 
-                                // FIX: Passed true to getImage so it uses still_path landscape ratio for episode thumbnails
-                                return `<div class="card p-4 rounded-xl flex flex-col sm:flex-row gap-4 border border-gray-800 hover:border-gray-600 transition ${epHiddenClass}"><div class="sm:w-48 flex-shrink-0 relative cursor-pointer group" onclick="${epSetOpt} location.hash='${epLink}'"><img src="${getImage(ep, 'episode', true)}" class="w-full h-32 object-cover rounded-lg shadow-md group-hover:opacity-80 transition" onerror="this.src='${PLACEHOLDER_IMG}'"><div class="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold">Ep ${ep.number}</div></div><div class="flex-grow min-w-0 flex flex-col justify-between"><div><div class="flex items-center"><h4 class="font-bold text-lg text-gray-100 break-words hover:text-yellow-500 cursor-pointer transition" onclick="${epSetOpt} location.hash='${epLink}'">${ep.title || 'Episode ' + ep.number}</h4>${typeBadge}${hiddenBadge}</div><p class="text-gray-400 text-sm mt-1 line-clamp-2">${ep.overview || 'No description.'}</p>${pbHtml}</div><div class="flex items-center justify-between mt-4"><div><span class="text-xs text-gray-500"><i class="fa-solid fa-star text-yellow-500 mr-1"></i> ${ep.rating ? ep.rating.toFixed(1) : '-'}</span>${epRating}${watchedDateStr}</div>
-                                <div class="flex gap-2">
-                                    <button class="text-xs ${isEpHidden ? 'bg-red-900/30 text-red-400 hover:bg-red-600 hover:text-white border-red-900/50 hover:border-red-600' : 'bg-gray-800 text-gray-400 hover:bg-gray-600 hover:text-white border-gray-700 hover:border-gray-500'} px-3 py-2 rounded-lg transition shadow-md border flex items-center justify-center" onclick="event.stopPropagation(); window.toggleHidden('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" title="${isEpHidden ? 'Unhide Episode' : 'Hide Episode'}"><i class="fa-solid ${isEpHidden ? 'fa-eye' : 'fa-eye-slash'}"></i></button>
-                                    <button class="text-xs bg-yellow-900/30 text-yellow-500 hover:bg-yellow-500 hover:text-black border border-yellow-900/50 hover:border-yellow-500 px-3 py-2 rounded-lg transition shadow-md flex items-center justify-center" onclick="event.stopPropagation(); window.openQuickRate('${epCanonicalId}', 'episode', '${item.title.replace(/'/g, "\\'")} S${seasonNum}E${ep.number}: ${ep.title.replace(/'/g, "\\'").replace(/"/g, '&quot;')}', true)" title="Rate Episode"><i class="fa-solid fa-star"></i></button>
-                                    <button class="scrobble-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-black px-4 py-2 rounded-lg font-bold shadow-md hover:shadow-yellow-900/40 flex items-center" data-json='${JSON.stringify({ids: ep.ids, title: `${item.title} ${seasonNum}x${ep.number}: ${ep.title}`, name: ep.title, type: 'episode', runtime: item.runtime, season: seasonNum, number: ep.number, still_path: ep.still_path, isWatched: epHistoryLogs.length > 0, show: { title: item.title, ids: item.ids, poster_path: item.poster_path, backdrop_path: item.backdrop_path } }).replace(/'/g, "&apos;")}' data-type="episode"><i class="fa-solid fa-check mr-2"></i> Log</button>
-                                </div></div></div></div>`;
-                            }).join('')}</div>`;
+                            window._renderSeasonEpList = renderSeasonEpisodesUI;
+                            renderSeasonEpisodesUI();
                             mount.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         };
                         if(initialSeason) { await window.loadEpisodes(id, initialSeason); }
@@ -6958,18 +7147,25 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
         
 
         // --- OPT-IN LOCAL SERIES PROGRESS ENGINE ---
-        window.calculateLocalSeriesProgress = async (btn) => {
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Calculating...';
-            btn.disabled = true;
+        window.calculateLocalSeriesProgress = async (btn = null) => {
+            if (btn) {
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Calculating...';
+                btn.disabled = true;
+            }
             
             try {
-                // 1. Fetch user history from Firebase
-                // Increased to 2500 so it captures all actively watched shows deep in history
-                const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(2500));
-                const snapshot = await getDocs(q);
-                const historyItems = [];
-                snapshot.forEach(docSnap => historyItems.push(docSnap.data()));
+                // 1. Fetch user history from Firebase (reuse RAM cache if already large enough, otherwise fetch 2500)
+                let historyItems = [];
+                if (Array.isArray(window.fullHistoryMemoryCache) && window.fullHistoryMemoryCache.length > 200) {
+                    historyItems = window.fullHistoryMemoryCache;
+                } else {
+                    const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(2500));
+                    const snapshot = await getDocs(q);
+                    snapshot.forEach(docSnap => historyItems.push({ ...docSnap.data(), _docId: docSnap.id }));
+                    if (historyItems.length > (window.fullHistoryMemoryCache?.length || 0)) {
+                        window.fullHistoryMemoryCache = historyItems;
+                    }
+                }
 
                 // 2. Group by Show & count unique episodes
                 const showMap = new Map();
@@ -7137,8 +7333,10 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
 
             } catch(err) {
                 console.error(err);
-                btn.innerHTML = 'Error calculating. Try again.';
-                btn.disabled = false;
+                if (btn) {
+                    btn.innerHTML = 'Error calculating. Try again.';
+                    btn.disabled = false;
+                }
             }
         };
 
@@ -7363,12 +7561,15 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                         </div>
                                     ` : `
                                         <div class="card p-6 md:p-8 rounded-xl border border-gray-800 text-center flex flex-col items-center shadow-lg bg-gray-900/30">
-                                            <i class="fa-solid fa-server text-4xl mb-4 text-blue-500/50"></i>
-                                            <h4 class="text-lg font-bold text-gray-200 mb-2">Calculate Progress Locally</h4>
-                                            <p class="text-gray-400 mb-6 text-sm max-w-md leading-relaxed">VidTrackr can crunch your watch history against the TMDB database to determine your exact series progress. This takes multiple API requests, so it must be done manually.</p>
-                                            <button onclick="window.calculateLocalSeriesProgress(this)" class="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-600/50 px-6 py-3 rounded-lg font-bold transition flex items-center gap-2">
-                                                <i class="fa-solid fa-calculator"></i> Calculate Progress
-                                            </button>
+                                            ${watchedShows.length > 0 ? `
+                                                <i class="fa-solid fa-spinner fa-spin text-3xl mb-4 text-blue-500"></i>
+                                                <h4 class="text-lg font-bold text-gray-200 mb-2">Calculating Series Progress...</h4>
+                                                <p class="text-gray-400 text-sm max-w-md leading-relaxed">Syncing your watch history with TMDB automatically.</p>
+                                            ` : `
+                                                <i class="fa-solid fa-tv text-4xl mb-4 text-gray-600"></i>
+                                                <h4 class="text-lg font-bold text-gray-200 mb-2">No Series Progress Yet</h4>
+                                                <p class="text-gray-400 text-sm max-w-md leading-relaxed">Watch some episodes to see your series progress here.</p>
+                                            `}
                                         </div>
                                     `}
                                 </div>
@@ -7425,6 +7626,11 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                             </div>
                         </div>
                     </div>`;
+
+                // Auto-calculate series progress in the background if not yet cached
+                if (showsToRender.length === 0 && watchedShows.length > 0) {
+                    window.calculateLocalSeriesProgress();
+                }
 
                 if (typeof Chart === 'undefined') {
                     await new Promise((resolve, reject) => {
@@ -8825,6 +9031,7 @@ modalContent.addEventListener('touchend', () => {
 
             // McMaster Fix: Load the ENTIRE history into fast RAM once on boot.
             // Never call JSON.parse on the full history string again during navigation.
+            window._initialHistorySynced = false;
             window.fullHistoryMemoryCache = [];
             try {
                 const cachedHist = localStorage.getItem(`vidtrackr_full_history_${user.uid}`);
@@ -8879,11 +9086,18 @@ modalContent.addEventListener('touchend', () => {
 
                             const persistCache = () => {
                                 try {
-                                    localStorage.setItem(`vidtrackr_full_history_${currentUser.uid}`, JSON.stringify(window.globalHistoryCache));
-                                } catch(e) { console.warn("Quota exceeded on snapshot sync"); }
+                                    localStorage.setItem(`vidtrackr_full_history_${currentUser.uid}`, JSON.stringify(window.fullHistoryMemoryCache));
+                                } catch(e) {
+                                    try {
+                                        localStorage.setItem(`vidtrackr_full_history_${currentUser.uid}`, JSON.stringify(window.globalHistoryCache));
+                                    } catch(e2) { console.warn("Quota exceeded on snapshot sync"); }
+                                }
                             };
                             if ('requestIdleCallback' in window) requestIdleCallback(persistCache);
                             else setTimeout(persistCache, 250);
+
+                            const isFirstSync = !window._initialHistorySynced;
+                            window._initialHistorySynced = true;
 
                             if (nextSig !== lastHistSig) {
                                 lastHistSig = nextSig;
@@ -8896,6 +9110,12 @@ modalContent.addEventListener('touchend', () => {
                                 if (location.hash.startsWith('#history')) window.renderHistory(window.historyPage || 1);
                                 if (document.getElementById('last-watched-container')) loadLastWatched();
                                 if (document.getElementById('up-next-container')) loadUpNext();
+                            } else if (isFirstSync && document.getElementById('up-next-container')) {
+                                // Ensure Up Next renders if initial boot deferred while waiting for Firestore history
+                                const cachedUpNext = localStorage.getItem('vidtrackr_smart_up_next_local_v5');
+                                if (!cachedUpNext || cachedUpNext === '[]') {
+                                    loadUpNext();
+                                }
                             }
                         }
                     );

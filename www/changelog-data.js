@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v17.13.0-alpha",
+    date: "2026-11-23",
+    changes: [
+        "In VidTrackr: Fixed Continue Watching (Up Next) not loading on initial boot without manually refreshing Progress—deferred Up Next calculation until initial Firestore history sync completes instead of caching an empty [] result, bypassed stale empty Up Next caches when history/playback is present, persisted fullHistoryMemoryCache across reloads, and made Series Progress in the Progress tab calculate automatically in the background.",
+        "In VidTrackr: Significantly upgraded Show and Season views—added a richer Series Progress card with watched/remaining episode counts and rewatch-aware Next Episode resolution, highlighted the active Up Next season and release year on the Seasons grid, added 1-tap horizontal Season Switcher pills, season progress/runtime summary, All/Unwatched/Watched filter pills, 1→N / N→1 sort toggle, batch 'Mark Season Watched' logging, air dates/runtimes/Upcoming badges on episode cards, and fixed interlaced special episode links."
+    ]
+},
+    {
     version: "v17.12.0-alpha",
     date: "2026-11-23",
     changes: [
