@@ -1954,28 +1954,60 @@ if (headerRight) {
 
         window.navigateEpisode = async (showId, currentSeason, targetNumber) => {
             const isTMDB = primaryDataSource === 'tmdb';
-            const cacheLookupKey = `${showId}-${currentSeason}-${targetNumber}`;
+            const sInt = parseInt(currentSeason, 10);
+            const tInt = parseInt(targetNumber, 10);
+            const cacheLookupKey = `${showId}-${sInt}-${tInt}`;
+
+            const setOptimisticFromEp = (epData, seasonNum, epNum) => {
+                if (!epData) return;
+                try {
+                    const existingShow = currentModalItem?.item?.show || epData.show || null;
+                    const optPayload = {
+                        ...epData,
+                        season: seasonNum,
+                        number: epNum,
+                        title: epData.title || epData.name,
+                        ids: epData.ids || { tmdb: epData.id },
+                        ...(existingShow ? { show: existingShow } : {})
+                    };
+                    sessionStorage.setItem('vt_optimistic', JSON.stringify(optPayload));
+                } catch (err) {
+                    sessionStorage.removeItem('vt_optimistic');
+                }
+            };
 
             // FAST PATH: If background prefetch already resolved this target, route in 0ms with no loader!
             if (window.adjacentEpisodeCache && window.adjacentEpisodeCache.has(cacheLookupKey)) {
                 const cachedTarget = window.adjacentEpisodeCache.get(cacheLookupKey);
                 console.debug(`[Navigate] 0ms instant jump to prefetched S${cachedTarget.season}E${cachedTarget.number}`);
-                
-                // Clear stale optimistic data so the new page doesn't flash the old episode
-                sessionStorage.removeItem('vt_optimistic');
-                
-                if (isTMDB) {
-                    location.hash = `#detail/episode/${showId}-${cachedTarget.season}-${cachedTarget.number}`;
-                } else if (cachedTarget.data?.ids?.trakt) {
-                    location.hash = `#detail/episode/${cachedTarget.data.ids.trakt}`;
+
+                const targetId = isTMDB
+                    ? `${showId}-${cachedTarget.season}-${cachedTarget.number}`
+                    : cachedTarget.data?.ids?.trakt;
+
+                if (targetId) {
+                    const detailCacheKey = `vt_detail_v1_episode_${targetId}`;
+                    if (!sessionStorage.getItem(detailCacheKey)) {
+                        setOptimisticFromEp(cachedTarget.data, cachedTarget.season, cachedTarget.number);
+                    }
+                    location.hash = `#detail/episode/${targetId}`;
+                    return;
                 }
-                return;
+            }
+
+            // Check if the target composite detail page is already cached in sessionStorage (TMDB mode)
+            if (isTMDB && tInt > 0) {
+                const directTargetId = `${showId}-${sInt}-${tInt}`;
+                if (sessionStorage.getItem(`vt_detail_v1_episode_${directTargetId}`)) {
+                    location.hash = `#detail/episode/${directTargetId}`;
+                    return;
+                }
             }
 
             showLoader();
             try {
-                let targetS = currentSeason;
-                let targetE = targetNumber;
+                let targetS = sInt;
+                let targetE = tInt;
                 let epObj = null;
 
                 const checkEp = async (s, e) => {
@@ -1983,16 +2015,16 @@ if (headerRight) {
                     return await fetchDirect(`/shows/${showId}/seasons/${s}/episodes/${e}?extended=full`);
                 };
 
-                if (targetNumber > 0) {
+                if (tInt > 0) {
                     try {
-                        epObj = await checkEp(currentSeason, targetNumber);
+                        epObj = await checkEp(sInt, tInt);
                     } catch (err) {
-                        targetS = currentSeason + 1;
+                        targetS = sInt + 1;
                         targetE = 1;
                         epObj = await checkEp(targetS, targetE);
                     }
-                } else if (targetNumber <= 0 && currentSeason > 1) {
-                    targetS = currentSeason - 1;
+                } else if (tInt <= 0 && sInt > 1) {
+                    targetS = sInt - 1;
                     if (isTMDB) {
                         const prevSeasonData = await fetchTMDB(`/tv/${showId}/season/${targetS}`);
                         targetE = prevSeasonData.episodes.length;
@@ -2005,17 +2037,26 @@ if (headerRight) {
                     hideLoader();
                     return showToast('No more episodes found', 'error');
                 }
-                
-                // Clear stale optimistic data before jumping
-                sessionStorage.removeItem('vt_optimistic');
 
                 if (isTMDB) {
-                    location.hash = `#detail/episode/${showId}-${targetS}-${targetE}`;
+                    const targetId = `${showId}-${targetS}-${targetE}`;
+                    if (!sessionStorage.getItem(`vt_detail_v1_episode_${targetId}`)) {
+                        setOptimisticFromEp(epObj, targetS, targetE);
+                    }
+                    location.hash = `#detail/episode/${targetId}`;
                 } else if (epObj && epObj.ids) {
-                    location.hash = `#detail/episode/${epObj.ids.trakt}`;
+                    const targetId = epObj.ids.trakt;
+                    if (!sessionStorage.getItem(`vt_detail_v1_episode_${targetId}`)) {
+                        setOptimisticFromEp(epObj, targetS, targetE);
+                    }
+                    location.hash = `#detail/episode/${targetId}`;
+                } else {
+                    hideLoader();
+                    showToast('Episode not found', 'error');
                 }
             } catch (e) { 
                 console.error("Navigation error:", e);
+                hideLoader();
                 showToast('Episode not found', 'error'); 
             }
             hideLoader();
@@ -8086,12 +8127,17 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     showToast(progress < 100 ? `Progress updated to ${Math.round(progress)}%` : `Logged as Watched`);
 
                     // --- BINGE-WATCHER AUTO-ADVANCE ---
+                    let showingAutoAdvance = false;
                     if (progress >= 100 && type === 'episode' && location.hash.startsWith('#detail')) {
-                        const sNum = currentModalItem.item.season || currentModalItem.item.season_number;
-                        const eNum = currentModalItem.item.number || currentModalItem.item.episode_number;
-                        const showTmdbId = currentModalItem.item.show?.ids?.tmdb || currentModalItem.item.show?.ids?.trakt;
+                        const sNum = parseInt(currentModalItem.item.season || currentModalItem.item.season_number, 10);
+                        const eNum = parseInt(currentModalItem.item.number || currentModalItem.item.episode_number, 10);
+                        const targetShowId = primaryDataSource === 'tmdb'
+                            ? (currentModalItem.item.show?.ids?.tmdb || currentModalItem.item.show?.id || currentModalItem.item.show?.ids?.trakt)
+                            : (currentModalItem.item.show?.ids?.trakt || currentModalItem.item.show?.ids?.tmdb);
                         
-                        if (showTmdbId) {
+                        if (targetShowId && !isNaN(sNum) && !isNaN(eNum)) {
+                            showingAutoAdvance = true;
+                            hideLoader();
                             let advanceModal = document.getElementById('auto-advance-modal');
                             if (!advanceModal) {
                                 document.body.insertAdjacentHTML('beforeend', `
@@ -8112,25 +8158,47 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 advanceModal = document.getElementById('auto-advance-modal');
                             }
                             
-                            document.getElementById('btn-advance-no').onclick = () => advanceModal.classList.add('hidden');
+                            document.getElementById('btn-advance-no').onclick = async () => {
+                                advanceModal.classList.add('hidden');
+                                if (location.hash.startsWith('#detail')) {
+                                    const parts = location.hash.split('/');
+                                    const cacheKey = `vt_detail_v1_${parts[1]}_${parts[2]}${parts[3] === 'season' && parts[4] ? `_s${parts[4]}` : ''}`;
+                                    if (!sessionStorage.getItem(cacheKey)) showLoader();
+                                    if (parts[3] === 'season' && parts[4]) await renderDetail(parts[1], parts[2], parts[4]);
+                                    else await renderDetail(parts[1], parts[2]);
+                                }
+                                if (document.getElementById('up-next-container')) loadUpNext();
+                                if (document.getElementById('last-watched-container')) loadLastWatched();
+                            };
                             document.getElementById('btn-advance-yes').onclick = () => {
                                 advanceModal.classList.add('hidden');
-                                window.navigateEpisode(showTmdbId, sNum, eNum + 1);
+                                window.navigateEpisode(targetShowId, sNum, eNum + 1);
                             };
                             
                             advanceModal.classList.remove('hidden');
                         }
                     }
+
+                    // Refresh Views immediately when not awaiting Stay Here / Next Ep choice
+                    if (!showingAutoAdvance) {
+                        if (location.hash.startsWith('#detail')) {
+                             const parts = location.hash.split('/');
+                             if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
+                             else renderDetail(parts[1], parts[2]);
+                        }
+                        if (document.getElementById('up-next-container')) loadUpNext(); 
+                        if (document.getElementById('last-watched-container')) loadLastWatched();
+                    }
+                } else {
+                    // Refresh Views for non-log actions
+                    if (location.hash.startsWith('#detail')) {
+                         const parts = location.hash.split('/');
+                         if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
+                         else renderDetail(parts[1], parts[2]);
+                    }
+                    if (document.getElementById('up-next-container')) loadUpNext(); 
+                    if (document.getElementById('last-watched-container')) loadLastWatched();
                 }
-                
-                // Refresh Views
-                if (location.hash.startsWith('#detail')) {
-                     const parts = location.hash.split('/');
-                     if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
-                     else renderDetail(parts[1], parts[2]);
-                }
-                if (document.getElementById('up-next-container')) loadUpNext(); 
-                if (document.getElementById('last-watched-container')) loadLastWatched();
 
             } catch(e) { console.error(e); showToast('Action failed', 'error'); } 
             hideLoader(); 

@@ -2,6 +2,17 @@
 
 export const changelogData = [
     {
+    version: "v17.14.0-alpha",
+    date: "2026-11-24",
+    changes: [
+        "In VidTrackr: Fixed the 'Stay Here' and 'Next Ep' auto-advance modal buttons to properly use cached pages (vt_detail_v1_episode_... and adjacentEpisodeCache), populate vt_optimistic from prefetched episode data, defer background detail re-renders until the user chooses an action, show the loading indicator when a network fetch is required, and align Trakt/TMDB show IDs.",
+        "In FoodTrackr: Compacted the mobile Daily Log meal boxes and food item cards (reduced nested .log-section / .log-item padding, inline calorie & source/quantity layout, slimmed action buttons, and added bottom-nav clearance) so multiple meals fit cleanly on mobile screens.",
+        "In FoodTrackr & Dashboard (Sourdough Tracker): Upgraded Sourdough Tracker for mobile, tablet, and desktop with a responsive 2-column modal, 4-card stats bar (Starter Age, Last Fed, Avg Hydration, Total Feeds), status pill, Quick Ratio Presets (1:1:1, 1:2:2, 1:3:3, 1:5:5), Repeat Last Feeding, Total Weight calculation, optional Flour Type & Temp (°C) fields, Feeding Ledger search/filtering, clickable photo thumbnails, and ratio/hydration metadata on the Dashboard Sourdough widget.",
+        "In Dashboard: Improved mobile layout and widget responsiveness with a 2-column mobile grid for compact stat cards (Water, Calories, Sourdough, Fan), full-width mobile spans for dense list/tabbed widgets, stacked header controls with larger touch targets, and bottom-nav clearance.",
+        "In TaskTrackr: Fixed the right-side details title box (#sp-title-edit) opening with an unnecessarily tall height by resetting height to 0px before measuring scrollHeight, cancelling stale timers, and waiting for the desktop pane width transition to finish; also optimized mobile layout with slimmer compact-mode checkbox columns, a non-overflowing filter bar, hidden mobile scrollbar, and extra bottom-FAB clearance."
+    ]
+},
+    {
     version: "v17.13.0-alpha",
     date: "2026-11-23",
     changes: [
@@ -7486,4 +7497,4 @@ changes: [
             "Firebase authentication and data storage implemented.",
         ]
     }
-];
+]; 
