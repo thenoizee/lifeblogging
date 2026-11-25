@@ -25,6 +25,13 @@ module.exports = {
       pattern: /^border-(slate|lime|orange|teal|blue|red|amber|pink|purple|green|indigo|cyan|zinc|emerald|fuchsia|rose|sky|yellow|gray)-900\/50$/,
       variants: ['dark'],
     },
+    {
+      pattern: /^from-(slate|lime|orange|teal|blue|red|amber|pink|purple|green|indigo|cyan|zinc|emerald|fuchsia|rose|sky|yellow)-50\/70$/,
+    },
+    {
+      pattern: /^from-(slate|lime|orange|teal|blue|red|amber|pink|purple|green|indigo|cyan|zinc|emerald|fuchsia|rose|sky|yellow)-900\/20$/,
+      variants: ['dark'],
+    },
   ],
   theme: {
     extend: {

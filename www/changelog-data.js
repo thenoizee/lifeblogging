@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v17.15.0-alpha",
+    date: "2026-11-25",
+    changes: [
+        "In SharedNav: Fixed the header and mobile bottom navigation appearing transparent in some apps by adding a solid bg-white / dark:bg-gray-900 base, safelisting theme gradient utilities (from-*-50/70 and dark:from-*-900/20) in tailwind.config.js, and adding w-full to <header> so flex-centered layouts don't shrink it.",
+        "In SharedNav: Improved responsive fit across mobile, iPad, and desktop—switched the header inner wrapper from container to w-full max-w-[1600px], staggered md:/lg:/xl: breakpoints for tab padding, font sizes, search input width, and app title visibility (xl:inline for 5+ tab apps), added .hide-scroll CSS to injectGlobalStyles(), and tightened mobile Hub, sync indicator, and bottom-nav icon sizing.",
+        "In HealthManagr: Overhauled mobile responsiveness—raised .modal z-index above the bottom nav with safe-area bottom clearance and 100dvh max-height, removed inherited 150px min-height on mobile .calendar-day agenda cards, displayed Left/Right eye pills side-by-side in #lens-week-view, converted Dashboard #full-calendar to a stacked mobile agenda, and tightened mobile padding, chart heights, Grooming grid spacing, table cells, and #auth-container."
+    ]
+},
+    {
     version: "v17.14.0-alpha",
     date: "2026-11-24",
     changes: [

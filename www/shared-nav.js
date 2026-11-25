@@ -627,6 +627,13 @@ export class AppNavigation {
             *:focus {
                 outline: none !important;
             }
+            .hide-scroll {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+            .hide-scroll::-webkit-scrollbar {
+                display: none;
+            }
 
             /* Custom Scrollbar */
             ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -730,17 +737,17 @@ export class AppNavigation {
     </div>
 </div>
 
-<header class="sticky top-0 bg-gradient-to-t from-${this.themeColor}-50/95 to-white/95 dark:bg-gradient-to-t dark:from-${this.themeColor}-900/20 dark:to-gray-900/95 shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 40; isolation: isolate; ${nativeHeaderStyle}">
-            <div class="container mx-auto px-2 sm:px-4 pt-2 pb-1 min-w-0">
-                <div class="flex items-center justify-between h-12 gap-2 md:gap-3 w-full min-w-0">
+<header class="sticky top-0 w-full bg-white dark:bg-gray-900 bg-gradient-to-t from-${this.themeColor}-50/70 to-transparent dark:from-${this.themeColor}-900/20 dark:to-transparent shadow-md shrink-0 border-b border-${this.themeColor}-200 dark:border-gray-800 border-t-4 border-t-${this.themeColor}-500 transition-colors duration-300 md:mb-8" style="position: sticky; top: 0; z-index: 40; isolation: isolate; ${nativeHeaderStyle}">
+            <div class="w-full max-w-[1600px] mx-auto px-2 sm:px-4 pt-2 pb-1 min-w-0">
+                <div class="flex items-center justify-between h-12 gap-1.5 sm:gap-2 lg:gap-3 w-full min-w-0">
                         
-                        <div class="flex items-center gap-2 sm:gap-3 shrink min-w-0">
+                        <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0 min-w-0">
                             <div id="hub-container" class="relative group shrink-0" style="position: relative;">
                             <div class="flex rounded-lg shadow-sm overflow-hidden shrink-0">
-                                <a href="/" class="bg-${this.themeColor}-600 hover:bg-${this.themeColor}-700 text-white text-xs font-bold py-2 px-2.5 sm:px-3 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0">
+                                <a href="/" class="bg-${this.themeColor}-600 hover:bg-${this.themeColor}-700 text-white text-xs font-bold py-2 px-2 sm:px-3 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0">
                                     <i class="fa-solid fa-arrow-left"></i> Hub
                                 </a>
-                                <button id="hub-dropdown-btn" class="bg-${this.themeColor}-700 hover:bg-${this.themeColor}-800 text-white px-2.5 sm:px-3 flex items-center justify-center border-l border-${this.themeColor}-600 transition-colors shrink-0 min-w-[32px]">
+                                <button id="hub-dropdown-btn" class="bg-${this.themeColor}-700 hover:bg-${this.themeColor}-800 text-white px-2 sm:px-2.5 flex items-center justify-center border-l border-${this.themeColor}-600 transition-colors shrink-0 min-w-[28px] sm:min-w-[32px]">
                                     <i class="fa-solid fa-chevron-down text-[10px]"></i>
                                 </button>
                             </div>
@@ -776,28 +783,28 @@ export class AppNavigation {
                             </div>
                         </div>
 
-                        <div class="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-1 hidden sm:block"></div>
+                        <div class="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-0.5 sm:mx-1 hidden sm:block shrink-0"></div>
 
-                        <a href="#" class="flex items-center gap-1.5 sm:gap-2 text-xl font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-500 no-underline hover:opacity-80 transition shrink min-w-0 hidden sm:flex">
+                        <a href="#" class="flex items-center gap-1.5 sm:gap-2 text-lg lg:text-xl font-bold text-${this.themeColor}-600 dark:text-${this.themeColor}-500 no-underline hover:opacity-80 transition shrink-0 min-w-0 hidden sm:flex">
                             <i class="fa-solid ${this.appIcon} shrink-0"></i>
-                            <span class="hidden lg:inline truncate">${this.appName}</span>
+                            <span class="hidden ${this.tabs.length >= 5 ? 'xl:inline' : 'lg:inline'} truncate">${this.appName}</span>
                         </a>
                     </div>
 
-                    <nav class="hidden md:flex items-center gap-1 bg-white/80 shadow-inner dark:bg-gray-900/50 p-1 rounded-lg border border-${this.themeColor}-100 dark:border-transparent overflow-x-auto hide-scroll min-w-0 shrink">
+                    <nav class="hidden md:flex items-center gap-0.5 lg:gap-1 bg-gray-100/80 shadow-inner dark:bg-gray-800/70 p-1 rounded-lg border border-${this.themeColor}-100 dark:border-gray-700/50 overflow-x-auto hide-scroll min-w-0 max-w-full">
                         ${this.tabs.map(tab => `
-                            <button class="nav-tab-btn px-2.5 lg:px-4 py-1.5 rounded-md text-xs lg:text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-300 ease-in-out whitespace-nowrap shrink-0" data-tab="${tab.id}">
-                                <i class="fa-solid ${tab.icon} mr-1.5"></i>${tab.label}
+                            <button class="nav-tab-btn px-2 lg:px-3 xl:px-4 py-1.5 rounded-md text-[11px] lg:text-xs xl:text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-300 ease-in-out whitespace-nowrap shrink-0" data-tab="${tab.id}">
+                                <i class="fa-solid ${tab.icon} mr-1 lg:mr-1.5"></i>${tab.label}
                             </button>
                         `).join('')}
                     </nav>
 
-                    <div class="flex items-center gap-1.5 sm:gap-2 shrink min-w-0 justify-end">
+                    <div class="flex items-center gap-1 sm:gap-1.5 lg:gap-2 shrink-0 min-w-0 justify-end">
                             ${this.search ? `
-                            <div class="hidden sm:block relative mx-1 shrink min-w-0 max-w-[120px] md:max-w-none">
+                            <div class="hidden sm:block relative mx-0.5 lg:mx-1 shrink min-w-0">
                                  <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] md:text-xs pointer-events-none"></i>
                                  <input type="search" id="${this.search.id}" placeholder="${this.search.placeholder || 'Search...'}" 
-                                    class="bg-gray-100 dark:bg-gray-900/50 border-none text-gray-600 dark:text-gray-300 text-[10px] md:text-xs rounded-lg py-1 pl-7 pr-2 md:py-1.5 w-full min-w-[80px] md:w-32 lg:w-48 focus:w-full sm:focus:w-32 md:focus:w-48 focus:ring-2 focus:ring-${this.themeColor}-500 focus:outline-none transition-all shrink min-w-0">
+                                    class="bg-gray-100 dark:bg-gray-800/80 border-none text-gray-600 dark:text-gray-300 text-[11px] md:text-xs rounded-lg py-1 pl-7 pr-2 md:py-1.5 w-24 sm:w-28 lg:w-36 xl:w-48 focus:w-32 sm:focus:w-36 lg:focus:w-44 xl:focus:w-52 focus:ring-2 focus:ring-${this.themeColor}-500 focus:outline-none transition-all min-w-0">
                             </div>
                             ` : ''}
 
@@ -864,12 +871,12 @@ export class AppNavigation {
     renderMobileNav() {
         if (!this.tabs.length) return;
         const mobileHtml = `
-        <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 border-t border-${this.themeColor}-200 dark:border-gray-800 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
-            <div class="flex justify-around items-center h-16 px-2">
+        <nav class="md:hidden fixed bottom-0 left-0 right-0 w-full bg-white dark:bg-gray-900 border-t border-${this.themeColor}-200 dark:border-gray-800 pb-safe shadow-[0_-4px_10px_rgba(0,0,0,0.1)]" style="position: fixed; z-index: 2147483647;">
+            <div class="flex justify-around items-center h-16 px-1 sm:px-2">
                 ${this.tabs.map(tab => `
                     <button class="mobile-nav-btn flex flex-col items-center justify-center flex-1 min-w-0 h-full text-gray-500 dark:text-gray-400 hover:text-${this.themeColor}-600 dark:hover:text-${this.themeColor}-400 transition-colors" data-tab="${tab.id}">
-                        <div class="icon-wrapper flex items-center justify-center w-12 h-8 rounded-full transition-colors pointer-events-none mb-0.5">
-                            <i class="fa-solid ${tab.icon} text-lg"></i>
+                        <div class="icon-wrapper flex items-center justify-center w-10 sm:w-12 h-7 sm:h-8 rounded-full transition-colors pointer-events-none mb-0.5">
+                            <i class="fa-solid ${tab.icon} text-base sm:text-lg"></i>
                         </div>
                         <span class="text-[10px] font-semibold pointer-events-none leading-none tracking-wide truncate max-w-full px-0.5">${tab.label}</span>
                     </button>
@@ -1503,7 +1510,7 @@ export class AppNavigation {
         const indicator = document.getElementById('nav-sync-indicator');
         if (!indicator) return;
 
-        indicator.className = 'items-center gap-1 mr-1 md:mr-2 px-2 md:px-3 py-1 rounded-full text-[10px] md:text-xs font-medium transition-colors flex shrink-0 cursor-pointer';
+        indicator.className = 'items-center gap-1 mr-0.5 sm:mr-1 md:mr-2 px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] md:text-xs font-medium transition-colors flex shrink-0 cursor-pointer max-w-[90px] sm:max-w-none truncate';
         
         let iconHtml = '';
         let defaultMessage = '';
