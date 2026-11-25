@@ -2,6 +2,9 @@ import { getApps } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 import { getFirestore, collection, doc, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp, writeBatch, getDocs, deleteDoc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { APP_VERSION } from './version.js';
+import { appConfirm, appPrompt, appAlert } from './shared-dialog.js';
+
+export { appConfirm, appPrompt, appAlert };
 
 const escapeHtml = (unsafe) => !unsafe ? "" : String(unsafe).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 

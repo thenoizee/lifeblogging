@@ -4,9 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Text Generator</title>
+    <script>
+        try {
+            const isAuto = localStorage.getItem('themeAuto') === 'true';
+            const saved = localStorage.getItem('theme');
+            const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const dark = isAuto ? sysDark : (saved ? saved === 'dark' : sysDark);
+            if (dark) {
+                document.documentElement.classList.add('dark');
+                document.documentElement.style.backgroundColor = '#111827';
+            } else {
+                document.documentElement.classList.remove('dark');
+                document.documentElement.style.backgroundColor = '#f3f4f6';
+            }
+        } catch (e) {}
+    </script>
     <link rel="icon" href="/favicons/envelope-open-text.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/output.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="modulepreload" href="/shared-nav.js">
+    <link rel="modulepreload" href="/shared-dialog.js">
+    <link rel="modulepreload" href="/version.js">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
@@ -329,6 +348,13 @@
     ::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background-color: var(--secondary); }
 </style>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').catch(() => {});
+            });
+        }
+    </script>
 </head>
 <body>
     
@@ -467,7 +493,7 @@
                                 <button onclick="document.execCommand('italic', false, null)" class="p-1 hover:text-indigo-600 hover:bg-gray-200 dark:hover:bg-slate-700 rounded transition" title="Italic (Ctrl+I)"><i class="fa-solid fa-italic text-xs"></i></button>
                                 <button onclick="document.execCommand('underline', false, null)" class="p-1 hover:text-indigo-600 hover:bg-gray-200 dark:hover:bg-slate-700 rounded transition" title="Underline (Ctrl+U)"><i class="fa-solid fa-underline text-xs"></i></button>
                                 <div class="w-px h-4 bg-gray-300 dark:bg-slate-600 my-auto mx-1"></div>
-                                <button onclick="const url = prompt('Enter link URL:'); if(url) document.execCommand('createLink', false, url);" class="p-1 hover:text-indigo-600 hover:bg-gray-200 dark:hover:bg-slate-700 rounded transition" title="Insert Link (Ctrl+K)"><i class="fa-solid fa-link text-xs"></i></button>
+                                <button onclick="(async () => { const url = await window.appPrompt('Enter link URL:', 'Insert Link'); if(url) document.execCommand('createLink', false, url); })()" class="p-1 hover:text-indigo-600 hover:bg-gray-200 dark:hover:bg-slate-700 rounded transition" title="Insert Link (Ctrl+K)"><i class="fa-solid fa-link text-xs"></i></button>
                                 <button onclick="document.execCommand('unlink', false, null)" class="p-1 hover:text-red-500 hover:bg-gray-200 dark:hover:bg-slate-700 rounded transition" title="Remove Link"><i class="fa-solid fa-link-slash text-xs"></i></button>
                             </div>
                         </div>
@@ -912,9 +938,9 @@ const updateManagerPreview = () => {
     // Setup the new folder button logic for the Manage Tab
     const newFolderBtn = document.getElementById('new-folder-btn');
     if (newFolderBtn) {
-        newFolderBtn.addEventListener('click', () => {
+        newFolderBtn.addEventListener('click', async () => {
             console.debug("[Manage Templates] User clicked to create a new folder.");
-            const folderName = prompt("Enter new folder name:");
+            const folderName = await window.appPrompt("Enter new folder name:", "New Folder");
             if (folderName && folderName.trim() !== '') {
                 const folderSelect = document.getElementById('template-folder');
                 const option = document.createElement('option');
@@ -1661,14 +1687,14 @@ function resetSelectionUI() {
         function handleBatchGenerate() {
             const templateId = ui.batch.templateSelect.value;
             const file = ui.batch.csvFileInput.files[0];
-            if (!templateId || !file) return alert("Please select a template and a CSV file.");
+            if (!templateId || !file) return window.appAlert("Please select a template and a CSV file.");
             const templateFamily = allTemplates.find(t => t.id === templateId);
             if (!templateFamily) return;
             const latestVersion = [...templateFamily.versions].sort((a,b) => b.version - a.version)[0];
             const reader = new FileReader();
             reader.onload = (e) => {
                 const lines = e.target.result.split(/\r\n?|\n/).filter(Boolean);
-                if (lines.length < 2) return alert("CSV must have a header and at least one data row.");
+                if (lines.length < 2) return window.appAlert("CSV must have a header and at least one data row.");
                 const headers = lines[0].split(',').map(h => h.trim());
                 const dataRows = lines.slice(1).map(line => line.split(',').reduce((obj, val, i) => { obj[headers[i]] = val.trim(); return obj; }, {}));
                 displayBatchResults(dataRows, latestVersion);
@@ -1699,7 +1725,7 @@ function resetSelectionUI() {
     event.preventDefault();
     const name = ui.manage.nameInput.value.trim();
     const templateText = ui.manage.bodyTextarea.value;
-    if (!name || !templateText) return alert("Template Name and Body cannot be empty.");
+    if (!name || !templateText) return window.appAlert("Template Name and Body cannot be empty.");
     
     const editId = ui.manage.editIdInput.value;
     
@@ -1731,7 +1757,7 @@ function resetSelectionUI() {
     };
 
     if (!editId) {
-        if (userTemplates.some(t => t.name.toLowerCase() === name.toLowerCase() && !t.isArchived) && !confirm(`A template named "${name}" already exists. Save anyway?`)) return;
+        if (userTemplates.some(t => t.name.toLowerCase() === name.toLowerCase() && !t.isArchived) && !(await window.appConfirm(`A template named "${name}" already exists. Save anyway?`, "Duplicate Template", "Save"))) return;
         const newTemplateFamily = {
             id: crypto.randomUUID(), name, folder: ui.manage.folderInput.value.trim(), isArchived: false, isDefault: false, createdAt: now, updatedAt: now,
             versions: [{ ...versionData, version: 1, createdAt: now, updatedAt: now }]
@@ -2116,7 +2142,7 @@ window.cancelEdit = cancelEdit;
             
             await saveAndSyncTemplates(userTemplates); 
         }
-        async function deleteTemplate(templateId) { if (!confirm("Are you sure you want to permanently delete this template and all its versions?")) return; let userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]'); userTemplates = userTemplates.filter(t => t.id !== templateId); await saveAndSyncTemplates(userTemplates); }
+        async function deleteTemplate(templateId) { if (!(await window.appConfirm("Are you sure you want to permanently delete this template and all its versions?", "Delete Template", "Delete", true))) return; let userTemplates = JSON.parse(localStorage.getItem('userTemplates') || '[]'); userTemplates = userTemplates.filter(t => t.id !== templateId); await saveAndSyncTemplates(userTemplates); }
         
         function useVersion(templateId, versionNumber) { 
             if (typeof nav !== 'undefined') nav.switchTab('use-templates'); 
@@ -2226,7 +2252,7 @@ window.cancelEdit = cancelEdit;
 }
 
         function exportTemplates() { const data = localStorage.getItem('userTemplates') || '[]'; const blob = new Blob([data], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `text_merge_templates_${new Date().toISOString().slice(0,10)}.json`; a.click(); URL.revokeObjectURL(a.href); }
-        async function handleImportFile(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (e) => { try { let data = JSON.parse(e.target.result); data = migrateTemplates(data); if (!Array.isArray(data) || !data.every(t => t.id && t.name && t.versions)) throw new Error("Invalid template file."); const merge = confirm("Merge with existing templates? (Cancel to replace)"); const existing = merge ? JSON.parse(localStorage.getItem('userTemplates') || '[]') : []; alert(`Imported ${data.length} templates.`); await saveAndSyncTemplates([...existing, ...data]); } catch (error) { alert(`Import failed: ${error.message}`); } }; reader.readAsText(file); ui.manage.importFileInput.value = ''; }
+        async function handleImportFile(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (e) => { try { let data = JSON.parse(e.target.result); data = migrateTemplates(data); if (!Array.isArray(data) || !data.every(t => t.id && t.name && t.versions)) throw new Error("Invalid template file."); const merge = await window.appConfirm("Merge with existing templates? (Cancel to replace)", "Import Templates", "Merge"); const existing = merge ? JSON.parse(localStorage.getItem('userTemplates') || '[]') : []; window.appAlert(`Imported ${data.length} templates.`); await saveAndSyncTemplates([...existing, ...data]); } catch (error) { window.appAlert(`Import failed: ${error.message}`); } }; reader.readAsText(file); ui.manage.importFileInput.value = ''; }
 
         function initializeFirebase() {
             try {
@@ -2260,9 +2286,9 @@ window.cancelEdit = cancelEdit;
             } catch (e) { console.error("Firebase initialization error: ", e); ui.sync.status.textContent = "Firebase is not configured correctly."; }
         }
 
-        function handleFirebaseSignIn() { const email = ui.sync.emailInput.value, password = ui.sync.passwordInput.value; if (!email || !password) return alert("Please enter email and password."); signInWithEmailAndPassword(firebaseAuth, email, password).catch(error => alert(`Sign in failed: ${error.message}`)); }
-        function handleFirebaseSignUp() { const email = ui.sync.emailInput.value, password = ui.sync.passwordInput.value; if (!email || !password) return alert("Please enter email and password."); createUserWithEmailAndPassword(firebaseAuth, email, password).catch(error => alert(`Sign up failed: ${error.message}`)); }
-        function handleGoogleSignIn() { const provider = new GoogleAuthProvider(); signInWithPopup(firebaseAuth, provider).catch(error => alert(`Google sign in failed: ${error.message}`)); }
+        function handleFirebaseSignIn() { const email = ui.sync.emailInput.value, password = ui.sync.passwordInput.value; if (!email || !password) return window.appAlert("Please enter email and password."); signInWithEmailAndPassword(firebaseAuth, email, password).catch(error => window.appAlert(`Sign in failed: ${error.message}`)); }
+        function handleFirebaseSignUp() { const email = ui.sync.emailInput.value, password = ui.sync.passwordInput.value; if (!email || !password) return window.appAlert("Please enter email and password."); createUserWithEmailAndPassword(firebaseAuth, email, password).catch(error => window.appAlert(`Sign up failed: ${error.message}`)); }
+        function handleGoogleSignIn() { const provider = new GoogleAuthProvider(); signInWithPopup(firebaseAuth, provider).catch(error => window.appAlert(`Google sign in failed: ${error.message}`)); }
         function handleFirebaseSignOut() { signOut(firebaseAuth); }
         function updateFirebaseAuthStatus(isSignedIn) { ui.sync.authContainer.classList.toggle('hidden', isSignedIn); ui.sync.controls.classList.toggle('hidden', !isSignedIn); if (isSignedIn) ui.sync.authStatus.textContent = `Signed in as ${currentUser.email}`; }
         
@@ -2357,7 +2383,7 @@ window.cancelEdit = cancelEdit;
         async function initializeGapiClient() { if(gapi && gapi.client) await gapi.client.init({ apiKey: GMAIL_API_KEY, discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest"], }); }
         function gisLoaded() { if(google && google.accounts && google.accounts.oauth2) tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GMAIL_CLIENT_ID, scope: GMAIL_SCOPES, callback: (tokenResponse) => { if (tokenResponse && tokenResponse.access_token) { gapi.client.setToken(tokenResponse); ui.sync.gmailAuthStatus.textContent = "Gmail access authorized successfully!"; ui.sync.authorizeGmailButton.disabled = true; ui.sync.authorizeGmailButton.textContent = "Gmail Authorized"; if (ui.use.generatedTextDiv.innerText) ui.use.loadToGmailButton.classList.remove('hidden'); } }, }); }
         function handleAuthGmailClick() { if (!tokenClient) return; if (gapi.client.getToken() === null) tokenClient.requestAccessToken({prompt: 'consent'}); else tokenClient.requestAccessToken({prompt: ''}); }
-        async function createGmailDraft() { const subject = ui.use.generatedSubjectInput.value; const body = ui.use.generatedTextDiv.innerText; const email = [`Subject: ${subject}`, 'Content-Type: text/plain; charset="UTF-8"', 'MIME-Version: 1.0', '', body].join('\n'); const base64EncodedEmail = btoa(unescape(encodeURIComponent(email))).replace(/\+/g, '-').replace(/\//g, '_'); try { await gapi.client.gmail.users.drafts.create({ 'userId': 'me', 'resource': { 'message': { 'raw': base64EncodedEmail } } }); window.showToast("Draft created in Gmail!", 'success'); } catch (err) { console.error("Gmail API Error:", err); alert(`Could not create Gmail draft. Your authorization may have expired.`); } }
+        async function createGmailDraft() { const subject = ui.use.generatedSubjectInput.value; const body = ui.use.generatedTextDiv.innerText; const email = [`Subject: ${subject}`, 'Content-Type: text/plain; charset="UTF-8"', 'MIME-Version: 1.0', '', body].join('\n'); const base64EncodedEmail = btoa(unescape(encodeURIComponent(email))).replace(/\+/g, '-').replace(/\//g, '_'); try { await gapi.client.gmail.users.drafts.create({ 'userId': 'me', 'resource': { 'message': { 'raw': base64EncodedEmail } } }); window.showToast("Draft created in Gmail!", 'success'); } catch (err) { console.error("Gmail API Error:", err); window.appAlert(`Could not create Gmail draft. Your authorization may have expired.`); } }
 
         function applyTheme(theme) {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -2425,8 +2451,8 @@ window.cancelEdit = cancelEdit;
             if (typeof updateManagerPreview === 'function') updateManagerPreview();
         };
 
-        window.insertHtmlLink = function() {
-            const url = prompt("Enter link URL (e.g., https://google.com):");
+        window.insertHtmlLink = async function() {
+            const url = await window.appPrompt("Enter link URL (e.g., https://google.com):", "Insert Link");
             if (url) {
                 insertHtmlTag(`<a href="${url}">`, '</a>');
             }

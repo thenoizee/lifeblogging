@@ -2,6 +2,16 @@
 
 export const changelogData = [
     {
+    version: "v17.16.0-alpha",
+    date: "2026-11-25",
+    changes: [
+        "In SharedNav & Suite-Wide Dialogs: Extracted a unified, dark-mode-aware mobile-first dialog modal into /shared-dialog.js (auto-injected #shared-app-dialog-modal with bottom-sheet mobile layout, contextual icon badges, var(--primary) theming, 16px mobile input sizing, Enter/Escape support, and sequential call queueing), wired it into SharedNav and sw.js (plus standalone imports in NoteTrackr and Time), and replaced all remaining native alert(), confirm(), and prompt() calls across the suite.",
+        "In Service Worker & Standalone Apps: Added /sw.js registration to the 14 apps that were missing it (Dashboard, IconGenerator, JournalTrackr, LabelGenerator, LightManagr, MoneyManagr, PlantTrackr, PodTrackr, RouteTrackr, TaskTrackr, Time, VehicleManagr, VidTrackr, and Work) so direct/PWA launches receive cache updates, and standardized Log from ../sw.js?v=... to /sw.js to prevent cross-app SW re-install cycles.",
+        "In Suite-Wide GPU & Render Performance: Trimmed remaining backdrop-blur* utility classes and backdrop-filter: blur(...) CSS rules across 18 apps (including VidTrackr, RecipeManagr, PlantTrackr, FoodTrackr, TaskTrackr, Analyser, VehicleManagr, and others) and rebuilt minified output.css.",
+        "In Suite-Wide Loading Speed: Made FontAwesome (30 links) and Google Fonts (39 links) non-render-blocking via media=\"print\" onload=\"this.media='all'\" with <noscript> fallbacks, added defer to 12 synchronous Chart.js / chartjs-adapter-date-fns script tags across 10 apps, added <link rel=\"modulepreload\"> for /shared-nav.js, /shared-dialog.js, and /version.js across 29 files, and added early inline <head> dark-mode paint scripts to 26 sub-apps to eliminate white flashes on cold launches."
+    ]
+},
+    {
     version: "v17.15.0-alpha",
     date: "2026-11-25",
     changes: [

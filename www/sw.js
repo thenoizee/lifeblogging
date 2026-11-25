@@ -24,6 +24,7 @@ const urlsToCache = [
   // --- ASSETS ---
   '/output.css',
   '/version.js',
+  '/shared-dialog.js',
   '/shared-nav.js',
   '/manifest.json',
   '/icons/icon-192x192.png',
