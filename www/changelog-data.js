@@ -2,6 +2,15 @@
 
 export const changelogData = [
     {
+    version: "v17.17.0-alpha",
+    date: "2026-11-26",
+    changes: [
+        "In PDF Tools (Rotated & Landscape Viewer Spacing): Replaced CSS transform: rotate() on Organise grid thumbnails and Inspect previews with native pdf.js viewport rotation rendering so rotated landscape pages size cleanly without clipping or phantom portrait gaps, centered .page-thumbnail cards for mixed-orientation rows, and fixed .preview-container overflow/fit-mode centering so wide landscape pages scroll without left-edge clipping.",
+        "In PDF Tools (Organise & Metadata Workflow): Upgraded the Organise toolbar with live active page counts, an Unapplied changes badge, Rotate All (+90°), Reverse Order, Large/Compact thumbnail toggle (re-rendering Large thumbnails at 1.2x scale for crispness), Reset, per-thumbnail Inspect buttons, and separate Apply to Workspace / Apply & Download actions that reload the clean organised PDF without stacking prefixes. Enhanced the Metadata modal with Language (BCP 47), Custom Properties (Info dictionary key/value pairs), Application (Creator) labeling, Set to Now, Strip All, Save to Workspace / Save & Download, and workspace banner size/page-count summaries.",
+        "In PDF Tools (Watermark): Fixed off-center rotated watermark placement in handleWatermark by offsetting from the rotated text center (cos/sin of rotation + page rotation), added color picker and Bold Font controls, and reloaded the watermarked PDF into the live preview."
+    ]
+},
+    {
     version: "v17.16.0-alpha",
     date: "2026-11-25",
     changes: [
