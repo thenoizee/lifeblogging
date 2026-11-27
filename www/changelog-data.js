@@ -2,6 +2,18 @@
 
 export const changelogData = [
     {
+    version: "v17.18.0-alpha",
+    date: "2026-11-27",
+    changes: [
+        "In PetManagr (Dashboard & Weight Analytics): Added per-pet filter pills, a 4-card KPI bar (Active Pets, Due/Overdue, Care Logs, YTD Care Spend), 1-tap 'Done' completion on Care Reminders with automatic follow-up resolution, Quick Actions, a mobile Quick Log FAB, and a multi-pet dark-mode-aware Weight Trends chart with latest weight & delta summaries.",
+        "In PetManagr (Pet Profiles & Health Passport): Expanded pet profiles with Species, Sex, Target Weight, Microchip/ID, Vet Clinic & Phone (with clickable tel: links), Insurance, Care Notes, and a 6-color accent + 24-icon picker; added a tappable Pet Health Passport modal (#pet-detail-modal) and touch-accessible card action buttons.",
+        "In PetManagr (Treatments, Logging & History): Added treatment categories, frequency presets (7d–365d), and inline frequency editing; expanded activity types (Vaccination, Dental, Diet/Feeding, Symptom/Health) with optional Cost, Provider/Vet, and quick due-date offsets (+14d/+30d/+90d/+1yr); upgraded Edit Activity to support all fields plus Duplicate; and added debounced History search, Pet/Type/Date-Range filters, filtered spend totals, and 50-row Show More pagination.",
+        "In PetManagr (Reliability, Auth & Backup): Added #loading-state splash, Enter-to-submit auth with password toggle and Forgot Password, Firestore persistentLocalCache + experimentalAutoDetectLongPolling, onSnapshot cleanup on sign-out, escapeHtml() XSS protection, local-date parsing fixes, Weight Unit (kg/lbs) & Currency preferences, Blob JSON/CSV exports, and JSON Backup Import.",
+        "In HydrationTrackr (Streaks, Dashboard & History): Implemented real updateStreaks() (Goal Streak, Logged Days, Best Streak) respecting dayReset and FoodTrackr settings, added a live pace badge, Today's Drinks timeline with 1-tap Undo Last, and Today's Drink Mix breakdown; fixed UTC vs. local-date chart grouping, added monthly grouping for Year/All views, a Daily Goal dashed chart line, Goal Met % card, Drink Type filter, working multi-select bulk delete, and fixed Edit/Delete support for legacy hydrationtrackr logs.",
+        "In HydrationTrackr (Settings, Reminders & Reliability): Wired up working CSV/JSON export and batched CSV import, live reminder permission requests + Test Notification, replaced the heavy /changelog-data.js import with /version.js, switched to root-relative /shared-nav.js, enabled Firestore persistentLocalCache + experimentalAutoDetectLongPolling, cleaned up onSnapshot listeners on sign-out, added #loading-state + upgraded Auth UX, and added escapeHtml() XSS protection."
+    ]
+},
+    {
     version: "v17.17.0-alpha",
     date: "2026-11-26",
     changes: [
