@@ -544,7 +544,7 @@ const PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000
     window.appNav = nav;
 
     // --- Inject VidTrackr Header Elements ---
-const headerRight = document.querySelector('header .container > .flex > .flex:last-child');
+const headerRight = document.querySelector('header > div > .flex > .flex:last-child') || document.querySelector('header #nav-bell-btn')?.closest('.flex.items-center.justify-end');
 if (headerRight) {
     const customDiv = document.createElement('div');
     customDiv.className = 'flex items-center gap-1.5 md:gap-2 mr-1 shrink min-w-0 justify-end';
@@ -1380,8 +1380,8 @@ if (headerRight) {
                 if (document.getElementById('history-list-container')) renderHistory(1);
                 if (location.hash.startsWith('#detail')) {
                      const parts = location.hash.split('/');
-                     if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
-                     else renderDetail(parts[1], parts[2]);
+                     if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4], false, { silentRefresh: true });
+                     else renderDetail(parts[1], parts[2], null, false, { silentRefresh: true });
                 }
             } catch(e) {
                 showToast('Failed to remove rating', 'error');
@@ -1408,20 +1408,10 @@ if (headerRight) {
                     await deleteDoc(docRef);
                 }
 
-                // 2. Delete from Trakt (If connected)
-                if (traktAccessToken && primaryDataSource === 'trakt') {
-                    let payload;
-                    if (historyId && !isNaN(Number(historyId))) {
-                        // It's a numeric Trakt history ID
-                        payload = { ids: [parseInt(historyId)] };
-                    } else {
-                        // Fallback to bulk removing the item by its Trakt ID
-                        const rootKey = type === 'episode' ? 'episodes' : 'movies';
-                        payload = { [rootKey]: [{ ids: { trakt: traktId } }] };
-                    }
-                    
+                // 2. Delete from Trakt (If connected and we have a specific Trakt history ID)
+                if (traktAccessToken && primaryDataSource === 'trakt' && historyId && !isNaN(Number(historyId))) {
                     await fetch(`${TRAKT_API_URL}/sync/history/remove`, {
-                        method: 'POST', headers: traktHeader(), body: JSON.stringify(payload)
+                        method: 'POST', headers: traktHeader(), body: JSON.stringify({ ids: [parseInt(historyId)] })
                     });
                 }
                 
@@ -1478,25 +1468,33 @@ if (headerRight) {
                 // Invalidate full history and series progress caches on deletion
                 window.invalidateProgressCaches();
                 
-                // Smartly remove from local history cache instead of blindly wiping the whole cache
+                // Remove ONLY this specific watch log from RAM and localStorage caches
+                const targetDocId = String(historyId);
+                if (Array.isArray(window.fullHistoryMemoryCache)) {
+                    window.fullHistoryMemoryCache = window.fullHistoryMemoryCache.filter(h => String(h._docId || '') !== targetDocId);
+                }
+                if (Array.isArray(window.globalHistoryCache)) {
+                    window.globalHistoryCache = window.globalHistoryCache.filter(h => String(h._docId || '') !== targetDocId);
+                }
                 try {
                     const histCacheKey = `vidtrackr_full_history_${currentUser.uid}`;
                     const cachedHist = localStorage.getItem(histCacheKey);
                     if (cachedHist) {
                         let histArr = JSON.parse(cachedHist);
-                        histArr = histArr.filter(h => h._docId !== historyId && h.itemId !== String(traktId));
+                        histArr = histArr.filter(h => String(h._docId || '') !== targetDocId);
                         localStorage.setItem(histCacheKey, JSON.stringify(histArr));
                     }
                 } catch(e) { console.warn("Failed to update history cache locally", e); }
                 
                 showToast('Log removed successfully');
                 
-                // Refresh the page if on Detail view to update the "Watch Count" and "Last Watched" text
+                // Refresh the page in-place if on Detail view to update the "Watch Count" and "Watch History" list
                 if (location.hash.startsWith('#detail')) {
                     const parts = location.hash.split('/');
-                    if(parts[3] === 'season' && parts[4]) window.renderDetail(parts[1], parts[2], parts[4]);
-                    else window.renderDetail(parts[1], parts[2]);
-                    return; // Prevent standard row removal logic since page reloads
+                    if (window.invalidateDetailCache && parts[2]) window.invalidateDetailCache(parts[1], parts[2]);
+                    if (parts[3] === 'season' && parts[4]) window.renderDetail(parts[1], parts[2], parts[4], false, { silentRefresh: true });
+                    else window.renderDetail(parts[1], parts[2], null, false, { silentRefresh: true });
+                    return; // Prevent standard row removal logic since page updates in-place
                 }
 
                 const row = btn.closest('.card') || btn.closest('.history-row');
@@ -1762,12 +1760,12 @@ if (headerRight) {
         window.adjacentEpisodeCache = new Map();
 
         // Silently prefetches the previous and next episodes in the background once the current episode has loaded
-        window.prefetchAdjacentEpisodes = async (showId, currentSeason, currentEpisode) => {
+        window.prefetchAdjacentEpisodes = async (showId, currentSeason, currentEpisode, delayMs = 300) => {
             const s = parseInt(currentSeason);
             const e = parseInt(currentEpisode);
             if (!showId || isNaN(s) || isNaN(e)) return;
 
-            await new Promise(r => setTimeout(r, 300));
+            if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
 
             const isTMDB = primaryDataSource === 'tmdb';
             console.debug(`[Prefetch] Starting silent background prefetch for Show ${showId} around S${s}E${e}...`);
@@ -3527,23 +3525,28 @@ async function renderPerson(id) {
             hideLoader();
         }
 
-        async function renderDetail(type, id, initialSeason = null, forceAllHistory = false) {
+        async function renderDetail(type, id, initialSeason = null, forceAllHistory = false, options = {}) {
             if (type === 'tv') type = 'show'; // Intercept any cached 'tv' routes and force them to 'show'
             window.renderDetail = renderDetail; // Expose globally for inline onclick
             const historyLimit = forceAllHistory ? 10000 : 100;
             const currentHash = location.hash;
+            const silentRefresh = Boolean(options && options.silentRefresh);
 
             // FIX: Prevent detail views from opening at the bottom of the page if navigating from a long list
-            window.scrollTo({ top: 0, behavior: 'instant' });
+            if (!silentRefresh) {
+                window.scrollTo({ top: 0, behavior: 'instant' });
+            }
 
             // --- STALE-WHILE-REVALIDATE DETAIL CACHE ---
             // If the user previously opened this episode/movie, load it with 0ms delay
             const detailCacheKey = `vt_detail_v1_${type}_${id}${initialSeason ? `_s${initialSeason}` : ''}`;
-            const cachedHtml = sessionStorage.getItem(detailCacheKey);
+            const cachedHtml = (!silentRefresh && !forceAllHistory) ? sessionStorage.getItem(detailCacheKey) : null;
             let hasRenderedCache = false;
             let hasRenderedOptimistic = false;
 
-            if (cachedHtml && !forceAllHistory) {
+            if (silentRefresh) {
+                if (window.appNav) window.appNav.setSyncState('syncing');
+            } else if (cachedHtml && !forceAllHistory) {
                 console.debug(`[renderDetail] Instant cache hit for ${type} ${id}`);
                 els.content.innerHTML = cachedHtml;
                 hasRenderedCache = true;
@@ -3748,10 +3751,10 @@ let listsIn = [];
                                                 (media.show?.ids?.trakt && String(media.show.ids.trakt) === String(showInfo?.ids?.trakt));
 
                             if (isIdMatch || (isShowMatch && hSeason === targetSeason && hEp === targetEpNum)) {
-                                items.push({ id: docId, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, episode: media, rating: data.rating, _originalItemId: histItemId || histTrakt || histTmdb });
+                                items.push({ id: docId, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, episode: media, rating: data.rating, platform: data.platform || null, _originalItemId: histItemId || histTrakt || histTmdb });
                             }
                         } else if (isIdMatch) {
-                            items.push({ id: docId, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, [type]: media, rating: data.rating, _originalItemId: histItemId || histTrakt || histTmdb });
+                            items.push({ id: docId, watched_at: data.watchedAt || data.loggedAt, rated_at: data.ratedAt, [type]: media, rating: data.rating, platform: data.platform || null, _originalItemId: histItemId || histTrakt || histTmdb });
                         }
                     };
 
@@ -3775,23 +3778,24 @@ let listsIn = [];
                         if (docKey) unifiedHistoryMap.set(docKey, d);
                     });
 
-                    // 2. Ingest latest Firestore documents to catch new watches/edits not yet in localStorage
-                    try {
-                        // Check both the indexed itemId query and latest watchedAt to capture new entries
-                        const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(2500));
-                        const snap = await getDocs(q);
-                        snap.forEach(docSnap => {
-                            const data = docSnap.data();
-                            unifiedHistoryMap.set(docSnap.id, { ...data, _docId: docSnap.id });
-                        });
-
-                        // Keep local cache up-to-date with the combined data
+                    // 2. Ingest latest Firestore documents only if initial history sync hasn't populated RAM yet
+                    if (!window._initialHistorySynced || unifiedHistoryMap.size === 0) {
                         try {
-                            const mergedArr = Array.from(unifiedHistoryMap.values());
-                            localStorage.setItem(`vidtrackr_full_history_${currentUser.uid}`, JSON.stringify(mergedArr));
-                        } catch (e) {}
-                    } catch (e) {
-                        console.error("[Debug] Error querying Firestore in localHistoryFetch:", e);
+                            const q = query(collection(db, `users/${currentUser.uid}/history`), orderBy("watchedAt", "desc"), limit(200));
+                            const snap = await getDocs(q);
+                            snap.forEach(docSnap => {
+                                const data = docSnap.data();
+                                unifiedHistoryMap.set(docSnap.id, { ...data, _docId: docSnap.id });
+                            });
+
+                            // Keep local cache up-to-date with the combined data
+                            try {
+                                const mergedArr = Array.from(unifiedHistoryMap.values());
+                                localStorage.setItem(`vidtrackr_full_history_${currentUser.uid}`, JSON.stringify(mergedArr));
+                            } catch (e) {}
+                        } catch (e) {
+                            console.error("[Debug] Error querying Firestore in localHistoryFetch:", e);
+                        }
                     }
 
                     // 3. Process the merged list against the target item
@@ -3853,6 +3857,11 @@ let listsIn = [];
                         }
                         // Request external_ids to capture IMDB IDs for episodes
                         tmdbEndpoint = `/tv/${resolvedShowId}/season/${epSeason}/episode/${epNum}?append_to_response=credits,videos,images,external_ids`;
+
+                        // Kick off next/prev episode prefetch immediately without waiting for history/detail render
+                        if (window.prefetchAdjacentEpisodes) {
+                            window.prefetchAdjacentEpisodes(resolvedShowId, epSeason, epNum, 0);
+                        }
                         
                         // PERFORMANCE FIX: Fetch TMDB API and Local Firebase History concurrently!
                         const [fetchedShow, fetchedEp, localHistData] = await Promise.all([
@@ -4245,35 +4254,53 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     ? `<button onclick="window.openQuickRate('${id}', '${type}', '${fullTitle.replace(/'/g, "\\'")}', true)" class="bg-yellow-500/20 hover:bg-yellow-500/40 text-yellow-500 border border-yellow-500/50 px-3 py-1 rounded-md text-sm font-bold flex items-center transition shadow-[0_0_15px_rgba(234,179,8,0.2)]" title="Edit Rating"><i class="fa-solid fa-star mr-2"></i> ${myRating}</button>`
                     : `<button class="scrobble-btn bg-gray-800 hover:bg-white hover:text-black border border-gray-700 px-3 py-1 rounded-md text-sm font-bold flex items-center transition" data-json='${JSON.stringify({ids: item.ids, title: fullTitle, type: type, runtime: item.runtime, forceRate: true}).replace(/'/g, "&apos;")}' data-type="${type}"><i class="fa-regular fa-star mr-2"></i> Rate</button>`;
 
-                // History List HTML
+                // History & Separate Rating Accordion HTML
                 let historyHtml = '';
-                if (history.length > 0) {
-                      const loadMoreBtn = (!forceAllHistory && history.length === 100) ? `<div class="mt-4 pt-4 border-t border-gray-800/50 text-center"><p class="text-[10px] text-gray-500 italic mb-3">Note: Watch history is capped at your last 100 plays by default to save data.</p><button onclick="event.stopPropagation(); window.renderDetail('${type}', '${id}', null, true)" class="bg-gray-800 hover:bg-[var(--primary)] text-white text-xs font-bold px-4 py-2 rounded-lg transition border border-gray-700 shadow-md flex items-center gap-2 mx-auto"><i class="fa-solid fa-rotate-right"></i> Force Load Rest</button></div>` : '';
-                      historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 animate-fade"><h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2 cursor-pointer hover:text-gray-300 transition select-none" onclick="const content = this.nextElementSibling; const icon = this.querySelector('.fa-chevron-down'); content.classList.toggle('hidden'); icon.classList.toggle('rotate-180');"><i class="fa-solid fa-clock-rotate-left"></i> Watch History (${history.length}${!forceAllHistory && history.length === 100 ? '+' : ''})<span class="ml-auto"><i class="fa-solid fa-chevron-down transition-transform duration-300"></i></span></h3><div class="space-y-2 hidden mt-4">${history.map(h => {
-                          const epInfo = h.episode ? ` <span class="text-[var(--primary)] text-xs ml-2">S${h.episode.season}E${h.episode.number}</span>` : '';
-                          const rId = h.episode ? h.episode.ids.trakt : id;
-                          const rType = h.episode ? 'episode' : type;
-                          let cId = null;
-                          if (h.episode) {
-                              const s = h.episode.season || h.episode.season_number;
-                              const e = h.episode.number || h.episode.episode_number;
-                              const sTmdb = showInfo?.ids?.tmdb;
-                              if (sTmdb && s !== undefined && e !== undefined) cId = `${sTmdb}-${s}-${e}`;
-                          }
-                          const tId = String(h.episode ? (h.episode.ids?.trakt || '') : (item.ids?.trakt || id));
-                          const tmdbId = String(h.episode ? (h.episode.ids?.tmdb || '') : (item.ids?.tmdb || id));
+                const itemTraktKey = String(item.ids?.trakt || '');
+                const itemTmdbKey = String(item.ids?.tmdb || '');
+                const myRatingDetails = type === 'episode'
+                    ? (userRatingDetails.get(canonicalId) || userRatingDetails.get(itemTraktKey) || (itemTraktKey && !isNaN(Number(itemTraktKey)) ? userRatingDetails.get(parseInt(itemTraktKey)) : null))
+                    : (userRatingDetails.get(String(id)) || (!isNaN(Number(id)) ? userRatingDetails.get(parseInt(id)) : null) || (itemTmdbKey ? userRatingDetails.get(itemTmdbKey) : null) || (itemTmdbKey && !isNaN(Number(itemTmdbKey)) ? userRatingDetails.get(parseInt(itemTmdbKey)) : null));
+                const ratingTargetId = type === 'episode' ? (canonicalId || id) : id;
+                const ratingUpdatedStr = myRatingDetails?.ratedAt ? new Date(myRatingDetails.ratedAt).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
-                          // Fix Episode ID collisions by forbidding naked TMDB ID lookups for episodes
-                          const hRating = userRatings.get(cId) || userRatings.get(tId) || (tId && !isNaN(Number(tId)) ? userRatings.get(parseInt(tId)) : null) || (!h.episode ? userRatings.get(tmdbId) : null) || (!h.episode && tmdbId && !isNaN(Number(tmdbId)) ? userRatings.get(parseInt(tmdbId)) : null);
-                          const rDetails = userRatingDetails.get(cId) || userRatingDetails.get(tId) || (tId && !isNaN(Number(tId)) ? userRatingDetails.get(parseInt(tId)) : null) || (!h.episode ? userRatingDetails.get(tmdbId) : null) || (!h.episode && tmdbId && !isNaN(Number(tmdbId)) ? userRatingDetails.get(parseInt(tmdbId)) : null);
-                          
-                          // Rely strictly on the rating details map to prevent history import pollution
-                          const trueRatedAt = rDetails ? rDetails.ratedAt : null;
-                          const ratedStr = trueRatedAt ? new Date(trueRatedAt).toLocaleString([], {year: 'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
-                                  const hRatingHtml = hRating ? `<div class="flex flex-col items-end mr-3"><span class="text-yellow-500 text-xs font-bold"><i class="fa-solid fa-star"></i> ${hRating}</span>${ratedStr ? `<span class="text-[9px] text-gray-500 mt-0.5">${ratedStr}</span>` : ''}</div>` : '';
-                                  return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition group"><div class="flex items-center gap-3"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs hidden sm:inline">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div><div class="flex items-center gap-2">${hRatingHtml}<button class="text-xs bg-yellow-900/30 text-yellow-400 p-2 rounded hover:bg-yellow-500 hover:text-white transition opacity-100 md:opacity-0 md:group-hover:opacity-100" onclick="event.stopPropagation(); window.openQuickRate('${rId}', '${rType}', 'Rate', true)" title="Edit Rating"><i class="fa-solid fa-star"></i></button><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition opacity-100 md:opacity-0 md:group-hover:opacity-100" onclick="event.stopPropagation(); window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Entry"><i class="fa-solid fa-trash"></i></button></div></div>`;
-                              }).join('')}${loadMoreBtn}</div></div>`;
-                }
+                if (history.length > 0 || myRating) {
+                    const loadMoreBtn = (!forceAllHistory && history.length === 100) ? `<div class="mt-4 pt-4 border-t border-gray-800/50 text-center"><p class="text-[10px] text-gray-500 italic mb-3">Note: Watch history is capped at your last 100 plays by default to save data.</p><button onclick="event.stopPropagation(); window.renderDetail('${type}', '${id}', null, true)" class="bg-gray-800 hover:bg-[var(--primary)] text-white text-xs font-bold px-4 py-2 rounded-lg transition border border-gray-700 shadow-md flex items-center gap-2 mx-auto"><i class="fa-solid fa-rotate-right"></i> Force Load Rest</button></div>` : '';
+                    const ratingEntryHtml = myRating ? `
+                        <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-yellow-500/10 border border-yellow-500/25 mb-3">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <span class="w-7 h-7 rounded-lg bg-yellow-500/20 text-yellow-400 flex items-center justify-center shrink-0"><i class="fa-solid fa-star text-xs"></i></span>
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-sm font-bold text-yellow-400">Rating: ${myRating}/10</span>
+                                        <span class="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-800/90 text-gray-400 border border-gray-700">Separate from watch logs</span>
+                                    </div>
+                                    ${ratingUpdatedStr ? `<p class="text-[11px] text-gray-400 mt-0.5">Rated on ${ratingUpdatedStr}</p>` : ''}
+                                </div>
+                            </div>
+                            <button class="text-xs bg-yellow-900/40 hover:bg-yellow-500 text-yellow-300 hover:text-black font-bold px-2.5 py-1.5 rounded-lg transition border border-yellow-500/30 flex items-center gap-1.5 shrink-0" onclick="event.stopPropagation(); window.openQuickRate('${ratingTargetId}', '${type}', '${fullTitle.replace(/'/g, "\\'")}', true)" title="Edit Rating"><i class="fa-solid fa-pen text-[10px]"></i> Edit</button>
+                        </div>` : `
+                        <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-gray-800/40 border border-gray-800 mb-3">
+                            <div class="flex items-center gap-2 text-xs text-gray-400">
+                                <i class="fa-regular fa-star text-gray-500"></i>
+                                <span>No rating set <span class="text-gray-500">(stored separately from watch logs)</span></span>
+                            </div>
+                            <button class="text-xs bg-gray-800 hover:bg-yellow-500 text-gray-300 hover:text-black font-bold px-2.5 py-1 rounded-lg transition border border-gray-700 shrink-0" onclick="event.stopPropagation(); window.openQuickRate('${ratingTargetId}', '${type}', '${fullTitle.replace(/'/g, "\\'")}', true)">Rate</button>
+                        </div>`;
+                    const watchLogsHtml = history.length > 0 ? `
+                        <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500 px-1 mb-1.5">Watch Logs (${history.length})</div>
+                        <div class="space-y-1.5">${history.map(h => {
+                            const epInfo = h.episode ? ` <span class="text-[var(--primary)] text-xs ml-2">S${h.episode.season}E${h.episode.number}</span>` : '';
+                            const rId = h.episode ? (h.episode.ids?.trakt || id) : id;
+                            const rType = h.episode ? 'episode' : type;
+                            const platformBadge = h.platform ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-800 text-gray-300 border border-gray-700">${h.platform}</span>` : '';
+                            return `<div class="history-row flex justify-between items-center text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0 hover:bg-white/5 p-2 rounded transition group"><div class="flex items-center gap-3 flex-wrap"><span class="font-medium text-gray-200"><i class="fa-solid fa-calendar-day text-[var(--primary)] mr-2 opacity-70"></i> ${new Date(h.watched_at).toLocaleDateString()}${epInfo}</span><span class="text-gray-500 font-mono text-xs">${new Date(h.watched_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>${platformBadge}</div><div class="flex items-center gap-2"><button class="text-xs bg-red-900/30 text-red-400 p-2 rounded hover:bg-red-500 hover:text-white transition opacity-100 md:opacity-0 md:group-hover:opacity-100" onclick="event.stopPropagation(); window.deleteHistoryItem('${h.id}', '${rId}', '${rType}', this)" title="Delete Watch Log"><i class="fa-solid fa-trash"></i></button></div></div>`;
+                        }).join('')}</div>${loadMoreBtn}` : `<p class="text-xs text-gray-500 italic px-1">No watch logs recorded yet.</p>`;
+
+                    const summaryParts = [`Watch History (${history.length}${!forceAllHistory && history.length === 100 ? '+' : ''})`];
+                    if (myRating) summaryParts.push(`Rated ${myRating}/10`);
+                    historyHtml = `<div class="bg-gray-900/50 p-5 rounded-2xl border border-gray-800 mb-8 animate-fade"><h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2 cursor-pointer hover:text-gray-300 transition select-none" onclick="const content = this.nextElementSibling; const icon = this.querySelector('.fa-chevron-down'); content.classList.toggle('hidden'); icon.classList.toggle('rotate-180');"><i class="fa-solid fa-clock-rotate-left"></i> ${summaryParts.join(' · ')}<span class="ml-auto"><i class="fa-solid fa-chevron-down transition-transform duration-300"></i></span></h3><div class="hidden mt-4">${ratingEntryHtml}${watchLogsHtml}</div></div>`;
+                }
 
                 // Cast & Guest HTML
                 let castHtml = '';
@@ -4866,8 +4893,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
 
                 // If user is still viewing this exact item, update DOM seamlessly
                     if (location.hash === currentHash) {
-                        // Skip rewriting the DOM if we already hit the local cache perfectly, to prevent image flickering
-                        if (!hasRenderedCache) {
+                        // Skip rewriting the DOM only when the cached HTML is identical to the fresh render
+                        if (!hasRenderedCache || html !== cachedHtml) {
                             els.content.innerHTML = html;
                         }
                         if (window.appNav) window.appNav.setSyncState('synced');
@@ -8058,7 +8085,19 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                 }
 
                 // Bust detail view HTML cache & progress caches so all tabs update immediately
-                if (window.invalidateDetailCache) window.invalidateDetailCache(type, targetId);
+                if (window.invalidateDetailCache) {
+                    window.invalidateDetailCache(type, targetId);
+                    if (location.hash.startsWith('#detail/')) {
+                        const hashParts = location.hash.split('/');
+                        if (hashParts[2]) window.invalidateDetailCache(hashParts[1], hashParts[2]);
+                    }
+                    if (type === 'episode') {
+                        const sTmdb = item.show?.ids?.tmdb;
+                        const sTrakt = item.show?.ids?.trakt;
+                        if (sTmdb) window.invalidateDetailCache('show', sTmdb);
+                        if (sTrakt && sTrakt !== sTmdb) window.invalidateDetailCache('show', sTrakt);
+                    }
+                }
                 window.invalidateProgressCaches();
                 
                 return true;
@@ -8172,7 +8211,7 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                                 <i class="fa-solid fa-check text-2xl"></i>
                                             </div>
                                             <h3 class="text-2xl font-bold mb-2 text-white">Episode Logged!</h3>
-                                            <p class="text-gray-400 mb-8 text-sm">Would you like to auto-advance to the next episode?</p>
+                                            <p id="auto-advance-subtitle" class="text-gray-400 mb-8 text-sm">Would you like to auto-advance to the next episode?</p>
                                             <div class="grid grid-cols-2 gap-3">
                                                 <button id="btn-advance-no" class="bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl font-bold transition border border-gray-700">Stay Here</button>
                                                 <button id="btn-advance-yes" class="bg-[var(--primary)] hover:bg-red-700 text-white py-3 rounded-xl font-bold transition shadow-[0_0_15px_rgba(237,34,36,0.3)] flex items-center justify-center gap-2">Next Ep <i class="fa-solid fa-forward-step"></i></button>
@@ -8187,10 +8226,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 advanceModal.classList.add('hidden');
                                 if (location.hash.startsWith('#detail')) {
                                     const parts = location.hash.split('/');
-                                    const cacheKey = `vt_detail_v1_${parts[1]}_${parts[2]}${parts[3] === 'season' && parts[4] ? `_s${parts[4]}` : ''}`;
-                                    if (!sessionStorage.getItem(cacheKey)) showLoader();
-                                    if (parts[3] === 'season' && parts[4]) await renderDetail(parts[1], parts[2], parts[4]);
-                                    else await renderDetail(parts[1], parts[2]);
+                                    if (parts[3] === 'season' && parts[4]) await renderDetail(parts[1], parts[2], parts[4], false, { silentRefresh: true });
+                                    else await renderDetail(parts[1], parts[2], null, false, { silentRefresh: true });
                                 }
                                 if (document.getElementById('up-next-container')) loadUpNext();
                                 if (document.getElementById('last-watched-container')) loadLastWatched();
@@ -8200,6 +8237,16 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                                 window.navigateEpisode(targetShowId, sNum, eNum + 1);
                             };
                             
+                            const subEl = document.getElementById('auto-advance-subtitle');
+                            if (subEl) {
+                                const prefetchedNext = window.adjacentEpisodeCache?.get(`${targetShowId}-${sNum}-${eNum + 1}`);
+                                if (prefetchedNext?.data) {
+                                    const nTitle = prefetchedNext.data.title || prefetchedNext.data.name || '';
+                                    subEl.innerHTML = `Up next: <span class="text-white font-semibold">S${prefetchedNext.season}E${prefetchedNext.number}</span>${nTitle ? ` — ${nTitle}` : ''}`;
+                                } else {
+                                    subEl.textContent = 'Would you like to auto-advance to the next episode?';
+                                }
+                            }
                             advanceModal.classList.remove('hidden');
                         }
                     }
@@ -8208,8 +8255,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     if (!showingAutoAdvance) {
                         if (location.hash.startsWith('#detail')) {
                              const parts = location.hash.split('/');
-                             if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
-                             else renderDetail(parts[1], parts[2]);
+                             if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4], false, { silentRefresh: true });
+                             else renderDetail(parts[1], parts[2], null, false, { silentRefresh: true });
                         }
                         if (document.getElementById('up-next-container')) loadUpNext(); 
                         if (document.getElementById('last-watched-container')) loadLastWatched();
@@ -8218,8 +8265,8 @@ const runtimeStr = item.runtime ? (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`) : 
                     // Refresh Views for non-log actions
                     if (location.hash.startsWith('#detail')) {
                          const parts = location.hash.split('/');
-                         if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4]);
-                         else renderDetail(parts[1], parts[2]);
+                         if(parts[3] === 'season' && parts[4]) renderDetail(parts[1], parts[2], parts[4], false, { silentRefresh: true });
+                         else renderDetail(parts[1], parts[2], null, false, { silentRefresh: true });
                     }
                     if (document.getElementById('up-next-container')) loadUpNext(); 
                     if (document.getElementById('last-watched-container')) loadLastWatched();

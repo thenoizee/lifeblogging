@@ -2,6 +2,14 @@
 
 export const changelogData = [
     {
+    version: "v17.19.0-alpha",
+    date: "2026-11-28",
+    changes: [
+        "In VidTrackr (Header Search & Detail Performance): Restored the desktop and mobile header search bar by updating the headerRight DOM selector to match SharedNav's w-full max-w-[1600px] wrapper, kicked off prefetchAdjacentEpisodes() immediately for TMDB episodes instead of waiting for history/detail rendering, and skipped the blocking 2500-doc Firestore getDocs scan in localHistoryFetch() once initial history sync has populated memory.",
+        "In VidTrackr (Auto-Advance & Watch History): Added silentRefresh mode to renderDetail() so clicking 'Stay Here', editing/removing a rating, or deleting a watch log updates the loaded page in-place without scrolling to the top, flashing a skeleton, or rebooting from stale cache; updated renderDetail() to refresh the DOM when fresh HTML differs from cache; displayed the prefetched next episode title in #auto-advance-modal; separated Your Rating into its own dedicated entry at the top of the Watch History accordion (with platform badges on individual watch logs); and fixed deleteHistoryItem() so deleting one watch log removes only that specific entry from Firestore, RAM, localStorage, and Trakt."
+    ]
+},
+    {
     version: "v17.18.0-alpha",
     date: "2026-11-27",
     changes: [
